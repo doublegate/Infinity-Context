@@ -109,8 +109,8 @@ pub fn chunk_bytes(data: &[u8], cfg: ChunkerConfig) -> Vec<(usize, usize)> {
     chunks
 }
 
-/// Splits `data` using Normalized FastCDC and computes exact 1-based `[start_line, end_line]`
-/// boundaries for each chunk in a single streaming pass.
+/// Splits `data` using Normalized FastCDC (`chunk_bytes`) and indexes the exact 1-based
+/// `[start_line, end_line]` boundaries across the resulting chunk spans.
 pub fn chunk_bytes_with_lines(data: &[u8], cfg: ChunkerConfig) -> Vec<ChunkLineSpan> {
     let spans = chunk_bytes(data, cfg);
     let mut out = Vec::with_capacity(spans.len());

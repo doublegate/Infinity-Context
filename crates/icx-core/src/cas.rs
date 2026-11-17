@@ -5,8 +5,12 @@ use crate::chunker::{chunk_bytes_with_lines, ChunkerConfig};
 use crate::{ArtifactId, Blake3Digest, ContentAddressedStore, IcxError, ICX_MAX_INGEST_BYTES};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static SAVE_TMP_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// A single matching line returned by `CasStore::grep_cold`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -281,9 +285,20 @@ impl CasStore {
         let text = String::from_utf8_lossy(&window_bytes);
         let rel_start = start_line.saturating_sub(base_line);
         let count = end_line - start_line + 1;
-        let out_lines: Vec<&str> = text
-            .split('\n')
-            .map(|l| l.strip_suffix('\r').unwrap_or(l))
+        // Strip trailing `\r` only on segments terminated by `\n` (i.e. CRLF),
+        // preserving a standalone trailing `\r` on an unterminated final segment.
+        let raw_segments: Vec<&str> = text.split('\n').collect();
+        let last_seg_idx = raw_segments.len().saturating_sub(1);
+        let out_lines: Vec<&str> = raw_segments
+            .into_iter()
+            .enumerate()
+            .map(|(idx, seg)| {
+                if idx < last_seg_idx {
+                    seg.strip_suffix('\r').unwrap_or(seg)
+                } else {
+                    seg
+                }
+            })
             .skip(rel_start)
             .take(count)
             .collect();
@@ -357,10 +372,23 @@ impl CasStore {
             artifacts: self.artifacts.values().cloned().collect(),
         };
         let encoded = serde_json::to_vec(&snapshot).map_err(|e| IcxError::Io(e.to_string()))?;
-        let tmp_path = dir_path.join(format!("cas_store.json.{}.tmp", std::process::id()));
+        let seq = SAVE_TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp_path = dir_path.join(format!("cas_store.json.{}.{}.tmp", std::process::id(), seq));
         let final_path = dir_path.join("cas_store.json");
-        fs::write(&tmp_path, encoded).map_err(|e| IcxError::Io(e.to_string()))?;
-        fs::rename(&tmp_path, &final_path).map_err(|e| IcxError::Io(e.to_string()))?;
+        let write_res = (|| -> std::io::Result<()> {
+            let mut f = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&tmp_path)?;
+            f.write_all(&encoded)?;
+            f.sync_all()?;
+            drop(f);
+            fs::rename(&tmp_path, &final_path)
+        })();
+        if let Err(e) = write_res {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(IcxError::Io(e.to_string()));
+        }
         Ok(())
     }
 
@@ -383,23 +411,63 @@ impl CasStore {
         let mut store = Self::with_config(snapshot.chunk_config);
         for art in snapshot.artifacts {
             let id = art.id;
-            if ArtifactId::from_digest(&art.full_digest) != id {
+            if ArtifactId::from_digest(&art.full_digest) != id
+                || art.chunk_ids.len() != art.line_index.len()
+            {
                 return Err(IcxError::IntegrityViolation(id));
             }
-            let mut out = Vec::with_capacity(art.total_bytes);
+            let mut computed_bytes = 0usize;
             for &cid in &art.chunk_ids {
                 let (_, bytes) = verified_chunks
                     .get(&cid)
                     .ok_or(IcxError::ArtifactNotFound(id))?;
+                computed_bytes = computed_bytes.saturating_add(bytes.len());
+            }
+            if computed_bytes != art.total_bytes || computed_bytes > ICX_MAX_INGEST_BYTES {
+                return Err(IcxError::IntegrityViolation(id));
+            }
+
+            let mut out = Vec::with_capacity(computed_bytes);
+            let mut current_line: u32 = 1;
+            for (&cid, entry) in art.chunk_ids.iter().zip(art.line_index.iter()) {
+                let (cdigest, bytes) = verified_chunks
+                    .get(&cid)
+                    .ok_or(IcxError::ArtifactNotFound(id))?;
+                let start_line = current_line;
+                let newlines = bytes.iter().filter(|&&b| b == b'\n').count() as u32;
+                let end_line = if bytes.last() == Some(&b'\n') {
+                    (current_line + newlines).saturating_sub(1).max(start_line)
+                } else {
+                    current_line + newlines
+                };
+                if entry.chunk_id != cid
+                    || entry.byte_offset as usize != out.len()
+                    || entry.byte_len as usize != bytes.len()
+                    || entry.start_line != start_line
+                    || entry.end_line != end_line
+                {
+                    return Err(IcxError::IntegrityViolation(id));
+                }
+                current_line += newlines;
                 out.extend_from_slice(bytes);
+                store
+                    .chunks
+                    .entry(cid)
+                    .or_insert_with(|| (*cdigest, bytes.clone()));
             }
-            if Blake3Digest::hash(&out) != art.full_digest {
+            let expected_total_lines = if out.is_empty() {
+                0
+            } else if out.last() == Some(&b'\n') {
+                current_line.saturating_sub(1) as usize
+            } else {
+                current_line as usize
+            };
+            if Blake3Digest::hash(&out) != art.full_digest
+                || art.total_lines != expected_total_lines
+            {
                 return Err(IcxError::IntegrityViolation(id));
             }
-            let (re_id, _) = store.put_bytes(&out);
-            if re_id != id {
-                return Err(IcxError::IntegrityViolation(id));
-            }
+            store.artifacts.insert(id, art);
         }
         Ok(store)
     }
@@ -570,5 +638,13 @@ mod tests {
             cas.resolve_handle(&id.to_short_handle()),
             Err(IcxError::AmbiguousHandlePrefix(_))
         ));
+        assert_eq!(id.to_short_hex12().len(), 12);
+
+        // Verify standalone trailing carriage return is preserved while CRLF strips `\r`
+        let cr_payload = b"first\r\nlast\r";
+        let (cr_id, _) = cas.put_bytes(cr_payload);
+        assert_eq!(cas.deref_lines(cr_id, 1, 1).unwrap(), "first");
+        assert_eq!(cas.deref_lines(cr_id, 2, 2).unwrap(), "last\r");
+        assert_eq!(cas.deref_lines(cr_id, 1, 2).unwrap(), "first\nlast\r");
     }
 }

@@ -80,7 +80,16 @@ impl InfinityContextMmu {
         force_anomaly: bool,
     ) -> IngestResult {
         self.clock_ms += 10;
-        let mut sanitized = SecretRedactor::sanitize(raw_text);
+        let bounded_raw = if raw_text.len() > icx_core::ICX_MAX_INGEST_BYTES {
+            let mut bound = icx_core::ICX_MAX_INGEST_BYTES;
+            while !raw_text.is_char_boundary(bound) {
+                bound -= 1;
+            }
+            &raw_text[..bound]
+        } else {
+            raw_text
+        };
+        let mut sanitized = SecretRedactor::sanitize(bounded_raw);
         if sanitized.len() > icx_core::ICX_MAX_INGEST_BYTES {
             let mut bound = icx_core::ICX_MAX_INGEST_BYTES;
             while !sanitized.is_char_boundary(bound) {
