@@ -9,9 +9,9 @@ pub const FLAG_HAS_ERROR: u8 = 1 << 0;
 pub const FLAG_HAS_PANIC: u8 = 1 << 1;
 /// Structural flag bit 2 (`0x04`): Packet encodes a unified `git diff` or file mutation.
 pub const FLAG_HAS_DIFF: u8 = 1 << 2;
-/// Structural flag bit 3 (`0x08`): Packet represents a folded sub-trajectory branch (`Φ`).
+/// Structural flag bit 3 (`0x08`): Packet represents a folded sub-trajectory branch (`Φ`) or stub.
 pub const FLAG_IS_FOLDED: u8 = 1 << 3;
-/// Structural flag bit 4 (`0x10`): Packet is sealed inside an immutable `CacheEpoch`.
+/// Structural flag bit 4 (`0x10`): Packet is sealed inside an immutable `CacheEpoch` or cold beacon.
 pub const FLAG_IS_EPOCH: u8 = 1 << 4;
 /// Structural flag bit 5 (`0x20`): Packet contains causal implication chains (`⇒`).
 pub const FLAG_HAS_CAUSAL: u8 = 1 << 5;
@@ -35,6 +35,11 @@ pub struct ChannelBHologram {
 }
 
 impl ChannelBHologram {
+    /// Returns `true` if `flag` is non-zero and all bits in `flag` are set in `self.structural_flags`.
+    #[inline]
+    pub const fn has_flag(self, flag: u8) -> bool {
+        flag != 0 && (self.structural_flags & flag) == flag
+    }
     /// Packs the structured fields into a canonical big-endian 8-byte array `B[0..7]`.
     #[inline]
     pub const fn to_bytes(self) -> [u8; 8] {
@@ -256,5 +261,8 @@ mod tests {
         let raw = holo.to_bytes();
         let unpacked = ChannelBHologram::from_bytes(raw);
         assert_eq!(unpacked, holo);
+        assert!(unpacked.has_flag(FLAG_IS_PINNED));
+        assert!(unpacked.has_flag(FLAG_HAS_ERROR));
+        assert!(!unpacked.has_flag(FLAG_IS_REDACTED));
     }
 }

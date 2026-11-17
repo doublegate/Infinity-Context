@@ -97,9 +97,19 @@ impl HdcAssociativeIndex {
             .quadrant_signature_u16()
             .to_be_bytes();
         let surp_byte = (verdict.momentum_surprise.clamp(0.0, 1.0) * 255.0) as u8;
-        let tier_byte = verdict.tier as u8;
+        let tier_flag = match verdict.tier {
+            crate::surprise::RetentionTier::PinHighResolution => 1u8 << 7, // FLAG_IS_PINNED
+            crate::surprise::RetentionTier::FoldAhtlStub => 1u8 << 3,      // FLAG_IS_FOLDED
+            crate::surprise::RetentionTier::ColdBeacon => 1u8 << 4,        // FLAG_IS_EPOCH
+        };
+        let err_flag = if force_anomaly || TitansSurpriseGate::has_diagnostic_anomaly(content) {
+            1u8 << 0
+        } else {
+            0u8
+        };
+        let flags_byte = tier_flag | err_flag;
         let hologram_bytes = [
-            sketch[0], sketch[1], sketch[2], sketch[3], quad[0], quad[1], surp_byte, tier_byte,
+            sketch[0], sketch[1], sketch[2], sketch[3], quad[0], quad[1], surp_byte, flags_byte,
         ];
 
         self.entries.push(IndexedEntry {

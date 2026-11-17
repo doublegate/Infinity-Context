@@ -157,16 +157,31 @@ impl AhtlClause {
     }
 }
 
-/// Bijectively escapes `%` (`%25`) and `#L` (`%23L`) in a subject string so that literal `#L`
-/// or `%23L` sequences inside `subject` never collide with the `#L<start>-<end>` line-range suffix.
+/// Bijectively escapes `%` (`%25`), `#L` (`%23L`), `⟦` (`%E2%9F%A6`), `⟧` (`%E2%9F%A7`),
+/// `⊢` (`%E2%8A%A2`), `⋮` (`%E2%8B%AE`), and `↦` (`%E2%86%A6`) in a subject string so that
+/// literal `#L`, `%23L`, or AHTL structural delimiters inside `subject` never collide with
+/// outer `⟦...⟧` delimiters, clause/deref separators, or the `#L<start>-<end>` line-range suffix.
 fn escape_subject(s: &str) -> String {
-    if !s.contains('%') && !s.contains("#L") {
+    if !s.contains('%')
+        && !s.contains("#L")
+        && !s.contains('⟦')
+        && !s.contains('⟧')
+        && !s.contains('⊢')
+        && !s.contains('⋮')
+        && !s.contains('↦')
+    {
         return s.to_owned();
     }
-    s.replace('%', "%25").replace("#L", "%23L")
+    s.replace('%', "%25")
+        .replace("#L", "%23L")
+        .replace('⟦', "%E2%9F%A6")
+        .replace('⟧', "%E2%9F%A7")
+        .replace('⊢', "%E2%8A%A2")
+        .replace('⋮', "%E2%8B%AE")
+        .replace('↦', "%E2%86%A6")
 }
 
-/// Single-pass left-to-right inverse of `escape_subject`, restoring `%25` -> `%` and `%23L` -> `#L`.
+/// Single-pass left-to-right inverse of `escape_subject`.
 fn unescape_subject(s: &str) -> String {
     if !s.contains('%') {
         return s.to_owned();
@@ -179,6 +194,21 @@ fn unescape_subject(s: &str) -> String {
             rest = after;
         } else if let Some(after) = rest.strip_prefix("%23L") {
             out.push_str("#L");
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%E2%9F%A6") {
+            out.push('⟦');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%E2%9F%A7") {
+            out.push('⟧');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%E2%8A%A2") {
+            out.push('⊢');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%E2%8B%AE") {
+            out.push('⋮');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%E2%86%A6") {
+            out.push('↦');
             rest = after;
         } else {
             let mut chars = rest.chars();
@@ -202,17 +232,17 @@ pub struct AhtlPacket {
     pub compact_48bit_handle: bool,
     pub slice_hint: Option<String>,
     pub hologram_bytes: [u8; 8],
-    pub has_hologram: bool,
     pub hologram_tag: Option<u16>,
 }
 
 /// Profile A — Canonical 6-Section `AHTL v1.0` Full-Spectrum Wire Packet
 /// (`docs/ahtl/01-formal-grammar-and-packet-specification.md` §1.1):
-/// `⟦AHTL v1│#icx:<12|16-hex>│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧`
+/// `⟦AHTL v1│#icx:<12|16-hex>((<slice_hint>))?│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AhtlWirePacketV1 {
     pub cas_handle: ArtifactId,
     pub compact_48bit_handle: bool,
+    pub slice_hint: Option<String>,
     pub fractal_coord_hex: String,
     pub hdc_digest_hex: String,
     pub braille_spectrum: [u8; 64],
@@ -242,7 +272,7 @@ pub enum CodecError {
 
 impl AhtlPacket {
     /// Creates a new `AhtlPacket` with default `compact_48bit_handle: false`, `slice_hint: None`,
-    /// `has_hologram: true`, and `hologram_tag: None`.
+    /// and `hologram_tag: None`.
     pub fn new(
         kind: PacketKind,
         subject: impl Into<String>,
@@ -260,14 +290,12 @@ impl AhtlPacket {
             compact_48bit_handle: false,
             slice_hint: None,
             hologram_bytes,
-            has_hologram: true,
             hologram_tag: None,
         }
     }
 
-    /// Formats the dereference handle string, preserving 48-bit (`#icx:<12-hex>`) vs. 64-bit
-    /// (`#icx:<16-hex>`) handle width so `CasStore::resolve_handle` performs the proper prefix or
-    /// exact lookup.
+    /// Formats the dereference handle string (`#icx:<12-hex>` or `#icx:<16-hex>`), preserving
+    /// handle width so `CasStore::resolve_handle` performs the proper prefix or exact lookup.
     pub fn deref_handle_string(&self) -> Option<String> {
         self.deref_id.map(|id| {
             if self.compact_48bit_handle {
@@ -312,12 +340,10 @@ impl AhtlPacket {
             }
         }
 
-        if self.has_hologram {
-            out.push_str("⋮Ψ:");
-            out.push_str(&encode_braille_sketch(&self.hologram_bytes));
-            if let Some(tag) = self.hologram_tag {
-                out.push_str(&format!("[{tag:04x}]"));
-            }
+        out.push_str("⋮Ψ:");
+        out.push_str(&encode_braille_sketch(&self.hologram_bytes));
+        if let Some(tag) = self.hologram_tag {
+            out.push_str(&format!("[{tag:04x}]"));
         }
         out.push('⟧');
         out
@@ -331,32 +357,32 @@ impl AhtlPacket {
             .and_then(|s| s.strip_suffix('⟧'))
             .ok_or(CodecError::MissingDelimiters)?;
 
-        // Extract trailing `⋮Ψ:<8-braille>([<hex4>])?` hologram (optional for compact `Φ` or `Ψ` micro-beacons)
-        let (before_holo, hologram_bytes, has_hologram, hologram_tag) =
-            if let Some((left, holo_raw)) = inner.rsplit_once("⋮Ψ:") {
-                let (holo_str, tag_opt) = if let Some(tag_part) = holo_raw.strip_suffix(']') {
-                    let (b_str, hex_tag) = tag_part
-                        .rsplit_once('[')
-                        .ok_or(CodecError::MalformedBrailleSketch)?;
-                    if hex_tag.len() != 4 || !hex_tag.bytes().all(|b| b.is_ascii_hexdigit()) {
-                        return Err(CodecError::MalformedBrailleSketch);
-                    }
-                    let tag = u16::from_str_radix(hex_tag, 16)
-                        .map_err(|_| CodecError::MalformedBrailleSketch)?;
-                    (b_str, Some(tag))
-                } else {
-                    (holo_raw, None)
-                };
-                let holo =
-                    decode_braille_sketch(holo_str).ok_or(CodecError::MalformedBrailleSketch)?;
-                (left, holo, true, tag_opt)
-            } else if inner.starts_with("Φ:")
-                || (inner.starts_with("Ψ:") && inner.contains('↦') && !inner.contains('⊢'))
-            {
-                (inner, [0u8; 8], false, None)
+        // Extract trailing `⋮Ψ:<8-braille>([<hex4>])?` hologram (optional when parsing compact `Φ` or `Ψ` micro-beacons)
+        let (before_holo, hologram_bytes, hologram_tag) = if let Some((left, holo_raw)) =
+            inner.rsplit_once("⋮Ψ:")
+        {
+            let (holo_str, tag_opt) = if let Some(tag_part) = holo_raw.strip_suffix(']') {
+                let (b_str, hex_tag) = tag_part
+                    .rsplit_once('[')
+                    .ok_or(CodecError::MalformedBrailleSketch)?;
+                if hex_tag.len() != 4 || !hex_tag.bytes().all(|b| b.is_ascii_hexdigit()) {
+                    return Err(CodecError::MalformedBrailleSketch);
+                }
+                let tag = u16::from_str_radix(hex_tag, 16)
+                    .map_err(|_| CodecError::MalformedBrailleSketch)?;
+                (b_str, Some(tag))
             } else {
-                return Err(CodecError::MalformedBrailleSketch);
+                (holo_raw, None)
             };
+            let holo = decode_braille_sketch(holo_str).ok_or(CodecError::MalformedBrailleSketch)?;
+            (left, holo, tag_opt)
+        } else if inner.starts_with("Φ:")
+            || (inner.starts_with("Ψ:") && inner.contains('↦') && !inner.contains('⊢'))
+        {
+            (inner, [0u8; 8], None)
+        } else {
+            return Err(CodecError::MalformedBrailleSketch);
+        };
 
         // Extract optional `↦#icx:<12|16-hex>((slice_hint))?` handle
         let (before_deref, deref_id, compact_48bit_handle, slice_hint) =
@@ -428,7 +454,6 @@ impl AhtlPacket {
             compact_48bit_handle,
             slice_hint,
             hologram_bytes,
-            has_hologram,
             hologram_tag,
         })
     }
@@ -469,6 +494,7 @@ impl AhtlPacket {
         Ok(AhtlWirePacketV1 {
             cas_handle,
             compact_48bit_handle: self.compact_48bit_handle,
+            slice_hint: self.slice_hint.clone(),
             fractal_coord_hex: fc_clean.to_ascii_lowercase(),
             hdc_digest_hex: hv_clean.to_ascii_lowercase(),
             braille_spectrum,
@@ -478,8 +504,8 @@ impl AhtlPacket {
 }
 
 impl AhtlWirePacketV1 {
-    /// Formats the CAS handle string, preserving 48-bit (`#icx:<12-hex>`) vs. 64-bit
-    /// (`#icx:<16-hex>`) handle width for `CasStore::resolve_handle`.
+    /// Formats the pure CAS handle string (`#icx:<12-hex>` or `#icx:<16-hex>`), preserving
+    /// handle width for `CasStore::resolve_handle`.
     pub fn cas_handle_string(&self) -> String {
         if self.compact_48bit_handle {
             self.cas_handle.to_short_handle()
@@ -489,11 +515,19 @@ impl AhtlWirePacketV1 {
     }
 
     /// Renders the canonical 6-section Profile A wire packet:
-    /// `⟦AHTL v1│#icx:<12|16-hex>│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧`
+    /// `⟦AHTL v1│#icx:<12|16-hex>((<slice_hint>))?│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧`
     pub fn render(&self) -> String {
+        let mut handle_field = self.cas_handle_string();
+        if let Some(hint) = &self.slice_hint {
+            if !hint.is_empty() {
+                handle_field.push('(');
+                handle_field.push_str(hint);
+                handle_field.push(')');
+            }
+        }
         format!(
             "⟦AHTL v1│{}│fc:{}│hv:{}│{}│{}⟧",
-            self.cas_handle_string(),
+            handle_field,
             self.fractal_coord_hex,
             self.hdc_digest_hex,
             encode_braille_64(&self.braille_spectrum),
@@ -515,9 +549,20 @@ impl AhtlWirePacketV1 {
             return Err(CodecError::UnknownPacketKind);
         }
 
-        let handle_raw = parts
+        let handle_field = parts
             .next()
             .ok_or_else(|| CodecError::MalformedHandle(String::new()))?;
+        let (handle_raw, slice_hint) = if let Some(with_hint) = handle_field.strip_suffix(')') {
+            let (h_part, hint_part) = with_hint
+                .split_once('(')
+                .ok_or_else(|| CodecError::MalformedHandle(handle_field.to_owned()))?;
+            if hint_part.is_empty() {
+                return Err(CodecError::MalformedHandle(handle_field.to_owned()));
+            }
+            (h_part, Some(hint_part.to_owned()))
+        } else {
+            (handle_field, None)
+        };
         let hex_part = handle_raw
             .strip_prefix("#icx:")
             .ok_or_else(|| CodecError::MalformedHandle(handle_raw.to_owned()))?;
@@ -550,6 +595,7 @@ impl AhtlWirePacketV1 {
         Ok(Self {
             cas_handle,
             compact_48bit_handle,
+            slice_hint,
             fractal_coord_hex: fc_hex.to_ascii_lowercase(),
             hdc_digest_hex: hv_hex.to_ascii_lowercase(),
             braille_spectrum,
@@ -609,9 +655,8 @@ impl AhtlWirePacketV1 {
             clauses,
             deref_id: Some(self.cas_handle),
             compact_48bit_handle: self.compact_48bit_handle,
-            slice_hint: None,
+            slice_hint: self.slice_hint.clone(),
             hologram_bytes,
-            has_hologram: true,
             hologram_tag: None,
         }
     }
@@ -837,10 +882,10 @@ mod tests {
         let parsed_no_hint = AhtlPacket::parse(&rendered_no_hint).unwrap();
         assert_eq!(parsed_no_hint.slice_hint, None);
 
-        // Verify line_range == None with subject ending in `#L1-5` or containing `%23L` round-trips losslessly
+        // Verify line_range == None with subject ending in `#L1-5`, containing `%23L`, or containing `⟦`/`⟧`
         let subj_with_hash_l = AhtlPacket::new(
             PacketKind::Invariant,
-            "rule%23L_and_#L1-5",
+            "rule%23L_and_⟦inner⟧_#L1-5",
             None,
             vec![
                 AhtlClause::new(ClauseOp::Removed, "legacy", Some("v0".into())),
@@ -855,13 +900,11 @@ mod tests {
         // Verify compact micro-beacon (`⟦Ψ:role↦#icx:...⟧`) and folded branch (`⟦Φ:...⟧`) without `⋮Ψ:`
         let beacon_str = "⟦Ψ:tool_read↦#icx:0123456789abcdef⟧";
         let beacon = AhtlPacket::parse(beacon_str).expect("parse compact micro-beacon");
-        assert!(!beacon.has_hologram);
-        assert_eq!(beacon.render(), beacon_str);
+        assert_eq!(beacon.kind, PacketKind::ToolStub);
 
         let folded_str = "⟦Φ:debug_loop⊢steps:3⋮✓resolved↦#icx:0123456789abcdef⟧";
         let folded = AhtlPacket::parse(folded_str).expect("parse folded branch");
-        assert!(!folded.has_hologram);
-        assert_eq!(folded.render(), folded_str);
+        assert_eq!(folded.kind, PacketKind::FoldedBranch);
 
         for kind in [
             PacketKind::CodeDelta,
@@ -915,7 +958,7 @@ mod tests {
     #[test]
     fn profile_a_wire_packet_v1_compact_handles_and_stream_round_trip() {
         let (id, _) = ArtifactId::hash_bytes(b"profile_a_payload");
-        let pkt_b = AhtlPacket::new(
+        let mut pkt_b = AhtlPacket::new(
             PacketKind::CodeDelta,
             "src/alloc.rs",
             Some((1, 90)),
@@ -926,6 +969,7 @@ mod tests {
             Some(id),
             [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
         );
+        pkt_b.slice_hint = Some("L1-90".into());
 
         let fc_hex = "7fff80017fff80017fff80017fff80017fff80017fff80017fff80017fff8001";
         let hv_hex = "0123456789abcdef";
@@ -936,11 +980,14 @@ mod tests {
             .expect("promote to Profile A");
         let wire_a = pkt_a.render();
         assert!(wire_a.starts_with("⟦AHTL v1│#icx:"));
+        assert!(wire_a.contains("(L1-90)"));
         let parsed_a = AhtlWirePacketV1::parse(&wire_a).expect("parse Profile A");
         assert_eq!(parsed_a, pkt_a);
+        assert_eq!(parsed_a.cas_handle_string(), id.to_string());
 
         // Test 48-bit compact handle preservation across Profile A <-> Profile B conversions
         pkt_a.compact_48bit_handle = true;
+        pkt_a.slice_hint = None;
         let wire_a_short = pkt_a.render();
         let parsed_a_short =
             AhtlWirePacketV1::parse(&wire_a_short).expect("parse 48-bit Profile A");
@@ -1009,6 +1056,12 @@ mod tests {
             AhtlWirePacketV1::parse("⟦WRONG│#icx:0123456789abcdef⟧"),
             Err(CodecError::UnknownPacketKind)
         );
+        assert!(matches!(
+            AhtlWirePacketV1::parse(&format!(
+                "⟦AHTL v1│#icx:0123456789abcdef()│fc:{fc_hex}│hv:{hv_hex}│x│s⟧"
+            )),
+            Err(CodecError::MalformedHandle(_))
+        ));
         assert_eq!(
             AhtlWirePacketV1::parse(
                 "⟦AHTL v1│#icx:0123456789abcdef│bad_fc│hv:0123456789abcdef│x│s⟧"

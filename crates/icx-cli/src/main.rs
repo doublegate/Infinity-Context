@@ -431,11 +431,20 @@ fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "--dir" if i + 1 < args.len() => {
+            "--dir" => {
+                if i + 1 >= args.len() {
+                    return Err("icx encode-ahtl error: missing value for --dir".into());
+                }
                 dir_str = &args[i + 1];
                 i += 2;
             }
-            "--profile" if i + 1 < args.len() => {
+            "--profile" => {
+                if i + 1 >= args.len() {
+                    return Err(
+                        "icx encode-ahtl error: missing value for --profile (expected `a` or `b`)"
+                            .into(),
+                    );
+                }
                 match args[i + 1].to_ascii_lowercase().as_str() {
                     "a" => profile_a = true,
                     "b" => profile_a = false,
@@ -447,7 +456,11 @@ fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
                 }
                 i += 2;
             }
-            _ => i += 1,
+            unknown => {
+                return Err(format!(
+                    "icx encode-ahtl error: unknown option `{unknown}` (expected `--dir` or `--profile`)"
+                ));
+            }
         }
     }
     let content =
@@ -483,6 +496,7 @@ fn run_decode_ahtl(args: &[String]) -> Result<(), String> {
         WirePacket::ProfileA(pkt) => {
             println!("Profile:    A (Canonical AHTL v1 6-Section Wire)");
             println!("CAS Handle: {}", pkt.cas_handle_string());
+            println!("Slice Hint: {:?}", pkt.slice_hint);
             println!("Fractal FC: fc:{}", pkt.fractal_coord_hex);
             println!("HDC Digest: hv:{}", pkt.hdc_digest_hex);
             println!("Spectrum:   64 Braille bands (512 bits)");
@@ -767,11 +781,11 @@ mod tests {
                 sample_path_str.clone(),
                 "--dir".into(),
                 dir_arg.clone(),
-                "--extra".into(),
             ],
             io::Cursor::new(""),
         )
         .unwrap();
+        assert!(run_encode_ahtl(&[sample_path_str.clone(), "--unknown".into()]).is_err());
         assert!(run_encode_ahtl(&[]).is_err());
         assert!(run_encode_ahtl(&["/nonexistent/file/path.rs".into()]).is_err());
 
@@ -942,6 +956,16 @@ mod tests {
                 sample_file.to_string_lossy().into_owned(),
                 "--profile".into(),
                 "invalid_profile".into(),
+            ])
+            .is_err()
+        );
+        assert!(
+            run_encode_ahtl(&[sample_file.to_string_lossy().into_owned(), "--dir".into()]).is_err()
+        );
+        assert!(
+            run_encode_ahtl(&[
+                sample_file.to_string_lossy().into_owned(),
+                "--profile".into()
             ])
             .is_err()
         );
