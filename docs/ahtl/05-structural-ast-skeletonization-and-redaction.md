@@ -91,13 +91,13 @@ When `is_functional` is `true` (e.g., `pass` or `fail` counts on `cargo_test`), 
 
 ---
 
-## 3. Pre-Ingestion 3-Tier `SecretRedactor` Gate (`crates/icx-codec/src/redact.rs`)
+## 3. Pre-Ingestion 4-Tier `SecretRedactor` Gate (`crates/icx-codec/src/redact.rs`)
 
 ### 3.1 Security Mandate (Module 60 Compliance)
 
 Because `CasStore` is an immutable, content-addressed Merkle store and `/dev/shm` is readable by local sibling agent processes under the same UID, **matched credentials and PEM private keys must be scrubbed before `CasStore::put_bytes`, `AhtlPacket::render`, or `SeqlockTelemetryBus::publish`**. `SecretRedactor::sanitize` is therefore invoked at the very first line of both `InfinityContextMmu::ingest_payload` and `StructuralSkeletonizer::compress_to_packet`, with all four tiers (`Tier 0` delimiter escaping, `Tier 1` PEM/PGP blocks, `Tier 2` 28 vendor prefixes/JWTs/URLs/CLI flags/`.env`/JSON/YAML keys, and `Tier 3` Shannon character entropy $H(S)$ filtering) active in `crates/icx-codec/src/redact.rs` (`v0.3.0`) and `FLAG_IS_REDACTED` (`1 << 7`) stamped on `ChannelBHologram` byte `B[7]`.
 
-### 3.2 The Three Redaction & Escaping Tiers
+### 3.2 The Four Redaction & Escaping Tiers
 
 #### Tier 0 — Anti-Injection Structural Delimiter Escaping (`escape_ahtl_delimiters`)
 Replaces every literal occurrence of the four outer `AHTL` frame/packet delimiters in untrusted input before packet construction:
@@ -125,9 +125,9 @@ Scans every line for known credential prefixes followed by $\ge 8$ token charact
 | Slack Bot & User Tokens | `xoxb-...`, `xoxp-...` | `[REDACTED:SLACK_TOKEN]` |
 | HTTP Authorization Bearer / JWT | `[Bb]earer\s+\S{8,}` | `Bearer [REDACTED:BEARER]` |
 
-#### Tier 3 — High-Entropy & Hex Secret Detection Gate (Phase 2 `T-23-001` Blueprint)
+#### Tier 3 — High-Entropy & Hex Secret Detection Gate (`SecretRedactor::shannon_entropy`)
 
-For unprefixed Base64 or hexadecimal secrets assigned to key-value fields (`key=value` or `"key": "value"`) whose key name is not in the Tier 1 suffix list, the Phase 2 `T-23-001` extension evaluates the Shannon character entropy over token $S$:
+For unprefixed Base64 or hexadecimal secrets assigned to key-value fields (`key=value` or `"key": "value"`) whose key name is not in the Tier 1 suffix list, `SecretRedactor::shannon_entropy` (`T-23-001`) evaluates the Shannon character entropy over token $S$:
 
 $$H(S) = -\sum_{c \in \Sigma(S)} \frac{\operatorname{count}(c)}{|S|} \log_2\!\left(\frac{\operatorname{count}(c)}{|S|}\right) \quad \text{bits/char}$$
 

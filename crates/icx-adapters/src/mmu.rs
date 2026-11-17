@@ -98,7 +98,8 @@ impl InfinityContextMmu {
             raw_text
         };
         let mut sanitized = SecretRedactor::sanitize(bounded_raw);
-        let was_redacted = sanitized != bounded_raw.trim_end_matches('\n');
+        let normalized_raw = bounded_raw.lines().collect::<Vec<_>>().join("\n");
+        let was_redacted = sanitized != normalized_raw;
         if sanitized.len() > icx_core::ICX_MAX_INGEST_BYTES {
             let mut bound = icx_core::ICX_MAX_INGEST_BYTES;
             while !sanitized.is_char_boundary(bound) {

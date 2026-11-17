@@ -47,7 +47,7 @@ Standard BPE tokenizers (`o200k_base`, `cl100k_base`, Claude BPE) split punctuat
 - **Crucial Invariant:** Identifiers (`alloc_page`, `E0502`, `state_5.sqlite`) are emitted **verbatim** without internal character mangling so that the model's token embeddings for those identifiers match user queries identically in attention space.
 
 ### 3.2 Channel B: Braille-256 Holographic Sketch (`U+2800..U+28FF`)
-Each compressed Profile B packet appends a compact 8-character Braille-256 sketch (`Ψ:⠒⠴⡖⡸⢚⢼⣞⣰`) encoding the 64-bit `ChannelBHologram` metadata fingerprint (`B[0..=3]` 32-bit HDC XOR parity fold, `B[4]` quantized Titans surprise $S_t$, `B[5]` quantized IFS quadrant signature, `B[6]` `AgentKind` ID, `B[7]` `TIER_MASK` bits `0..=1` + `FLAG_*` bits `2..=7`), while Profile A carries a 64-character (512-bit) 1-Lipschitz HDC spectral band projection (`Hypervector::spectral_bands_64`, `encode_braille_64` / `decode_braille_64`).
+Each compressed Profile B packet appends a compact 8-character Braille-256 sketch (`Ψ:⠒⠴⡖⡸⢚⢼⣞⣰`) encoding the 64-bit `ChannelBHologram` metadata fingerprint (`B[0..=3]` 32-bit big-endian HDC XOR parity fold, `B[4..=5]` 16-bit big-endian quantized IFS quadrant signature, `B[6]` 8-bit quantized Titans surprise $S_t$, `B[7]` `TIER_MASK` bits `0..=1` + `FLAG_*` bits `2..=7`), while Profile A carries a 64-character (512-bit) 1-Lipschitz HDC spectral band projection (`Hypervector::spectral_bands_64`, `encode_braille_64` / `decode_braille_64`).
 
 Encoding byte $b \in [0, 255]$ to Unicode Braille (`U+2800 + b`) and its exact 3-byte UTF-8 triple (`[0xE2, 0xA0 | (b >> 6), 0x80 | (b & 0x3F)]`) is a branchless constant-time bijection (`byte_to_braille`, `braille_to_byte`, `byte_to_braille_utf8`, `braille_utf8_to_byte`).
 

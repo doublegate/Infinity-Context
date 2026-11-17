@@ -54,7 +54,7 @@ Conventional context management relies on **human-readable English summarization
 ⟦AHTL v1│#icx:4f3598d97c50│fc:4000c0002000e0001000f0000800f8000400fc000200fe000100ff000080ff80│hv:123456789abcdef0│⠒⠴⡖⡸⢚⢼⣞⣰...│⊕fn:seal_epoch⋮✓test:14/14⟧
 ```
 
-Every `AHTL` packet compresses bulky tool logs, unified `git diff` patches, and multi-language source files by **12x–72x** in under **200 microseconds** while embedding a cryptographic **BLAKE3 Content-Addressed Handle (`#icx:<16-hex>` or `#icx:<12-hex>`)** for **100% byte-exact $O(\log N)$ lossless page-in**, an **8-byte (`Ψ:<8-Braille>`) or 64-byte (`<64-Braille>`) Braille-256 (`U+2800..U+28FF`) hypervector sketch**, a **Contractive Iterated Function System (`IFS`) Fractal Coordinate (`fc:<64-hex>`)**, and a **Titans Surprise Score (`ChannelBHologram` `B[4]`)**.
+Every `AHTL` packet compresses bulky tool logs, unified `git diff` patches, and multi-language source files by **12x–72x** in under **200 microseconds** while embedding a cryptographic **BLAKE3 Content-Addressed Handle (`#icx:<16-hex>` or `#icx:<12-hex>`)** for **100% byte-exact $O(\log N)$ lossless page-in**, an **8-byte (`Ψ:<8-Braille>`) or 64-byte (`<64-Braille>`) Braille-256 (`U+2800..U+28FF`) hypervector sketch**, a **Contractive Iterated Function System (`IFS`) Fractal Coordinate (`fc:<64-hex>`)**, and a **Titans Surprise Score (`ChannelBHologram` `B[6]`)**.
 
 ---
 

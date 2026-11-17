@@ -33,13 +33,13 @@ impl SecretRedactor {
                 continue;
             }
 
-            if line.contains("-----BEGIN PGP PRIVATE KEY BLOCK-----") {
+            if line.contains("-----BEGIN PGP ") && line.contains("PRIVATE KEY BLOCK-----") {
                 in_pgp_block = true;
                 lines_out.push("[REDACTED:PGP_PRIVATE_KEY]".to_owned());
                 continue;
             }
             if in_pgp_block {
-                if line.contains("-----END PGP PRIVATE KEY BLOCK-----") {
+                if line.contains("-----END PGP ") && line.contains("PRIVATE KEY BLOCK-----") {
                     in_pgp_block = false;
                 }
                 continue;
@@ -118,17 +118,17 @@ impl SecretRedactor {
     }
 
     fn redact_line(line: &str) -> String {
-        // 1. Check CLI flags (`--api-key=VALUE`, `--token=VALUE`, `--password=VALUE`, `--secret=VALUE`)
+        // 1. Check space-separated CLI flags (`--api-key VALUE`, `--password "VALUE"`, etc.)
         let mut current = Self::redact_cli_flags(line);
 
-        // 2. Check `.env` / shell / query `KEY=VALUE` assignments for sensitive key names
+        // 2. Check `.env` / shell / query / CLI `KEY=VALUE` and `--flag=VALUE` assignments for sensitive key names
         current = Self::redact_env_assignments(&current);
 
-        // 3. Check JSON / YAML `"key": "value"` or `key: value` assignments for sensitive key names
-        current = Self::redact_colon_assignments(&current);
-
-        // 4. Redact embedded credentials in database/broker URLs (`scheme://user:password@host`)
+        // 3. Redact embedded credentials in database/broker URLs (`scheme://user:password@host`) before colon scan
         current = Self::redact_connection_urls(&current);
+
+        // 4. Check JSON / YAML `"key": "value"` or `key: value` assignments for sensitive key names
+        current = Self::redact_colon_assignments(&current);
 
         // 5. Redact 3-segment Base64URL JWT tokens (`eyJ... . eyJ... . ...`)
         current = Self::redact_jwt_tokens(&current);
@@ -194,6 +194,98 @@ impl SecretRedactor {
         Self::redact_high_entropy_tokens(&current)
     }
 
+    fn redact_value_span(
+        out: &mut String,
+        val_start: usize,
+        replacement: &str,
+        stop_at_comma: bool,
+    ) -> Option<usize> {
+        let bytes = out.as_bytes();
+        if val_start >= bytes.len() {
+            return None;
+        }
+        let quote = bytes[val_start];
+        let escaped_quote = if quote == b'\\'
+            && val_start + 1 < bytes.len()
+            && (bytes[val_start + 1] == b'"' || bytes[val_start + 1] == b'\'')
+        {
+            Some(bytes[val_start + 1])
+        } else {
+            None
+        };
+        if let Some(eq_q) = escaped_quote {
+            let inner_start = val_start + 2;
+            let mut inner_end = inner_start;
+            while inner_end < bytes.len() {
+                if bytes[inner_end] == b'\\'
+                    && inner_end + 1 < bytes.len()
+                    && bytes[inner_end + 1] == eq_q
+                {
+                    break;
+                }
+                if bytes[inner_end] == b'"' || bytes[inner_end] == b'\'' {
+                    break;
+                }
+                inner_end += 1;
+            }
+            if inner_end > inner_start && !out[inner_start..inner_end].starts_with("[REDACTED:") {
+                out.replace_range(inner_start..inner_end, replacement);
+                return Some((inner_start + replacement.len() + 2).min(out.len()));
+            }
+            return None;
+        }
+        if quote == b'"' || quote == b'\'' {
+            let inner_start = val_start + 1;
+            let mut inner_end = inner_start;
+            while inner_end < bytes.len() && bytes[inner_end] != quote {
+                if bytes[inner_end] == b'\\'
+                    && inner_end + 1 < bytes.len()
+                    && bytes[inner_end + 1].is_ascii()
+                {
+                    inner_end += 2;
+                } else {
+                    inner_end += 1;
+                }
+            }
+            if inner_end > inner_start && !out[inner_start..inner_end].starts_with("[REDACTED:") {
+                out.replace_range(inner_start..inner_end, replacement);
+                return Some((inner_start + replacement.len() + 1).min(out.len()));
+            }
+            return None;
+        }
+        if matches!(quote, b'{' | b'[') {
+            return None;
+        }
+        let rest = &out[val_start..];
+        let mut val_len = rest.len();
+        for (idx, ch) in rest.char_indices() {
+            if ch.is_whitespace()
+                || matches!(ch, '"' | '\'' | ';' | '&' | '|' | ')' | ']' | '}')
+                || (stop_at_comma && ch == ',')
+            {
+                val_len = idx;
+                break;
+            }
+            if ch == '\\' {
+                let after_slash = &rest[idx + 1..];
+                if after_slash.starts_with('n')
+                    || after_slash.starts_with('r')
+                    || after_slash.starts_with('t')
+                    || after_slash.starts_with('"')
+                    || after_slash.starts_with('\'')
+                {
+                    val_len = idx;
+                    break;
+                }
+            }
+        }
+        if val_len > 0 && !out[val_start..val_start + val_len].starts_with("[REDACTED:") {
+            out.replace_range(val_start..val_start + val_len, replacement);
+            return Some(val_start + replacement.len());
+        }
+        None
+    }
+
     fn redact_env_assignments(line: &str) -> String {
         let mut out = line.to_owned();
         let mut search_pos = 0usize;
@@ -229,11 +321,6 @@ impl SecretRedactor {
                 key_start -= 1;
             }
             let key_name = &out[key_start..key_end];
-            // Skip CLI flags (`--key=`) already handled by `redact_cli_flags`
-            if key_name.starts_with("--") {
-                search_pos = eq_idx + 1;
-                continue;
-            }
             if !key_name.is_empty() && Self::is_sensitive_key_name(key_name) {
                 let mut val_start = eq_idx + 1;
                 while val_start < bytes.len()
@@ -241,87 +328,16 @@ impl SecretRedactor {
                 {
                     val_start += 1;
                 }
-                if val_start < bytes.len() {
-                    let quote = bytes[val_start];
-                    let escaped_quote = if quote == b'\\'
-                        && val_start + 1 < bytes.len()
-                        && (bytes[val_start + 1] == b'"' || bytes[val_start + 1] == b'\'')
-                    {
-                        Some(bytes[val_start + 1])
-                    } else {
-                        None
-                    };
-                    if let Some(eq_q) = escaped_quote {
-                        let inner_start = val_start + 2;
-                        let mut inner_end = inner_start;
-                        while inner_end < bytes.len() {
-                            if bytes[inner_end] == b'\\'
-                                && inner_end + 1 < bytes.len()
-                                && bytes[inner_end + 1] == eq_q
-                            {
-                                break;
-                            }
-                            if bytes[inner_end] == b'"' || bytes[inner_end] == b'\'' {
-                                break;
-                            }
-                            inner_end += 1;
-                        }
-                        if inner_end > inner_start
-                            && !out[inner_start..inner_end].starts_with("[REDACTED:")
-                        {
-                            let replacement = "[REDACTED:ENV_SECRET]";
-                            out.replace_range(inner_start..inner_end, replacement);
-                            search_pos = (inner_start + replacement.len() + 2).min(out.len());
-                            continue;
-                        }
-                    } else if quote == b'"' || quote == b'\'' {
-                        let inner_start = val_start + 1;
-                        let mut inner_end = inner_start;
-                        while inner_end < bytes.len() && bytes[inner_end] != quote {
-                            if bytes[inner_end] == b'\\'
-                                && inner_end + 1 < bytes.len()
-                                && bytes[inner_end + 1].is_ascii()
-                            {
-                                inner_end += 2;
-                            } else {
-                                inner_end += 1;
-                            }
-                        }
-                        if inner_end > inner_start
-                            && !out[inner_start..inner_end].starts_with("[REDACTED:")
-                        {
-                            let replacement = "[REDACTED:ENV_SECRET]";
-                            out.replace_range(inner_start..inner_end, replacement);
-                            search_pos = (inner_start + replacement.len() + 1).min(out.len());
-                            continue;
-                        }
-                    } else {
-                        let val_len = out.as_bytes()[val_start..]
-                            .iter()
-                            .take_while(|&&b| {
-                                b.is_ascii_graphic()
-                                    && !matches!(
-                                        b,
-                                        b'"' | b'\''
-                                            | b'\\'
-                                            | b','
-                                            | b';'
-                                            | b'&'
-                                            | b')'
-                                            | b']'
-                                            | b'}'
-                                    )
-                            })
-                            .count();
-                        if val_len > 0
-                            && !out[val_start..val_start + val_len].starts_with("[REDACTED:")
-                        {
-                            let replacement = "[REDACTED:ENV_SECRET]";
-                            out.replace_range(val_start..val_start + val_len, replacement);
-                            search_pos = val_start + replacement.len();
-                            continue;
-                        }
-                    }
+                let replacement = if key_name.starts_with("--") {
+                    "[REDACTED:CLI_SECRET]"
+                } else {
+                    "[REDACTED:ENV_SECRET]"
+                };
+                if let Some(next_pos) =
+                    Self::redact_value_span(&mut out, val_start, replacement, false)
+                {
+                    search_pos = next_pos;
+                    continue;
                 }
             }
             search_pos = eq_idx + 1;
@@ -373,6 +389,11 @@ impl SecretRedactor {
             {
                 key_start -= 1;
             }
+            // Skip URL `scheme://username:password@host` where `username` is preceded by `://`
+            if out[..key_start].ends_with("://") {
+                search_pos = colon_idx + 1;
+                continue;
+            }
             let key_name = &out[key_start..key_end];
             if !key_name.is_empty() && Self::is_sensitive_key_name(key_name) {
                 let mut val_start = colon_idx + 1;
@@ -381,80 +402,11 @@ impl SecretRedactor {
                 {
                     val_start += 1;
                 }
-                if val_start < bytes.len() {
-                    let quote = bytes[val_start];
-                    let escaped_quote = if quote == b'\\'
-                        && val_start + 1 < bytes.len()
-                        && (bytes[val_start + 1] == b'"' || bytes[val_start + 1] == b'\'')
-                    {
-                        Some(bytes[val_start + 1])
-                    } else {
-                        None
-                    };
-                    if let Some(eq_q) = escaped_quote {
-                        let inner_start = val_start + 2;
-                        let mut inner_end = inner_start;
-                        while inner_end < bytes.len() {
-                            if bytes[inner_end] == b'\\'
-                                && inner_end + 1 < bytes.len()
-                                && bytes[inner_end + 1] == eq_q
-                            {
-                                break;
-                            }
-                            if bytes[inner_end] == b'"' || bytes[inner_end] == b'\'' {
-                                break;
-                            }
-                            inner_end += 1;
-                        }
-                        if inner_end > inner_start
-                            && !out[inner_start..inner_end].starts_with("[REDACTED:")
-                        {
-                            let replacement = "[REDACTED:CONFIG_SECRET]";
-                            out.replace_range(inner_start..inner_end, replacement);
-                            search_pos = (inner_start + replacement.len() + 2).min(out.len());
-                            continue;
-                        }
-                    } else if quote == b'"' || quote == b'\'' {
-                        let inner_start = val_start + 1;
-                        let mut inner_end = inner_start;
-                        while inner_end < bytes.len() && bytes[inner_end] != quote {
-                            if bytes[inner_end] == b'\\'
-                                && inner_end + 1 < bytes.len()
-                                && bytes[inner_end + 1].is_ascii()
-                            {
-                                inner_end += 2;
-                            } else {
-                                inner_end += 1;
-                            }
-                        }
-                        if inner_end > inner_start
-                            && !out[inner_start..inner_end].starts_with("[REDACTED:")
-                        {
-                            let replacement = "[REDACTED:CONFIG_SECRET]";
-                            out.replace_range(inner_start..inner_end, replacement);
-                            search_pos = (inner_start + replacement.len() + 1).min(out.len());
-                            continue;
-                        }
-                    } else if !matches!(quote, b'{' | b'[') {
-                        let val_len = out.as_bytes()[val_start..]
-                            .iter()
-                            .take_while(|&&b| {
-                                b.is_ascii_graphic()
-                                    && !matches!(
-                                        b,
-                                        b'"' | b'\'' | b'\\' | b',' | b';' | b')' | b']' | b'}'
-                                    )
-                            })
-                            .count();
-                        if val_len > 0
-                            && !out[val_start..val_start + val_len].starts_with("[REDACTED:")
-                        {
-                            let replacement = "[REDACTED:CONFIG_SECRET]";
-                            out.replace_range(val_start..val_start + val_len, replacement);
-                            search_pos = val_start + replacement.len();
-                            continue;
-                        }
-                    }
+                if let Some(next_pos) =
+                    Self::redact_value_span(&mut out, val_start, "[REDACTED:CONFIG_SECRET]", true)
+                {
+                    search_pos = next_pos;
+                    continue;
                 }
             }
             search_pos = colon_idx + 1;
@@ -464,40 +416,47 @@ impl SecretRedactor {
 
     fn redact_cli_flags(line: &str) -> String {
         let mut out = line.to_owned();
-        let flags = [
-            "--api-key=",
-            "--apikey=",
-            "--token=",
-            "--auth-token=",
-            "--access-token=",
-            "--password=",
-            "--passwd=",
-            "--secret=",
-            "--client-secret=",
-        ];
-        for flag in flags {
-            let mut search_pos = 0usize;
-            while search_pos < out.len() {
-                let Some(rel_idx) = out[search_pos..].find(flag) else {
-                    break;
-                };
-                let val_start = search_pos + rel_idx + flag.len();
-                let rest = &out.as_bytes()[val_start..];
-                let val_len = rest
-                    .iter()
-                    .take_while(|&&b| {
-                        b.is_ascii_graphic()
-                            && !matches!(b, b'"' | b'\'' | b'\\' | b',' | b';' | b')' | b']' | b'}')
-                    })
-                    .count();
-                if val_len > 0 {
-                    let replacement = "[REDACTED:CLI_SECRET]";
-                    out.replace_range(val_start..val_start + val_len, replacement);
-                    search_pos = val_start + replacement.len();
-                } else {
-                    search_pos = val_start;
+        let mut search_pos = 0usize;
+        while search_pos < out.len() {
+            let Some(rel_idx) = out[search_pos..].find("--") else {
+                break;
+            };
+            let flag_start = search_pos + rel_idx;
+            let bytes = out.as_bytes();
+            if flag_start > 0 && bytes[flag_start - 1].is_ascii_alphanumeric() {
+                search_pos = flag_start + 2;
+                continue;
+            }
+            let mut flag_end = flag_start + 2;
+            while flag_end < bytes.len()
+                && (bytes[flag_end].is_ascii_alphanumeric()
+                    || bytes[flag_end] == b'_'
+                    || bytes[flag_end] == b'-')
+            {
+                flag_end += 1;
+            }
+            let flag_name = &out[flag_start..flag_end];
+            if flag_end > flag_start + 2
+                && flag_end < bytes.len()
+                && (bytes[flag_end] == b' ' || bytes[flag_end] == b'\t')
+                && Self::is_sensitive_key_name(flag_name)
+            {
+                let mut val_start = flag_end;
+                while val_start < bytes.len()
+                    && (bytes[val_start] == b' ' || bytes[val_start] == b'\t')
+                {
+                    val_start += 1;
+                }
+                if val_start < bytes.len() && bytes[val_start] != b'-' {
+                    if let Some(next_pos) =
+                        Self::redact_value_span(&mut out, val_start, "[REDACTED:CLI_SECRET]", false)
+                    {
+                        search_pos = next_pos;
+                        continue;
+                    }
                 }
             }
+            search_pos = flag_end.max(flag_start + 2);
         }
         out
     }
@@ -631,50 +590,49 @@ impl SecretRedactor {
         out
     }
 
+    #[inline]
+    fn is_token_delimiter(c: char) -> bool {
+        c.is_whitespace() || matches!(c, '=' | ':' | '"' | '\'' | ',' | ';' | ')' | ']' | '}')
+    }
+
     fn redact_high_entropy_tokens(line: &str) -> String {
         // Skip lines that are already redacted or AHTL/CAS handles
         let mut out = String::with_capacity(line.len());
         let mut rest = line;
 
         while !rest.is_empty() {
-            if rest.starts_with("\\n")
-                || rest.starts_with("\\r")
-                || rest.starts_with("\\t")
-                || rest.starts_with("\\\"")
-                || rest.starts_with("\\'")
-            {
-                out.push_str(&rest[..2]);
-                rest = &rest[2..];
-                continue;
-            }
             let ws_len = rest
-                .bytes()
-                .take_while(|&b| {
-                    b.is_ascii_whitespace()
-                        || matches!(
-                            b,
-                            b'=' | b':' | b'"' | b'\'' | b',' | b';' | b'\\' | b')' | b']' | b'}'
-                        )
-                })
-                .count();
+                .find(|c: char| !Self::is_token_delimiter(c))
+                .unwrap_or(rest.len());
             if ws_len > 0 {
                 out.push_str(&rest[..ws_len]);
                 rest = &rest[ws_len..];
                 continue;
             }
+            if rest.starts_with("\\n")
+                || rest.starts_with("\\r")
+                || rest.starts_with("\\t")
+                || rest.starts_with("\\\"")
+                || rest.starts_with("\\'")
+                || rest.starts_with("\\\\")
+            {
+                out.push_str(&rest[..2]);
+                rest = &rest[2..];
+                continue;
+            }
+            if rest.starts_with('\\') {
+                out.push('\\');
+                rest = &rest[1..];
+                continue;
+            }
 
+            let prefix_before_token = &line[..line.len() - rest.len()];
             let tok_len = rest
-                .find(|c: char| {
-                    c.is_whitespace()
-                        || matches!(
-                            c,
-                            '=' | ':' | '"' | '\'' | ',' | ';' | '\\' | ')' | ']' | '}'
-                        )
-                })
+                .find(|c: char| Self::is_token_delimiter(c) || c == '\\')
                 .unwrap_or(rest.len());
             let token = &rest[..tok_len];
 
-            if Self::is_high_entropy_secret_candidate(token, line) {
+            if Self::is_high_entropy_secret_candidate(token, prefix_before_token, line) {
                 out.push_str("[REDACTED:HIGH_ENTROPY]");
             } else {
                 out.push_str(token);
@@ -684,11 +642,15 @@ impl SecretRedactor {
         out
     }
 
-    fn is_high_entropy_secret_candidate(token: &str, full_line: &str) -> bool {
+    fn is_high_entropy_secret_candidate(
+        token: &str,
+        prefix_before_token: &str,
+        full_line: &str,
+    ) -> bool {
         if token.len() < 24 || token.starts_with("[REDACTED:") || token.starts_with("#icx") {
             return false;
         }
-        // Exclude file paths, URLs, Rust/Python module paths, and test names
+        // Exclude file paths, URLs, Rust/Python module paths, test names, and AHTL `#icx:`/`fc:`/`hv:` fields
         if token.starts_with('/')
             || token.starts_with("./")
             || token.starts_with("../")
@@ -698,9 +660,10 @@ impl SecretRedactor {
             || token.contains('.')
             || token.contains('(')
             || token.contains(')')
-            || full_line.contains("#icx:")
-            || full_line.contains("fc:")
-            || full_line.contains("hv:")
+            || prefix_before_token.ends_with("#icx:")
+            || prefix_before_token.ends_with("fc:")
+            || prefix_before_token.ends_with("hv:")
+            || prefix_before_token.ends_with("root=")
         {
             return false;
         }
@@ -862,5 +825,32 @@ urls: postgres://localhost:5432/dev postgres://admin:p@ssw0rd!@prod.db:5432/main
         assert!(!clean_escaped.contains("escaped_json_secret"));
         assert!(!clean_escaped.contains("escaped_env_secret"));
         assert!(!clean_escaped.contains(&high_entropy_b64));
+
+        // Verify Unicode whitespace (`\u{00A0}`), Unicode/comma unquoted `.env` secrets,
+        // quoted/space-separated CLI flags, URLs with sensitive usernames, and Tier 3 entropy on lines with `fc:`/`\n`
+        let edge_cases = format!(
+            "\
+hello\u{00A0}world\u{00A0}{high_entropy_b64}
+PASSWORD=abcédefghijkl
+SECRET_KEY=abc,defghijkl
+curl --api-key=\"quoted_cli_secret_123\" --private-key='priv_cli_456' --refresh-token space_cli_789 --secret=\\\"esc_cli_000\\\"
+db1: postgres://api_key:url_secret_pass@host:5432/db redis://token:redis_secret@host:6379
+path: C:\\Users\\dev\\file.rs root={high_entropy_hex}
+{{\"meta\":\"fc:4000\",\"stdout\":\"\\n{high_entropy_hex}\"}}"
+        );
+        let clean_edges = SecretRedactor::sanitize(&edge_cases);
+        assert!(clean_edges.contains("hello\u{00A0}world\u{00A0}[REDACTED:HIGH_ENTROPY]"));
+        assert!(clean_edges.contains("PASSWORD=[REDACTED:ENV_SECRET]"));
+        assert!(!clean_edges.contains("édefghijkl"));
+        assert!(clean_edges.contains("SECRET_KEY=[REDACTED:ENV_SECRET]"));
+        assert!(!clean_edges.contains(",defghijkl"));
+        assert!(clean_edges.contains("--api-key=\"[REDACTED:CLI_SECRET]\""));
+        assert!(clean_edges.contains("--private-key='[REDACTED:CLI_SECRET]'"));
+        assert!(clean_edges.contains("--refresh-token [REDACTED:CLI_SECRET]"));
+        assert!(clean_edges.contains("--secret=\\\"[REDACTED:CLI_SECRET]\\\""));
+        assert!(clean_edges.contains("postgres://api_key:[REDACTED:URL_PASSWORD]@host:5432/db"));
+        assert!(clean_edges.contains("redis://token:[REDACTED:URL_PASSWORD]@host:6379"));
+        assert!(clean_edges.contains(&format!("root={high_entropy_hex}")));
+        assert!(clean_edges.contains("\"stdout\":\"\\n[REDACTED:HIGH_ENTROPY]\""));
     }
 }
