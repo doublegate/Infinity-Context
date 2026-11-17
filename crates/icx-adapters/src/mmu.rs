@@ -147,6 +147,9 @@ impl InfinityContextMmu {
             receipt.verdict.momentum_surprise,
             est_tokens,
         );
+        if let Some(last_ep) = self.epochs.sealed_epochs().last() {
+            self.bus.set_global_dag_root(last_ep.digest().0);
+        }
 
         // Broadcast onto cross-agent Seqlock ring
         let telepathy_frame = format!(
@@ -198,13 +201,14 @@ impl InfinityContextMmu {
             self.cas.artifact_count()
         ));
 
-        // 1. Cross-agent telepathy updates
+        // 1. Cross-agent telepathy updates (workspace-scoped)
         let cursor = self
             .agent_read_cursors
             .get(&(requesting_agent as u8))
             .copied()
             .unwrap_or(0);
-        let telepathy: Vec<TelepathyEvent> = self.bus.poll_since(cursor);
+        let telepathy: Vec<TelepathyEvent> =
+            self.bus.poll_workspace_since(cursor, self.workspace_hash);
         if let Some(last) = telepathy.last() {
             self.agent_read_cursors
                 .insert(requesting_agent as u8, last.seq);

@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Phase 1 Sprint 3 — Lock-Free `/dev/shm` Seqlock Telepathy Bus, Workspace Isolation & CLI `init`/`deref` (`crates/icx-bus`, `crates/icx-adapters`, `crates/icx-cli`):**
+  - Enriched 64-byte `FabricHeader` (`flags`, `active_agents_mask: AtomicU64`, `global_dag_root: [AtomicU64; 4]`) and 4,096-byte `SeqlockSlot` (`packet_kind: u8`) with compile-time size and alignment assertions (`T-13-001`).
+  - Hardened `SeqlockTelemetryBus::open_shared_file` with `0o600` owner-only Unix permissions, magic (`ICX_SHM_MAGIC`) and schema version (`ICX_SHM_VERSION`) validation (`BusError::UnsupportedVersion`, `BusError::InsecurePermissions`), per-slot atomic `compare_exchange_weak` writer serialization, UTF-8 char-boundary-safe inline packet copying, volatile slot accesses, `poll_workspace_since`, and the 8-writer × 8-reader × 10,000-message concurrent Seqlock stress test (`T-13-002`).
+  - Wired `InfinityContextMmu` to update `FabricHeader::global_dag_root` on epoch rollover and poll workspace-scoped telepathy via `poll_workspace_since`, and added `icx init` and `icx deref <HANDLE> [--lines START:END]` CLI subcommands.
 - **Phase 1 Sprint 2 — Lossless Merkle-DAG (`LCM`), Nested Context-Folding & Cache-Epoch Budget Retargeting (`crates/icx-core`):**
   - Added structured `ToolArtifactNode` (`DagNode::ToolArtifact`) with domain-separated `b"ICX_DAG_TOOL_V1"` hashing (`ToolArtifactNode::compute_merkle_digest`) and `MerkleContextDag::append_tool_artifact` (`T-12-001`).
   - Upgraded `MerkleContextDag` branch state to a nested stack (`branch_stack: Vec<OpenBranch>`, `active_branch_depth`), added `expand_branch` for lossless recursive `L2 -> L1` branch expansion, added `fold_epochs` for `L3 -> L4` hierarchical epoch compaction, and added `verify_merkle_integrity` for cryptographic verification of any `L1`, `L2`, `L3`, or `L4` node (`T-12-001`, `T-12-002`).

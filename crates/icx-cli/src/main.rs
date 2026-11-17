@@ -19,6 +19,8 @@ fn main() {
     let subcmd = args.get(1).map(String::as_str).unwrap_or("help");
 
     match subcmd {
+        "init" => run_init(&args[2..]),
+        "deref" => run_deref(&args[2..]),
         "hook" => run_hook(&args[2..]),
         "mcp-serve" => run_mcp_serve(),
         "proxy-transform" => run_proxy_transform(),
@@ -40,11 +42,15 @@ Usage:
   icx <SUBCOMMAND> [OPTIONS]
 
 Subcommands:
+  init [--dir <PATH>]
+      Initialize a workspace `.icx/` CAS store and shared-memory Seqlock fabric
+  deref <HANDLE> [--lines <START:END>] [--dir <PATH>]
+      Dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle from `.icx/`
   hook --agent <claude-code|codex|agy|hermes> --event <EVENT>
       Execute synchronous <500us lifecycle hook (reads JSON from stdin, writes JSON to stdout)
   mcp-serve
       Run the Single-Tool Polymorphic MCP Virtual Pager (`icx`) over stdio (JSON-RPC 2.0)
-  encode-ahtl <FILE>
+  encode-ahtl <FILE> [--dir <PATH>]
       Compress a source file, diff, or build log into an AHTL Holographic Packet + BLAKE3 handle
   decode-ahtl <AHTL_STRING>
       Parse and inspect an AHTL Holographic Packet's clauses and Braille-256 sketch
@@ -55,6 +61,89 @@ Subcommands:
   benchmark
       Execute the end-to-end SLO benchmark suite (Compression, HDC, Fractal, PPR, Prefix-Cache, Seqlock)"
     );
+}
+
+fn init_workspace_dir(icx_dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(icx_dir).map_err(|e| e.to_string())?;
+    let cas_path = icx_dir.join("cas_store.json");
+    if !cas_path.exists() {
+        let cas = icx_core::cas::CasStore::new();
+        cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
+    }
+    let shm_path = icx_dir.join("icx-fabric-v1.shm");
+    icx_bus::SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn run_init(args: &[String]) {
+    let mut dir_str = ".icx";
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--dir" && i + 1 < args.len() {
+            dir_str = &args[i + 1];
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    let icx_dir = Path::new(dir_str);
+    match init_workspace_dir(icx_dir) {
+        Ok(()) => println!("⟪ICX:INIT│dir={}│status=READY⟫", icx_dir.display()),
+        Err(e) => {
+            eprintln!("icx init error: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn deref_from_workspace_dir(
+    icx_dir: &Path,
+    handle: &str,
+    line_range: Option<(usize, usize)>,
+) -> Result<String, String> {
+    let cas = icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;
+    let id = cas.resolve_handle(handle).map_err(|e| e.to_string())?;
+    if let Some((start, end)) = line_range {
+        cas.deref_lines(id, start, end).map_err(|e| e.to_string())
+    } else {
+        let bytes = cas.deref_bytes(id).map_err(|e| e.to_string())?;
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    }
+}
+
+fn run_deref(args: &[String]) {
+    let Some(handle) = args.first() else {
+        eprintln!("Usage: icx deref <HANDLE> [--lines <START:END>] [--dir <PATH>]");
+        std::process::exit(1);
+    };
+    let mut dir_str = ".icx";
+    let mut line_range: Option<(usize, usize)> = None;
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--dir" if i + 1 < args.len() => {
+                dir_str = &args[i + 1];
+                i += 2;
+            }
+            "--lines" if i + 1 < args.len() => {
+                let spec = &args[i + 1];
+                if let Some((s, e)) = spec.split_once(':') {
+                    if let (Ok(start), Ok(end)) = (s.parse::<usize>(), e.parse::<usize>()) {
+                        line_range = Some((start, end));
+                    }
+                }
+                i += 2;
+            }
+            _ => i += 1,
+        }
+    }
+    match deref_from_workspace_dir(Path::new(dir_str), handle, line_range) {
+        Ok(out) => print!("{out}"),
+        Err(e) => {
+            eprintln!("icx deref error: {e}");
+            std::process::exit(1);
+        }
+    }
 }
 
 fn run_hook(args: &[String]) {
@@ -125,16 +214,33 @@ fn run_proxy_transform() {
 
 fn run_encode_ahtl(args: &[String]) {
     let Some(path_str) = args.first() else {
-        eprintln!("Usage: icx encode-ahtl <FILE>");
+        eprintln!("Usage: icx encode-ahtl <FILE> [--dir <PATH>]");
         std::process::exit(1);
     };
+    let mut dir_str = ".icx";
+    let mut i = 1;
+    while i < args.len() {
+        if args[i] == "--dir" && i + 1 < args.len() {
+            dir_str = &args[i + 1];
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
     let content = fs::read_to_string(path_str).unwrap_or_else(|e| {
         eprintln!("Failed to read `{path_str}`: {e}");
         std::process::exit(1);
     });
 
     let mut mmu = InfinityContextMmu::default();
+    let icx_dir = Path::new(dir_str);
+    if let Ok(loaded) = icx_core::cas::CasStore::load_from_dir(icx_dir) {
+        mmu.cas = loaded;
+    }
     let res = mmu.ingest_payload(AgentKind::GenericMcp, path_str, &content, false);
+    if icx_dir.exists() {
+        let _ = mmu.cas.save_to_dir(icx_dir);
+    }
     println!("{}", res.compressed_ahtl);
 }
 
@@ -302,4 +408,30 @@ fn run_benchmark() {
         sim_elapsed.as_secs_f64() * 1_000.0
     );
     println!("All Infinity-Context SLO gates PASSED.");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_init_and_deref_round_trip_with_full_and_short_handles() {
+        let tmp_dir = std::env::temp_dir().join(format!("icx_cli_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp_dir);
+        init_workspace_dir(&tmp_dir).expect("init_workspace_dir succeeds");
+
+        let mut cas = icx_core::cas::CasStore::load_from_dir(&tmp_dir).expect("load cas");
+        let sample = "alpha line 1\nbeta line 2\ngamma line 3\n";
+        let (id, _) = cas.put_bytes(sample.as_bytes());
+        cas.save_to_dir(&tmp_dir).expect("save cas");
+
+        let full_out = deref_from_workspace_dir(&tmp_dir, &id.to_string(), None).unwrap();
+        assert_eq!(full_out, sample);
+
+        let sliced =
+            deref_from_workspace_dir(&tmp_dir, &id.to_short_handle(), Some((2, 3))).unwrap();
+        assert_eq!(sliced, "beta line 2\ngamma line 3");
+
+        let _ = fs::remove_dir_all(&tmp_dir);
+    }
 }
