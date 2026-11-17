@@ -164,6 +164,7 @@ impl Hypervector {
     /// bounded per-term reinforcement and a `1,024`-token scan cap.
     pub fn encode_text(text: &str) -> Self {
         const MAX_TEXT_TOKENS: usize = 1024;
+        const MAX_RAW_SCANS: usize = 16_384;
         const MAX_UNIGRAM_REINFORCEMENTS: u8 = 2;
         const MAX_BIGRAM_REINFORCEMENTS: u8 = 1;
 
@@ -195,6 +196,7 @@ impl Hypervector {
         let mut prev_raw: Option<&str> = None;
         let mut consecutive_repeats = 0usize;
         let mut tokens_seen = 0usize;
+        let mut raw_scans = 0usize;
 
         for raw_tok in
             text.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
@@ -203,8 +205,8 @@ impl Hypervector {
             if tok.len() < 2 {
                 continue;
             }
-            tokens_seen += 1;
-            if tokens_seen > MAX_TEXT_TOKENS {
+            raw_scans += 1;
+            if raw_scans > MAX_RAW_SCANS {
                 break;
             }
             if prev_raw.is_some_and(|p| p.eq_ignore_ascii_case(tok)) {
@@ -215,6 +217,10 @@ impl Hypervector {
             } else {
                 prev_raw = Some(tok);
                 consecutive_repeats = 1;
+            }
+            tokens_seen += 1;
+            if tokens_seen > MAX_TEXT_TOKENS {
+                break;
             }
 
             let lower = tok.to_ascii_lowercase();
@@ -713,9 +719,10 @@ mod tests {
         );
 
         // Verify `encode_text` bounds reinforcement and token scanning on repetitive mixtures
-        let rep_single = "ok ".repeat(2000);
+        let rep_single = format!("{}panic_412", "ok ".repeat(2000));
         let hv_rep_single = Hypervector::encode_text(&rep_single);
-        assert!(hv_rep_single.similarity(&Hypervector::from_seed("tok", "ok")) > 0.45);
+        assert!(hv_rep_single.similarity(&Hypervector::from_seed("tok", "ok")) > 0.25);
+        assert!(hv_rep_single.similarity(&Hypervector::from_seed("tok", "panic_412")) > 0.25);
         let rep_alt = "ok err ".repeat(1000);
         let hv_rep_alt = Hypervector::encode_text(&rep_alt);
         assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "ok")) > 0.25);

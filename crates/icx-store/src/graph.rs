@@ -227,11 +227,21 @@ impl CsrGraphSnapshot {
 
 /// Bi-Temporal Knowledge Graph supporting automatic functional contradiction invalidation and
 /// HippoRAG Personalized PageRank (`PPR`) traversal over a Compressed Sparse Row (`CSR`) snapshot.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BiTemporalGraph {
     edges: Vec<BiTemporalEdge>,
     entities: BTreeSet<String>,
     next_edge_id: u64,
+}
+
+impl Default for BiTemporalGraph {
+    fn default() -> Self {
+        Self {
+            edges: Vec::new(),
+            entities: BTreeSet::new(),
+            next_edge_id: 1,
+        }
+    }
 }
 
 impl BiTemporalGraph {
@@ -293,8 +303,8 @@ impl BiTemporalGraph {
         self.entities.insert(src.clone());
         self.entities.insert(dst.clone());
 
-        let edge_id = self.next_edge_id;
-        self.next_edge_id += 1;
+        let edge_id = self.next_edge_id.max(1);
+        self.next_edge_id = edge_id + 1;
 
         let clean_weight = if weight.is_finite() {
             weight.clamp(0.01, 1_000.0)
@@ -322,6 +332,9 @@ impl BiTemporalGraph {
     /// Explicitly invalidates an active edge by `edge_id`, stamping `t_invalid = Some(now_ms)`
     /// and `t_tx_end = Some(now_ms)`. Returns `true` if an active edge was found and invalidated.
     pub fn invalidate_edge(&mut self, edge_id: u64, now_ms: u64) -> bool {
+        if edge_id == 0 {
+            return false;
+        }
         for e in &mut self.edges {
             if e.edge_id == edge_id && e.t_invalid.is_none() {
                 e.t_invalid = Some(now_ms.max(e.t_valid));

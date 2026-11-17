@@ -436,6 +436,15 @@ unprefixed_secret = {unpref_sec}
             ),
             Some(2)
         );
+        assert_eq!(
+            InfinityContextMmu::extract_exit_code(
+                &serde_json::json!({"tool_response": {"status": 200, "code": 200}})
+            ),
+            None,
+            "generic HTTP status/code fields must not be conflated with process exit codes"
+        );
+        assert!(exit_res.compressed_ahtl.contains("exit_code:101"));
+        assert!(!exit_res.compressed_ahtl.contains("exit_code:0"));
 
         // Verify empty and blank-leading payloads preserve BiTemporalGraph save/load round-trip
         let _ = mmu.ingest_payload(AgentKind::ClaudeCode, "empty_turn", "", false);

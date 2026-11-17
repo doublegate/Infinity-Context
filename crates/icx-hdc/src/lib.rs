@@ -251,22 +251,20 @@ impl HdcAssociativeIndex {
         if tok.len() >= 4 {
             return subject_lower.contains(tok);
         }
-        let is_word_byte = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
-        let hay = subject_lower.as_bytes();
-        let needle = tok.as_bytes();
-        if needle.is_empty() || needle.len() > hay.len() {
-            return false;
-        }
-        let mut start = 0usize;
-        while let Some(rel) = subject_lower[start..].find(tok) {
-            let pos = start + rel;
-            let end = pos + needle.len();
-            let left_ok = pos == 0 || !is_word_byte(hay[pos - 1]);
-            let right_ok = end == hay.len() || !is_word_byte(hay[end]);
+        let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
+        for (pos, _) in subject_lower.match_indices(tok) {
+            let end = pos + tok.len();
+            let left_ok = subject_lower[..pos]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !is_word_char(c));
+            let right_ok = subject_lower[end..]
+                .chars()
+                .next()
+                .is_none_or(|c| !is_word_char(c));
             if left_ok && right_ok {
                 return true;
             }
-            start = pos + 1;
         }
         false
     }
@@ -479,6 +477,12 @@ mod tests {
         assert!(!HdcAssociativeIndex::subject_matches_token(
             "pkg:alpha/beta:item",
             "a/b"
+        ));
+        assert!(!HdcAssociativeIndex::subject_matches_token("café", "é"));
+        assert!(!HdcAssociativeIndex::subject_matches_token("α1", "α"));
+        assert!(HdcAssociativeIndex::subject_matches_token(
+            "src/é/mod.rs",
+            "é"
         ));
 
         // Verify requesting top_k > 64 returns all requested hits up to entries.len()
