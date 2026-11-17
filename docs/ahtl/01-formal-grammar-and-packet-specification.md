@@ -229,7 +229,7 @@ Because `Subject` paths and `Clause` values in Profile B may contain colons (`:`
 1. **State `S0` (Outer Envelope Verification):**
    - Trim leading/trailing ASCII whitespace.
    - Verify and strip prefix `⟦` (`U+27E6`, bytes `E2 9F A6`) and suffix `⟧` (`U+27E7`, bytes `E2 9F A7`). If either is absent, abort immediately with `Err(CodecError::MissingDelimiters)`.
-   - In `v0.1.0`, `AhtlPacket::parse` directly parses Profile B (`parse_profile_b` below). In the Phase 2 Profile A extension (`AhtlWirePacketV1::parse`), if the inner slice begins with `"AHTL v1│"`, it dispatches to the 5-field Profile A parser (splitting on `│` into 5 fields).
+   - `WirePacket::parse` inspects the inner slice: if it begins with `"AHTL v1│"`, it dispatches to `AhtlWirePacketV1::parse` (the 5-field Profile A parser splitting on `│`); otherwise it dispatches to `AhtlPacket::parse` (Profile B).
 2. **State `S1` (Braille Hologram Extraction):**
    - In Profile B, execute `inner.rsplit_once("⋮Ψ:")`. If absent, return `Err(CodecError::MalformedBrailleSketch)`.
    - Pass the trailing hologram slice to `decode_braille_sketch`, verifying that every codepoint $c$ satisfies $\text{0x2800} \le c \le \text{0x28FF}$ and that the exact glyph count is $8$ (Profile B) or $64$ (Profile A).
@@ -274,7 +274,7 @@ pub enum CodecError {
 
 ### 6.1 Test Vector 1: Profile B CodeDelta Packet (`crates/icx-codec/src/ahtl.rs`)
 - **Input Payload Bytes:** `b"raw_payload_bytes"` (17 bytes)
-- **Full 256-Bit BLAKE3 Digest:** `4916667c9b4d49f54bf7642937f0606b65a3fa70b0f6b647d2f07450a6955d9f` *(first 8 big-endian bytes -> `ArtifactId(0x4916667c9b4d49f5)`)*
+- **Full 256-Bit BLAKE3 Digest:** `4f3598d97c50c48442732f33aa356e4a8cdad9daa25bbc12516154d13501a633` *(first 8 big-endian bytes -> `ArtifactId(0x4f3598d97c50c484)`)*
 - **Hologram Bytes (`[u8; 8]`):** `[0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0]`
 - **Mapped Braille-8 Sketch (`U+2800 + b`):**
   - `0x12` $\to$ `U+2812` (`⠒`)
@@ -288,16 +288,16 @@ pub enum CodecError {
 - **Canonical Rendered Wire String:**
 
 ```text
-⟦Δ:crates/icx-core/src/dag.rs#L42-118⊢⊕fn:seal_epoch⋮¬unwrap()⋮!PANIC@L99:oob⋮✓test:14/14↦#icx:4916667c9b4d49f5⋮Ψ:⠒⠴⡖⡸⢚⢼⣞⣰⟧
+⟦Δ:crates/icx-core/src/dag.rs#L42-118⊢⊕fn:seal_epoch⋮¬unwrap()⋮!PANIC@L99:oob⋮✓test:14/14↦#icx:4f3598d97c50c484⋮Ψ:⠒⠴⡖⡸⢚⢼⣞⣰⟧
 ```
 
 ### 6.2 Test Vector 2: Profile A Full 5-Field Extended Wire Packet
-- **Virtual Handle (`#icx:<12-hex>`):** `#icx:4916667c9b4d`
+- **Virtual Handle (`#icx:<12-hex>`):** `#icx:4f3598d97c50`
 - **Fractal Coordinate (`fc:<64-hex>`, 16 $\times$ `i16` Q15):** `fc:4000c0002000e0001000f0000800f8000400fc000200fe000100ff000080ff80`
 - **HDC Spectral Fold (`hv:<16-hex>`):** `hv:123456789abcdef0`
 - **Braille-64 Sketch (64 glyphs repeating `[0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0]` $\times 8$):** `⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰`
 - **Canonical Rendered Profile A String:**
 
 ```text
-⟦AHTL v1│#icx:4916667c9b4d│fc:4000c0002000e0001000f0000800f8000400fc000200fe000100ff000080ff80│hv:123456789abcdef0│⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰│⊕fn:seal_epoch⋮¬unwrap()⋮!PANIC@L99:oob⋮✓test:14/14⟧
+⟦AHTL v1│#icx:4f3598d97c50│fc:4000c0002000e0001000f0000800f8000400fc000200fe000100ff000080ff80│hv:123456789abcdef0│⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰│⊕fn:seal_epoch⋮¬unwrap()⋮!PANIC@L99:oob⋮✓test:14/14⟧
 ```

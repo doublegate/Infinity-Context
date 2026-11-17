@@ -13,18 +13,18 @@ SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commerci
 
 ## 1. Workspace Crate Topology & Ownership Matrix
 
-The **Infinity-Context (`icx`)** workspace is structured as an 8-crate strictly acyclic Directed Acyclic Graph (`DAG`) in Rust (`edition = "2021"`, `rust-version = "1.80"`, `unsafe_code = "forbid"` workspace-wide except for POSIX `mmap` seqlock atomics isolated inside `crates/icx-bus`):
+The **Infinity-Context (`icx`)** workspace (`v0.3.0`) is structured as an 8-crate strictly acyclic Directed Acyclic Graph (`DAG`) in Rust (`edition = "2024"`, `rust-version = "1.100"`, `unsafe_code = "forbid"` permanently enforced across all 8 workspace crates with zero `unsafe` blocks anywhere in the repository):
 
 | Crate | Layer | Key Exported Types | Normative Responsibility in `AHTL v1.0` |
 | :--- | :---: | :--- | :--- |
 | **`icx-core`** | L0 | `ArtifactId`, `Blake3Digest`, `AgentKind`, `ChunkerConfig`, `CasStore`, `DagNode`, `MerkleContextDag`, `CacheEpochController`, `AssembledWindow` | FastCDC gear-hash chunking, 256-bit BLAKE3 CAS with fail-closed integrity verification, 4-tier `LCM` Merkle-DAG, and 4-zone Prefix-Cache-Locked Epoch Controller. |
 | **`icx-hdc`** | L1 | `Hypervector`, `HdcBundler`, `FractalCoord`, `TitansSurpriseGate`, `RetentionTier`, `HdcAssociativeIndex`, `AssociativeHit`, `ObservationReceipt` | 10,240-bit Boolean hypercube $Q_{10240}$ algebra, Infini-attention Delta-Rule bundler, $[-1, +1]^{16}$ Contractive IFS Chaos-Game trajectory coordinates, and Titans Surprise momentum tracker. |
-| **`icx-codec`** | L1 | `AhtlPacket`, `AhtlClause`, `PacketKind`, `ClauseOp`, `CodecError`, `byte_to_braille`, `braille_to_byte`, `SecretRedactor`, `StructuralSkeletonizer` | Pre-ingestion 3-tier secret redaction & delimiter escaping, $O(N)$ domain skeletonizers (code, logs, diffs), ISO 11548-1 Braille-256 bijection, and `AHTL v1.0` wire serializer/parser. |
+| **`icx-codec`** | L1 | `AhtlPacket`, `AhtlWirePacketV1`, `AhtlClause`, `EpochHeader`, `WirePacket`, `AhtlStream`, `PacketKind`, `ClauseOp`, `CodecError`, `ChannelBHologram`, `byte_to_braille_utf8`, `braille_utf8_to_byte`, `SecretRedactor`, `StructuralSkeletonizer`, `ContextCodec` | Pre-ingestion 4-tier secret redaction, Shannon entropy filter & delimiter escaping, $O(N)$ multi-language skeletonizers (code, logs, diffs), ISO 11548-1 Braille-256 (`8`-byte & `64`-byte) bijection, and `AHTL v1.0` Dual-Profile (`Profile A` & `Profile B`) wire serializer/parser. |
 | **`icx-store`** | L1 | `BiTemporalGraph`, `BiTemporalEdge`, `PprRankedNode` | Bi-Temporal Knowledge Graph (`t_valid`, `t_invalid`, `t_tx_start`, `t_tx_end`) with functional contradiction invalidation and HippoRAG Personalized PageRank (`PPR`). |
-| **`icx-bus`** | L1 | `SeqlockTelemetryBus`, `TelepathyEvent`, `ShmSlotHeader` | Lock-free 64-byte-aligned Seqlock ring buffer (`/dev/shm` + in-memory) broadcasting `⟦Θ:agent@subj⊢...⟧` frames, 256-bit HDC sketches, and Q15 Fractal coordinates across agents. |
+| **`icx-bus`** | L1 | `SeqlockTelemetryBus`, `TelepathyEvent`, `FabricHeader`, `SeqlockSlot` | Lock-free 64-byte-aligned 100% safe `AtomicU32`/`AtomicU64` Seqlock ring buffer (`/dev/shm` positional I/O + in-memory) broadcasting `⟦Θ:agent@subj⊢...⟧` frames, 256-bit HDC sketches, and Q15 Fractal coordinates across agents. |
 | **`icx-adapters`** | L2 | `InfinityContextMmu`, `ClaudeCodeAdapter`, `CodexAdapter`, `AntigravityAdapter`, `HermesAdapter`, `McpPagerServer` | Central Virtual Context MMU orchestrator (`ingest_payload`, `build_ephemeral_tail_slot`), lifecycle hook adapters, and Single-Tool Polymorphic MCP Pager (`icx`). |
 | **`icx-proxy`** | L2 | `WireProxyTransformer`, `ProviderFormat` | Outbound HTTP/2 JSON wire transformer injecting Anthropic `cache_control: {"type": "ephemeral"}` breakpoints and OpenAI 1024-token prefix alignment. |
-| **`icx-cli`** | L3 | `icx` binary (`hook`, `mcp-server`, `status`, `benchmark`, `doctor`) | Unified command-line interface, sub-millisecond hook dispatcher, and automated benchmark/verification suite. |
+| **`icx-cli`** | L3 | `icx` binary (`init`, `deref`, `hook`, `mcp-serve`, `proxy-transform`, `encode-ahtl`, `decode-ahtl`, `status`, `benchmark`, `doctor`) | Unified command-line interface, sub-millisecond hook dispatcher, and automated benchmark/verification suite. |
 
 ![AHTL v1.0 Multi-Index Associative Retrieval](images/generated/AHTL_v1_Multi_Index_Associative_Retrieval.png)
 
@@ -34,9 +34,9 @@ The **Infinity-Context (`icx`)** workspace is structured as an 8-crate strictly 
 
 ## 2. Canonical Rust Data Structures & Memory Layout Blueprint
 
-### 2.1 Profile A (`AhtlWirePacketV1` Extension Blueprint) & Profile B (`AhtlPacket` Active Workspace Codec)
+### 2.1 Profile A (`AhtlWirePacketV1`) & Profile B (`AhtlPacket`) Dual-Profile Codec
 
-In `v0.1.0`, `crates/icx-codec/src/ahtl.rs` implements **Profile B** (`AhtlPacket` with 8-Braille inline holograms and 16-hex `#icx:<16-hex>` handles). Below is the complete reference implementation blueprint for extending `crates/icx-codec/src/ahtl.rs` in Phase 2 to also support **Profile A** (the full 5-field `AhtlWirePacketV1` carrying `#icx:<12-hex>`, `fc:<64-hex>`, `hv:<16-hex>`, `<Braille-64>`, and `<Skeleton>`):
+In `v0.3.0`, `crates/icx-codec/src/ahtl.rs` implements both **Profile B** (`AhtlPacket` with 8-Braille `ChannelBHologram` sketches and `#icx:<16-hex>` / `#icx:<12-hex>` handles) and **Profile A** (`AhtlWirePacketV1` carrying `#icx:<12-hex>`, `fc:<64-hex>`, `hv:<16-hex>`, `<Braille-64>`, and `<Skeleton>`), unified under `WirePacket`, `EpochHeader`, `AhtlStream`, and the `ContextCodec` trait:
 
 ```rust
 use crate::braille::{braille_to_byte, byte_to_braille, decode_braille_sketch, encode_braille_sketch};

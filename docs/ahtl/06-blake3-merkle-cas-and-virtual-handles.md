@@ -106,7 +106,7 @@ In addition to BLAKE3's internal hardware flags (`CHUNK_START = 0x01`, `CHUNK_EN
 ### 4.1 Handle Formats & Prefix Resolution
 
 An `ArtifactId` (`crates/icx-core/src/lib.rs`) extracts the leading big-endian bits of a 256-bit `Blake3Digest`:
-- **Profile B & Active Interoperable `u64` Key (`#icx:<16-hex>`, 64 bits):** `u64::from_be_bytes(digest[0..8])`, formatted as `#icx:{:016x}` (21 ASCII characters). This is the active handle format implemented in `v0.1.0` across `crates/icx-core/src/lib.rs` and `crates/icx-adapters/src/mcp.rs`.
+- **Profile B & Active Interoperable `u64` Key (`#icx:<16-hex>`, 64 bits):** `u64::from_be_bytes(digest[0..8])`, formatted as `#icx:{:016x}` (21 ASCII characters), active across `crates/icx-core/src/lib.rs`, `crates/icx-codec/src/ahtl.rs`, and `crates/icx-adapters/src/mcp.rs`.
 - **Profile A Compact Handle (`#icx:<12-hex>`, 48 bits — Implemented via `CasStore::resolve_handle`):** The top 48 bits (`digest[0..6]`, formatted as `#icx:{:012x}`, 17 ASCII characters), parsed via `ArtifactId::parse_prefix_range` and resolved in $O(\log N)$ time by `CasStore::resolve_handle` (and `McpPagerServer`) using `BTreeMap::range(prefix_min..=prefix_max)` over `CasStore::artifacts`.
 - **Normative Prefix-Collision & Ambiguity Rule:** When resolving a 48-bit `#icx:<12-hex>` prefix over `BTreeMap::range(prefix_min..=prefix_max)`, if more than one stored `ArtifactId` falls within `[prefix_min, prefix_max]`, lookup **must fail closed with `Err(IcxError::AmbiguousHandlePrefix)`** rather than selecting an arbitrary match, requiring the caller to disambiguate with the full 64-bit `#icx:<16-hex>` handle.
 

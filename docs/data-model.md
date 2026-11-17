@@ -125,6 +125,7 @@ pub struct AhtlClause {
     pub op: ClauseOp,
     pub key: String,
     pub value: Option<String>,
+    pub causal_chain: Vec<AhtlClause>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,6 +137,18 @@ pub struct AhtlPacket {
     pub deref_id: Option<ArtifactId>,
     pub slice_hint: Option<String>,
     pub hologram_bytes: [u8; 8],
+    pub hologram_tag: Option<u16>,
+    pub compact_48bit_handle: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AhtlWirePacketV1 {
+    pub handle: ArtifactId,
+    pub compact_48bit_handle: bool,
+    pub fractal_coord: FractalCoord,
+    pub hdc_digest: u64,
+    pub braille_spectrum_64: [u8; 64],
+    pub skeleton_payload: String,
 }
 ```
 

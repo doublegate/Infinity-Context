@@ -73,12 +73,16 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
 fn print_help() {
     println!(
         "\
-Infinity-Context (icx) v0.1.0 — Cross-Agent Virtual Context MMU & AHTL Codec
+Infinity-Context (icx) v{} — Cross-Agent Virtual Context MMU & AHTL Codec
 
 Usage:
   icx <SUBCOMMAND> [OPTIONS]
 
-Subcommands:
+Subcommands:",
+        env!("CARGO_PKG_VERSION")
+    );
+    println!(
+        "\
   init [--dir <PATH>]
       Initialize a workspace `.icx/` CAS store and shared-memory Seqlock fabric
   deref <HANDLE> [--lines <START:END>] [--dir <PATH>]

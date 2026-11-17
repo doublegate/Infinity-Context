@@ -95,7 +95,7 @@ When `is_functional` is `true` (e.g., `pass` or `fail` counts on `cargo_test`), 
 
 ### 3.1 Security Mandate (Module 60 Compliance)
 
-Because `CasStore` is an immutable, content-addressed Merkle store and `/dev/shm` is readable by local sibling agent processes under the same UID, **matched credentials and PEM private keys must be scrubbed before `CasStore::put_bytes`, `AhtlPacket::render`, or `SeqlockTelemetryBus::publish`**. `SecretRedactor::sanitize` is therefore invoked at the very first line of both `InfinityContextMmu::ingest_payload` and `StructuralSkeletonizer::compress_to_packet`. In `v0.1.0`, Tiers 0, 1, and 2 below are active in `crates/icx-codec/src/redact.rs`, while Tier 3 (entropy-based unprefixed secret detection) is specified as the Phase 2 (`Sprint 2.3`, `T-23-001`) hardening gate.
+Because `CasStore` is an immutable, content-addressed Merkle store and `/dev/shm` is readable by local sibling agent processes under the same UID, **matched credentials and PEM private keys must be scrubbed before `CasStore::put_bytes`, `AhtlPacket::render`, or `SeqlockTelemetryBus::publish`**. `SecretRedactor::sanitize` is therefore invoked at the very first line of both `InfinityContextMmu::ingest_payload` and `StructuralSkeletonizer::compress_to_packet`, with all four tiers (`Tier 0` delimiter escaping, `Tier 1` PEM/PGP blocks, `Tier 2` 28 vendor prefixes/JWTs/URLs/CLI flags/`.env`/JSON/YAML keys, and `Tier 3` Shannon character entropy $H(S)$ filtering) active in `crates/icx-codec/src/redact.rs` (`v0.3.0`) and `FLAG_IS_REDACTED` (`1 << 7`) stamped on `ChannelBHologram` byte `B[7]`.
 
 ### 3.2 The Three Redaction & Escaping Tiers
 
