@@ -1104,5 +1104,46 @@ mod tests {
             AhtlStream::parse_stream("garbage⟦Ψ:tool↦#icx:0123456789abcdef⟧"),
             Err(CodecError::MissingDelimiters)
         );
+
+        // Verify Canonical Test Vectors 1 & 2 from `AHTL_v1_Complete_Technical_Specification_Volume.pdf` (Chapter 01 §§6.1-6.2)
+        let (tv_id, tv_digest) = ArtifactId::hash_bytes(b"raw_payload_bytes");
+        assert_eq!(
+            tv_digest.to_hex(),
+            "4f3598d97c50c48442732f33aa356e4a8cdad9daa25bbc12516154d13501a633"
+        );
+        assert_eq!(tv_id, ArtifactId(0x4f35_98d9_7c50_c484));
+        let tv1_pkt = AhtlPacket::new(
+            PacketKind::CodeDelta,
+            "crates/icx-core/src/dag.rs",
+            Some((42, 118)),
+            vec![
+                AhtlClause::new(ClauseOp::Added, "fn", Some("seal_epoch".into())),
+                AhtlClause::new(ClauseOp::Negated, "unwrap()", None),
+                AhtlClause::new(ClauseOp::Anomaly, "PANIC@L99", Some("oob".into())),
+                AhtlClause::new(ClauseOp::Verified, "test", Some("14/14".into())),
+            ],
+            Some(tv_id),
+            [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0],
+        );
+        let expected_tv1 = "⟦Δ:crates/icx-core/src/dag.rs#L42-118⊢⊕fn:seal_epoch⋮¬unwrap()⋮!PANIC@L99:oob⋮✓test:14/14↦#icx:4f3598d97c50c484⋮Ψ:⠒⠴⡖⡸⢚⢼⣞⣰⟧";
+        assert_eq!(tv1_pkt.render(), expected_tv1);
+        assert_eq!(AhtlPacket::parse(expected_tv1).unwrap(), tv1_pkt);
+
+        let mut tv2_spectrum = [0u8; 64];
+        for chunk in tv2_spectrum.as_chunks_mut::<8>().0 {
+            chunk.copy_from_slice(&[0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0]);
+        }
+        let mut tv2_pkt = tv1_pkt
+            .to_profile_a(
+                "4000c0002000e0001000f0000800f8000400fc000200fe000100ff000080ff80",
+                "123456789abcdef0",
+                tv2_spectrum,
+            )
+            .unwrap();
+        tv2_pkt.compact_48bit_handle = true;
+        let expected_tv2 = "⟦AHTL v1│#icx:4f3598d97c50│fc:4000c0002000e0001000f0000800f8000400fc000200fe000100ff000080ff80│hv:123456789abcdef0│⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰│⊕fn:seal_epoch⋮¬unwrap()⋮!PANIC@L99:oob⋮✓test:14/14⟧";
+        assert_eq!(tv2_pkt.render(), expected_tv2);
+        let parsed_tv2 = AhtlWirePacketV1::parse(expected_tv2).unwrap();
+        assert_eq!(parsed_tv2.render(), expected_tv2);
     }
 }

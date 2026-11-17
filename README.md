@@ -28,7 +28,7 @@
   <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/10%2C240--bit%20HDC%20scan-1.31%20%C2%B5s%2Fnode-0284c7.svg" alt="HDC Scan: 1.31 us/node"></a><br/>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.100%2B%20(Edition%202024)-f97316.svg?logo=rust" alt="Rust: 1.100+ (Edition 2024)"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/unsafe_code-forbid%20(100%25%20safe)-16a34a.svg" alt="unsafe_code: forbid (100% safe)"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v0.1.0-2563eb.svg" alt="Release: v0.1.0"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v0.3.0-2563eb.svg" alt="Release: v0.3.0"></a>
   <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/shm%20seqlock-%3C300%20ns-0d9488.svg" alt="SHM Seqlock: <300 ns"></a>
   <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20MCP-475569.svg" alt="Supported Agents"></a>
 </p>
@@ -50,10 +50,11 @@ Conventional context management relies on **human-readable English summarization
 **Infinity-Context (`icx`)** solves all three by treating the LLM's context window as an **L1 Hardware Cache** managed by a deterministic Rust **Virtual Context Memory Management Unit (MMU)**. When a representation is consumed solely by a neural network's embedding layer and attention heads—never by human eyes—human readability is pure entropy overhead. `icx` replaces verbose raw tool outputs and lossy prose summaries with the **Alien Holographic Token Lattice (`AHTL`)**:
 
 ```text
-«AHTLv1 #icx:7bf8239fb7c504f1 !0.84 @0123:0210 ⟦⣿⣷⣯⣟⡿⢿⣻⣽⟧ §fn:verify_ed25519_token(tok:&[u8])->Result<Claims,AuthErr> §ty:AuthErr !err:InvalidSignature(offset=0x4f)»
+⟦Δ:crates/icx-core/src/dag.rs#L42-118⊢⊕fn:seal_epoch⋮¬unwrap()⋮!PANIC@L99:oob⋮✓test:14/14↦#icx:4f3598d97c50c484⋮Ψ:⠒⠴⡖⡸⢚⢼⣞⣰⟧
+⟦AHTL v1│#icx:4f3598d97c50│fc:4000c0002000e0001000f0000800f8000400fc000200fe000100ff000080ff80│hv:123456789abcdef0│⠒⠴⡖⡸⢚⢼⣞⣰...│⊕fn:seal_epoch⋮✓test:14/14⟧
 ```
 
-Every `AHTL` packet compresses bulky tool logs by **12x–72x** in under **200 microseconds** while embedding a cryptographic **128-bit BLAKE3 Content-Addressed Handle (`#icx:<16-hex>`)** for **100% byte-exact O(1) lossless page-in**, a **64-bit Braille-256 (`U+2800..U+28FF`) hypervector sketch**, a **Contractive Iterated Function System (`IFS`) Fractal Coordinate (`@0123:0210`)**, and a **Titans Surprise Score (`!0.84`)**.
+Every `AHTL` packet compresses bulky tool logs, unified `git diff` patches, and multi-language source files by **12x–72x** in under **200 microseconds** while embedding a cryptographic **BLAKE3 Content-Addressed Handle (`#icx:<16-hex>` or `#icx:<12-hex>`)** for **100% byte-exact $O(\log N)$ lossless page-in**, an **8-byte (`Ψ:<8-Braille>`) or 64-byte (`<64-Braille>`) Braille-256 (`U+2800..U+28FF`) hypervector sketch**, a **Contractive Iterated Function System (`IFS`) Fractal Coordinate (`fc:<64-hex>`)**, and a **Titans Surprise Score (`ChannelBHologram` `B[6]`)**.
 
 ---
 
@@ -82,11 +83,11 @@ Every `AHTL` packet compresses bulky tool logs by **12x–72x** in under **200 m
 
 | Plane / Subsystem | Technical Capability | Verified Metric |
 | :--- | :--- | :--- |
-| **Plane 1: `icx-codec` (`AHTL`)** | Non-human BPE-aligned symbolic codec combining Unicode Braille-256 bijection (`U+2800..U+28FF`, 8 bits/token), AST/diagnostic structural skeletonization (`§fn`, `§ty`, `§mod`, `!err`, `!panic`), and pre-hash secret redaction. | **72.1x token compression** in **197.85 µs** |
-| **Plane 2: `icx-core` (`LCM`)** | Gear-hash **FastCDC** content-defined chunking, `zstd`-compressed **BLAKE3 Content-Addressed Storage (`CAS`)**, 4-level **Merkle-DAG** (`L0 RawChunk` -> `L1 EpisodeNode` -> `L2 FoldedSubtask` -> `L3 EpochRoot`), and **Context-Folding** subtask rollback. | **100% byte-exact** lossless passkey & byte recovery |
-| **Plane 3: `icx-hdc` & `icx-store`** | **10,240-bit Binary Spatter Code (`BSC`) Hypervectors (`[u64; 160]`)**, **Infini-Attention Delta-Rule Bundler**, **Contractive IFS Fractal Chaos-Game Archive (`FCGA`)**, **Titans Surprise Gate**, and **Bi-Temporal Graph + HippoRAG Personalized PageRank (`PPR`)**. | **1.31 µs / node** (`1.30 ms / 1,000 nodes`) SIMD scan |
-| **Plane 4: `icx-proxy`** | **Prefix-Cache-Locked Epoch Controller** that keeps epochs `0..K` 100% byte-frozen across turns, aligning Anthropic 4-slot `cache_control: {"type": "ephemeral"}` breakpoints and OpenAI 1,024-token prefix boundaries. | **94.38% KV prefix-cache hit rate** across 64 turns |
-| **Plane 5: `icx-bus` & `icx-adapters`** | In-process lock-free atomic **Seqlock Ring Buffer** (`256 x 4,096-byte` `#[repr(C, align(64))]` 100% safe atomic slots) + `/dev/shm/icx-fabric-v1.shm` cross-process positional I/O fabric + native adapters for Claude Code, Codex CLI, Antigravity CLI (`agy`), Hermes Agent, and a `< 150-token` **Single-Tool Polymorphic MCP Pager (`icx`)**. | **< 300 ns** in-process atomic seqlock broadcast (`< 10 µs` `/dev/shm` positional I/O) |
+| **Plane 1: `icx-codec` (`AHTL`)** | Non-human BPE-aligned Dual-Profile symbolic codec (`Profile A` `AhtlWirePacketV1` & `Profile B` `AhtlPacket`, `EpochHeader`, `AhtlStream`, `ContextCodec`), Unicode Braille-256 bijection (`U+2800..U+28FF`, 8-byte & 64-byte 1-Lipschitz spectral sketches), multi-language AST/log/diff `StructuralSkeletonizer` (`Rust`, `Python`, `TS/JS`, `Go`, `C/C++`), and 4-Tier pre-ingestion `SecretRedactor` with Shannon entropy gating ($H(S)$). | **72.1x token compression** in **197.85 µs** & **0% secret leakage** |
+| **Plane 2: `icx-core` (`LCM`)** | Two-threshold Normalized **FastCDC** content-defined chunking with streaming line-span indexing (`LineIndexEntry`), **BLAKE3 Content-Addressed Storage (`CAS`)** with 48-bit (`#icx:<12-hex>`) and 64-bit (`#icx:<16-hex>`) handle resolution, 4-level **Merkle-DAG** (`L1 Episode` -> `L2 Branch` -> `L3 Epoch` -> `L4 Super-Epoch` + `ToolArtifact`), and nested **Context-Folding** rollback. | **100% byte-exact** lossless passkey, byte & selective chunk line-slice recovery |
+| **Plane 3: `icx-hdc` & `icx-store`** | **10,240-bit Binary Spatter Code (`BSC`) Hypervectors (`[u64; 160]`)** with 4-way unrolled `hamming_distance_simd` and 64-band 1-Lipschitz majority folding (`spectral_bands_64`), **Infini-Attention Delta-Rule Bundler**, **Contractive IFS Fractal Chaos-Game Archive (`FCGA`, `fc:<64-hex>`)**, **Titans Surprise Gate**, and **Bi-Temporal Graph + HippoRAG Personalized PageRank (`PPR`)**. | **1.31 µs / node** (`1.30 ms / 1,000 nodes`) POPCNT scan |
+| **Plane 4: `icx-proxy`** | **Prefix-Cache-Locked Epoch Controller** with level-order pairwise `L3 -> L4` budget retargeting that keeps epochs `0..K` 100% byte-frozen across turns, aligning Anthropic 4-slot `cache_control: {"type": "ephemeral"}` breakpoints and OpenAI 1,024-token prefix boundaries (`transform_anthropic_request` & `transform_openai_request`). | **94.38%–99.0% KV prefix-cache hit rate** across 64–200 turns |
+| **Plane 5: `icx-bus` & `icx-adapters`** | In-process lock-free atomic **Seqlock Ring Buffer** (`256 x 4,096-byte` `#[repr(C, align(64))]` 100% safe `AtomicU32`/`AtomicU64` word-packed slots) + `/dev/shm/icx-fabric-v1.shm` cross-process positional I/O fabric + native adapters for Claude Code, Codex CLI, Antigravity CLI (`agy`), Hermes Agent, and a `< 150-token` **Single-Tool Polymorphic MCP Pager (`icx`)**. | **< 300 ns** in-process atomic seqlock broadcast (`< 10 µs` `/dev/shm` positional I/O) |
 
 ---
 
@@ -208,19 +209,26 @@ The **Alien Holographic Token Lattice (`AHTL`)** is a non-human, BPE-aligned sym
   <img src="docs/images/ahtl-packet-anatomy.svg" alt="Alien Holographic Token Lattice (AHTL) Packet Anatomy" width="100%" />
 </div>
 
-### Formal Packet Grammar
+### Formal Dual-Profile Packet Grammar (`AHTL v1.0`)
 
 ```ebnf
-AhtlPacket     ::= "«AHTLv1 " Handle " " Surprise " " FractalAddr " " BrailleSketch (" " SkeletonItem)* "»"
-Handle         ::= "#icx:" Hex16
-Surprise       ::= "!" Digit "." Digit Digit
-FractalAddr    ::= "@" Octal4 ":" Octal4
-BrailleSketch  ::= "⟦" BrailleChar{8} "⟧"
-SkeletonItem   ::= ("§fn:" | "§ty:" | "§mod:" | "§use:" | "§kv:" | "!err:") CompactToken
+AhtlStream        ::= EpochHeader ("\n" WirePacket)+ ;
+EpochHeader       ::= "⟪ICX:v1│ep=" Hex4 "│root=" Hex8 "│τ=" UInt "⟫" ;
+WirePacket        ::= ProfileAPacket | ProfileBPacket ;
+
+(* Profile A: Full 5-Field Extended Wire Packet *)
+ProfileAPacket    ::= "⟦AHTL v1│" VirtualHandle "│" FractalCoord "│" HdcDigest
+                      "│" BrailleSpectrum64 "│" SkeletonPayload "⟧" ;
+
+(* Profile B: Compact Glyph-Prefixed Packet *)
+ProfileBPacket    ::= "⟦" PacketKind ":" Subject SliceHint? "⊢"
+                      ClauseList DerefSegment? HologramSegment? "⟧" ;
+Clause            ::= ClauseOp Key (":" Value)? ("⇒" CausalChain)? ;
 ```
 
-- **Why Unicode Braille-256 (`U+2800..U+28FF`)?** In both OpenAI `o200k_base` and Anthropic claude-3/4 BPE tokenizers, the 256 codepoints of the Unicode Braille Patterns block (`U+2800` through `U+28FF`) map cleanly to **8 bits of topological hypervector projection per glyph**, allowing `icx-codec` to pack a **64-bit locality-sensitive hypervector sketch (`⟦⣿⣷⣯⣟⡿⢿⣻⣽⟧`)** into 8 glyphs (`24 UTF-8 bytes`) that transformer attention heads can compare directly in-context via dot-product similarity.
-- **100% Lossless Dereferencing:** Because every `AHTL` packet carries a `#icx:<16-hex>` BLAKE3 pointer into `CasStore`, an agent never loses a single byte of the original payload. Calling `icx(op="deref", ref="#icx:7bf8239fb7c504f1")` restores the exact byte-for-byte source file or log slice in `O(1)` time.
+- **Why Unicode Braille-256 (`U+2800..U+28FF`)?** In both OpenAI `o200k_base` and Anthropic claude-3/4 BPE tokenizers, the 256 codepoints of the Unicode Braille Patterns block (`U+2800` through `U+28FF`) map bijectively (`byte_to_braille_utf8` / `braille_utf8_to_byte`) to **8 bits of topological hypervector projection per glyph**, allowing `icx-codec` to pack an **8-byte Channel-B metadata hologram (`Ψ:⠒⠴⡖⡸⢚⢼⣞⣰`)** in Profile B or a **64-byte (512-bit) 1-Lipschitz HDC spectral band projection (`Hypervector::spectral_bands_64`)** in Profile A so transformer attention heads can compare packet similarity directly in-context.
+- **Multi-Language Structural Skeletonization (`StructuralSkeletonizer`):** Extracts top-level declarations (`fn`, `struct`, `enum`, `trait`, `impl`, `class`, `interface`, `type`) with quote/lifetime/comment-aware `L<start>-<end>` line spans across `Rust`, `Python`, `TypeScript/JavaScript`, `Go`, and `C/C++`, folds contiguous header imports (`imports:L<a>-<b>(N)`), extracts paired unified `git diff` file/hunk spans, and compresses compiler/test logs (`cargo test`/`clippy`, `pytest`, `tsc`/`vitest`/`jest`, `go test`) by `12x–72x` with **100% failure-name recall**.
+- **100% Lossless Dereferencing (`64-Bit` & `48-Bit` Handles):** Every `AHTL` packet carries a `#icx:<16-hex>` (Profile B) or `#icx:<12-hex>` (Profile A) BLAKE3 pointer into `CasStore`. Calling `icx(op="deref", id="#icx:4f3598d97c50")` or `icx(op="slice", id="#icx:4f3598d97c50c484", range=[42, 118])` restores the exact byte-for-byte source file or selective `L0`-chunk line slice in $O(\log N)$ time.
 
 ---
 
@@ -366,8 +374,9 @@ cargo run --release -p icx-cli -- status
 ### Encode & Dereference `AHTL` Holographic Packets
 
 ```bash
-# Compress a file or tool log into an AHTL packet and persist its lossless BLAKE3 CAS chunk
-cargo run --release -p icx-cli -- encode-ahtl README.md --dir .icx
+# Compress a file or tool log into an AHTL Profile B (default) or Profile A packet and persist its lossless BLAKE3 CAS chunk
+cargo run --release -p icx-cli -- encode-ahtl README.md --profile b --dir .icx
+cargo run --release -p icx-cli -- encode-ahtl README.md --profile a --dir .icx
 
 # Losslessly dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle back to exact original bytes or line slice
 cargo run --release -p icx-cli -- deref "#icx:7bf8239fb7c504f1" --lines 1:40 --dir .icx
@@ -388,10 +397,11 @@ cargo run --release -p icx-cli -- mcp-serve
 
 ## Documentation & Research Corpus
 
-### Implementation Specifications (`docs/`)
+### Implementation Specifications (`docs/` & `docs/ahtl/`)
 
 - [System Architecture & 5-Plane Overview](docs/architecture.md)
 - [Alien Holographic Token Lattice (`AHTL`) Specification](docs/alien-holographic-codec.md)
+- [AHTL v1.0 Master Specification Suite (9 Chapters)](docs/ahtl/README.md) & [57-Page Printable Technical Specification Volume (PDF)](docs/ahtl/AHTL_v1_Complete_Technical_Specification_Volume.pdf)
 - [Virtual Memory, FastCDC & Lossless BLAKE3 Merkle-DAG (`LCM`)](docs/virtual-memory-and-dag-engine.md)
 - [10,240-Bit Hyperdimensional (`HDC`), Fractal (`FCGA`) & Bi-Temporal PPR Index](docs/hyperdimensional-and-fractal-index.md)
 - [Cross-Agent Adapters & Wire Interception](docs/agent-adapters-and-interception.md)
@@ -422,19 +432,22 @@ cargo run --release -p icx-cli -- mcp-serve
 
 - **Permanent Workspace-Wide `unsafe_code = "forbid"` (`std` Allowed, Zero `unsafe`):** All eight workspace crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`) compile with `#[forbid(unsafe_code)]`, enforced permanently by a dedicated CI gate through `v1.0.0` and beyond.
 - **100% Safe Atomic Word-Packed Seqlock Shared Memory (`icx-bus`):** [`SeqlockTelemetryBus`](crates/icx-bus/src/ring.rs) implements the 64-byte `FabricHeader` and 4,096-byte `SeqlockSlot` using 100% safe `AtomicU32` and `AtomicU64` word arrays (`#[repr(C, align(64))]`) and safe `/dev/shm` positional I/O (`std::os::unix::fs::FileExt::{read_exact_at, write_all_at}` and OS-managed `File::try_lock()`), with zero `unsafe` blocks or raw pointer casts anywhere in the codebase.
-- **Pre-Ingestion Secret Redaction & Prompt-Injection Sanitization:** [`SecretRedactor`](crates/icx-codec/src/redact.rs) strips Anthropic (`sk-ant-*`), OpenAI (`sk-proj-*`), GitHub (`ghp_*`, `github_pat_*`), AWS (`AKIA*`), Slack (`xox[baprs]-*`), Bearer tokens, PEM private keys, and fake system/role boundary injection delimiters **before** any payload is hashed into `CasStore` or broadcast on `/dev/shm`.
+- **4-Tier Pre-Ingestion Secret Redaction, Shannon Entropy Gate & Delimiter Escaping:** [`SecretRedactor`](crates/icx-codec/src/redact.rs) executes a 4-tier defense-in-depth scrubbing pipeline (`Tier 0` delimiter escaping of `⟪`, `⟫`, `⟦`, `⟧`, `Tier 1` multi-line PEM & PGP private key block removal, `Tier 2` 28 vendor prefixes including `sk-ant-*`, `sk-proj-*`, `sk-svcacct-*`, `sk_live_*`, `whsec_*`, `ghp_*`, `github_pat_*`, `aim_*`, `AKIA*`, `ASIA*`, `AIza*`, `hf_*`, `npm_*`, `pypi-*`, `xox[bparso]-*`, 3-segment JWT tokens, database/broker URL passwords, CLI secret flags, and `.env`/JSON/YAML assignments, and `Tier 3` Shannon character entropy $H(S)$ filtering for unprefixed Base64/hex secrets) **before** any payload is hashed into `CasStore`, indexed in `HDC`/`BiTemporalGraph`, or broadcast on `/dev/shm`, and tags `FLAG_IS_REDACTED` (`1 << 7`) on `ChannelBHologram` byte `B[7]`.
 
 See [Security & Threat Model](docs/security-and-threat-model.md) and [SECURITY.md](SECURITY.md) for full details.
 
 ---
 
-## Roadmap
+## Roadmap & Completed Milestones (`Phases 0–2` — `v0.1.0` -> `v0.3.0`)
 
 Development is organized into 5 phases and 15 sprints tracked in [`to-dos/ROADMAP.md`](to-dos/ROADMAP.md):
 
-- **Phase 0: Research, Forensics & Workspace Bootstrap** — [Overview (`v0.1.0` Complete)](to-dos/phase-0-precursory-setup/overview.md)
-- **Phase 1: Core CAS, Merkle-DAG (`LCM`), `/dev/shm` Seqlock Bus & Zero-`unsafe` Enforcement** — [Overview (`Sprints 1–4` Complete)](to-dos/phase-1-foundations/overview.md)
-- **Phase 2: Alien Holographic Token Lattice (`AHTL`), Braille-256 & Secret Redaction** — [Overview](to-dos/phase-2-alien-codec-and-compression/overview.md)
+- **Phase 0 (`v0.1.0` — COMPLETED): Research, REA Forensics, Specifications & Workspace Bootstrap** — [Overview](to-dos/phase-0-precursory-setup/overview.md)
+  - 38-source deep research report, 22 downloaded arXiv PDFs (`ref-docs/papers/`), REA binary/SQLite forensics on Claude Code, Codex, Antigravity CLI (`agy`), and Hermes (`ref-docs/agent-internals/`), 13 normative specs + 4 ADRs (`docs/`), 9-chapter AHTL v1.0 specification volume (`docs/ahtl/`), multi-tier GPL-3.0/AGPL-3.0/CC-BY-NC-ND-4.0 + 5-family patent IP governance (`REUSE 3.3`), and 8-crate workspace bootstrap.
+- **Phase 1 (`v0.2.0` — COMPLETED): Core CAS, Merkle-DAG (`LCM`), `/dev/shm` Seqlock Bus & Zero-`unsafe` Enforcement** — [Overview (`Sprints 1.1–1.4`)](to-dos/phase-1-foundations/overview.md)
+  - Two-threshold Normalized FastCDC with `LineIndexEntry` selective chunk line slicing, 48-bit (`#icx:<12-hex>`) and 64-bit (`#icx:<16-hex>`) BLAKE3 CAS handle resolution with ambiguity guards, 4-tier `MerkleContextDag` (`L1`..`L4` + `ToolArtifact`) with nested `Context-Folding` and `L3 -> L4` epoch compaction, 200-turn `>= 94%` Prefix-Cache simulation, 100% safe `AtomicU32`/`AtomicU64` `/dev/shm` `SeqlockTelemetryBus`, permanent workspace-wide `unsafe_code = "forbid"`, Rust Edition `2024` / MSRV `1.100`, and `>= 95%` Codecov gate.
+- **Phase 2 (`v0.3.0` — COMPLETED): Alien Holographic Token Lattice (`AHTL`), Braille-256, Multi-Language Skeletonizers & 4-Tier Secret Redaction** — [Overview (`Sprints 2.1–2.3`)](to-dos/phase-2-alien-codec-and-compression/overview.md)
+  - Dual-Profile `AHTL v1.0` wire codec (`Profile A` `AhtlWirePacketV1` & `Profile B` `AhtlPacket`, `EpochHeader`, `AhtlStream`, `ContextCodec`) with bijective `%25`/`%23L` escaping, Unicode Braille-256 (`8`-byte & `64`-byte) bijection (`byte_to_braille_utf8`, `braille_utf8_to_byte`, `ChannelBHologram`), 1-Lipschitz 64-band HDC spectral folding (`Hypervector::spectral_bands_64`, `from_u64_seed`, `hv_digest_u64`, `hamming_distance_simd`), `FractalCoord::encode_fc_hex64` / `decode_fc_hex64`, multi-language `StructuralSkeletonizer` (`Rust`, `Python`, `TS/JS`, `Go`, `C/C++` + `cargo test`/`clippy`, `pytest`, `tsc`/`vitest`/`jest`, `go test` + unified `git diff` hunks), and 4-Tier `SecretRedactor` with Shannon entropy gating ($H(S)$) and `FLAG_IS_REDACTED` tagging, cross-referenced against `docs/ahtl/AHTL_v1_Complete_Technical_Specification_Volume.pdf`.
 - **Phase 3: 10,240-Bit HDC, Fractal IFS (`FCGA`), Titans Gate & Bi-Temporal PPR** — [Overview](to-dos/phase-3-hyperdimensional-and-fractal-index/overview.md)
 - **Phase 4: Cross-Agent Adapters, Polymorphic MCP Pager & Cache-Epoch Wire Proxy** — [Overview](to-dos/phase-4-cross-agent-interception/overview.md)
 - **Phase 5: LongMemEval / SWE-Bench Verification, Fuzzing & Release Packaging** — [Overview](to-dos/phase-5-verification-benchmarks-and-release/overview.md)

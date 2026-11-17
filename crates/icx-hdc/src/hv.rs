@@ -116,11 +116,26 @@ impl Hypervector {
     /// Exact Hamming distance computed via hardware `POPCNT` / auto-vectorized `VPOPCNTDQ`.
     #[inline]
     pub fn hamming_distance(&self, other: &Self) -> u32 {
-        let mut dist = 0u32;
-        for i in 0..HV_WORDS {
-            dist += (self.words[i] ^ other.words[i]).count_ones();
+        self.hamming_distance_simd(other)
+    }
+
+    /// Four-way unrolled 160-word `XOR + POPCNT` distance kernel breaking loop-carried dependency
+    /// chains across superscalar execution ports (`docs/ahtl/08-v1-reference-implementation-blueprint.md` §3).
+    #[inline]
+    pub const fn hamming_distance_simd(&self, other: &Self) -> u32 {
+        let mut d0 = 0u32;
+        let mut d1 = 0u32;
+        let mut d2 = 0u32;
+        let mut d3 = 0u32;
+        let mut i = 0;
+        while i < HV_WORDS {
+            d0 += (self.words[i] ^ other.words[i]).count_ones();
+            d1 += (self.words[i + 1] ^ other.words[i + 1]).count_ones();
+            d2 += (self.words[i + 2] ^ other.words[i + 2]).count_ones();
+            d3 += (self.words[i + 3] ^ other.words[i + 3]).count_ones();
+            i += 4;
         }
-        dist
+        d0 + d1 + d2 + d3
     }
 
     /// Normalized associative similarity in `[0.0, 1.0]` where `0.0` is orthogonal (`d >= 5120`)

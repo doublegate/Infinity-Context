@@ -68,7 +68,7 @@ impl McpPagerServer {
                     "capabilities": { "tools": {} },
                     "serverInfo": {
                         "name": "infinity-context-mmu",
-                        "version": "0.1.0"
+                        "version": env!("CARGO_PKG_VERSION")
                     }
                 }
             }),

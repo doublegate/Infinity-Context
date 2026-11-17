@@ -4,14 +4,15 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 
 ## Status
 
-- **Current Phase:** Phase 1 Complete (Foundations, BLAKE3 CAS, LCM Merkle-DAG & `/dev/shm` Seqlock Bus All Green) — **Ready to start Phase 2**
-- **Active Workspace:** 8 Rust crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`)
+- **Current Version:** `v0.3.0` (`Phase 0` `v0.1.0`, `Phase 1` `v0.2.0`, and `Phase 2` `v0.3.0` All Complete)
+- **Current Phase:** Phase 2 Complete (Alien Holographic Token Lattice `AHTL` v1.0 Dual-Profile Codec, Braille-256 Bijection, Multi-Language `StructuralSkeletonizer` & 4-Tier `SecretRedactor` All Green) — **Ready to start Phase 3**
+- **Active Workspace:** 8 Rust crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`) — `std`-based, permanently `unsafe_code = "forbid"` (`0` `unsafe` blocks), Rust Edition `2024` / MSRV `1.100`, `>= 95%` Codecov line coverage
 
 ---
 
 ## Phases Overview
 
-### Phase 0 — Pre-Cursory Setup, Deep Research, REA Forensics & Workspace Bootstrap (COMPLETED)
+### Phase 0 — Pre-Cursory Setup, Deep Research, REA Forensics & Workspace Bootstrap (COMPLETED — `v0.1.0`)
 **Goal:** Conduct 38-source deep research, download 22 arXiv PDFs (`ref-docs/papers/`), reverse-engineer local agent binaries & SQLite databases with REA (`ref-docs/agent-internals/`), derive full technical specifications (`docs/`), configure `ai-memory` (`default/doublegate-infinity-context`), and bootstrap the compiling/tested 8-crate Rust workspace.  
 **Exit Criterion:** All research, specifications, ADRs, TODOs, `ai-memory` durable pages, and workspace bootstrap gates (`cargo fmt`, `cargo clippy`, `cargo test`, `icx benchmark`, `icx doctor`) pass with zero warnings.  
 
@@ -19,7 +20,7 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 
 ---
 
-### Phase 1 — Foundations, BLAKE3 CAS, LCM Merkle-DAG, `/dev/shm` Bus & Zero-`unsafe` Enforcement (COMPLETED)
+### Phase 1 — Foundations, BLAKE3 CAS, LCM Merkle-DAG, `/dev/shm` Bus & Zero-`unsafe` Enforcement (COMPLETED — `v0.2.0`)
 **Goal:** Establish the 8-crate Rust Cargo workspace, FastCDC + BLAKE3 Content-Addressed Store, Lossless Context Management (`LCM`) Merkle-DAG, Cache-Epoch Prefix Controller, lock-free `/dev/shm` Seqlock Ring Buffer, permanent workspace-wide `unsafe_code = "forbid"` (`std` allowed, zero `unsafe` through `v1.0.0`), and `>= 95%` Codecov line coverage.  
 **Exit Criterion:** `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo llvm-cov --workspace --all-targets --fail-under-lines 95` pass with 100% lossless byte/line round-trip recovery, zero `unsafe` code across all 8 crates, and `< 1 µs` seqlock ring latency.  
 **Estimated Duration:** 4 weeks  
@@ -32,15 +33,15 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 
 ---
 
-### Phase 2 — Alien Holographic Token Lattice (`AHTL`) & Structural Skeletonizers
-**Goal:** Implement the non-human BPE-aligned `AHTL` codec, Braille-256 topological sketcher, domain-specific AST/log/diff skeletonizers, and pre-ingestion secret redaction gate.  
-**Exit Criterion:** Achieves `12x–40x` compression ratio on real agent transcripts/logs with 100% identifier/line preservation, zero delimiter-injection vulnerabilities, and 100% secret redaction coverage.  
+### Phase 2 — Alien Holographic Token Lattice (`AHTL`) & Structural Skeletonizers (COMPLETED — `v0.3.0`)
+**Goal:** Implement the non-human BPE-aligned `AHTL` Dual-Profile codec (`Profile A` & `Profile B`), Braille-256 (`8`-byte & `64`-byte) topological sketcher with 1-Lipschitz spectral folding, multi-language AST/log/diff skeletonizers, and 4-Tier pre-ingestion secret redaction + Shannon entropy gate.  
+**Exit Criterion:** Achieves `12x–40x` compression ratio on real agent transcripts/logs with 100% identifier/line preservation, zero delimiter-injection vulnerabilities, and 100% secret redaction coverage, cross-referenced against `docs/ahtl/AHTL_v1_Complete_Technical_Specification_Volume.pdf`.  
 **Estimated Duration:** 3 weeks  
 
 - [Phase 2 Overview](phase-2-alien-codec-and-compression/overview.md)
-  - [Sprint 1 — AHTL Grammar, Parser & Braille-256 Bijection](phase-2-alien-codec-and-compression/sprint-1-ahtl-grammar-and-braille.md)
-  - [Sprint 2 — AST, Test-Log & Diff Structural Skeletonizers](phase-2-alien-codec-and-compression/sprint-2-structural-skeletonizers.md)
-  - [Sprint 3 — Pre-Ingestion Secret Redactor & Delimiter Escaping](phase-2-alien-codec-and-compression/sprint-3-secret-redaction-and-safety.md)
+  - [Sprint 1 — AHTL Grammar, Parser & Braille-256 Bijection (COMPLETED)](phase-2-alien-codec-and-compression/sprint-1-ahtl-grammar-and-braille.md)
+  - [Sprint 2 — AST, Test-Log & Diff Structural Skeletonizers (COMPLETED)](phase-2-alien-codec-and-compression/sprint-2-structural-skeletonizers.md)
+  - [Sprint 3 — Pre-Ingestion Secret Redactor & Delimiter Escaping (COMPLETED)](phase-2-alien-codec-and-compression/sprint-3-secret-redaction-and-safety.md)
 
 ---
 
