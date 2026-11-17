@@ -40,10 +40,8 @@ impl Hypervector {
         xof.fill(&mut raw);
 
         let mut words = [0u64; HV_WORDS];
-        for (i, chunk) in raw.chunks_exact(8).enumerate() {
-            words[i] = u64::from_le_bytes([
-                chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
-            ]);
+        for (i, chunk) in raw.as_chunks::<8>().0.iter().enumerate() {
+            words[i] = u64::from_le_bytes(*chunk);
         }
         Self { words }
     }

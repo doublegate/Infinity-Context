@@ -19,6 +19,8 @@ fn main() {
     let subcmd = args.get(1).map(String::as_str).unwrap_or("help");
 
     match subcmd {
+        "init" => run_init(&args[2..]),
+        "deref" => run_deref(&args[2..]),
         "hook" => run_hook(&args[2..]),
         "mcp-serve" => run_mcp_serve(),
         "proxy-transform" => run_proxy_transform(),
@@ -40,11 +42,15 @@ Usage:
   icx <SUBCOMMAND> [OPTIONS]
 
 Subcommands:
+  init [--dir <PATH>]
+      Initialize a workspace `.icx/` CAS store and shared-memory Seqlock fabric
+  deref <HANDLE> [--lines <START:END>] [--dir <PATH>]
+      Dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle from `.icx/`
   hook --agent <claude-code|codex|agy|hermes> --event <EVENT>
       Execute synchronous <500us lifecycle hook (reads JSON from stdin, writes JSON to stdout)
   mcp-serve
       Run the Single-Tool Polymorphic MCP Virtual Pager (`icx`) over stdio (JSON-RPC 2.0)
-  encode-ahtl <FILE>
+  encode-ahtl <FILE> [--dir <PATH>]
       Compress a source file, diff, or build log into an AHTL Holographic Packet + BLAKE3 handle
   decode-ahtl <AHTL_STRING>
       Parse and inspect an AHTL Holographic Packet's clauses and Braille-256 sketch
@@ -55,6 +61,158 @@ Subcommands:
   benchmark
       Execute the end-to-end SLO benchmark suite (Compression, HDC, Fractal, PPR, Prefix-Cache, Seqlock)"
     );
+}
+
+struct WorkspaceLockGuard {
+    file: fs::File,
+}
+
+impl Drop for WorkspaceLockGuard {
+    fn drop(&mut self) {
+        let _ = self.file.unlock();
+    }
+}
+
+fn acquire_workspace_lock(icx_dir: &Path) -> Result<WorkspaceLockGuard, String> {
+    fs::create_dir_all(icx_dir).map_err(|e| e.to_string())?;
+    let lock_path = icx_dir.join("cas_store.lock");
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+        .map_err(|e| {
+            format!(
+                "failed to open workspace lock `{}`: {e}",
+                lock_path.display()
+            )
+        })?;
+    for _attempt in 0..5_000u32 {
+        match file.try_lock() {
+            Ok(()) => return Ok(WorkspaceLockGuard { file }),
+            Err(fs::TryLockError::WouldBlock) => {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            Err(fs::TryLockError::Error(e)) => {
+                return Err(format!(
+                    "failed to acquire workspace lock `{}`: {e}",
+                    lock_path.display()
+                ));
+            }
+        }
+    }
+    Err(format!(
+        "timed out acquiring workspace lock `{}`",
+        lock_path.display()
+    ))
+}
+
+fn init_workspace_dir(icx_dir: &Path) -> Result<(), String> {
+    let _guard = acquire_workspace_lock(icx_dir)?;
+    let cas_path = icx_dir.join("cas_store.json");
+    if cas_path.exists() {
+        // Verify existing store integrity before succeeding
+        icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;
+    } else {
+        let cas = icx_core::cas::CasStore::new();
+        cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
+    }
+    let shm_path = icx_dir.join("icx-fabric-v1.shm");
+    icx_bus::SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn run_init(args: &[String]) {
+    let mut dir_str = ".icx";
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--dir" && i + 1 < args.len() {
+            dir_str = &args[i + 1];
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    let icx_dir = Path::new(dir_str);
+    match init_workspace_dir(icx_dir) {
+        Ok(()) => println!("⟪ICX:INIT│dir={}│status=READY⟫", icx_dir.display()),
+        Err(e) => {
+            eprintln!("icx init error: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn parse_line_range_arg(spec: &str) -> Result<(usize, usize), String> {
+    let Some((s, e)) = spec.split_once(':') else {
+        return Err(format!(
+            "invalid --lines `{spec}` (expected START:END, e.g. 1:50)"
+        ));
+    };
+    let start = s
+        .parse::<usize>()
+        .map_err(|_| format!("invalid start line in `{spec}`"))?;
+    let end = e
+        .parse::<usize>()
+        .map_err(|_| format!("invalid end line in `{spec}`"))?;
+    if start == 0 || start > end {
+        return Err(format!(
+            "invalid line range {start}:{end} (expected 1 <= START <= END)"
+        ));
+    }
+    Ok((start, end))
+}
+
+fn deref_from_workspace_dir(
+    icx_dir: &Path,
+    handle: &str,
+    line_range: Option<(usize, usize)>,
+) -> Result<String, String> {
+    let cas = icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;
+    let id = cas.resolve_handle(handle).map_err(|e| e.to_string())?;
+    if let Some((start, end)) = line_range {
+        cas.deref_lines(id, start, end).map_err(|e| e.to_string())
+    } else {
+        let bytes = cas.deref_bytes(id).map_err(|e| e.to_string())?;
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    }
+}
+
+fn run_deref(args: &[String]) {
+    let Some(handle) = args.first() else {
+        eprintln!("Usage: icx deref <HANDLE> [--lines <START:END>] [--dir <PATH>]");
+        std::process::exit(1);
+    };
+    let mut dir_str = ".icx";
+    let mut line_range: Option<(usize, usize)> = None;
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--dir" if i + 1 < args.len() => {
+                dir_str = &args[i + 1];
+                i += 2;
+            }
+            "--lines" if i + 1 < args.len() => {
+                match parse_line_range_arg(&args[i + 1]) {
+                    Ok(range) => line_range = Some(range),
+                    Err(e) => {
+                        eprintln!("icx deref error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+                i += 2;
+            }
+            _ => i += 1,
+        }
+    }
+    match deref_from_workspace_dir(Path::new(dir_str), handle, line_range) {
+        Ok(out) => print!("{out}"),
+        Err(e) => {
+            eprintln!("icx deref error: {e}");
+            std::process::exit(1);
+        }
+    }
 }
 
 fn run_hook(args: &[String]) {
@@ -123,19 +281,62 @@ fn run_proxy_transform() {
     }
 }
 
+fn encode_payload_into_workspace(
+    subject: &str,
+    content: &str,
+    icx_dir: &Path,
+) -> Result<String, String> {
+    if !icx_dir.exists() {
+        let mut mmu = InfinityContextMmu::default();
+        let res = mmu.ingest_payload(AgentKind::GenericMcp, subject, content, false);
+        return Ok(res.compressed_ahtl);
+    }
+
+    let _guard = acquire_workspace_lock(icx_dir)?;
+    let mut mmu = InfinityContextMmu::default();
+    let shm_path = icx_dir.join("icx-fabric-v1.shm");
+    if shm_path.exists() {
+        mmu.bus =
+            icx_bus::SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(|e| e.to_string())?;
+    }
+    let cas_path = icx_dir.join("cas_store.json");
+    if cas_path.exists() {
+        // Abort if an existing cas_store.json fails to parse or fails BLAKE3 verification,
+        // rather than overwriting it with an empty store.
+        mmu.cas = icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;
+    }
+    let res = mmu.ingest_payload(AgentKind::GenericMcp, subject, content, false);
+    mmu.cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
+    Ok(res.compressed_ahtl)
+}
+
 fn run_encode_ahtl(args: &[String]) {
     let Some(path_str) = args.first() else {
-        eprintln!("Usage: icx encode-ahtl <FILE>");
+        eprintln!("Usage: icx encode-ahtl <FILE> [--dir <PATH>]");
         std::process::exit(1);
     };
+    let mut dir_str = ".icx";
+    let mut i = 1;
+    while i < args.len() {
+        if args[i] == "--dir" && i + 1 < args.len() {
+            dir_str = &args[i + 1];
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
     let content = fs::read_to_string(path_str).unwrap_or_else(|e| {
         eprintln!("Failed to read `{path_str}`: {e}");
         std::process::exit(1);
     });
 
-    let mut mmu = InfinityContextMmu::default();
-    let res = mmu.ingest_payload(AgentKind::GenericMcp, path_str, &content, false);
-    println!("{}", res.compressed_ahtl);
+    match encode_payload_into_workspace(path_str, &content, Path::new(dir_str)) {
+        Ok(compressed_ahtl) => println!("{compressed_ahtl}"),
+        Err(e) => {
+            eprintln!("icx encode-ahtl error: {e}");
+            std::process::exit(1);
+        }
+    }
 }
 
 fn run_decode_ahtl(args: &[String]) {
@@ -302,4 +503,72 @@ fn run_benchmark() {
         sim_elapsed.as_secs_f64() * 1_000.0
     );
     println!("All Infinity-Context SLO gates PASSED.");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_init_and_deref_round_trip_with_full_and_short_handles() {
+        let tmp_dir = std::env::temp_dir().join(format!("icx_cli_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp_dir);
+        init_workspace_dir(&tmp_dir).expect("init_workspace_dir succeeds");
+
+        let mut cas = icx_core::cas::CasStore::load_from_dir(&tmp_dir).expect("load cas");
+        let sample = "alpha line 1\nbeta line 2\ngamma line 3\n";
+        let (id, _) = cas.put_bytes(sample.as_bytes());
+        cas.save_to_dir(&tmp_dir).expect("save cas");
+
+        let full_out = deref_from_workspace_dir(&tmp_dir, &id.to_string(), None).unwrap();
+        assert_eq!(full_out, sample);
+
+        let sliced =
+            deref_from_workspace_dir(&tmp_dir, &id.to_short_handle(), Some((2, 3))).unwrap();
+        assert_eq!(sliced, "beta line 2\ngamma line 3");
+        assert_eq!(parse_line_range_arg("2:3").unwrap(), (2, 3));
+        assert!(parse_line_range_arg("invalid").is_err());
+        assert!(parse_line_range_arg("0:2").is_err());
+        assert!(parse_line_range_arg("5:2").is_err());
+
+        // Verify concurrent `encode_payload_into_workspace` transactions serialize cleanly
+        // without clobbering each other's CAS artifacts
+        let mut threads = Vec::new();
+        for t in 0..4u32 {
+            let dir_c = tmp_dir.clone();
+            threads.push(std::thread::spawn(move || {
+                let text = format!("pub fn concurrent_fn_{t}() -> u32 {{ {t} }}\n");
+                let pkt_str =
+                    encode_payload_into_workspace(&format!("src/f_{t}.rs"), &text, &dir_c)
+                        .expect("encode succeeds");
+                let pkt = AhtlPacket::parse(&pkt_str).expect("parse packet");
+                (pkt.deref_id.unwrap(), text)
+            }));
+        }
+        let mut expected_artifacts = Vec::new();
+        for h in threads {
+            expected_artifacts.push(h.join().unwrap());
+        }
+        for (aid, expected_text) in expected_artifacts {
+            let recovered = deref_from_workspace_dir(&tmp_dir, &aid.to_string(), None).unwrap();
+            assert_eq!(recovered, expected_text.trim_end_matches('\n'));
+        }
+
+        // Verify that a lingering `cas_store.lock` file on disk (e.g. after a crashed process
+        // exits and the OS releases its file descriptor lock) does not block subsequent locks.
+        let lock_file_path = tmp_dir.join("cas_store.lock");
+        fs::write(&lock_file_path, b"stale").unwrap();
+        {
+            let _guard = acquire_workspace_lock(&tmp_dir).expect("OS advisory lock succeeds");
+        }
+
+        // Verify that corrupting `cas_store.json` causes `encode_payload_into_workspace` to abort
+        // without overwriting the corrupted file
+        let cas_json_path = tmp_dir.join("cas_store.json");
+        fs::write(&cas_json_path, b"{corrupted_json").unwrap();
+        assert!(encode_payload_into_workspace("src/new.rs", "fn x() {}\n", &tmp_dir).is_err());
+        assert_eq!(fs::read(&cas_json_path).unwrap(), b"{corrupted_json");
+
+        let _ = fs::remove_dir_all(&tmp_dir);
+    }
 }
