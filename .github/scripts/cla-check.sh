@@ -124,7 +124,7 @@ commit_authors_by_oid() {
 
 list_committers_range() {
     local b_sha="$1" h_sha="$2" pr_num="${3:-}" shas pr_shas c_sha c_out
-    shas="$(gh api --paginate "repos/${REPO:-}/compare/${b_sha}...${h_sha}" --jq '.commits[].sha')" || return 1
+    shas="$(gh api "repos/${REPO:-}/compare/${b_sha}...${h_sha}" --jq '.commits[].sha')" || return 1
     if [ -n "$pr_num" ] && [ "$(printf '%s\n' "$shas" | sed '/^$/d' | wc -l)" -ge 250 ]; then
         pr_shas="$(gh api --paginate "repos/${REPO:-}/pulls/${pr_num}/commits" --jq '.[].sha')" || return 1
         shas="$(printf '%s\n%s\n' "$shas" "$pr_shas" | awk 'NF && !seen[$0]++')"
@@ -468,11 +468,11 @@ record_signer() {
         return 0
     fi
     [ -z "$sig_sha" ] && ensure_branch
+    repo_id="$(gh api "repos/$REPO" --jq .id)" || return 1
     for attempt in $(seq 1 15); do
         if signed_of "$sig_doc" | grep -Fxq -- "$s_uid"; then
             break
         fi
-        repo_id="$(gh api "repos/$REPO" --jq .id)" || return 1
         new_doc="$(add_signature "$sig_doc" "$s_login" "$s_uid" "$s_cid" \
             "$s_pr" "$repo_id" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
         args=(-X PUT "repos/$REPO/contents/$FILE"
@@ -515,11 +515,14 @@ if ! acquire_cla_lock; then
 fi
 
 evaluate_pr_head() {
-    local eval_pr="$1" eval_attempt
+    local eval_pr="$1" initial_head_sha="${2:-}" eval_attempt
     local pr_info pr_state base_sha eval_head_sha opener opener_type committers
     local all_pr_comments valid_signers_rows rec_uid rec_login rec_cid
     local shared_prs_rows combined_required o_pr o_base o_opener o_type o_comms o_pr_info o_pr_comments o_signers s_uid s_login s_cid
     local latest_pr_info latest_base_sha latest_head_sha unsigned state desc body list existing target_pr
+
+    status_published=no
+    [ -n "$initial_head_sha" ] && head_sha="$initial_head_sha"
 
     for eval_attempt in 1 2 3; do
         pr_info="$(gh api "repos/$REPO/pulls/$eval_pr")"
@@ -620,12 +623,16 @@ evaluate_pr_head() {
     echo "CLA (PR #$eval_pr @ $eval_head_sha): $state${unsigned:+ (unsigned: $(printf '%s' "$unsigned" | tr '\n' ' '))}"
 }
 
-evaluate_pr_head "$PR"
+evaluate_pr_head "$PR" "$head_sha"
 
 if [ -n "${BEFORE_SHA:-}" ] && [ "${BEFORE_SHA}" != "0000000000000000000000000000000000000000" ] && [ "${BEFORE_SHA}" != "${head_sha:-}" ]; then
+    status_published=no
+    head_sha="$BEFORE_SHA"
     old_shared_rows="$(collect_shared_sha_prs "$BEFORE_SHA")"
     surviving_old_pr="$(printf '%s\n' "$old_shared_rows" | awk -F'\t' -v p="$PR" '$1 != "" && $1 != p { print $1; exit }')"
     if [ -n "$surviving_old_pr" ]; then
-        evaluate_pr_head "$surviving_old_pr"
+        evaluate_pr_head "$surviving_old_pr" "$BEFORE_SHA"
+    else
+        status_published=yes
     fi
 fi
