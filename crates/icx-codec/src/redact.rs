@@ -69,14 +69,29 @@ impl SecretRedactor {
     /// Computes the Shannon character entropy $H(S)$ in bits per character (`Tier 3`):
     /// $$H(S) = -\sum_{c \in \Sigma(S)} \frac{\operatorname{count}(c)}{|S|} \log_2 \left(\frac{\operatorname{count}(c)}{|S|}\right)$$
     pub fn shannon_entropy(s: &str) -> f64 {
+        if s.is_empty() {
+            return 0.0;
+        }
+        if s.is_ascii() {
+            let mut counts = [0u32; 128];
+            for &b in s.as_bytes() {
+                counts[b as usize] += 1;
+            }
+            let len_f = s.len() as f64;
+            let mut entropy = 0.0f64;
+            for &count in &counts {
+                if count > 0 {
+                    let p = (count as f64) / len_f;
+                    entropy -= p * p.log2();
+                }
+            }
+            return entropy;
+        }
         let mut counts: BTreeMap<char, usize> = BTreeMap::new();
         let mut total = 0usize;
         for ch in s.chars() {
             *counts.entry(ch).or_insert(0) += 1;
             total += 1;
-        }
-        if total == 0 {
-            return 0.0;
         }
         let len_f = total as f64;
         let mut entropy = 0.0f64;
@@ -733,6 +748,7 @@ b3BlbnNzaC1rZXktdjEAAAAABG5vbmU=
         let high_entropy_hex = ["a1b2c3d4e5f60718293a4b5c", "6d7e8f901a2b3c4d5e6f7081"].concat();
         assert!(SecretRedactor::shannon_entropy(&high_entropy_b64) > 4.35);
         assert!(SecretRedactor::shannon_entropy(&high_entropy_hex) > 3.50);
+        assert!((SecretRedactor::shannon_entropy("éïüö") - 2.0).abs() < 1e-9);
         assert_eq!(SecretRedactor::shannon_entropy(""), 0.0);
 
         let ant_tok = ["sk-ant-", "api03-abcdefghijklmnopqrstuvwxyz012345"].concat();

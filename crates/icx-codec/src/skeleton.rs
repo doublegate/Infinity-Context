@@ -14,23 +14,37 @@ use std::collections::BTreeSet;
 pub struct StructuralSkeletonizer;
 
 impl StructuralSkeletonizer {
-    /// Automatically detects payload domain (test/build log, unified diff, or source/text)
-    /// and compiles a high-density `AhtlPacket`.
+    /// Automatically detects payload domain (test/build log, unified diff, or source/text),
+    /// sanitizes untrusted input via `SecretRedactor`, stamps `FLAG_IS_REDACTED` on `hologram_bytes[7]`
+    /// if content was modified, and compiles a high-density `AhtlPacket`.
     pub fn compress_to_packet(
         subject: &str,
         raw_text: &str,
         deref_id: Option<ArtifactId>,
-        hologram_bytes: [u8; 8],
+        mut hologram_bytes: [u8; 8],
     ) -> AhtlPacket {
         let clean = SecretRedactor::sanitize(raw_text);
+        if raw_text.lines().ne(clean.lines()) {
+            hologram_bytes[7] |= crate::braille::FLAG_IS_REDACTED;
+        }
+        Self::compress_sanitized_to_packet(subject, &clean, deref_id, hologram_bytes)
+    }
+
+    /// Compiles an `AhtlPacket` from a payload that has already been sanitized by `SecretRedactor::sanitize`.
+    pub fn compress_sanitized_to_packet(
+        subject: &str,
+        clean: &str,
+        deref_id: Option<ArtifactId>,
+        hologram_bytes: [u8; 8],
+    ) -> AhtlPacket {
         let total_lines = clean.lines().count().max(1) as u32;
 
-        if Self::looks_like_test_or_build_log(&clean) {
-            Self::skeletonize_log(subject, &clean, total_lines, deref_id, hologram_bytes)
-        } else if Self::looks_like_diff(&clean) {
-            Self::skeletonize_diff(subject, &clean, total_lines, deref_id, hologram_bytes)
+        if Self::looks_like_test_or_build_log(clean) {
+            Self::skeletonize_log(subject, clean, total_lines, deref_id, hologram_bytes)
+        } else if Self::looks_like_diff(clean) {
+            Self::skeletonize_diff(subject, clean, total_lines, deref_id, hologram_bytes)
         } else {
-            Self::skeletonize_source_or_text(subject, &clean, total_lines, deref_id, hologram_bytes)
+            Self::skeletonize_source_or_text(subject, clean, total_lines, deref_id, hologram_bytes)
         }
     }
 

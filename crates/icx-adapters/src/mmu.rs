@@ -98,8 +98,7 @@ impl InfinityContextMmu {
             raw_text
         };
         let mut sanitized = SecretRedactor::sanitize(bounded_raw);
-        let normalized_raw = bounded_raw.lines().collect::<Vec<_>>().join("\n");
-        let was_redacted = sanitized != normalized_raw;
+        let was_redacted = bounded_raw.lines().ne(sanitized.lines());
         if sanitized.len() > icx_core::ICX_MAX_INGEST_BYTES {
             let mut bound = icx_core::ICX_MAX_INGEST_BYTES;
             while !sanitized.is_char_boundary(bound) {
@@ -117,7 +116,7 @@ impl InfinityContextMmu {
             receipt.hologram_bytes[7] |= icx_codec::FLAG_IS_REDACTED;
         }
 
-        let packet = StructuralSkeletonizer::compress_to_packet(
+        let packet = StructuralSkeletonizer::compress_sanitized_to_packet(
             subject,
             &sanitized,
             Some(artifact_id),
