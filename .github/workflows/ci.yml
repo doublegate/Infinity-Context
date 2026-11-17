@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -27,6 +27,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy
@@ -55,6 +56,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Generate LCOV coverage report & enforce coverage floor
@@ -117,7 +119,9 @@ jobs:
             "$hdr_end" "$key_tail" > "$tmpdir/merge_only.key"
           git -C "$tmpdir" add merge_only.key
           git -C "$tmpdir" commit -q -m "merge with evil resolution"
-          if "$RUNNER_TEMP/gitleaks" git "$tmpdir" --log-opts="--all --full-history -m" --no-banner --redact --exit-code 1 >/dev/null 2>&1; then
-            echo "ERROR: gitleaks failed to detect synthetic secret in merge commit" >&2
+          rc=0
+          "$RUNNER_TEMP/gitleaks" git "$tmpdir" --log-opts="--all --full-history -m" --no-banner --redact --exit-code 42 || rc=$?
+          if [ "$rc" -ne 42 ]; then
+            echo "ERROR: expected gitleaks detection exit code 42 for synthetic merge secret, got $rc" >&2
             exit 1
           fi

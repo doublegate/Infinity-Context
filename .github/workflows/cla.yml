@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 DoubleGate
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
 # Contributor License Agreement check (CLA.md). A pull request's authors must
 # have signed the CLA before it can be merged; they sign by posting the
 # comment the check asks for. Signatures are stored in the `cla-signatures`

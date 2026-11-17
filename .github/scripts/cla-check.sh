@@ -123,8 +123,12 @@ commit_authors_by_oid() {
 }
 
 list_committers_range() {
-    local b_sha="$1" h_sha="$2" shas c_sha c_out
+    local b_sha="$1" h_sha="$2" pr_num="${3:-}" shas pr_shas c_sha c_out
     shas="$(gh api --paginate "repos/${REPO:-}/compare/${b_sha}...${h_sha}" --jq '.commits[].sha')" || return 1
+    if [ -n "$pr_num" ] && [ "$(printf '%s\n' "$shas" | sed '/^$/d' | wc -l)" -ge 250 ]; then
+        pr_shas="$(gh api --paginate "repos/${REPO:-}/pulls/${pr_num}/commits" --jq '.[].sha')" || return 1
+        shas="$(printf '%s\n%s\n' "$shas" "$pr_shas" | awk 'NF && !seen[$0]++')"
+    fi
     while IFS= read -r c_sha; do
         [ -z "$c_sha" ] && continue
         c_out="$(commit_authors_by_oid "$c_sha")" || return 1
@@ -408,10 +412,10 @@ name="${REPO#*/}"
 
 on_exit() {
     local rc="$1"
+    if [ "$rc" -ne 0 ] && [ "${status_published:-no}" != yes ] && [ -n "${head_sha:-}" ]; then
+        publish_lookup_failure "$head_sha" || true
+    fi
     if [ "$lock_held" = yes ]; then
-        if [ "$rc" -ne 0 ] && [ "${status_published:-no}" != yes ] && [ -n "${head_sha:-}" ]; then
-            publish_lookup_failure "$head_sha" || true
-        fi
         release_cla_lock
     fi
 }
@@ -486,6 +490,10 @@ record_signer() {
     done
 }
 
+# Resolve head_sha early so on_exit can publish a failure status if pre-lock or lock acquisition fails.
+pre_info="$(gh api "repos/$REPO/pulls/$PR")"
+head_sha="$(printf '%s' "$pre_info" | jq -r .head.sha)"
+
 # Ensure the cla-signatures branch exists before acquiring the CAS lock file on it.
 read_signatures
 [ -z "$sig_sha" ] && ensure_branch
@@ -494,11 +502,10 @@ read_signatures
 # so a signature is never lost even if lock acquisition later times out.
 if [ "$EVENT" = "issue_comment" ] && is_sign_body "${COMMENT_BODY:-}"; then
     : "${COMMENT_USER:?}" "${COMMENT_USER_ID:?}" "${COMMENT_ID:?}"
-    pre_info="$(gh api "repos/$REPO/pulls/$PR")"
     pre_base="$(printf '%s' "$pre_info" | jq -r .base.sha)"
-    pre_head="$(printf '%s' "$pre_info" | jq -r .head.sha)"
+    pre_head="$head_sha"
     pre_opener="$(printf '%s' "$pre_info" | jq -r '"\(.user.id):\(.user.login)"')"
-    pre_comms="$(list_committers_range "$pre_base" "$pre_head")"
+    pre_comms="$(list_committers_range "$pre_base" "$pre_head" "$PR")"
     record_signer "$COMMENT_USER_ID" "$COMMENT_USER" "$COMMENT_ID" "$PR" "$pre_comms" "$pre_opener"
 fi
 
@@ -508,68 +515,77 @@ if ! acquire_cla_lock; then
 fi
 
 evaluate_pr_head() {
-    local eval_pr="$1"
+    local eval_pr="$1" eval_attempt
     local pr_info pr_state base_sha eval_head_sha opener opener_type committers
     local all_pr_comments valid_signers_rows rec_uid rec_login rec_cid
     local shared_prs_rows combined_required o_pr o_base o_opener o_type o_comms o_pr_info o_pr_comments o_signers s_uid s_login s_cid
     local latest_pr_info latest_base_sha latest_head_sha unsigned state desc body list existing target_pr
 
-    pr_info="$(gh api "repos/$REPO/pulls/$eval_pr")"
-    pr_state="$(printf '%s' "$pr_info" | jq -r .state)"
-    eval_head_sha="$(printf '%s' "$pr_info" | jq -r .head.sha)"
-    head_sha="$eval_head_sha"
-    if [ "$pr_state" != "open" ]; then
-        shared_prs_rows="$(collect_shared_sha_prs "$eval_head_sha")"
-        eval_pr="$(printf '%s\n' "$shared_prs_rows" | awk -F'\t' -v p="$eval_pr" '$1 != "" && $1 != p { print $1; exit }')"
-        if [ -z "$eval_pr" ]; then
-            echo "CLA: closed PR has no surviving open PRs sharing $eval_head_sha"
-            return 0
-        fi
+    for eval_attempt in 1 2 3; do
         pr_info="$(gh api "repos/$REPO/pulls/$eval_pr")"
-    fi
-    base_sha="$(printf '%s' "$pr_info" | jq -r .base.sha)"
-    eval_head_sha="$(printf '%s' "$pr_info" | jq -r .head.sha)"
-    head_sha="$eval_head_sha"
-    opener="$(printf '%s' "$pr_info" | jq -r '"\(.user.id):\(.user.login)"')"
-    opener_type="$(printf '%s' "$pr_info" | jq -r .user.type)"
-    committers="$(list_committers_range "$base_sha" "$eval_head_sha")"
+        pr_state="$(printf '%s' "$pr_info" | jq -r .state)"
+        eval_head_sha="$(printf '%s' "$pr_info" | jq -r .head.sha)"
+        head_sha="$eval_head_sha"
+        if [ "$pr_state" != "open" ]; then
+            shared_prs_rows="$(collect_shared_sha_prs "$eval_head_sha")"
+            eval_pr="$(printf '%s\n' "$shared_prs_rows" | awk -F'\t' -v p="$eval_pr" '$1 != "" && $1 != p { print $1; exit }')"
+            if [ -z "$eval_pr" ]; then
+                echo "CLA: closed PR has no surviving open PRs sharing $eval_head_sha"
+                return 0
+            fi
+            pr_info="$(gh api "repos/$REPO/pulls/$eval_pr")"
+        fi
+        base_sha="$(printf '%s' "$pr_info" | jq -r .base.sha)"
+        eval_head_sha="$(printf '%s' "$pr_info" | jq -r .head.sha)"
+        head_sha="$eval_head_sha"
+        opener="$(printf '%s' "$pr_info" | jq -r '"\(.user.id):\(.user.login)"')"
+        opener_type="$(printf '%s' "$pr_info" | jq -r .user.type)"
+        committers="$(list_committers_range "$base_sha" "$eval_head_sha" "$eval_pr")"
 
-    read_signatures
+        read_signatures
 
-    if [ "$EVENT" = "issue_comment" ] && [ "$eval_pr" = "$PR" ] && is_sign_body "${COMMENT_BODY:-}"; then
-        : "${COMMENT_USER:?}" "${COMMENT_USER_ID:?}" "${COMMENT_ID:?}"
-        record_signer "$COMMENT_USER_ID" "$COMMENT_USER" "$COMMENT_ID" "$eval_pr" "$committers" "$opener"
-    fi
+        if [ "$EVENT" = "issue_comment" ] && [ "$eval_pr" = "$PR" ] && is_sign_body "${COMMENT_BODY:-}"; then
+            : "${COMMENT_USER:?}" "${COMMENT_USER_ID:?}" "${COMMENT_ID:?}"
+            record_signer "$COMMENT_USER_ID" "$COMMENT_USER" "$COMMENT_ID" "$eval_pr" "$committers" "$opener"
+        fi
 
-    all_pr_comments="$(gh api --paginate "repos/$REPO/issues/$eval_pr/comments" | jq -s 'add // []')"
-    valid_signers_rows="$(collect_valid_signers "$pr_info" "$all_pr_comments" "$committers" "$opener")"
-    while IFS=$'\t' read -r rec_uid rec_login rec_cid; do
-        [ -z "$rec_uid" ] && continue
-        record_signer "$rec_uid" "$rec_login" "$rec_cid" "$eval_pr" "$committers" "$opener"
-    done <<< "$valid_signers_rows"
+        all_pr_comments="$(gh api --paginate "repos/$REPO/issues/$eval_pr/comments" | jq -s 'add // []')"
+        valid_signers_rows="$(collect_valid_signers "$pr_info" "$all_pr_comments" "$committers" "$opener")"
+        while IFS=$'\t' read -r rec_uid rec_login rec_cid; do
+            [ -z "$rec_uid" ] && continue
+            record_signer "$rec_uid" "$rec_login" "$rec_cid" "$eval_pr" "$committers" "$opener"
+        done <<< "$valid_signers_rows"
 
-    shared_prs_rows="$(collect_shared_sha_prs "$eval_head_sha")"
-    combined_required="$(required_of "$committers" "$opener" "$opener_type")"
-    while IFS=$'\t' read -r o_pr o_base o_opener o_type; do
-        [ -z "$o_pr" ] || [ "$o_pr" = "$eval_pr" ] && continue
-        o_comms="$(list_committers_range "$o_base" "$eval_head_sha")"
-        o_pr_info="$(gh api "repos/$REPO/pulls/$o_pr")"
-        o_pr_comments="$(gh api --paginate "repos/$REPO/issues/$o_pr/comments" | jq -s 'add // []')"
-        o_signers="$(collect_valid_signers "$o_pr_info" "$o_pr_comments" "$o_comms" "$o_opener")"
-        while IFS=$'\t' read -r s_uid s_login s_cid; do
-            [ -z "$s_uid" ] && continue
-            record_signer "$s_uid" "$s_login" "$s_cid" "$o_pr" "$o_comms" "$o_opener"
-        done <<< "$o_signers"
-        combined_required+=$'\n'"$(required_of "$o_comms" "$o_opener" "$o_type")"
-    done <<< "$shared_prs_rows"
+        shared_prs_rows="$(collect_shared_sha_prs "$eval_head_sha")"
+        combined_required="$(required_of "$committers" "$opener" "$opener_type")"
+        while IFS=$'\t' read -r o_pr o_base o_opener o_type; do
+            [ -z "$o_pr" ] || [ "$o_pr" = "$eval_pr" ] && continue
+            o_comms="$(list_committers_range "$o_base" "$eval_head_sha" "$o_pr")"
+            o_pr_info="$(gh api "repos/$REPO/pulls/$o_pr")"
+            o_pr_comments="$(gh api --paginate "repos/$REPO/issues/$o_pr/comments" | jq -s 'add // []')"
+            o_signers="$(collect_valid_signers "$o_pr_info" "$o_pr_comments" "$o_comms" "$o_opener")"
+            while IFS=$'\t' read -r s_uid s_login s_cid; do
+                [ -z "$s_uid" ] && continue
+                record_signer "$s_uid" "$s_login" "$s_cid" "$o_pr" "$o_comms" "$o_opener"
+            done <<< "$o_signers"
+            combined_required+=$'\n'"$(required_of "$o_comms" "$o_opener" "$o_type")"
+        done <<< "$shared_prs_rows"
 
-    latest_pr_info="$(gh api "repos/$REPO/pulls/$eval_pr")"
-    latest_base_sha="$(printf '%s' "$latest_pr_info" | jq -r .base.sha)"
-    latest_head_sha="$(printf '%s' "$latest_pr_info" | jq -r .head.sha)"
-    if [ "$latest_base_sha" != "$base_sha" ] || [ "$latest_head_sha" != "$eval_head_sha" ]; then
-        echo "CLA: PR base or head changed during evaluation; the newer run publishes the status"
-        return 0
-    fi
+        latest_pr_info="$(gh api "repos/$REPO/pulls/$eval_pr")"
+        latest_base_sha="$(printf '%s' "$latest_pr_info" | jq -r .base.sha)"
+        latest_head_sha="$(printf '%s' "$latest_pr_info" | jq -r .head.sha)"
+        if [ "$latest_base_sha" = "$base_sha" ] && [ "$latest_head_sha" = "$eval_head_sha" ]; then
+            break
+        fi
+        if [ "$eval_attempt" = 3 ]; then
+            echo "CLA: PR #$eval_pr base or head kept moving across 3 attempts; failing closed" >&2
+            head_sha="$latest_head_sha"
+            publish_lookup_failure "$latest_head_sha" || true
+            status_published=yes
+            return 1
+        fi
+        sleep 2
+    done
 
     read_signatures
     unsigned="$(unsigned_of "$combined_required" "$(signed_of "$sig_doc")")"

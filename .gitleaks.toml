@@ -11,11 +11,12 @@ title = "Infinity-Context (icx) Gitleaks Configuration"
 [extend]
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = "Synthetic unit-test fixtures for Pre-Hash SecretRedactor and CI merge-commit test"
+condition = "AND"
 paths = [
-  '''crates/icx-codec/src/redact\.rs''',
+  '''^(crates/icx-codec/src/redact\.rs|\.github/workflows/ci\.yml)$''',
 ]
 regexes = [
-  '''b3BlbnNzaC1rZXktdjEAAAAABG5vbmU=''',
+  '''(sk-proj-1234567890abcdefghijklmnop|ghp_abcdefghijklmnopqrstuvwxyz0123456789|secret_jwt_token_value_999|b3BlbnNzaC1rZXktdjEAAAAABG5vbmU=)''',
 ]
