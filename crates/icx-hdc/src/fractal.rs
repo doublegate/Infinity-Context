@@ -97,6 +97,45 @@ impl FractalCoord {
         k.min(self.depth).min(other.depth).min(32)
     }
 
+    /// Verifies that `self` and `other` share a boundary-compatible sequence of inverse IFS
+    /// transitions up to `shared_suffix_depth(other)`. This preserves zero-boundary trajectories
+    /// (such as `[0.0; 16]` vs `[-0.75; 16]`) while rejecting incompatible opposite-orthant
+    /// endpoints (such as `[-0.5; 16]` vs `[+0.5; 16]`).
+    #[inline]
+    pub fn verified_suffix_depth(&self, other: &Self) -> u32 {
+        let max_k = self.shared_suffix_depth(other);
+        if max_k == 0 {
+            return 0;
+        }
+        let mut verified = max_k;
+        for j in 0..16 {
+            let mut a = self.coords[j];
+            let mut b = other.coords[j];
+            let mut dim_k = 0u32;
+            while dim_k < verified {
+                if a == 0.0 && b == 0.0 {
+                    dim_k = verified;
+                    break;
+                } else if a >= 0.0 && b >= 0.0 {
+                    a = 2.0 * a - 1.0;
+                    b = 2.0 * b - 1.0;
+                    dim_k += 1;
+                } else if a <= 0.0 && b <= 0.0 {
+                    a = 2.0 * a + 1.0;
+                    b = 2.0 * b + 1.0;
+                    dim_k += 1;
+                } else {
+                    break;
+                }
+            }
+            verified = verified.min(dim_k);
+            if verified == 0 {
+                return 0;
+            }
+        }
+        verified
+    }
+
     /// Quantizes the Fractal coordinate into a 16-bit quadrant signature for Braille-256 Channel B.
     #[inline]
     pub fn quadrant_signature_u16(&self) -> u16 {
@@ -158,8 +197,11 @@ impl FractalCoord {
         let mut z = 0u64;
         for j in 0..16 {
             let c = self.coords[j].clamp(-1.0, 1.0);
-            let mag3 = ((c.abs() * 8.0).floor() as u64).min(7);
-            let q4 = if c >= 0.0 { 8 + mag3 } else { 7 - mag3 };
+            let q4 = if c >= 0.0 {
+                8 + ((c * 8.0).floor() as u64).min(7)
+            } else {
+                (((c + 1.0) * 8.0).floor() as u64).min(7)
+            };
             for plane in 0..4u64 {
                 let bit = (q4 >> plane) & 1;
                 z |= bit << (plane * 16 + (j as u64));
@@ -298,13 +340,13 @@ impl FractalTrajectoryArchive {
             .entries
             .iter()
             .filter_map(|&(morton, id, ref coord)| {
-                let depth = target.shared_suffix_depth(coord);
+                let depth = target.verified_suffix_depth(coord);
                 if depth >= min_suffix_depth {
                     Some((
                         id,
                         depth,
                         target.chebyshev_distance(coord),
-                        (morton ^ target_morton).count_ones() as u64,
+                        morton ^ target_morton,
                     ))
                 } else {
                     None
@@ -448,6 +490,23 @@ mod tests {
         assert_eq!(boundary_hits.len(), 1);
         assert_eq!(boundary_hits[0].0, ArtifactId(77));
         assert_eq!(boundary_hits[0].1, 1);
+
+        // Verify opposite-orthant trajectories (`[-0.5; 16]` vs `[+0.5; 16]`) are rejected
+        let pos_one_step = FractalCoord {
+            coords: [0.5; 16],
+            depth: 1,
+        };
+        let neg_one_step = FractalCoord {
+            coords: [-0.5; 16],
+            depth: 1,
+        };
+        assert_eq!(pos_one_step.verified_suffix_depth(&neg_one_step), 0);
+        let mut opp_archive = FractalTrajectoryArchive::new();
+        opp_archive.insert_coord(ArtifactId(88), neg_one_step);
+        assert_eq!(
+            opp_archive.query_shared_suffix(&pos_one_step, 1, 5).len(),
+            0
+        );
 
         // Edge cases for shared_suffix_depth and invalid hex
         assert_eq!(coord.shared_suffix_depth(&coord), 3);

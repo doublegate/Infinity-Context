@@ -111,6 +111,16 @@ impl HdcAssociativeIndex {
         &self.trajectory_archive
     }
 
+    /// Returns a reference to the underlying `TitansSurpriseGate`.
+    pub const fn surprise_gate(&self) -> &TitansSurpriseGate {
+        &self.surprise_gate
+    }
+
+    /// Applies `steps` intervals of idle exponential decay to the underlying `TitansSurpriseGate`.
+    pub fn apply_idle_decay(&mut self, steps: u32) {
+        self.surprise_gate.apply_idle_decay(steps);
+    }
+
     /// Returns the most recently indexed entry, if any.
     pub fn latest_entry(&self) -> Option<&IndexedEntry> {
         self.entries.last()
@@ -351,6 +361,8 @@ mod tests {
         assert!(!idx.is_empty());
         assert_eq!(idx.len(), 1);
         assert_eq!(idx.trajectory_archive().len(), 1);
+        assert_eq!(idx.surprise_gate().events_seen(), 1);
+        idx.apply_idle_decay(2);
         assert_eq!(
             idx.latest_entry().map(IndexedEntry::subject_lower),
             Some("src/mmu.rs")
