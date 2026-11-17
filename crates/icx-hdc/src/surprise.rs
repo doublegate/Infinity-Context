@@ -294,8 +294,8 @@ mod tests {
             slow_decay_gate.momentum()
         );
 
-        // Verify alternating routine boilerplate (A, B, C) is deduplicated by add_weighted_unique
-        // and decays into ColdBeacon despite normal text entropy.
+        // Verify alternating routine boilerplate (A, B, C) is deduplicated via active-fingerprint
+        // checking and decays into ColdBeacon despite normal text entropy.
         let mut alt_gate = TitansSurpriseGate::default();
         let a = Hypervector::from_seed("routine", "boilerplate_a");
         let b = Hypervector::from_seed("routine", "boilerplate_b");

@@ -172,8 +172,28 @@ impl Hypervector {
         const COUNT_MASK: u64 = 0b11;
 
         #[inline]
-        fn try_reinforce_slot(slots: &mut [u64; SLOT_COUNT], hv: &Hypervector, cap: u64) -> bool {
-            let key = ((hv.words[0] ^ hv.words[1].rotate_left(13)) & !COUNT_MASK) | 4;
+        fn token_key_u64(s: &str) -> u64 {
+            let mut h = 0xCBF2_9CE4_8422_2325u64;
+            for &b in s.as_bytes() {
+                h = (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01B3);
+            }
+            let mut z = (h ^ (h >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            ((z ^ (z >> 31)) & !COUNT_MASK) | 4
+        }
+
+        #[inline]
+        fn bigram_key_u64(prev_key: u64, cur_key: u64) -> u64 {
+            let mixed = prev_key.rotate_left(17).wrapping_add(0x9E37_79B9_7F4A_7C15) ^ cur_key;
+            (mixed & !COUNT_MASK) | 4
+        }
+
+        #[inline]
+        fn find_reinforce_slot(
+            slots: &[u64; SLOT_COUNT],
+            key: u64,
+            cap: u64,
+        ) -> Option<(usize, u64)> {
             let base = ((key >> 2) as usize) & SLOT_MASK;
             for probe in 0..8usize {
                 let idx = (base + probe) & SLOT_MASK;
@@ -182,26 +202,23 @@ impl Hypervector {
                 if slot_key == key {
                     let slot_count = entry & COUNT_MASK;
                     if slot_count >= cap {
-                        return false;
+                        return None;
                     }
-                    slots[idx] = key | (slot_count + 1);
-                    return true;
+                    return Some((idx, key | (slot_count + 1)));
                 }
                 if entry == 0 {
-                    slots[idx] = key | 1;
-                    return true;
+                    return Some((idx, key | 1));
                 }
             }
-            // If all 8 probe slots are occupied by other keys, evict the tail probe slot
-            // so novel tokens within the 1,024-token horizon are never dropped.
-            slots[(base + 7) & SLOT_MASK] = key | 1;
-            true
+            Some(((base + 7) & SLOT_MASK, key | 1))
         }
 
         let mut bundler = HdcBundler::new();
         let mut slots = [0u64; SLOT_COUNT];
+        let mut hv_cache = [(0u64, Self::zero()); 4];
         let mut stack_lower = [0u8; 128];
         let mut prev_hv: Option<Self> = None;
+        let mut prev_key: Option<u64> = None;
         let mut prev_raw: Option<&str> = None;
         let mut consecutive_repeats = 0usize;
         let mut tokens_seen = 0usize;
@@ -240,20 +257,45 @@ impl Hypervector {
                 heap_lower = tok.to_ascii_lowercase();
                 heap_lower.as_str()
             };
-            let hv = Self::from_seed("tok", lower);
-            let accepted_unigram = try_reinforce_slot(&mut slots, &hv, MAX_UNIGRAM_REINFORCEMENTS);
-            if accepted_unigram {
-                bundler.add_delta(&hv);
+
+            let u_key = token_key_u64(lower);
+            let u_slot = find_reinforce_slot(&slots, u_key, MAX_UNIGRAM_REINFORCEMENTS);
+            let b_slot = prev_key.and_then(|pk| {
+                find_reinforce_slot(&slots, bigram_key_u64(pk, u_key), MAX_BIGRAM_REINFORCEMENTS)
+            });
+            let cache_idx = ((u_key >> 2) as usize) & 3;
+
+            if u_slot.is_none() && b_slot.is_none() {
+                if hv_cache[cache_idx].0 == u_key {
+                    prev_hv = Some(hv_cache[cache_idx].1);
+                }
+                prev_key = Some(u_key);
+                continue;
+            }
+
+            let hv = if hv_cache[cache_idx].0 == u_key {
+                hv_cache[cache_idx].1
+            } else {
+                let computed = Self::from_seed("tok", lower);
+                hv_cache[cache_idx] = (u_key, computed);
+                computed
+            };
+
+            if let Some((idx, new_entry)) = u_slot
+                && bundler.add_delta(&hv)
+            {
+                slots[idx] = new_entry;
                 tokens_seen += 1;
             }
 
-            if let Some(prev) = prev_hv {
+            if let (Some(prev), Some((b_idx, b_entry))) = (prev_hv, b_slot) {
                 let bigram = prev.permute(1).bind(&hv);
-                if try_reinforce_slot(&mut slots, &bigram, MAX_BIGRAM_REINFORCEMENTS) {
-                    bundler.add_delta(&bigram);
+                if bundler.add_delta(&bigram) {
+                    slots[b_idx] = b_entry;
                 }
             }
             prev_hv = Some(hv);
+            prev_key = Some(u_key);
             if tokens_seen >= MAX_TEXT_TOKENS {
                 break;
             }
@@ -520,39 +562,39 @@ impl HdcBundler {
     /// `similarity >= 0.15`) receive zero delta weight so repetitive boilerplate never saturates
     /// the accumulator, while novel/orthogonal vectors receive full weight.
     pub fn add(&mut self, hv: &Hypervector) {
-        if self.is_actively_bundled(hv) {
-            return;
-        }
+        let fp = hv.dedup_fingerprint_u128();
         let weight: i16 = if self.count == 0 {
             16
         } else {
             let sim = self.readout.similarity(hv);
-            if sim >= 0.85 {
+            if sim >= 0.85 || (sim >= 0.15 && self.seen_fingerprints.contains(&fp)) {
                 return;
             }
             let novelty = (1.0 - sim).clamp(0.0, 1.0);
             ((novelty * 16.0).round() as i16).max(1)
         };
-        self.seen_fingerprints.insert(hv.dedup_fingerprint_u128());
+        self.seen_fingerprints.insert(fp);
         self.accumulate_raw(hv, weight);
     }
 
     /// Adds a hypervector using the stack-only Infini-attention Delta Rule without allocating
     /// in `seen_fingerprints`: vectors already strongly present in the bundle (`similarity >= 0.85`)
-    /// receive zero delta weight, while novel/under-represented tokens reinforce the bundle.
+    /// receive zero delta weight (returning `false`), while novel/under-represented tokens
+    /// reinforce the bundle (returning `true`).
     #[inline]
-    pub fn add_delta(&mut self, hv: &Hypervector) {
+    pub fn add_delta(&mut self, hv: &Hypervector) -> bool {
         let weight: i16 = if self.count == 0 {
             16
         } else {
             let sim = self.readout.similarity(hv);
             if sim >= 0.85 {
-                return;
+                return false;
             }
             let novelty = (1.0 - sim).clamp(0.0, 1.0);
             ((novelty * 16.0).round() as i16).max(1)
         };
         self.accumulate_raw(hv, weight);
+        true
     }
 
     /// Adds a hypervector with an explicit integer weight (`1..=64`), breaking exact `0` ties

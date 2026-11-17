@@ -295,7 +295,7 @@ impl BiTemporalGraph {
         let mut effective_tx_ms = now_ms;
         if is_functional {
             for e in &mut self.edges {
-                if e.source_entity == src && e.relation == rel {
+                if e.is_functional && e.source_entity == src && e.relation == rel {
                     if let Some(inv) = e.t_invalid {
                         effective_valid_ms = effective_valid_ms.max(inv);
                     } else {
@@ -578,14 +578,12 @@ impl BiTemporalGraph {
             }
             indices.sort_by_key(|&i| {
                 (
+                    loaded.edges[i].t_invalid.is_none(),
                     loaded.edges[i].t_valid,
                     loaded.edges[i].t_tx_start,
                     loaded.edges[i].edge_id,
                 )
             });
-            let last_active_pos = indices
-                .iter()
-                .rposition(|&i| loaded.edges[i].t_invalid.is_none());
             for pos in 0..indices.len() {
                 let cur_i = indices[pos];
                 if pos > 0 {
@@ -598,17 +596,9 @@ impl BiTemporalGraph {
                             loaded.edges[cur_i].t_tx_start.max(prev_tx_end);
                     }
                 }
-                let must_close = last_active_pos.is_some_and(|last| pos < last)
-                    || (loaded.edges[cur_i].t_invalid.is_none() && pos + 1 < indices.len());
-                if must_close && loaded.edges[cur_i].t_invalid.is_none() {
-                    let next_valid = indices
-                        .get(pos + 1)
-                        .map(|&ni| loaded.edges[ni].t_valid)
-                        .unwrap_or(loaded.edges[cur_i].t_valid);
-                    let next_tx = indices
-                        .get(pos + 1)
-                        .map(|&ni| loaded.edges[ni].t_tx_start)
-                        .unwrap_or(loaded.edges[cur_i].t_tx_start);
+                if loaded.edges[cur_i].t_invalid.is_none() && pos + 1 < indices.len() {
+                    let next_valid = loaded.edges[indices[pos + 1]].t_valid;
+                    let next_tx = loaded.edges[indices[pos + 1]].t_tx_start;
                     loaded.edges[cur_i].t_invalid =
                         Some(next_valid.max(loaded.edges[cur_i].t_valid.saturating_add(1)));
                     loaded.edges[cur_i].t_tx_end =
@@ -808,6 +798,20 @@ mod tests {
         assert_eq!(active_edge.target_entity, "NEW");
         assert_eq!(active_edge.edge_id, 3);
         assert!(repaired.invalidate_edge(active_edge.edge_id, 50));
+
+        // Verify load_from_dir preserves an active winner whose t_valid (50) precedes an already-invalidated edge (100)
+        fs::write(
+            &json_path,
+            r#"{"edges":[{"edge_id":1,"source_entity":"a","relation":"status","target_entity":"OLD_INV","is_functional":true,"t_valid":100,"t_invalid":100,"t_tx_start":100,"t_tx_end":100,"provenance":1,"weight":1.0},{"edge_id":2,"source_entity":"a","relation":"status","target_entity":"ACTIVE_WINNER","is_functional":true,"t_valid":50,"t_invalid":null,"t_tx_start":50,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":[],"next_edge_id":3}"#,
+        )
+        .unwrap();
+        let winner_graph =
+            BiTemporalGraph::load_from_dir(&tmp_dir).expect("preserves active winner");
+        assert_eq!(winner_graph.active_edge_count(), 1);
+        assert_eq!(
+            winner_graph.query_edges_from("a", None)[0].target_entity,
+            "ACTIVE_WINNER"
+        );
         assert_eq!(
             g.upsert_edge(" ", "status", "ok", true, 100, ArtifactId(1), 1.0),
             0
