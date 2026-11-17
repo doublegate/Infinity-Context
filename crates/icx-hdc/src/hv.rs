@@ -414,11 +414,12 @@ impl HdcBundler {
     }
 
     /// Adds a hypervector using the Infini-attention Delta Rule: vectors already strongly present
-    /// in the bundle (`similarity >= 0.85` or matching a previously bundled 128-bit fingerprint)
+    /// in the bundle (`similarity >= 0.85` or matching a previously accepted 128-bit fingerprint)
     /// receive zero delta weight so repetitive boilerplate never saturates the accumulator, while
     /// novel/orthogonal vectors receive full weight.
     pub fn add(&mut self, hv: &Hypervector) {
-        if !self.seen_fingerprints.insert(hv.dedup_fingerprint_u128()) {
+        let fp = hv.dedup_fingerprint_u128();
+        if self.seen_fingerprints.contains(&fp) {
             return;
         }
         let weight: i16 = if self.count == 0 {
@@ -431,6 +432,7 @@ impl HdcBundler {
             let novelty = (1.0 - sim).clamp(0.0, 1.0);
             ((novelty * 16.0).round() as i16).max(1)
         };
+        self.seen_fingerprints.insert(fp);
         self.accumulate_raw(hv, weight);
     }
 
@@ -440,6 +442,16 @@ impl HdcBundler {
     pub fn add_weighted(&mut self, hv: &Hypervector, weight: i16) {
         self.seen_fingerprints.insert(hv.dedup_fingerprint_u128());
         self.accumulate_raw(hv, weight);
+    }
+
+    /// Adds a hypervector with an explicit integer weight (`1..=64`) only if its 128-bit
+    /// fingerprint has not already been bundled, returning `true` when accumulated.
+    pub fn add_weighted_unique(&mut self, hv: &Hypervector, weight: i16) -> bool {
+        if !self.seen_fingerprints.insert(hv.dedup_fingerprint_u128()) {
+            return false;
+        }
+        self.accumulate_raw(hv, weight);
+        true
     }
 
     fn accumulate_raw(&mut self, hv: &Hypervector, weight: i16) {
@@ -576,6 +588,31 @@ mod tests {
             bundler.count(),
             2,
             "antipodal complement must not be discarded as a duplicate"
+        );
+
+        // Verify a vector rejected by `sim >= 0.85` is NOT permanently marked as seen,
+        // so it can be accepted later once the bundle shifts away from it.
+        bundler.reset();
+        let base = Hypervector::from_seed("trace", "base_vector");
+        let mut near_base = base;
+        near_base.words[0] ^= 0xFF; // 99.84% similar to `base` (`sim >= 0.85`)
+        bundler.add(&base);
+        assert_eq!(bundler.count(), 1);
+        bundler.add(&near_base);
+        assert_eq!(
+            bundler.count(),
+            1,
+            "near_base should initially be rejected by sim >= 0.85"
+        );
+        // Shift bundle strongly toward an orthogonal vector so `near_base` becomes novel (`sim < 0.85`)
+        let orth = Hypervector::from_seed("trace", "orthogonal_shift");
+        assert!(bundler.add_weighted_unique(&orth, 64));
+        assert!(!bundler.add_weighted_unique(&orth, 64));
+        bundler.add(&near_base);
+        assert_eq!(
+            bundler.count(),
+            3,
+            "near_base must be accepted once bundle shifts away"
         );
     }
 

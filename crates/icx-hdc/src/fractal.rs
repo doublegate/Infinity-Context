@@ -114,7 +114,7 @@ impl FractalCoord {
     pub fn to_q15(&self) -> [i16; 16] {
         let mut out = [0i16; 16];
         for j in 0..16 {
-            out[j] = (self.coords[j].clamp(-1.0, 1.0) * 32767.0) as i16;
+            out[j] = (self.coords[j].clamp(-1.0, 1.0) * 32767.0).round() as i16;
         }
         out
     }
@@ -157,8 +157,9 @@ impl FractalCoord {
     pub fn morton_z64(&self) -> u64 {
         let mut z = 0u64;
         for j in 0..16 {
-            let u = f64::midpoint(self.coords[j].clamp(-1.0, 1.0), 1.0).clamp(0.0, 0.999_999);
-            let q4 = (u * 16.0) as u64; // 0..=15
+            let c = self.coords[j].clamp(-1.0, 1.0);
+            let mag3 = ((c.abs() * 8.0).floor() as u64).min(7);
+            let q4 = if c >= 0.0 { 8 + mag3 } else { 7 - mag3 };
             for plane in 0..4u64 {
                 let bit = (q4 >> plane) & 1;
                 z |= bit << (plane * 16 + (j as u64));
@@ -281,7 +282,8 @@ impl FractalTrajectoryArchive {
 
     /// Queries the archive for historical trajectory states sharing at least `min_suffix_depth`
     /// trailing transitions with `target`, returning `(ArtifactId, shared_suffix_depth, chebyshev_distance)`
-    /// sorted by `shared_suffix_depth` descending then `chebyshev_distance` ascending.
+    /// sorted by `shared_suffix_depth` descending, `chebyshev_distance` ascending, and 64-bit Morton
+    /// XOR proximity ascending.
     pub fn query_shared_suffix(
         &self,
         target: &FractalCoord,
@@ -291,17 +293,19 @@ impl FractalTrajectoryArchive {
         if top_k == 0 || self.entries.is_empty() {
             return Vec::new();
         }
-        let target_quad = target.quadrant_signature_u16();
-        let mut matches: Vec<(ArtifactId, u32, f64)> = self
+        let target_morton = target.morton_z64();
+        let mut matches: Vec<(ArtifactId, u32, f64, u64)> = self
             .entries
             .iter()
             .filter_map(|&(morton, id, ref coord)| {
-                if min_suffix_depth >= 1 && ((morton >> 48) as u16) != target_quad {
-                    return None;
-                }
                 let depth = target.shared_suffix_depth(coord);
                 if depth >= min_suffix_depth {
-                    Some((id, depth, target.chebyshev_distance(coord)))
+                    Some((
+                        id,
+                        depth,
+                        target.chebyshev_distance(coord),
+                        (morton ^ target_morton).count_ones() as u64,
+                    ))
                 } else {
                     None
                 }
@@ -311,9 +315,13 @@ impl FractalTrajectoryArchive {
         matches.sort_by(|a, b| {
             b.1.cmp(&a.1)
                 .then_with(|| a.2.partial_cmp(&b.2).unwrap_or(core::cmp::Ordering::Equal))
+                .then_with(|| a.3.cmp(&b.3))
         });
         matches.truncate(top_k);
         matches
+            .into_iter()
+            .map(|(id, d, c, _)| (id, d, c))
+            .collect()
     }
 }
 
@@ -377,10 +385,18 @@ mod tests {
         let from_q14 = FractalCoord::from_q1_14(q14, coord.depth);
         assert_eq!(from_q14, coord);
 
-        // Verify Morton Z-order top 16 bits equal quadrant_signature_u16()
+        // Verify Morton Z-order top 16 bits equal quadrant_signature_u16() including tiny negatives
         assert_eq!(
             (coord.morton_z64() >> 48) as u16,
             coord.quadrant_signature_u16()
+        );
+        let sub_neg = FractalCoord {
+            coords: [-1e-300; 16],
+            depth: 1,
+        };
+        assert_eq!(
+            (sub_neg.morton_z64() >> 48) as u16,
+            sub_neg.quadrant_signature_u16()
         );
 
         // Verify octal quadrant address @o1:o2 round-trip and error cases
@@ -393,8 +409,9 @@ mod tests {
         assert_eq!(FractalCoord::decode_octal_addr("invalid"), None);
         assert_eq!(FractalCoord::decode_octal_addr("@123:456"), None);
         assert_eq!(FractalCoord::decode_octal_addr("@0777:0000"), None);
+        assert_eq!(FractalCoord::decode_octal_addr("@0000:0777"), None);
 
-        // Verify FractalTrajectoryArchive suffix search
+        // Verify FractalTrajectoryArchive suffix search and zero-boundary coordinates
         let mut archive = FractalTrajectoryArchive::new();
         assert!(archive.is_empty());
         assert_eq!(archive.len(), 0);
@@ -415,6 +432,22 @@ mod tests {
         assert_eq!(hits[0].0, ArtifactId(3));
         assert!(hits[0].1 >= 2);
         assert_eq!(archive.query_shared_suffix(&query_coord, 2, 0).len(), 0);
+
+        // Verify zero-boundary coordinate `[0.0; 16]` vs `[-0.75; 16]` with depth >= 1
+        let mut boundary_archive = FractalTrajectoryArchive::new();
+        let zero_boundary = FractalCoord {
+            coords: [0.0; 16],
+            depth: 55,
+        };
+        let neg_two_steps = FractalCoord {
+            coords: [-0.75; 16],
+            depth: 2,
+        };
+        boundary_archive.insert_coord(ArtifactId(77), zero_boundary);
+        let boundary_hits = boundary_archive.query_shared_suffix(&neg_two_steps, 1, 5);
+        assert_eq!(boundary_hits.len(), 1);
+        assert_eq!(boundary_hits[0].0, ArtifactId(77));
+        assert_eq!(boundary_hits[0].1, 1);
 
         // Edge cases for shared_suffix_depth and invalid hex
         assert_eq!(coord.shared_suffix_depth(&coord), 3);

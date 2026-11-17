@@ -56,11 +56,21 @@ impl TitansSurpriseGate {
 
     /// Creates a new `TitansSurpriseGate` with explicit momentum factor `eta` and forgetting rate `alpha`.
     pub fn with_eta_and_alpha(eta: f32, alpha: f32) -> Self {
+        let clean_eta = if eta.is_nan() {
+            0.82
+        } else {
+            eta.clamp(0.1, 0.98)
+        };
+        let clean_alpha = if alpha.is_nan() {
+            0.05
+        } else {
+            alpha.clamp(0.0, 0.50)
+        };
         Self {
             bundler: HdcBundler::new(),
             momentum: 0.5,
-            eta: eta.clamp(0.1, 0.98),
-            alpha: alpha.clamp(0.0, 0.50),
+            eta: clean_eta,
+            alpha: clean_alpha,
             events_seen: 0,
         }
     }
@@ -98,8 +108,8 @@ impl TitansSurpriseGate {
     /// Applies `steps` intervals of idle exponential decay $S_t \leftarrow (1 - \alpha)^{\text{steps}} S_t$.
     pub fn apply_idle_decay(&mut self, steps: u32) {
         if steps > 0 {
-            let capped = steps.min(1024).cast_signed();
-            self.momentum = (self.momentum * (1.0 - self.alpha).powi(capped)).clamp(0.0, 1.0);
+            let factor = (1.0 - f64::from(self.alpha)).powf(f64::from(steps));
+            self.momentum = ((f64::from(self.momentum) * factor) as f32).clamp(0.0, 1.0);
         }
     }
 
@@ -188,7 +198,7 @@ impl TitansSurpriseGate {
         if is_anomaly || novelty >= 0.15 {
             let delta_scale = if is_anomaly { 1.0 } else { novelty };
             let weight = ((effective * delta_scale * 32.0).round() as i16).clamp(1, 64);
-            self.bundler.add_weighted(hv, weight);
+            let _ = self.bundler.add_weighted_unique(hv, weight);
         }
         self.events_seen += 1;
         let tier = if effective >= 0.70 {
@@ -257,5 +267,18 @@ mod tests {
         let v_cold = gate.observe(&routine_hv, "aaaa", false);
         assert_eq!(v_cold.tier, RetentionTier::ColdBeacon);
         assert!(gate.momentum() < 0.35);
+
+        // Verify NaN sanitization and uncapped long-interval idle decay (`steps = 100_000`)
+        let small_alpha_gate = TitansSurpriseGate::with_eta_and_alpha(f32::NAN, f32::NAN);
+        assert!((small_alpha_gate.eta() - 0.82).abs() < 1e-6);
+        assert!((small_alpha_gate.alpha() - 0.05).abs() < 1e-6);
+
+        let mut slow_decay_gate = TitansSurpriseGate::with_eta_and_alpha(0.82, 0.0001);
+        slow_decay_gate.apply_idle_decay(100_000);
+        assert!(
+            slow_decay_gate.momentum() < 0.001,
+            "100,000 steps at alpha=0.0001 must decay momentum below 0.001 (got {})",
+            slow_decay_gate.momentum()
+        );
     }
 }
