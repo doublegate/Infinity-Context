@@ -245,7 +245,10 @@ impl StructuralSkeletonizer {
     fn compact_token(s: &str) -> String {
         let mut out = String::with_capacity(s.len().min(128));
         for ch in s.chars() {
-            if matches!(ch, '⟦' | '⟧' | '⟪' | '⟫' | '⊢' | '⋮' | '↦' | '\n' | '\r') {
+            if matches!(
+                ch,
+                '⟦' | '⟧' | '⟪' | '⟫' | '⊢' | '⋮' | '↦' | '⇒' | '│' | '\n' | '\r'
+            ) {
                 out.push('_');
             } else if ch.is_whitespace() {
                 if !out.ends_with('_') {

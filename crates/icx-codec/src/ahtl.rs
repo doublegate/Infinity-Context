@@ -157,6 +157,40 @@ impl AhtlClause {
     }
 }
 
+/// Bijectively escapes `%` (`%25`) and `#L` (`%23L`) in a subject string so that literal `#L`
+/// or `%23L` sequences inside `subject` never collide with the `#L<start>-<end>` line-range suffix.
+fn escape_subject(s: &str) -> String {
+    if !s.contains('%') && !s.contains("#L") {
+        return s.to_owned();
+    }
+    s.replace('%', "%25").replace("#L", "%23L")
+}
+
+/// Single-pass left-to-right inverse of `escape_subject`, restoring `%25` -> `%` and `%23L` -> `#L`.
+fn unescape_subject(s: &str) -> String {
+    if !s.contains('%') {
+        return s.to_owned();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while !rest.is_empty() {
+        if let Some(after) = rest.strip_prefix("%25") {
+            out.push('%');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%23L") {
+            out.push_str("#L");
+            rest = after;
+        } else {
+            let mut chars = rest.chars();
+            if let Some(ch) = chars.next() {
+                out.push(ch);
+                rest = chars.as_str();
+            }
+        }
+    }
+    out
+}
+
 /// Profile B — Active Interoperable Dual-Channel `AhtlPacket` (`docs/alien-holographic-codec.md` §2).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AhtlPacket {
@@ -165,8 +199,10 @@ pub struct AhtlPacket {
     pub line_range: Option<(u32, u32)>,
     pub clauses: Vec<AhtlClause>,
     pub deref_id: Option<ArtifactId>,
+    pub compact_48bit_handle: bool,
     pub slice_hint: Option<String>,
     pub hologram_bytes: [u8; 8],
+    pub has_hologram: bool,
     pub hologram_tag: Option<u16>,
 }
 
@@ -205,7 +241,8 @@ pub enum CodecError {
 }
 
 impl AhtlPacket {
-    /// Creates a new `AhtlPacket` with default `slice_hint: None` and `hologram_tag: None`.
+    /// Creates a new `AhtlPacket` with default `compact_48bit_handle: false`, `slice_hint: None`,
+    /// `has_hologram: true`, and `hologram_tag: None`.
     pub fn new(
         kind: PacketKind,
         subject: impl Into<String>,
@@ -220,10 +257,25 @@ impl AhtlPacket {
             line_range,
             clauses,
             deref_id,
+            compact_48bit_handle: false,
             slice_hint: None,
             hologram_bytes,
+            has_hologram: true,
             hologram_tag: None,
         }
+    }
+
+    /// Formats the dereference handle string, preserving 48-bit (`#icx:<12-hex>`) vs. 64-bit
+    /// (`#icx:<16-hex>`) handle width so `CasStore::resolve_handle` performs the proper prefix or
+    /// exact lookup.
+    pub fn deref_handle_string(&self) -> Option<String> {
+        self.deref_id.map(|id| {
+            if self.compact_48bit_handle {
+                id.to_short_handle()
+            } else {
+                id.to_string()
+            }
+        })
     }
 
     /// Renders this `AhtlPacket` into its canonical single-line non-human BPE-aligned string.
@@ -232,12 +284,7 @@ impl AhtlPacket {
         out.push('⟦');
         out.push(self.kind.glyph());
         out.push(':');
-
-        if self.line_range.is_some() && self.subject.contains("#L") {
-            out.push_str(&self.subject.replace("#L", "%23L"));
-        } else {
-            out.push_str(&self.subject);
-        }
+        out.push_str(&escape_subject(&self.subject));
 
         if let Some((start, end)) = self.line_range {
             out.push_str(&format!("#L{start}-{end}"));
@@ -253,20 +300,24 @@ impl AhtlPacket {
             }
         }
 
-        if let Some(id) = self.deref_id {
+        if let Some(handle_str) = self.deref_handle_string() {
             out.push('↦');
-            out.push_str(&id.to_string());
+            out.push_str(&handle_str);
             if let Some(hint) = &self.slice_hint {
-                out.push('(');
-                out.push_str(hint);
-                out.push(')');
+                if !hint.is_empty() {
+                    out.push('(');
+                    out.push_str(hint);
+                    out.push(')');
+                }
             }
         }
 
-        out.push_str("⋮Ψ:");
-        out.push_str(&encode_braille_sketch(&self.hologram_bytes));
-        if let Some(tag) = self.hologram_tag {
-            out.push_str(&format!("[{tag:04x}]"));
+        if self.has_hologram {
+            out.push_str("⋮Ψ:");
+            out.push_str(&encode_braille_sketch(&self.hologram_bytes));
+            if let Some(tag) = self.hologram_tag {
+                out.push_str(&format!("[{tag:04x}]"));
+            }
         }
         out.push('⟧');
         out
@@ -280,30 +331,35 @@ impl AhtlPacket {
             .and_then(|s| s.strip_suffix('⟧'))
             .ok_or(CodecError::MissingDelimiters)?;
 
-        // Extract trailing `⋮Ψ:<8-braille>([<hex4>])?` hologram
-        let (before_holo, holo_raw) = inner
-            .rsplit_once("⋮Ψ:")
-            .ok_or(CodecError::MalformedBrailleSketch)?;
-
-        let (holo_str, hologram_tag) = if let Some(tag_part) = holo_raw.strip_suffix(']') {
-            let (b_str, hex_tag) = tag_part
-                .rsplit_once('[')
-                .ok_or(CodecError::MalformedBrailleSketch)?;
-            if hex_tag.len() != 4 || !hex_tag.bytes().all(|b| b.is_ascii_hexdigit()) {
+        // Extract trailing `⋮Ψ:<8-braille>([<hex4>])?` hologram (optional for compact `Φ` or `Ψ` micro-beacons)
+        let (before_holo, hologram_bytes, has_hologram, hologram_tag) =
+            if let Some((left, holo_raw)) = inner.rsplit_once("⋮Ψ:") {
+                let (holo_str, tag_opt) = if let Some(tag_part) = holo_raw.strip_suffix(']') {
+                    let (b_str, hex_tag) = tag_part
+                        .rsplit_once('[')
+                        .ok_or(CodecError::MalformedBrailleSketch)?;
+                    if hex_tag.len() != 4 || !hex_tag.bytes().all(|b| b.is_ascii_hexdigit()) {
+                        return Err(CodecError::MalformedBrailleSketch);
+                    }
+                    let tag = u16::from_str_radix(hex_tag, 16)
+                        .map_err(|_| CodecError::MalformedBrailleSketch)?;
+                    (b_str, Some(tag))
+                } else {
+                    (holo_raw, None)
+                };
+                let holo =
+                    decode_braille_sketch(holo_str).ok_or(CodecError::MalformedBrailleSketch)?;
+                (left, holo, true, tag_opt)
+            } else if inner.starts_with("Φ:")
+                || (inner.starts_with("Ψ:") && inner.contains('↦') && !inner.contains('⊢'))
+            {
+                (inner, [0u8; 8], false, None)
+            } else {
                 return Err(CodecError::MalformedBrailleSketch);
-            }
-            let tag =
-                u16::from_str_radix(hex_tag, 16).map_err(|_| CodecError::MalformedBrailleSketch)?;
-            (b_str, Some(tag))
-        } else {
-            (holo_raw, None)
-        };
-
-        let hologram_bytes =
-            decode_braille_sketch(holo_str).ok_or(CodecError::MalformedBrailleSketch)?;
+            };
 
         // Extract optional `↦#icx:<12|16-hex>((slice_hint))?` handle
-        let (before_deref, deref_id, slice_hint) =
+        let (before_deref, deref_id, compact_48bit_handle, slice_hint) =
             if let Some((left, deref_tail)) = before_holo.rsplit_once('↦') {
                 let (handle_str, hint_opt) = if let Some(with_hint) = deref_tail.strip_suffix(')') {
                     let (h_part, hint_part) = with_hint
@@ -316,11 +372,15 @@ impl AhtlPacket {
                 } else {
                     (deref_tail, None)
                 };
+                let hex_part = handle_str
+                    .strip_prefix("#icx:")
+                    .ok_or_else(|| CodecError::MalformedHandle(handle_str.to_owned()))?;
+                let is_compact = hex_part.len() == 12;
                 let (min_id, _) = ArtifactId::parse_prefix_range(handle_str)
                     .map_err(|_| CodecError::MalformedHandle(handle_str.to_owned()))?;
-                (left, Some(min_id), hint_opt)
+                (left, Some(min_id), is_compact, hint_opt)
             } else {
-                (before_holo, None, None)
+                (before_holo, None, false, None)
             };
 
         // Split `<Kind>:<Subject>[#L<a>-<b>]` from optional `⊢<clauses>`
@@ -343,15 +403,15 @@ impl AhtlPacket {
         let (subject, line_range) = if let Some((path, range_part)) = subj_raw.rsplit_once("#L") {
             if let Some((s_str, e_str)) = range_part.split_once('-') {
                 if let (Ok(s), Ok(e)) = (s_str.parse::<u32>(), e_str.parse::<u32>()) {
-                    (path.replace("%23L", "#L"), Some((s, e)))
+                    (unescape_subject(path), Some((s, e)))
                 } else {
-                    (subj_raw.to_owned(), None)
+                    (unescape_subject(subj_raw), None)
                 }
             } else {
-                (subj_raw.to_owned(), None)
+                (unescape_subject(subj_raw), None)
             }
         } else {
-            (subj_raw.to_owned(), None)
+            (unescape_subject(subj_raw), None)
         };
 
         let clauses = match clauses_str {
@@ -365,8 +425,10 @@ impl AhtlPacket {
             line_range,
             clauses,
             deref_id,
+            compact_48bit_handle,
             slice_hint,
             hologram_bytes,
+            has_hologram,
             hologram_tag,
         })
     }
@@ -380,6 +442,9 @@ impl AhtlPacket {
         hdc_digest_hex: &str,
         braille_spectrum: [u8; 64],
     ) -> Result<AhtlWirePacketV1, CodecError> {
+        let cas_handle = self.deref_id.ok_or_else(|| {
+            CodecError::MalformedHandle("cannot promote AhtlPacket without deref_id".into())
+        })?;
         let fc_clean = fractal_coord_hex
             .trim()
             .strip_prefix("fc:")
@@ -402,8 +467,8 @@ impl AhtlPacket {
             .join("⋮");
 
         Ok(AhtlWirePacketV1 {
-            cas_handle: self.deref_id.unwrap_or(ArtifactId(0)),
-            compact_48bit_handle: false,
+            cas_handle,
+            compact_48bit_handle: self.compact_48bit_handle,
             fractal_coord_hex: fc_clean.to_ascii_lowercase(),
             hdc_digest_hex: hv_clean.to_ascii_lowercase(),
             braille_spectrum,
@@ -413,17 +478,22 @@ impl AhtlPacket {
 }
 
 impl AhtlWirePacketV1 {
-    /// Renders the canonical 6-section Profile A wire packet:
-    /// `⟦AHTL v1│#icx:<12|16-hex>│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧`
-    pub fn render(&self) -> String {
-        let handle_str = if self.compact_48bit_handle {
+    /// Formats the CAS handle string, preserving 48-bit (`#icx:<12-hex>`) vs. 64-bit
+    /// (`#icx:<16-hex>`) handle width for `CasStore::resolve_handle`.
+    pub fn cas_handle_string(&self) -> String {
+        if self.compact_48bit_handle {
             self.cas_handle.to_short_handle()
         } else {
             self.cas_handle.to_string()
-        };
+        }
+    }
+
+    /// Renders the canonical 6-section Profile A wire packet:
+    /// `⟦AHTL v1│#icx:<12|16-hex>│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧`
+    pub fn render(&self) -> String {
         format!(
             "⟦AHTL v1│{}│fc:{}│hv:{}│{}│{}⟧",
-            handle_str,
+            self.cas_handle_string(),
             self.fractal_coord_hex,
             self.hdc_digest_hex,
             encode_braille_64(&self.braille_spectrum),
@@ -538,32 +608,47 @@ impl AhtlWirePacketV1 {
             line_range,
             clauses,
             deref_id: Some(self.cas_handle),
+            compact_48bit_handle: self.compact_48bit_handle,
             slice_hint: None,
             hologram_bytes,
+            has_hologram: true,
             hologram_tag: None,
         }
     }
 }
 
-/// Top-level `⟪ICX:v1│ep=<hex4>│root=<hex8>│τ=<u32>⟫` stream epoch header
-/// (`docs/alien-holographic-codec.md` §2.1).
+/// Discriminant for the third field of an `EpochHeader` (`τ=<u32>`, `nodes=<u32>`, or `folded=<u32>`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EpochCountKind {
+    TurnStart(u32),
+    Nodes(u32),
+    Folded(u32),
+}
+
+/// Top-level `⟪ICX:v1│ep=<hex4>│root=<hex8|16>│(τ|nodes|folded)=<u32>⟫` stream epoch header
+/// (`docs/ahtl/01-formal-grammar-and-packet-specification.md` §1.2).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EpochHeader {
     pub epoch_id: u16,
-    pub merkle_root_hex8: String,
-    pub turn_start: u32,
+    pub merkle_root_hex: String,
+    pub count_kind: EpochCountKind,
 }
 
 impl EpochHeader {
-    /// Renders the canonical epoch header `⟪ICX:v1│ep=<hex4>│root=<hex8>│τ=<u32>⟫`.
+    /// Renders the canonical epoch header `⟪ICX:v1│ep=<hex4>│root=<hex>│(τ|nodes|folded)=<u32>⟫`.
     pub fn render(&self) -> String {
+        let count_str = match self.count_kind {
+            EpochCountKind::TurnStart(v) => format!("τ={v}"),
+            EpochCountKind::Nodes(v) => format!("nodes={v}"),
+            EpochCountKind::Folded(v) => format!("folded={v}"),
+        };
         format!(
-            "⟪ICX:v1│ep={:04x}│root={}│τ={}⟫",
-            self.epoch_id, self.merkle_root_hex8, self.turn_start
+            "⟪ICX:v1│ep={:04x}│root={}│{}⟫",
+            self.epoch_id, self.merkle_root_hex, count_str
         )
     }
 
-    /// Parses an epoch header string `⟪ICX:v1│ep=<hex4>│root=<hex8>│τ=<u32>⟫`.
+    /// Parses an epoch header string `⟪ICX:v1│ep=<hex4>│root=<hex8|16>│(τ|nodes|folded)=<u32>⟫`.
     pub fn parse(input: &str) -> Result<Self, CodecError> {
         let inner = input
             .trim()
@@ -585,25 +670,39 @@ impl EpochHeader {
             .next()
             .and_then(|s| s.strip_prefix("root="))
             .ok_or(CodecError::MalformedEpochHeader)?;
-        if root_part.len() != 8 || !root_part.bytes().all(|b| b.is_ascii_hexdigit()) {
+        if (root_part.len() != 8 && root_part.len() != 16)
+            || !root_part.bytes().all(|b| b.is_ascii_hexdigit())
+        {
             return Err(CodecError::MalformedEpochHeader);
         }
 
-        let tau_part = parts
-            .next()
-            .and_then(|s| s.strip_prefix("τ="))
-            .ok_or(CodecError::MalformedEpochHeader)?;
+        let count_raw = parts.next().ok_or(CodecError::MalformedEpochHeader)?;
         if parts.next().is_some() {
             return Err(CodecError::MalformedEpochHeader);
         }
-        let turn_start = tau_part
-            .parse::<u32>()
-            .map_err(|_| CodecError::MalformedEpochHeader)?;
+        let count_kind = if let Some(v) = count_raw.strip_prefix("τ=") {
+            EpochCountKind::TurnStart(
+                v.parse::<u32>()
+                    .map_err(|_| CodecError::MalformedEpochHeader)?,
+            )
+        } else if let Some(v) = count_raw.strip_prefix("nodes=") {
+            EpochCountKind::Nodes(
+                v.parse::<u32>()
+                    .map_err(|_| CodecError::MalformedEpochHeader)?,
+            )
+        } else if let Some(v) = count_raw.strip_prefix("folded=") {
+            EpochCountKind::Folded(
+                v.parse::<u32>()
+                    .map_err(|_| CodecError::MalformedEpochHeader)?,
+            )
+        } else {
+            return Err(CodecError::MalformedEpochHeader);
+        };
 
         Ok(Self {
             epoch_id,
-            merkle_root_hex8: root_part.to_ascii_lowercase(),
-            turn_start,
+            merkle_root_hex: root_part.to_ascii_lowercase(),
+            count_kind,
         })
     }
 }
@@ -702,7 +801,7 @@ mod tests {
         let (id, _) = ArtifactId::hash_bytes(b"raw_payload_bytes");
         let mut pkt = AhtlPacket::new(
             PacketKind::CodeDelta,
-            "crates/icx-core/src/dag#L1.rs",
+            "crates/icx-core/src/dag#L1%23L%25.rs",
             Some((42, 118)),
             vec![
                 AhtlClause::new(ClauseOp::Added, "fn", Some("seal_epoch".into())),
@@ -722,13 +821,47 @@ mod tests {
         pkt.hologram_tag = Some(0xbeef);
 
         let rendered = pkt.render();
-        assert!(rendered.starts_with("⟦Δ:crates/icx-core/src/dag%23L1.rs#L42-118⊢"));
+        assert!(rendered.starts_with("⟦Δ:crates/icx-core/src/dag%23L1%2523L%2525.rs#L42-118⊢"));
         assert!(rendered.contains("⇒⊕fix:bounds_check"));
         assert!(rendered.contains("(L42-118)"));
         assert!(rendered.ends_with("[beef]⟧"));
 
         let parsed = AhtlPacket::parse(&rendered).expect("valid AHTL packet");
         assert_eq!(parsed, pkt);
+
+        // Verify empty slice_hint is skipped during render
+        let mut empty_hint_pkt = pkt.clone();
+        empty_hint_pkt.slice_hint = Some(String::new());
+        let rendered_no_hint = empty_hint_pkt.render();
+        assert!(!rendered_no_hint.contains(&format!("{id}()")));
+        let parsed_no_hint = AhtlPacket::parse(&rendered_no_hint).unwrap();
+        assert_eq!(parsed_no_hint.slice_hint, None);
+
+        // Verify line_range == None with subject ending in `#L1-5` or containing `%23L` round-trips losslessly
+        let subj_with_hash_l = AhtlPacket::new(
+            PacketKind::Invariant,
+            "rule%23L_and_#L1-5",
+            None,
+            vec![
+                AhtlClause::new(ClauseOp::Removed, "legacy", Some("v0".into())),
+                AhtlClause::new(ClauseOp::Neutral, "flag", None),
+            ],
+            None,
+            [0; 8],
+        );
+        let r2 = subj_with_hash_l.render();
+        assert_eq!(AhtlPacket::parse(&r2).unwrap(), subj_with_hash_l);
+
+        // Verify compact micro-beacon (`⟦Ψ:role↦#icx:...⟧`) and folded branch (`⟦Φ:...⟧`) without `⋮Ψ:`
+        let beacon_str = "⟦Ψ:tool_read↦#icx:0123456789abcdef⟧";
+        let beacon = AhtlPacket::parse(beacon_str).expect("parse compact micro-beacon");
+        assert!(!beacon.has_hologram);
+        assert_eq!(beacon.render(), beacon_str);
+
+        let folded_str = "⟦Φ:debug_loop⊢steps:3⋮✓resolved↦#icx:0123456789abcdef⟧";
+        let folded = AhtlPacket::parse(folded_str).expect("parse folded branch");
+        assert!(!folded.has_hologram);
+        assert_eq!(folded.render(), folded_str);
 
         for kind in [
             PacketKind::CodeDelta,
@@ -740,20 +873,6 @@ mod tests {
             assert_eq!(PacketKind::from_glyph(kind.glyph()), Some(kind));
         }
         assert_eq!(PacketKind::from_glyph('?'), None);
-
-        let no_range_or_deref = AhtlPacket::new(
-            PacketKind::Invariant,
-            "rule#Lbad",
-            None,
-            vec![
-                AhtlClause::new(ClauseOp::Removed, "legacy", Some("v0".into())),
-                AhtlClause::new(ClauseOp::Neutral, "flag", None),
-            ],
-            None,
-            [0; 8],
-        );
-        let r2 = no_range_or_deref.render();
-        assert_eq!(AhtlPacket::parse(&r2).unwrap(), no_range_or_deref);
 
         assert_eq!(
             AhtlPacket::parse("no_delims"),
@@ -794,7 +913,7 @@ mod tests {
     }
 
     #[test]
-    fn profile_a_wire_packet_v1_and_stream_round_trip() {
+    fn profile_a_wire_packet_v1_compact_handles_and_stream_round_trip() {
         let (id, _) = ArtifactId::hash_bytes(b"profile_a_payload");
         let pkt_b = AhtlPacket::new(
             PacketKind::CodeDelta,
@@ -820,41 +939,64 @@ mod tests {
         let parsed_a = AhtlWirePacketV1::parse(&wire_a).expect("parse Profile A");
         assert_eq!(parsed_a, pkt_a);
 
-        // Also test 48-bit compact handle mode
+        // Test 48-bit compact handle preservation across Profile A <-> Profile B conversions
         pkt_a.compact_48bit_handle = true;
         let wire_a_short = pkt_a.render();
         let parsed_a_short =
             AhtlWirePacketV1::parse(&wire_a_short).expect("parse 48-bit Profile A");
         assert!(parsed_a_short.compact_48bit_handle);
+        assert_eq!(parsed_a_short.cas_handle_string(), id.to_short_handle());
 
-        // Down-project back to Profile B
-        let down_b = parsed_a.to_profile_b(
+        let down_b_short = parsed_a_short.to_profile_b(
             PacketKind::CodeDelta,
             "src/alloc.rs",
             Some((1, 90)),
             200,
             0x03,
         );
-        assert_eq!(down_b.clauses, pkt_b.clauses);
-        assert_eq!(down_b.deref_id, Some(id));
+        assert!(down_b_short.compact_48bit_handle);
+        assert_eq!(
+            down_b_short.deref_handle_string().as_deref(),
+            Some(id.to_short_handle().as_str())
+        );
+        let wire_b_short = down_b_short.render();
+        assert!(wire_b_short.contains(&format!("↦{}⋮Ψ:", id.to_short_handle())));
+        let reparsed_b_short = AhtlPacket::parse(&wire_b_short).expect("parse 48-bit Profile B");
+        assert!(reparsed_b_short.compact_48bit_handle);
+        let re_promoted_a = reparsed_b_short
+            .to_profile_a(fc_hex, hv_hex, spectrum)
+            .unwrap();
+        assert!(re_promoted_a.compact_48bit_handle);
 
-        // Multi-packet AhtlStream with EpochHeader + Profile A + Profile B
-        let stream = AhtlStream {
-            header: Some(EpochHeader {
-                epoch_id: 0x0007,
-                merkle_root_hex8: "8f01a2c4".into(),
-                turn_start: 42,
-            }),
-            packets: vec![
-                WirePacket::ProfileA(parsed_a),
-                WirePacket::ProfileB(pkt_b.clone()),
-            ],
-        };
-        let rendered_stream = stream.render();
-        let parsed_stream = AhtlStream::parse_stream(&rendered_stream).expect("valid stream");
-        assert_eq!(parsed_stream, stream);
+        // Multi-packet AhtlStream with EpochHeader (`τ=`, `nodes=`, `folded=`) + Profile A + Profile B
+        for count_kind in [
+            EpochCountKind::TurnStart(42),
+            EpochCountKind::Nodes(8),
+            EpochCountKind::Folded(2),
+        ] {
+            let stream = AhtlStream {
+                header: Some(EpochHeader {
+                    epoch_id: 0x0007,
+                    merkle_root_hex: "8f01a2c4".into(),
+                    count_kind,
+                }),
+                packets: vec![
+                    WirePacket::ProfileA(parsed_a.clone()),
+                    WirePacket::ProfileB(pkt_b.clone()),
+                ],
+            };
+            let rendered_stream = stream.render();
+            let parsed_stream = AhtlStream::parse_stream(&rendered_stream).expect("valid stream");
+            assert_eq!(parsed_stream, stream);
+        }
 
-        // Error branches for Profile A and EpochHeader
+        // Error branches for Profile A, EpochHeader, and AhtlStream
+        let mut pkt_no_deref = pkt_b.clone();
+        pkt_no_deref.deref_id = None;
+        assert!(matches!(
+            pkt_no_deref.to_profile_a(fc_hex, hv_hex, spectrum),
+            Err(CodecError::MalformedHandle(_))
+        ));
         assert_eq!(
             pkt_b.to_profile_a("bad_fc", hv_hex, spectrum),
             Err(CodecError::MalformedFractalCoord)
@@ -868,11 +1010,45 @@ mod tests {
             Err(CodecError::UnknownPacketKind)
         );
         assert_eq!(
+            AhtlWirePacketV1::parse(
+                "⟦AHTL v1│#icx:0123456789abcdef│bad_fc│hv:0123456789abcdef│x│s⟧"
+            ),
+            Err(CodecError::MalformedFractalCoord)
+        );
+        assert_eq!(
+            AhtlWirePacketV1::parse(&format!(
+                "⟦AHTL v1│#icx:0123456789abcdef│fc:{fc_hex}│bad_hv│x│s⟧"
+            )),
+            Err(CodecError::MalformedHdcDigest)
+        );
+        assert_eq!(
+            AhtlWirePacketV1::parse(&format!(
+                "⟦AHTL v1│#icx:0123456789abcdef│fc:{fc_hex}│hv:{hv_hex}│bad_braille│s⟧"
+            )),
+            Err(CodecError::MalformedBrailleSketch)
+        );
+        assert_eq!(
             EpochHeader::parse("⟪ICX:v1│ep=zzzz│root=8f01a2c4│τ=1⟫"),
             Err(CodecError::MalformedEpochHeader)
         );
         assert_eq!(
+            EpochHeader::parse("⟪ICX:v1│ep=0001│root=bad│τ=1⟫"),
+            Err(CodecError::MalformedEpochHeader)
+        );
+        assert_eq!(
+            EpochHeader::parse("⟪ICX:v1│ep=0001│root=8f01a2c4│unknown=1⟫"),
+            Err(CodecError::MalformedEpochHeader)
+        );
+        assert_eq!(
+            EpochHeader::parse("⟪ICX:v1│ep=0001│root=8f01a2c4│τ=1│extra⟫"),
+            Err(CodecError::MalformedEpochHeader)
+        );
+        assert_eq!(
             AhtlStream::parse_stream("⟪ICX:v1│ep=0001│root=8f01a2c4│τ=1⟫"),
+            Err(CodecError::MissingDelimiters)
+        );
+        assert_eq!(
+            AhtlStream::parse_stream("garbage⟦Ψ:tool↦#icx:0123456789abcdef⟧"),
             Err(CodecError::MissingDelimiters)
         );
     }

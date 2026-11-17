@@ -359,6 +359,30 @@ fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, S
     Ok(out)
 }
 
+fn render_ingested_profile(
+    mmu: &InfinityContextMmu,
+    compressed_ahtl: String,
+    profile_a: bool,
+) -> Result<String, String> {
+    if !profile_a {
+        return Ok(compressed_ahtl);
+    }
+    let pkt_b = AhtlPacket::parse(&compressed_ahtl).map_err(|e| e.to_string())?;
+    let entry = mmu
+        .hdc_index
+        .latest_entry()
+        .ok_or_else(|| "missing indexed HDC entry after ingest".to_owned())?;
+    let fc_hex = entry.fractal_coord.encode_fc_hex64();
+    let pkt_a = pkt_b
+        .to_profile_a(
+            &fc_hex,
+            &entry.hv.encode_hv_hex16(),
+            entry.hv.spectral_bands_64(),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(pkt_a.render())
+}
+
 fn encode_payload_into_workspace_profile(
     subject: &str,
     content: &str,
@@ -368,16 +392,7 @@ fn encode_payload_into_workspace_profile(
     if !icx_dir.exists() {
         let mut mmu = InfinityContextMmu::default();
         let res = mmu.ingest_payload(AgentKind::GenericMcp, subject, content, false);
-        if profile_a {
-            let pkt_b = AhtlPacket::parse(&res.compressed_ahtl).map_err(|e| e.to_string())?;
-            let fc_hex = mmu.hdc_index.current_trajectory().encode_fc_hex64();
-            let hv = Hypervector::encode_text(content);
-            let pkt_a = pkt_b
-                .to_profile_a(&fc_hex, &hv.encode_hv_hex16(), hv.spectral_bands_64())
-                .map_err(|e| e.to_string())?;
-            return Ok(pkt_a.render());
-        }
-        return Ok(res.compressed_ahtl);
+        return render_ingested_profile(&mmu, res.compressed_ahtl, profile_a);
     }
 
     let _guard = acquire_workspace_lock(icx_dir)?;
@@ -395,16 +410,7 @@ fn encode_payload_into_workspace_profile(
     }
     let res = mmu.ingest_payload(AgentKind::GenericMcp, subject, content, false);
     mmu.cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
-    if profile_a {
-        let pkt_b = AhtlPacket::parse(&res.compressed_ahtl).map_err(|e| e.to_string())?;
-        let fc_hex = mmu.hdc_index.current_trajectory().encode_fc_hex64();
-        let hv = Hypervector::encode_text(content);
-        let pkt_a = pkt_b
-            .to_profile_a(&fc_hex, &hv.encode_hv_hex16(), hv.spectral_bands_64())
-            .map_err(|e| e.to_string())?;
-        return Ok(pkt_a.render());
-    }
-    Ok(res.compressed_ahtl)
+    render_ingested_profile(&mmu, res.compressed_ahtl, profile_a)
 }
 
 #[cfg(test)]
@@ -430,7 +436,15 @@ fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
                 i += 2;
             }
             "--profile" if i + 1 < args.len() => {
-                profile_a = args[i + 1].eq_ignore_ascii_case("a");
+                match args[i + 1].to_ascii_lowercase().as_str() {
+                    "a" => profile_a = true,
+                    "b" => profile_a = false,
+                    other => {
+                        return Err(format!(
+                            "icx encode-ahtl error: invalid --profile `{other}` (expected `a` or `b`)"
+                        ));
+                    }
+                }
                 i += 2;
             }
             _ => i += 1,
@@ -458,7 +472,7 @@ fn run_decode_ahtl(args: &[String]) -> Result<(), String> {
             println!("Kind:       {:?} ({})", pkt.kind, pkt.kind.glyph());
             println!("Subject:    {}", pkt.subject);
             println!("Line Range: {:?}", pkt.line_range);
-            println!("Deref ID:   {:?}", pkt.deref_id.map(|id| id.to_string()));
+            println!("Deref ID:   {:?}", pkt.deref_handle_string());
             println!("Slice Hint: {:?}", pkt.slice_hint);
             println!("Hologram:   {:02x?}", pkt.hologram_bytes);
             println!("Clauses ({}):", pkt.clauses.len());
@@ -468,7 +482,7 @@ fn run_decode_ahtl(args: &[String]) -> Result<(), String> {
         }
         WirePacket::ProfileA(pkt) => {
             println!("Profile:    A (Canonical AHTL v1 6-Section Wire)");
-            println!("CAS Handle: {}", pkt.cas_handle);
+            println!("CAS Handle: {}", pkt.cas_handle_string());
             println!("Fractal FC: fc:{}", pkt.fractal_coord_hex);
             println!("HDC Digest: hv:{}", pkt.hdc_digest_hex);
             println!("Spectrum:   64 Braille bands (512 bits)");
@@ -910,11 +924,27 @@ mod tests {
         run_encode_ahtl(&[
             sample_file.to_string_lossy().into_owned(),
             "--dir".into(),
-            dir_arg,
+            dir_arg.clone(),
             "--profile".into(),
             "a".into(),
         ])
         .unwrap();
+        run_encode_ahtl(&[
+            sample_file.to_string_lossy().into_owned(),
+            "--dir".into(),
+            dir_arg,
+            "--profile".into(),
+            "b".into(),
+        ])
+        .unwrap();
+        assert!(
+            run_encode_ahtl(&[
+                sample_file.to_string_lossy().into_owned(),
+                "--profile".into(),
+                "invalid_profile".into(),
+            ])
+            .is_err()
+        );
         run_decode_ahtl(&[wire_a]).unwrap();
 
         let _ = fs::remove_dir_all(&tmp_dir);

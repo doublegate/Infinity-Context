@@ -69,6 +69,11 @@ impl HdcAssociativeIndex {
         self.current_trajectory
     }
 
+    /// Returns the most recently indexed entry, if any.
+    pub fn latest_entry(&self) -> Option<&IndexedEntry> {
+        self.entries.last()
+    }
+
     /// Encodes and indexes an event, advancing the Fractal trajectory and Titans Surprise Gate.
     pub fn observe_event(
         &mut self,

@@ -8,8 +8,8 @@ pub mod redact;
 pub mod skeleton;
 
 pub use ahtl::{
-    AhtlClause, AhtlPacket, AhtlStream, AhtlWirePacketV1, ClauseOp, CodecError, EpochHeader,
-    PacketKind, WirePacket,
+    AhtlClause, AhtlPacket, AhtlStream, AhtlWirePacketV1, ClauseOp, CodecError, EpochCountKind,
+    EpochHeader, PacketKind, WirePacket,
 };
 pub use braille::{
     ChannelBHologram, FLAG_HAS_CAUSAL, FLAG_HAS_DIFF, FLAG_HAS_ERROR, FLAG_HAS_PANIC,
@@ -24,21 +24,22 @@ pub use skeleton::StructuralSkeletonizer;
 /// Normative trait contract for the Alien Holographic Token Lattice (`AHTL`) Codec
 /// (`docs/interfaces.md` §2).
 pub trait ContextCodec: Send + Sync {
-    /// Sanitizes secrets, skeletonizes the payload, and compiles an `AhtlPacket`.
+    /// Redacts secrets, skeletonizes `raw_text`, and compiles an AHTL Holographic Packet.
     fn compress_to_packet(
         &self,
+        kind: PacketKind,
         subject: &str,
         raw_text: &str,
         deref_id: Option<icx_core::ArtifactId>,
-        hologram_bytes: [u8; 8],
+        hologram: [u8; 8],
     ) -> AhtlPacket;
 
-    /// Renders a structured `AhtlPacket` into its canonical wire string.
-    fn render_packet(&self, pkt: &AhtlPacket) -> String {
-        pkt.render()
+    /// Renders an `AhtlPacket` into its canonical non-human BPE-aligned string representation.
+    fn render_packet(&self, packet: &AhtlPacket) -> String {
+        packet.render()
     }
 
-    /// Parses a wire string back into a structured `AhtlPacket`.
+    /// Parses a rendered AHTL packet back into its structured representation.
     fn parse_packet(&self, encoded: &str) -> Result<AhtlPacket, CodecError> {
         AhtlPacket::parse(encoded)
     }
@@ -47,12 +48,15 @@ pub trait ContextCodec: Send + Sync {
 impl ContextCodec for StructuralSkeletonizer {
     fn compress_to_packet(
         &self,
+        kind: PacketKind,
         subject: &str,
         raw_text: &str,
         deref_id: Option<icx_core::ArtifactId>,
-        hologram_bytes: [u8; 8],
+        hologram: [u8; 8],
     ) -> AhtlPacket {
-        Self::compress_to_packet(subject, raw_text, deref_id, hologram_bytes)
+        let mut pkt = Self::compress_to_packet(subject, raw_text, deref_id, hologram);
+        pkt.kind = kind;
+        pkt
     }
 }
 
@@ -64,7 +68,13 @@ mod tests {
     fn context_codec_trait_compresses_renders_and_parses() {
         let codec = StructuralSkeletonizer;
         let (id, _) = icx_core::ArtifactId::hash_bytes(b"pub fn run() {}");
-        let pkt = codec.compress_to_packet("src/lib.rs", "pub fn run() {}", Some(id), [0x11; 8]);
+        let pkt = codec.compress_to_packet(
+            PacketKind::CodeDelta,
+            "src/lib.rs",
+            "pub fn run() {}",
+            Some(id),
+            [0x11; 8],
+        );
         let rendered = codec.render_packet(&pkt);
         let parsed = codec.parse_packet(&rendered).expect("valid packet");
         assert_eq!(parsed, pkt);
