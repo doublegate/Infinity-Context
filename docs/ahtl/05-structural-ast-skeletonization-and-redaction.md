@@ -95,7 +95,7 @@ When `is_functional` is `true` (e.g., `pass` or `fail` counts on `cargo_test`), 
 
 ### 3.1 Security Mandate (Module 60 Compliance)
 
-Because `CasStore` is an immutable, content-addressed Merkle store and `/dev/shm` is readable by local sibling agent processes under the same UID, **an unredacted credential must never reach `CasStore::put_bytes`, `AhtlPacket::render`, or `SeqlockTelemetryBus::publish`**. `SecretRedactor::sanitize` is therefore invoked at the very first line of both `InfinityContextMmu::ingest_payload` and `StructuralSkeletonizer::compress_to_packet`.
+Because `CasStore` is an immutable, content-addressed Merkle store and `/dev/shm` is readable by local sibling agent processes under the same UID, **matched credentials and PEM private keys must be scrubbed before `CasStore::put_bytes`, `AhtlPacket::render`, or `SeqlockTelemetryBus::publish`**. `SecretRedactor::sanitize` is therefore invoked at the very first line of both `InfinityContextMmu::ingest_payload` and `StructuralSkeletonizer::compress_to_packet`. In `v0.1.0`, Tiers 0, 1, and 2 below are active in `crates/icx-codec/src/redact.rs`, while Tier 3 (entropy-based unprefixed secret detection) is specified as the Phase 2 (`Sprint 2.3`, `T-23-001`) hardening gate.
 
 ### 3.2 The Three Redaction & Escaping Tiers
 
@@ -125,12 +125,15 @@ Scans every line for known credential prefixes followed by $\ge 8$ token charact
 | Slack Bot & User Tokens | `xoxb-...`, `xoxp-...` | `[REDACTED:SLACK_TOKEN]` |
 | HTTP Authorization Bearer / JWT | `[Bb]earer\s+\S{8,}` | `Bearer [REDACTED:BEARER]` |
 
-#### Tier 3 — High-Entropy Secret Detection Gate ($H(S) > 4.35\text{ bits/char}$)
-For unprefixed hexadecimal/Base64 secrets assigned to suspicious fields, the Shannon character entropy over token $S$ of length $|S| \ge 24$ is evaluated as:
+#### Tier 3 — High-Entropy & Hex Secret Detection Gate (Phase 2 `T-23-001` Blueprint)
+
+For unprefixed Base64 or hexadecimal secrets assigned to key-value fields (`key=value` or `"key": "value"`) whose key name is not in the Tier 1 suffix list, the Phase 2 `T-23-001` extension evaluates the Shannon character entropy over token $S$:
 
 $$H(S) = -\sum_{c \in \Sigma(S)} \frac{\operatorname{count}(c)}{|S|} \log_2\!\left(\frac{\operatorname{count}(c)}{|S|}\right) \quad \text{bits/char}$$
 
-Random 32-byte Base64/hex secrets exhibit $H(S) \in [4.40, 5.95]\text{ bits/char}$, whereas structured code identifiers (`camelCase` / `snake_case` paths) exhibit $H(S) \in [2.80, 4.10]\text{ bits/char}$. Any unquoted secret token exceeding $H(S) > 4.35\text{ bits/char}$ inside an assignment context is replaced non-invertibly prior to CAS ingestion.
+Because a hexadecimal string ($\Sigma \subseteq \texttt{0-9a-fA-F}$) has a maximum possible entropy of $\log_2(16) = 4.00\text{ bits/char}$, Tier 3 applies alphabet-specific thresholds:
+- **Base64 / Mixed Alphanumeric Tokens ($|S| \ge 24$, non-hex characters present):** Redacted when $H(S) > 4.35\text{ bits/char}$ (random 32-byte Base64 secrets exhibit $H(S) \in [4.40, 5.95]\text{ bits/char}$, whereas structured `camelCase` / `snake_case` identifiers exhibit $H(S) \in [2.80, 4.10]\text{ bits/char}$).
+- **Hexadecimal Tokens ($|S| \ge 32$, all characters in `0-9a-fA-F`, not prefixed by `#icx:`, `fc:`, `hv:`, or `root=`):** Redacted when $H(S) > 3.50\text{ bits/char}$ inside an assignment context before CAS ingestion.
 
 ### 3.3 Cryptographic Non-Invertibility Proof
 

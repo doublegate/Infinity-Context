@@ -15,17 +15,19 @@ SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commerci
 
 The **Alien Holographic Token Lattice (`AHTL v1.0`)** defines a deterministic, non-human machine dialect for serializing compressed execution context into UTF-8 strings consumed directly by Transformer self-attention layers and cross-agent shared-memory buses.
 
-To balance **self-contained archival completeness** (where a single wire packet carries its full 256-bit Fractal coordinate, 64-bit HDC digest, and 512-bit 64-glyph Braille spectral sketch) with **ultra-compact inline window density** (where active-window stubs pack a 64-bit 8-glyph Braille hologram alongside relational clauses), `AHTL v1.0` specifies two normative, bijectively interoperable packet profiles:
+To balance **self-contained archival completeness** (where a single wire packet carries its full 256-bit Fractal coordinate, 64-bit HDC digest, and 512-bit 64-glyph Braille spectral sketch) with **ultra-compact inline window density** (where active-window stubs pack a 64-bit 8-glyph Braille hologram alongside relational clauses), `AHTL v1.0` specifies two complementary packet profiles linked by a deterministic CAS/index conversion contract:
+- **Down-Projection (`Profile A -> Profile B`):** Projects the 256-bit `FractalCoord` orthant sign bits (`16` bits) and 64-bit `hv_digest` top word (`32` bits) alongside the 8-bit `TitansSurprise` and 8-bit `RetentionTier` into the 8-byte (`64-bit`) Profile B hologram (`hologram_bytes: [u8; 8]`).
+- **CAS-Backed Promotion (`Profile B -> Profile A`):** Because Profile B omits the full 256-bit `FractalCoord` and 512-bit `Braille-64` sketch to save tokens in the active prompt window, promoting a Profile B stub back to Profile A resolves `#icx:<hex>` against `CasStore` and `HdcAssociativeIndex` to re-attach the full `FractalCoord` and 64-band `Hypervector` sketch.
 
-### 1.1 Profile A — Canonical 5-Field Extended Wire Packet (`AhtlWirePacketV1`)
+### 1.1 Profile A — Canonical 5-Field Extended Wire Packet (`AhtlWirePacketV1` — Target Extension Blueprint)
 
 ```text
 ⟦AHTL v1│#icx:<12-hex>│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧
 ```
 
-Used for standalone archival records, cross-node wire replication, cold-index snapshots, and full spectral inspection. Every packet is delimited by `U+27E6` (`⟦`) and `U+27E7` (`⟧`), with fields separated by `U+2502` (`│`, `BOX DRAWINGS LIGHT VERTICAL`).
+Specified as the Phase 1/2 extended wire envelope for standalone archival records, cross-node wire replication, cold-index snapshots, and full spectral inspection. Every packet is delimited by `U+27E6` (`⟦`) and `U+27E7` (`⟧`), with fields separated by `U+2502` (`│`, `BOX DRAWINGS LIGHT VERTICAL`).
 
-### 1.2 Profile B — Compact Dual-Channel Inline Packet (`AhtlPacket` in `crates/icx-codec/src/ahtl.rs`)
+### 1.2 Profile B — Compact Dual-Channel Inline Packet (`AhtlPacket` — Active in `crates/icx-codec/src/ahtl.rs`)
 
 ```text
 ⟦<Kind>:<Subject>#L<Start>-<End>⊢<ClauseList>↦#icx:<16-hex>⋮Ψ:<Braille-8>⟧
@@ -98,7 +100,7 @@ PacketKind         = "Δ"   (* U+0394: Code / AST / File read or mutation *)
                    | "Θ"   (* U+0398: Cross-agent /dev/shm telepathy broadcast *)
                    | "Φ";  (* U+03A6: Folded sub-trajectory branch commit *)
 
-Subject            = CompactToken, [ "@", CompactToken ];
+Subject            = SubjectToken, [ "@", SubjectToken ];
 LineRange          = UnsignedInt, "-", UnsignedInt;
 
 ClauseList         = Clause, { "⋮", Clause };
@@ -139,7 +141,10 @@ Digit              = "0" .. "9";
 AgentId            = "claude-code" | "codex" | "agy" | "hermes"
                    | "gemini-cli" | "open-code" | "cursor" | "mcp";
 
-(* Any printable UTF-8 scalar except reserved AHTL structural delimiters *)
+(* Any printable UTF-8 scalar except reserved AHTL structural delimiters;
+   in Subject tokens, literal "#L" is reserved for LineRange and escaped as "%23L" *)
+SubjectToken       = SafeSubjectChar, { SafeSubjectChar };
+SafeSubjectChar    = ? Any SafeChar where the two-byte sequence "#L" does not occur ?;
 CompactToken       = SafeChar, { SafeChar };
 SafeChar           = ? Any UTF-8 scalar value EXCEPT:
                        U+27E6 '⟦', U+27E7 '⟧', U+27EA '⟪', U+27EB '⟫',
@@ -185,7 +190,7 @@ Every structural delimiter and operator in `AHTL v1.0` is selected from Basic Mu
 
 ### 4.1 Profile A: Canonical 5-Field Extended Wire Packet Breakdown
 
-A Profile A packet has a fixed 5-field header/hologram prefix of **320 UTF-8 bytes** (`167` Unicode scalar values) when using a 48-bit `#icx:<12-hex>` handle (or **324 UTF-8 bytes** / `171` chars with a 64-bit `#icx:<16-hex>` handle), followed by the variable-length `<Skeleton>` field and closing `⟧`:
+A Profile A packet has a fixed 5-field header/hologram prefix of **320 UTF-8 bytes** (`180` Unicode scalar values: `9 + 18 + 68 + 20 + 65`) when using a 48-bit `#icx:<12-hex>` handle (or **324 UTF-8 bytes** / `184` Unicode scalar values with a 64-bit `#icx:<16-hex>` handle), followed by the variable-length `<Skeleton>` field and closing `⟧`:
 
 | Field Index & Name | Wire Syntax Pattern | Raw Binary Information | Unicode Codepoints | UTF-8 Bytes | `o200k_base` (GPT-4o / o3) | `cl100k_base` (GPT-4) | Claude 3.5 / 4 BPE |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -195,7 +200,7 @@ A Profile A packet has a fixed 5-field header/hologram prefix of **320 UTF-8 byt
 | **3. HDC Spectral Digest** | `hv:<16-hex>│` | 64 bits (`u64` parity) | 20 chars | 22 B (`3+16+3`) | 7–8 tok | 7–9 tok | 7–8 tok |
 | **4. Braille-64 Sketch** | `<64 Braille chars>│` | 512 bits (`[u8; 64]`) | 65 chars | 195 B (`192+3`) | 32–64 tok | 48–64 tok | 32–64 tok |
 | **5. AST Skeleton & Close** | `<Skeleton>⟧` | Variable (`16..256 B`) | $L_{\text{skel}} + 1$ chars | $B_{\text{skel}} + 3\text{ B}$ | 8–42 tok | 9–45 tok | 8–40 tok |
-| **Total Profile A Packet** | **`⟦AHTL v1│...⟧`** | **880+ bits + AST** | **180+ chars** | **336–580 B** | **79–149 tok** | **97–156 tok** | **78–147 tok** |
+| **Total Profile A Packet** | **`⟦AHTL v1│...⟧`** | **880+ bits + AST** | **181+ chars** | **336–580 B** | **79–149 tok** | **97–156 tok** | **78–147 tok** |
 
 ### 4.2 Profile B: Compact Dual-Channel Inline Packet Breakdown
 
@@ -224,7 +229,7 @@ Because `Subject` paths and `Clause` values in Profile B may contain colons (`:`
 1. **State `S0` (Outer Envelope Verification):**
    - Trim leading/trailing ASCII whitespace.
    - Verify and strip prefix `⟦` (`U+27E6`, bytes `E2 9F A6`) and suffix `⟧` (`U+27E7`, bytes `E2 9F A7`). If either is absent, abort immediately with `Err(CodecError::MissingDelimiters)`.
-   - Branch on profile header: if the inner slice begins with `"AHTL v1│"`, dispatch to `parse_profile_a` (splitting on `│` into 6 segments); otherwise dispatch to `parse_profile_b`.
+   - In `v0.1.0`, `AhtlPacket::parse` directly parses Profile B (`parse_profile_b` below). In the Phase 2 Profile A extension (`AhtlWirePacketV1::parse`), if the inner slice begins with `"AHTL v1│"`, it dispatches to the 5-field Profile A parser (splitting on `│` into 5 fields).
 2. **State `S1` (Braille Hologram Extraction):**
    - In Profile B, execute `inner.rsplit_once("⋮Ψ:")`. If absent, return `Err(CodecError::MalformedBrailleSketch)`.
    - Pass the trailing hologram slice to `decode_braille_sketch`, verifying that every codepoint $c$ satisfies $\text{0x2800} \le c \le \text{0x28FF}$ and that the exact glyph count is $8$ (Profile B) or $64$ (Profile A).
@@ -269,7 +274,7 @@ pub enum CodecError {
 
 ### 6.1 Test Vector 1: Profile B CodeDelta Packet (`crates/icx-codec/src/ahtl.rs`)
 - **Input Payload Bytes:** `b"raw_payload_bytes"` (17 bytes)
-- **Full 256-Bit BLAKE3 Digest:** `7bf8239fb7c504f1a904d2c8e11b6a7039e20f14c8d1e2b3a4f5061728394a5b` *(first 8 big-endian bytes -> `ArtifactId`)*
+- **Full 256-Bit BLAKE3 Digest:** `4916667c9b4d49f54bf7642937f0606b65a3fa70b0f6b647d2f07450a6955d9f` *(first 8 big-endian bytes -> `ArtifactId(0x4916667c9b4d49f5)`)*
 - **Hologram Bytes (`[u8; 8]`):** `[0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0]`
 - **Mapped Braille-8 Sketch (`U+2800 + b`):**
   - `0x12` $\to$ `U+2812` (`⠒`)

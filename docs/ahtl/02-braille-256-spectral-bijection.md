@@ -112,19 +112,18 @@ let hologram_bytes = [
 | `B[6]` | Glyph `6` | 8 bits (`u8`) | $\lfloor \operatorname{clamp}(S_t, 0.0, 1.0) \times 255.0 \rfloor$ | Quantized Titans Surprise momentum score |
 | `B[7]` | Glyph `7` | 8 bits (`u8`) | `RetentionTier` discriminant (`0 = PinHighResolution`, `1 = FoldAhtlStub`, `2 = ColdBeacon`) | Virtual memory retention tier flag |
 
-### 4.2 Profile A Extended 512-Bit (`64-Byte`) Spectral Band Sketch (`Braille-64`)
+### 4.2 Profile A Extended 512-Bit (`64-Byte`) Locality-Preserving Spectral Sketch (`Braille-64` Blueprint)
 
-For Profile A archival packets (`⟦AHTL v1│#icx:<12-hex>│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧`), `AHTL v1.0` projects both the 10,240-bit `Hypervector` (`1,280` bytes = `64` bands of `20` bytes / `160` bits each) and sliding 4-gram token features into a **64-byte (`512-bit`) Spectral Sketch** rendered as **64 Braille glyphs (`192` UTF-8 bytes)**:
+For Profile A archival packets (`⟦AHTL v1│#icx:<12-hex>│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧`), `AHTL v1.0` specifies a locality-preserving projection from the 10,240-bit `Hypervector` (`10,240` bits = `512` disjoint sub-blocks of `20` bits each, grouped into `64` bands of `8` sub-blocks) into a **64-byte (`512-bit`) Spectral Sketch** rendered as **64 Braille glyphs (`192` UTF-8 bytes)**:
 
-1. **Sliding 4-Gram Feature Extraction:**
-   Given the sanitized UTF-8 byte stream $S = (s_0, s_1, \dots, s_{L-1})$, extract all overlapping 4-byte windows $g_t = \text{u32::from\_le\_bytes}(S[t..t+4])$ for $0 \le t \le L - 4$.
-2. **64-Band Spectral Projection:**
-   Partition the 10,240-bit composite `Hypervector` ($160 \times 64$-bit words $= 1,280$ bytes) into 64 contiguous spectral bands of 20 bytes (`160` bits) each. For band $m \in \{0, \dots, 63\}$, fold the 20 bytes via rotational XOR parity mixed with the MinHash/SimHash accumulator of 4-grams hashing to band $m$:
-   $$\text{BandByte}[m] = \bigoplus_{j=0}^{19} \operatorname{rotl}_8\!\big(\text{HV\_Bytes}[20m + j], \; (j \bmod 8)\big) \quad \in [0, 255]$$
-3. **Sub-Linear Spectral Hamming Pre-Filter:**
-   Given two 64-byte spectral sketches $P, Q \in \mathbb{Z}_{256}^{64}$ (decoded from 64 Braille glyphs in 64 subtraction instructions), their 512-bit spectral Hamming distance is evaluated in **8 `u64` XOR + `POPCNT` instructions (`< 2.5 ns`)**:
+1. **Disjoint 20-Bit Sub-Block Majority Projection (1-Lipschitz Locality Invariant):**
+   Unlike XOR parity folding (where flipping 1 bit in each band can invert all 64 bytes), each of the 512 output bits $S_{8m + b}$ ($m \in \{0, \dots, 63\}, b \in \{0, \dots, 7\}$) is computed as the majority vote over the corresponding 20-bit contiguous slice $B_{8m+b}$ of the 10,240-bit `Hypervector`:
+   $$S_{8m + b} = \mathbb{I}\!\left(\operatorname{popcnt}\big(B_{8m + b}\big) \ge 10\right), \qquad \text{BandByte}[m] = \sum_{b=0}^{7} S_{8m + b} \cdot 2^b \in [0, 255]$$
+   Because each 20-bit sub-block contributes to exactly one output bit, flipping $k$ bits in the 10,240-bit `Hypervector` can flip at most $k$ bits in the 512-bit sketch ($d_{\text{spectral}}(P, Q) \le d_H(A, B)$).
+2. **Soft Spectral Reranking Signal (No Hard Candidate Pruning):**
+   Given two 64-byte spectral sketches $P, Q \in \mathbb{Z}_{256}^{64}$, their 512-bit spectral Hamming distance is evaluated in **8 `u64` XOR + `POPCNT` instructions (`< 2.5 ns`)**:
    $$d_{\text{spectral}}(P, Q) = \sum_{w=0}^{7} \operatorname{popcnt}\big(P_{u64}[w] \oplus Q_{u64}[w]\big) \in [0, 512]$$
-   Any candidate entry with $d_{\text{spectral}}(P, Q) > 230$ is pruned immediately without touching the 1,280-byte `Hypervector` cache lines.
+   To guarantee zero false-negative candidate drops, `HdcAssociativeIndex::query_associative` never hard-prunes candidates on `d_spectral` alone; instead, the full 10,240-bit `Hypervector::similarity` scan (`< 25 µs` over 10,000 nodes) is always evaluated as the authoritative associative metric, while the Braille sketch provides inline visual and attention-head anchoring.
 
 ---
 

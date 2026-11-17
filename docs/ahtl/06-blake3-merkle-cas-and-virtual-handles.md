@@ -13,7 +13,7 @@ SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commerci
 
 ## 1. Overview: Lossless Virtual Memory via Content-Addressed Merkle Trees
 
-The foundational guarantee of **Infinity-Context (`icx`)** is **100% Lossless Context Management (`LCM`, `arXiv:2605.04050`)**: compressing a 30 KB compiler log or source file into a 39-token `AHTL v1.0` stub never discards a single byte of the underlying artifact. Every `AHTL` packet embeds a cryptographic virtual memory pointer (`#icx:<12-hex>` or `#icx:<16-hex>`) that resolves deterministically in `CasStore` to the exact byte stream or 1-based line slice in **$< 50\,\mu\text{s}$**.
+The foundational guarantee of **Infinity-Context (`icx`)** is **100% Lossless Context Management (`LCM`, `arXiv:2605.04050`) over sanitized artifacts**: compressing a 30 KB compiler log or source file into a 39-token `AHTL v1.0` stub never discards a single byte of the post-redaction (`SecretRedactor::sanitize`) artifact. Every `AHTL` packet embeds a cryptographic virtual memory pointer (`#icx:<16-hex>`, or `#icx:<12-hex>` in the Phase 1 Sprint 1.1 extension) that resolves deterministically in `CasStore` to the exact sanitized byte stream or 1-based line slice in **$< 50\,\mu\text{s}$**.
 
 To achieve multi-gigabyte-per-second ingestion throughput with sub-file deduplication and fail-closed tamper detection, `icx-core` combines:
 1. **Gear-Hash Content-Defined Chunking (`FastCDC`)** to split large artifacts along content-determined boundaries (`2 KiB..64 KiB`).
@@ -104,8 +104,9 @@ In addition to BLAKE3's internal hardware flags (`CHUNK_START = 0x01`, `CHUNK_EN
 ### 4.1 Handle Formats & Prefix Resolution
 
 An `ArtifactId` (`crates/icx-core/src/lib.rs:18-61`) extracts the leading big-endian bits of a 256-bit `Blake3Digest`:
-- **Profile B & Internal `u64` Key (`#icx:<16-hex>`, 64 bits):** `u64::from_be_bytes(digest[0..8])`, formatted as `#icx:{:016x}` (21 ASCII characters).
-- **Profile A Compact Handle (`#icx:<12-hex>`, 48 bits):** The top 48 bits (`digest[0..6]`, formatted as `#icx:{:012x}`, 17 ASCII characters), which resolves in $O(\log N)$ time via `BTreeMap::range(prefix_min..=prefix_max)` over `CasStore::artifacts`.
+- **Profile B & Active Interoperable `u64` Key (`#icx:<16-hex>`, 64 bits):** `u64::from_be_bytes(digest[0..8])`, formatted as `#icx:{:016x}` (21 ASCII characters). This is the active handle format implemented in `v0.1.0` across `crates/icx-core/src/lib.rs` and `crates/icx-adapters/src/mcp.rs`.
+- **Profile A Compact Handle (`#icx:<12-hex>`, 48 bits — Not Implemented in `v0.1.0`; Phase 1 Sprint 1.1 Target Extension):** The top 48 bits (`digest[0..6]`, formatted as `#icx:{:012x}`, 17 ASCII characters; currently rejected by `v0.1.0` `ArtifactId::from_str` and `McpPagerServer`), designed to resolve in $O(\log N)$ time via `CasStore::resolve_handle` using `BTreeMap::range(prefix_min..=prefix_max)` over `CasStore::artifacts`.
+- **Normative Prefix-Collision & Ambiguity Rule:** When resolving a 48-bit `#icx:<12-hex>` prefix over `BTreeMap::range(prefix_min..=prefix_max)`, if more than one stored `ArtifactId` falls within `[prefix_min, prefix_max]`, lookup **must fail closed with `Err(IcxError::AmbiguousHandlePrefix)`** rather than selecting an arbitrary match, requiring the caller to disambiguate with the full 64-bit `#icx:<16-hex>` handle.
 
 ### 4.2 Birthday-Bound Collision Analysis & Full-256-Bit Verification Gate
 

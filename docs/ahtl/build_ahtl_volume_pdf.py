@@ -13,7 +13,6 @@ import weasyprint
 
 AHTL_DIR = Path(__file__).resolve().parent
 OUT_PDF = AHTL_DIR / "AHTL_v1_Complete_Technical_Specification_Volume.pdf"
-OUT_HTML = Path("/tmp/ahtl_v1_master_volume.html")
 
 CHAPTER_FILES = [
     ("EXEC-00", "Executive Overview & Master Architecture", "README.md", "#00E5FF"),
@@ -1278,10 +1277,7 @@ def main() -> None:
 </body>
 </html>
 """
-    OUT_HTML.write_text(full_html, encoding="utf-8")
-    print(f"Wrote intermediate HTML to {OUT_HTML} ({len(full_html)} bytes)")
-
-    doc = weasyprint.HTML(filename=str(OUT_HTML), base_url=str(AHTL_DIR) + "/")
+    doc = weasyprint.HTML(string=full_html, base_url=str(AHTL_DIR) + "/")
     doc.write_pdf(str(OUT_PDF))
     print(f"Successfully generated {OUT_PDF} ({OUT_PDF.stat().st_size:,} bytes)")
 

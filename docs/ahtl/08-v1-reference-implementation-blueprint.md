@@ -34,9 +34,9 @@ The **Infinity-Context (`icx`)** workspace is structured as an 8-crate strictly 
 
 ## 2. Canonical Rust Data Structures & Memory Layout Blueprint
 
-### 2.1 Profile A (`AhtlWirePacketV1`) & Profile B (`AhtlPacket`) Unified Codec
+### 2.1 Profile A (`AhtlWirePacketV1` Extension Blueprint) & Profile B (`AhtlPacket` Active Workspace Codec)
 
-Below is the complete reference implementation blueprint extending `crates/icx-codec/src/ahtl.rs` to support both **Profile B** (the 8-Braille inline `AhtlPacket`) and **Profile A** (the full 5-field `AhtlWirePacketV1` carrying `#icx:<12-hex>`, `fc:<64-hex>`, `hv:<16-hex>`, `<Braille-64>`, and `<Skeleton>`):
+In `v0.1.0`, `crates/icx-codec/src/ahtl.rs` implements **Profile B** (`AhtlPacket` with 8-Braille inline holograms and 16-hex `#icx:<16-hex>` handles). Below is the complete reference implementation blueprint for extending `crates/icx-codec/src/ahtl.rs` in Phase 2 to also support **Profile A** (the full 5-field `AhtlWirePacketV1` carrying `#icx:<12-hex>`, `fc:<64-hex>`, `hv:<16-hex>`, `<Braille-64>`, and `<Skeleton>`):
 
 ```rust
 use crate::braille::{braille_to_byte, byte_to_braille, decode_braille_sketch, encode_braille_sketch};
@@ -45,7 +45,9 @@ use serde::{Deserialize, Serialize};
 
 /// Profile A: Canonical 5-Field Extended AHTL v1.0 Wire Packet:
 /// `⟦AHTL v1│#icx:<12-hex>│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧`
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// (Note: Serializes directly via `.render()` / `.parse()`; `[u8; 64]` omits default Serde derive
+/// on Serde 1.0 unless paired with `serde_big_array` or a custom 64-byte visitor.)
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AhtlWirePacketV1 {
     /// 48-bit (12-hex) or 64-bit (16-hex) BLAKE3 CAS handle
     pub handle_hex: String,
@@ -100,28 +102,28 @@ impl AhtlWirePacketV1 {
             .strip_prefix("#icx:")
             .ok_or_else(|| CodecError::MalformedHandle(icx_part.to_owned()))?;
         if (handle_hex.len() != 12 && handle_hex.len() != 16)
-            || !handle_hex.chars().all(|c| c.is_ascii_hexdigit())
+            || !handle_hex.bytes().all(|b| b.is_ascii_hexdigit())
         {
             return Err(CodecError::MalformedHandle(icx_part.to_owned()));
         }
 
         let fc_hex = fc_part
             .strip_prefix("fc:")
-            .filter(|h| h.len() == 64)
-            .ok_or_else(|| CodecError::MalformedHandle(fc_part.to_owned()))?;
+            .filter(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()))
+            .ok_or_else(|| CodecError::MalformedFractalCoord(fc_part.to_owned()))?;
         let mut fractal_q15 = [0i16; 16];
         for i in 0..16 {
             let word = u16::from_str_radix(&fc_hex[i * 4..i * 4 + 4], 16)
-                .map_err(|_| CodecError::MalformedHandle(fc_part.to_owned()))?;
+                .map_err(|_| CodecError::MalformedFractalCoord(fc_part.to_owned()))?;
             fractal_q15[i] = word as i16;
         }
 
         let hv_hex = hv_part
             .strip_prefix("hv:")
-            .filter(|h| h.len() == 16)
-            .ok_or_else(|| CodecError::MalformedHandle(hv_part.to_owned()))?;
+            .filter(|h| h.len() == 16 && h.bytes().all(|b| b.is_ascii_hexdigit()))
+            .ok_or_else(|| CodecError::MalformedHdcDigest(hv_part.to_owned()))?;
         let hv_digest = u64::from_str_radix(hv_hex, 16)
-            .map_err(|_| CodecError::MalformedHandle(hv_part.to_owned()))?;
+            .map_err(|_| CodecError::MalformedHdcDigest(hv_part.to_owned()))?;
 
         let mut spectral_braille_64 = [0u8; 64];
         let mut count = 0usize;
@@ -148,25 +150,24 @@ impl AhtlWirePacketV1 {
 }
 ```
 
-### 2.2 64-Band Spectral Sketch Generator (`Hypervector::spectral_bands_64`)
+### 2.2 64-Band Locality-Preserving Spectral Sketch Blueprint (`Hypervector::spectral_bands_64`)
 
-To project a 10,240-bit `Hypervector` (`160` `u64` words $= 1,280$ bytes) into the 64-byte `spectral_braille_64` array in $O(1)$ time (`20` bytes $= 160$ bits per band):
+To project a 10,240-bit `Hypervector` (`160` `u64` words $= 10,240$ bits) into the 64-byte `spectral_braille_64` array using the 1-Lipschitz 20-bit block-majority rule from Chapter 02 (`§4.2`):
 
 ```rust
 pub fn spectral_bands_64(&self) -> [u8; 64] {
-    let mut raw_bytes = [0u8; 1280];
-    for (i, &w) in self.words.iter().enumerate() {
-        let le = w.to_le_bytes();
-        raw_bytes[i * 8..i * 8 + 8].copy_from_slice(&le);
-    }
     let mut bands = [0u8; 64];
-    for band in 0..64 {
-        let slice = &raw_bytes[band * 20..(band + 1) * 20];
-        let mut acc = 0u8;
-        for (j, &b) in slice.iter().enumerate() {
-            acc ^= b.rotate_left((j as u32) & 7);
+    for bit_idx in 0..512usize {
+        let start_bit = bit_idx * 20;
+        let mut ones = 0u32;
+        for offset in 0..20usize {
+            let pos = start_bit + offset;
+            let word = self.words[pos / 64];
+            ones += ((word >> (pos % 64)) & 1) as u32;
         }
-        bands[band] = acc;
+        if ones >= 10 {
+            bands[bit_idx / 8] |= 1u8 << (bit_idx % 8);
+        }
     }
     bands
 }

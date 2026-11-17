@@ -6,9 +6,9 @@ SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commerci
 # BLAKE, BLAKE2, and BLAKE3 Cryptographic Hash Family — Archival Synthesis & Infinity-Context (`icx`) Reference Specification
 
 **Primary Archival Sources:**
-- **Wikipedia Article:** [`https://en.wikipedia.org/wiki/BLAKE_(hash_function)`](https://en.wikipedia.org/wiki/BLAKE_(hash_function)) (Archived HTML: [wikipedia_blake_hash_function.html](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/wikipedia_blake_hash_function.html), REST v1 HTML: [wikipedia_blake_rest_v1.html](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/wikipedia_blake_rest_v1.html), MediaWiki Parse JSON: [wikipedia_blake_metadata.json](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/wikipedia_blake_metadata.json))
-- **Official BLAKE3 Specification:** Jack O'Connor, Jean-Philippe Aumasson, Samuel Neves, and Zooko Wilcox-O'Hearn, *"BLAKE3: one function, fast everywhere"* (Archived PDF: [BLAKE3_Official_Specification.pdf](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/BLAKE3_Official_Specification.pdf))
-- **Target `icx` Crates:** [`crates/icx-core`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core/src/lib.rs) (`CasStore`, `MerkleContextDag`, `ArtifactId`, `Blake3Digest`) and [`crates/icx-hdc`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-hdc/src/hv.rs) (`Hypervector::from_seed` via `blake3::Hasher::finalize_xof()`)
+- **Wikipedia Article:** [`https://en.wikipedia.org/wiki/BLAKE_(hash_function)`](https://en.wikipedia.org/wiki/BLAKE_(hash_function)) (Archived HTML: [wikipedia_blake_hash_function.html](wikipedia_blake_hash_function.html), REST v1 HTML: [wikipedia_blake_rest_v1.html](wikipedia_blake_rest_v1.html), MediaWiki Parse JSON: [wikipedia_blake_metadata.json](wikipedia_blake_metadata.json))
+- **Official BLAKE3 Specification:** Jack O'Connor, Jean-Philippe Aumasson, Samuel Neves, and Zooko Wilcox-O'Hearn, *"BLAKE3: one function, fast everywhere"* (Archived PDF: [BLAKE3_Official_Specification.pdf](BLAKE3_Official_Specification.pdf))
+- **Target `icx` Crates:** [`crates/icx-core`](../../crates/icx-core/src/lib.rs) (`CasStore`, `MerkleContextDag`, `ArtifactId`, `Blake3Digest`) and [`crates/icx-hdc`](../../crates/icx-hdc/src/hv.rs) (`Hypervector::from_seed` via `blake3::Hasher::finalize_xof()`)
 
 ---
 
@@ -28,7 +28,7 @@ The **BLAKE** family of cryptographic hash functions is built on Addition-Rotati
 
 ![BLAKE3 Compression Function and Quarter-Round Diagram](images/generated/blake3_quarter_round_and_compression.png)
 
-*Vector source:* [blake3_quarter_round_and_compression.svg](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/generated/blake3_quarter_round_and_compression.svg) | *High-Res PNG:* [blake3_quarter_round_and_compression.png](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/generated/blake3_quarter_round_and_compression.png)
+*Vector source:* [blake3_quarter_round_and_compression.svg](images/generated/blake3_quarter_round_and_compression.svg) | *High-Res PNG:* [blake3_quarter_round_and_compression.png](images/generated/blake3_quarter_round_and_compression.png)
 
 ---
 
@@ -73,7 +73,7 @@ Submitted to the 2008 NIST SHA-3 competition among 51 candidates, **BLAKE** adva
 
 ![ChaCha Cipher Quarter-Round Function](images/retrieved/ChaCha_Cipher_Quarter_Round_Function.png)
 
-*Archival Wikimedia Diagram:* [ChaCha_Cipher_Quarter_Round_Function.svg](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/ChaCha_Cipher_Quarter_Round_Function.svg) | [ChaCha_Cipher_Quarter_Round_Function.png](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/ChaCha_Cipher_Quarter_Round_Function.png)
+*Archival Wikimedia Diagram:* [ChaCha_Cipher_Quarter_Round_Function.svg](images/retrieved/ChaCha_Cipher_Quarter_Round_Function.svg) | [ChaCha_Cipher_Quarter_Round_Function.png](images/retrieved/ChaCha_Cipher_Quarter_Round_Function.png)
 
 3. **Canonical BLAKE Empty-String Test Vectors:**
    - `BLAKE-224("")`: `7dc5313b1c04512a174bd6503b89607aecbee0903d40a8a569c94eed`
@@ -122,14 +122,14 @@ Announced on January 9, 2020 at Real World Crypto by Jack O'Connor, Jean-Philipp
 
 ![BLAKE3 Binary Merkle Tree and Infinity-Context DAG Mapping](images/generated/blake3_merkle_tree_and_icx_dag.png)
 
-*Vector source:* [blake3_merkle_tree_and_icx_dag.svg](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/generated/blake3_merkle_tree_and_icx_dag.svg) | *High-Res PNG:* [blake3_merkle_tree_and_icx_dag.png](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/generated/blake3_merkle_tree_and_icx_dag.png)
+*Vector source:* [blake3_merkle_tree_and_icx_dag.svg](images/generated/blake3_merkle_tree_and_icx_dag.svg) | *High-Res PNG:* [blake3_merkle_tree_and_icx_dag.png](images/generated/blake3_merkle_tree_and_icx_dag.png)
 
 ### 3.1 1,024-Byte (`1 KiB`) Chunking & Binary Merkle Tree Topology
 
 BLAKE3 partitions an input byte stream of length $0 \le \ell < 2^{64}$ into contiguous **chunks of $1,024$ bytes (`1 KiB`)**, where each chunk consists of up to **16 blocks of $64$ bytes**:
 - The final chunk may be shorter than $1,024$ bytes, and is never empty unless the entire message is empty ($\ell = 0$, which forms a single 0-byte chunk with one zero-padded 64-byte block where $b = 0$).
 - If the input fits in a single chunk ($\ell \le 1,024$ bytes), that chunk is the **root node** and only node of the tree.
-- For inputs of $n > 1,024$ bytes, chunks are arranged as the leaves of a **binary Merkle tree** (fanout $F = 2$) governed by two structural invariants ([BLAKE3_Official_Specification.pdf](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/BLAKE3_Official_Specification.pdf) §2.1):
+- For inputs of $n > 1,024$ bytes, chunks are arranged as the leaves of a **binary Merkle tree** (fanout $F = 2$) governed by two structural invariants ([BLAKE3_Official_Specification.pdf](BLAKE3_Official_Specification.pdf) §2.1):
   1. **Left subtrees are full:** Every left subtree is a complete binary tree with all chunks at the same depth and a chunk count equal to a power of $2$.
   2. **Left subtrees are big:** Every left subtree contains a number of chunks greater than or equal to the number of chunks in its sibling right subtree.
 
@@ -139,7 +139,7 @@ and the right subtree recursively hashes the remaining $n - L(n)$ bytes.
 
 ![Wikimedia Hash Tree Topology](images/retrieved/Hash_Tree.png)
 
-*Archival Wikimedia Diagram:* [Hash_Tree.svg](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/Hash_Tree.svg) | [Hash_Tree.png](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/Hash_Tree.png)
+*Archival Wikimedia Diagram:* [Hash_Tree.svg](images/retrieved/Hash_Tree.svg) | [Hash_Tree.png](images/retrieved/Hash_Tree.png)
 
 #### Incremental Chaining Value (`CV`) Stack Algorithm
 During streaming (`Hasher::update`), BLAKE3 maintains:
@@ -202,7 +202,7 @@ Between rounds (after rounds 1 through 6), BLAKE3 replaces BLAKE/BLAKE2's 10 dis
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Permuted Index $\pi(i)$** | **`2`** | **`6`** | **`3`** | **`10`** | **`7`** | **`0`** | **`4`** | **`13`** | **`1`** | **`11`** | **`12`** | **`5`** | **`9`** | **`14`** | **`15`** | **`8`** |
 
-This permutation consists of two 8-cycles: $(0\ 2\ 3\ 10\ 12\ 9\ 11\ 5)$ and $(1\ 6\ 4\ 7\ 13\ 14\ 15\ 8)$. Among the 12 candidate permutations satisfying the 8-round balance criteria (every word appears 4 times in columns, 4 times in diagonals, 4 times in the first $G$ addition, and 4 times in the second $G$ addition), this unique schedule achieved the lowest 3-round differential trail probability ($2^{-21}$ vs. $2^{-13}$ for runner-up candidates; see Table 6 of [BLAKE3_Official_Specification.pdf](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/BLAKE3_Official_Specification.pdf)).
+This permutation consists of two 8-cycles: $(0\ 2\ 3\ 10\ 12\ 9\ 11\ 5)$ and $(1\ 6\ 4\ 7\ 13\ 14\ 15\ 8)$. Among the 12 candidate permutations satisfying the 8-round balance criteria (every word appears 4 times in columns, 4 times in diagonals, 4 times in the first $G$ addition, and 4 times in the second $G$ addition), this unique schedule achieved the lowest 3-round differential trail probability ($2^{-21}$ vs. $2^{-13}$ for runner-up candidates; see Table 6 of [BLAKE3_Official_Specification.pdf](BLAKE3_Official_Specification.pdf)).
 
 #### Finalization & Asymmetric Feed-Forward
 After 7 rounds produce $v'_0 \dots v'_{15}$, the 16-word (512-bit) output state $h'_0 \dots h'_{15}$ is formed via:
@@ -256,7 +256,7 @@ Unlike SHA-2, HKDF, or Keccak/SHAKE (which must squeeze 1,088-bit rate blocks se
 
 ### 4.1 256-Bit Content-Addressed Storage (`CasStore`) & `#icx:<16-hex>` Virtual Memory Handles
 
-In [`crates/icx-core/src/lib.rs`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core/src/lib.rs#L15-L79) and [`crates/icx-core/src/cas.rs`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core/src/cas.rs#L18-L142):
+In [`crates/icx-core/src/lib.rs`](../../crates/icx-core/src/lib.rs#L15-L79) and [`crates/icx-core/src/cas.rs`](../../crates/icx-core/src/cas.rs#L18-L142):
 
 1. **Dual-Resolution Cryptographic Addressing:**
    - **`Blake3Digest([u8; 32])`:** Full 256-bit cryptographic digest computed via `*blake3::hash(bytes).as_bytes()`. Stored on every `StoredArtifact` and every `FastCDC` chunk in `CasStore::chunks: BTreeMap<ArtifactId, (Blake3Digest, Vec<u8>)>`.
@@ -265,7 +265,7 @@ In [`crates/icx-core/src/lib.rs`](file:///home/parobek/Code/OSS_Public-Projects/
    - Under the random oracle model, the probability of a collision among $N$ distinct artifacts in a $B$-bit handle space is bounded by:
      $$P_{\text{coll}}(N, B) = 1 - \prod_{k=1}^{N-1} \left(1 - \frac{k}{2^B}\right) \le \frac{N(N - 1)}{2^{B+1}}$$
    - For the 128-bit `IcxHandle` wire space ($B = 128$), even at $N = 2^{32}$ ($4.29 \times 10^9$) stored chunks across a multi-agent cluster, $P_{\text{coll}} \le \frac{2^{64}}{2^{129}} = 2^{-65} < 2^{-64}$.
-   - For the compact 64-bit `ArtifactId` AHTL token handle ($B = 64$), at $N = 10^5 \approx 2^{16.6}$ chunks in a session, $P_{\text{coll}} \approx 2^{-31.8}$. Furthermore, `CasStore::deref_bytes(id)` ([`crates/icx-core/src/cas.rs:119-142`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core/src/cas.rs#L119-L142)) verifies the **full 256-bit `Blake3Digest`** (`B = 256`, $P_{\text{coll}} < 2^{-128}$) on **every single chunk and top-level artifact** before returning bytes:
+   - For the compact 64-bit `ArtifactId` AHTL token handle ($B = 64$), at $N = 10^5 \approx 2^{16.6}$ chunks in a session, $P_{\text{coll}} \approx 2^{-31.8}$. Furthermore, `CasStore::deref_bytes(id)` ([`crates/icx-core/src/cas.rs:119-142`](../../crates/icx-core/src/cas.rs#L119-L142)) verifies the **full 256-bit `Blake3Digest`** (`B = 256`, $P_{\text{coll}} < 2^{-128}$) on **every single chunk and top-level artifact** before returning bytes:
      ```rust
      if Blake3Digest::hash(bytes) != *cdigest {
          return Err(IcxError::IntegrityViolation(cid));
@@ -277,20 +277,20 @@ In [`crates/icx-core/src/lib.rs`](file:///home/parobek/Code/OSS_Public-Projects/
 
 ### 4.2 4-Tier `MerkleContextDag` Cryptographic Node Sealing (`LCM`)
 
-In [`crates/icx-core/src/dag.rs`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core/src/dag.rs#L8-L259) and [`docs/virtual-memory-and-dag-engine.md`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/docs/virtual-memory-and-dag-engine.md#L36-L58), `icx` mirrors BLAKE3's domain-separated Merkle tree construction (`Subtree-freeness` + `Radical-decodability`) at the **semantic context DAG level**, using explicit versioned domain-separation prefixes so nodes from different tiers can never collide:
+In [`crates/icx-core/src/dag.rs`](../../crates/icx-core/src/dag.rs#L8-L259) and [`docs/virtual-memory-and-dag-engine.md`](../../docs/virtual-memory-and-dag-engine.md#L36-L58), `icx` mirrors BLAKE3's domain-separated Merkle tree construction (`Subtree-freeness` + `Radical-decodability`) at the **semantic context DAG level**, using explicit versioned domain-separation prefixes so nodes from different tiers can never collide:
 
 | `icx` DAG Tier | Rust Type / Location | Domain Prefix / BLAKE3 Construction | Role in Lossless Context Management (`LCM`) |
 | :--- | :--- | :--- | :--- |
-| **`L0 RawChunk`** | `CasStore::chunks` ([`cas.rs:79-86`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core/src/cas.rs#L79-L86)) | `blake3::hash(fastcdc_slice)` (`2 KiB..64 KiB` gear-hash chunks) | Immutable raw byte leaves of tool outputs, file reads, and conversation turns. |
-| **`L1 EpisodeNode`** | `DagNode::Turn` ([`dag.rs:101-143`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core/src/dag.rs#L101-L143)) | `blake3::Hasher`: `b"ICX_DAG_TURN_V1" \|\| ordinal.to_be_bytes() \|\| [agent as u8] \|\| role \|\| raw_artifact.0.to_be_bytes() \|\| ahtl_repr` | Seals a single conversational turn or tool-use episode together with its `AgentKind`, `TitansSurprise` score, and `L0` raw artifact pointer. |
-| **`L2 FoldedSubtask`** | `DagNode::SubTrajectoryBranch` ([`dag.rs:155-194`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core/src/dag.rs#L155-L194)) | `blake3::Hasher`: `b"ICX_DAG_BRANCH_V1" \|\| label \|\| child_turn_ids[..] \|\| outcome_summary` | Folds an iterative build/debug/test sub-trajectory (`Context-Folding`, `arXiv:2510.11967`) into a single `⟦Φ:label⊢steps=N⋮✓outcome↦#icx:..⟧` commit packet while preserving lossless pointers to every child `L1` node. |
-| **`L3 EpochRoot`** | `DagNode::CacheEpoch` ([`dag.rs:197-258`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core/src/dag.rs#L197-L258)) | `blake3::Hasher`: `b"ICX_DAG_EPOCH_V1" \|\| epoch_index.to_be_bytes() \|\| child_node_digests[0..k]` | Cryptographically seals a contiguous prefix window into an immutable AHTL Epoch Frame (`⟪ICX:v1│ep=0000│root=<8-hex>│nodes=K⟫`), pinning provider KV-cache breakpoints (`>= 94%` hit rate). |
+| **`L0 RawChunk`** | `CasStore::chunks` ([`cas.rs:79-86`](../../crates/icx-core/src/cas.rs#L79-L86)) | `blake3::hash(fastcdc_slice)` (`2 KiB..64 KiB` gear-hash chunks) | Immutable raw byte leaves of tool outputs, file reads, and conversation turns. |
+| **`L1 EpisodeNode`** | `DagNode::Turn` ([`dag.rs:101-143`](../../crates/icx-core/src/dag.rs#L101-L143)) | `blake3::Hasher`: `b"ICX_DAG_TURN_V1" \|\| ordinal.to_be_bytes() \|\| [agent as u8] \|\| role \|\| raw_artifact.0.to_be_bytes() \|\| ahtl_repr` | Seals a single conversational turn or tool-use episode together with its `AgentKind`, `TitansSurprise` score, and `L0` raw artifact pointer. |
+| **`L2 FoldedSubtask`** | `DagNode::SubTrajectoryBranch` ([`dag.rs:155-194`](../../crates/icx-core/src/dag.rs#L155-L194)) | `blake3::Hasher`: `b"ICX_DAG_BRANCH_V1" \|\| label \|\| child_turn_ids[..] \|\| outcome_summary` | Folds an iterative build/debug/test sub-trajectory (`Context-Folding`, `arXiv:2510.11967`) into a single `⟦Φ:label⊢steps=N⋮✓outcome↦#icx:..⟧` commit packet while preserving lossless pointers to every child `L1` node. |
+| **`L3 EpochRoot`** | `DagNode::CacheEpoch` ([`dag.rs:197-258`](../../crates/icx-core/src/dag.rs#L197-L258)) | `blake3::Hasher`: `b"ICX_DAG_EPOCH_V1" \|\| epoch_index.to_be_bytes() \|\| child_node_digests[0..k]` | Cryptographically seals a contiguous prefix window into an immutable AHTL Epoch Frame (`⟪ICX:v1│ep=0000│root=<8-hex>│nodes=K⟫`), pinning provider KV-cache breakpoints (`>= 94%` hit rate). |
 
 ---
 
 ### 4.3 `BLAKE3::finalize_xof()` 10,240-Bit Orthogonal `Hypervector` Basis Generation
 
-In [`crates/icx-hdc/src/hv.rs`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-hdc/src/hv.rs#L4-L49), `icx-hdc` implements a **10,240-bit Binary/Bipolar Hyperdimensional Computing (`HDC/HRR`)** algebra (`HV_WORDS = 160`, `HV_BITS = 10,240`, aligned to 64-byte AVX-512 cache lines via `#[repr(C, align(64))]`):
+In [`crates/icx-hdc/src/hv.rs`](../../crates/icx-hdc/src/hv.rs#L4-L49), `icx-hdc` implements a **10,240-bit Binary/Bipolar Hyperdimensional Computing (`HDC/HRR`)** algebra (`HV_WORDS = 160`, `HV_BITS = 10,240`, aligned to 64-byte AVX-512 cache lines via `#[repr(C, align(64))]`):
 
 ```rust
 pub const HV_WORDS: usize = 160;
@@ -320,19 +320,19 @@ pub fn from_seed(domain: &str, symbol: &str) -> Self {
 
 ## 5. Archived Diagrams & Visual Assets Inventory
 
-All visual assets are organized into two sub-directories under [`ref-docs/blake3-cryptographic-hash/images/`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/):
-- [`images/generated/`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/generated/) — Custom architectural and mathematical vector diagrams (`BLAKE3` compression/quarter-round and `BLAKE3` Merkle tree / `icx` `MerkleContextDag` mapping).
-- [`images/retrieved/`](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/) — Diagrams and icons retrieved from `https://en.wikipedia.org/wiki/BLAKE_(hash_function)` and Wikimedia Commons.
+All visual assets are organized into two sub-directories under [`ref-docs/blake3-cryptographic-hash/images/`](images/):
+- [`images/generated/`](images/generated/) — Custom architectural and mathematical vector diagrams (`BLAKE3` compression/quarter-round and `BLAKE3` Merkle tree / `icx` `MerkleContextDag` mapping).
+- [`images/retrieved/`](images/retrieved/) — Diagrams and icons retrieved from `https://en.wikipedia.org/wiki/BLAKE_(hash_function)` and Wikimedia Commons.
 
 | Subfolder | Asset Basename | Vector (`.svg`) | Raster (`.png`) | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `generated/` | **`blake3_quarter_round_and_compression`** | [SVG](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/generated/blake3_quarter_round_and_compression.svg) | [PNG](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/generated/blake3_quarter_round_and_compression.png) | 16-word state matrix $(v_0 \dots v_{15})$, $G_i(a,b,c,d)$ ARX quarter-round, single-permutation schedule, feed-forward XOF, and domain flags $d$. |
-| `generated/` | **`blake3_merkle_tree_and_icx_dag`** | [SVG](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/generated/blake3_merkle_tree_and_icx_dag.svg) | [PNG](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/generated/blake3_merkle_tree_and_icx_dag.png) | BLAKE3 1,024-byte Left-Full binary Merkle tree (`CV` stack) and direct mapping to `icx` `CasStore`, 4-tier `MerkleContextDag`, and 10,240-bit XOF `Hypervector`. |
-| `retrieved/` | **`ChaCha_Cipher_Quarter_Round_Function`** | [SVG](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/ChaCha_Cipher_Quarter_Round_Function.svg) | [PNG](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/ChaCha_Cipher_Quarter_Round_Function.png) | Wikimedia Commons ARX quarter-round dataflow diagram (`a, b, c, d` modular additions, XORs, and rotations `16, 12, 8, 7`). |
-| `retrieved/` | **`Hash_Tree`** | [SVG](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/Hash_Tree.svg) | [PNG](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/Hash_Tree.png) | Wikimedia Commons binary Merkle hash tree diagram showing leaf data blocks, interior parent hashes, and top hash root. |
-| `retrieved/` | **`Symbol_category_class`** | [SVG](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/Symbol_category_class.svg) | [PNG](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/Symbol_category_class.png) | Embedded Wikipedia category icon on `BLAKE_(hash_function)`. |
-| `retrieved/` | **`Lock-green` / `Lock-gray-alt-2` / `Lock-red-alt-2`** | [SVG](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/Lock-green.svg) | [PNG](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/Lock-green.png) | Embedded Wikipedia citation access-status icons. |
-| `retrieved/` | **`Wikisource-logo` / `enwiki-25` / `wikimedia` / `mediawiki_compact`** | [SVG](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/enwiki-25.svg) | [PNG](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/images/retrieved/enwiki-25.png) | Embedded Wikipedia page Chrome/branding SVGs archived for offline HTML fidelity. |
+| `generated/` | **`blake3_quarter_round_and_compression`** | [SVG](images/generated/blake3_quarter_round_and_compression.svg) | [PNG](images/generated/blake3_quarter_round_and_compression.png) | 16-word state matrix $(v_0 \dots v_{15})$, $G_i(a,b,c,d)$ ARX quarter-round, single-permutation schedule, feed-forward XOF, and domain flags $d$. |
+| `generated/` | **`blake3_merkle_tree_and_icx_dag`** | [SVG](images/generated/blake3_merkle_tree_and_icx_dag.svg) | [PNG](images/generated/blake3_merkle_tree_and_icx_dag.png) | BLAKE3 1,024-byte Left-Full binary Merkle tree (`CV` stack) and direct mapping to `icx` `CasStore`, 4-tier `MerkleContextDag`, and 10,240-bit XOF `Hypervector`. |
+| `retrieved/` | **`ChaCha_Cipher_Quarter_Round_Function`** | [SVG](images/retrieved/ChaCha_Cipher_Quarter_Round_Function.svg) | [PNG](images/retrieved/ChaCha_Cipher_Quarter_Round_Function.png) | Wikimedia Commons ARX quarter-round dataflow diagram (`a, b, c, d` modular additions, XORs, and rotations `16, 12, 8, 7`). |
+| `retrieved/` | **`Hash_Tree`** | [SVG](images/retrieved/Hash_Tree.svg) | [PNG](images/retrieved/Hash_Tree.png) | Wikimedia Commons binary Merkle hash tree diagram showing leaf data blocks, interior parent hashes, and top hash root. |
+| `retrieved/` | **`Symbol_category_class`** | [SVG](images/retrieved/Symbol_category_class.svg) | [PNG](images/retrieved/Symbol_category_class.png) | Embedded Wikipedia category icon on `BLAKE_(hash_function)`. |
+| `retrieved/` | **`Lock-green` / `Lock-gray-alt-2` / `Lock-red-alt-2`** | [SVG](images/retrieved/Lock-green.svg) | [PNG](images/retrieved/Lock-green.png) | Embedded Wikipedia citation access-status icons. |
+| `retrieved/` | **`Wikisource-logo` / `enwiki-25` / `wikimedia` / `mediawiki_compact`** | [SVG](images/retrieved/enwiki-25.svg) | [PNG](images/retrieved/enwiki-25.png) | Embedded Wikipedia page Chrome/branding SVGs archived for offline HTML fidelity. |
 
 ---
 
@@ -358,7 +358,7 @@ All visual assets are organized into two sub-directories under [`ref-docs/blake3
 8. **BLAKE2 Official Reference Implementations:** `https://github.com/BLAKE2/BLAKE2`
 9. **BLAKE3 Official Specification PDF (Archived Locally):** Jack O'Connor, Jean-Philippe Aumasson, Samuel Neves, and Zooko Wilcox-O'Hearn (2020/2021). *"BLAKE3: one function, fast everywhere"*.
    - Remote URL: `https://github.com/BLAKE3-team/BLAKE3-specs/raw/master/blake3.pdf`
-   - Local Copy: [BLAKE3_Official_Specification.pdf](file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/ref-docs/blake3-cryptographic-hash/BLAKE3_Official_Specification.pdf)
+   - Local Copy: [BLAKE3_Official_Specification.pdf](BLAKE3_Official_Specification.pdf)
 10. **BLAKE3 Official Website & Repository:**
     - Website: `https://blake3.io/`
     - Repository (Rust & C SIMD implementations): `https://github.com/BLAKE3-team/BLAKE3`

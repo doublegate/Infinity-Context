@@ -34,7 +34,7 @@ $$d_\infty(\vec{x}, \vec{y}) = \|\vec{x} - \vec{y}\|_\infty = \max_{j \in \{0, \
 - **Completeness:** Because $\mathcal{X} = [-1, +1]^{16}$ is a closed and bounded subset of $\mathbb{R}^{16}$, $(\mathcal{X}, d_\infty)$ is a **complete metric space** of diameter $\operatorname{diam}_\infty(\mathcal{X}) = \max_{\vec{x},\vec{y} \in \mathcal{X}} \|\vec{x} - \vec{y}\|_\infty = 2.0$.
 - **Geometric Duality:** Crucially, the closed ball of radius $r$ around $\vec{c}$ in the Chebyshev metric, $B_\infty(\vec{c}, r) = \{\vec{z} \in \mathbb{R}^{16} : \|\vec{z} - \vec{c}\|_\infty \le r\}$, **is itself a 16-dimensional axis-aligned sub-hypercube of side length $2r$**.
 
-| Banach Fixed-Point Contraction (`Ifs-construction.png`) | Sierpiński Chaos Game Attractor (`Sierpinski_Chaos_Game.png`) | Square Chaos Game Quadrant Subdivision (`Chaos_Game_square-EH-1.png`) |
+| Banach Fixed-Point Contraction (`Banach_Fixed_Point_Contraction.png`) | Sierpiński Chaos Game Attractor (`Sierpinski_Chaos_Game.png`) | Square Chaos Game Quadrant Subdivision (`Chaos_Game_square-EH-1.png`) |
 | :---: | :---: | :---: |
 | ![Banach Contraction](images/retrieved/Banach_Fixed_Point_Contraction.png) | ![Sierpinski Chaos Game](images/retrieved/Sierpinski_Chaos_Game.png) | ![Square Chaos Game](images/retrieved/Chaos_Game_square-EH-1.png) |
 | Iterated contractive maps $W(A) = \bigcup_i w_i(A)$ converging to the unique attractor | Contractive ratio $L = 1/2$ toward vertices of a simplex | Contractive ratio $L = 1/2$ toward vertices $\{-1, +1\}^d$ of a hypercube (`CGR`) |
@@ -116,9 +116,9 @@ $$\big|z^{(A)}_j - z^{(B)}_j\big| \le \sum_{k=K}^{\infty} 2^{-(k+1)} \cdot 2 = \
 
 Taking the maximum over $j \in \{0, \dots, 15\}$ yields $d_\infty(\vec{z}^{(A)}, \vec{z}^{(B)}) \le 2^{1 - K}$. And since $\|\vec{u}\|_2 \le \sqrt{16}\,\|\vec{u}\|_\infty = 4\,\|\vec{u}\|_\infty$ on $\mathbb{R}^{16}$, we immediately obtain $d_2(\vec{z}^{(A)}, \vec{z}^{(B)}) \le 4 \cdot 2^{1 - K} = 2^{3 - K}$. $\blacksquare$
 
-### 3.3 Exact $O(1)$ Shared Suffix Estimator (`shared_suffix_depth`)
+### 3.3 $O(1)$ Upper-Bound Shared Suffix Heuristic (`shared_suffix_depth`)
 
-Normalizing $d_\infty(\vec{z}^{(A)}, \vec{z}^{(B)})$ by the hypercube radius ($\frac{1}{2}\operatorname{diam}_\infty(\mathcal{X}) = 1.0$) gives $d_{\text{norm}} = \frac{1}{2} d_\infty(\vec{z}^{(A)}, \vec{z}^{(B)}) \le 2^{-K}$. Inverting via $-\log_2(\cdot)$ recovers the shared suffix depth in $O(1)$ time (`crates/icx-hdc/src/fractal.rs:75-85`):
+Normalizing $d_\infty(\vec{z}^{(A)}, \vec{z}^{(B)})$ by the hypercube radius ($\frac{1}{2}\operatorname{diam}_\infty(\mathcal{X}) = 1.0$) gives $d_{\text{norm}} = \frac{1}{2} d_\infty(\vec{z}^{(A)}, \vec{z}^{(B)}) \le 2^{-K}$. Because Theorem 3.2 establishes an upper bound on $d_\infty$ (whereas distinct alternating trajectories such as $[-1, +1]$ vs. $[+1, -1]$ can yield $|0.25 - (-0.25)| = 0.5 = 2^{-1}$ without sharing their final vertex), inverting via $-\log_2(\cdot)$ provides a fast **$O(1)$ upper-bound suffix-depth estimator / proximity heuristic** (`crates/icx-hdc/src/fractal.rs:75-85`). When exact suffix identity is required, callers pair `shared_suffix_depth` with `quadrant_signature_u16()` orthant equality or trailing state-ID verification:
 
 $$L_{\text{shared}}\big(\vec{z}^{(A)}, \vec{z}^{(B)}\big) = \min\!\left(\left\lfloor -\log_2\big(\max(d_{\text{norm}}, 2^{-32})\big) \right\rfloor, \; \text{depth}_A, \; \text{depth}_B, \; 32\right)$$
 

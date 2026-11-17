@@ -63,8 +63,11 @@ Rather than storing a static $M \times 1,280\text{-byte}$ item-memory lookup tab
 
 ### 3.1 Primary Generator: Domain-Separated `BLAKE3` XOF (`Hypervector::from_seed`)
 
+In `v0.1.0`, `domain` tags are restricted to static ASCII alphanumeric namespace identifiers (`"tok"`, `"subj"`, `"role"`) that never contain `"::"`. To guarantee injective tuple framing even for arbitrary user-supplied `domain` strings, length-prefixing `(domain.len() as u64).to_le_bytes()` can be included prior to `domain.as_bytes()`:
+
 ```rust
 pub fn from_seed(domain: &str, symbol: &str) -> Self {
+    debug_assert!(!domain.contains("::"), "domain identifier must not contain `::`");
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"ICX_HDC_10240_V1:");
     hasher.update(domain.as_bytes());
@@ -147,7 +150,7 @@ pub fn bind(&self, other: &Self) -> Self {
 - **Algebraic Properties:** Commutative ($A \oplus B = B \oplus A$), associative, self-inverse ($(A \oplus B) \oplus B = A$), and an exact Hamming isometry ($d_H(A \oplus R, B \oplus R) = d_H(A, B)$).
 - **Orthogonality to Constituents:** $\mathbb{E}[d_H(A, A \oplus B)] = \operatorname{wt}(B) \approx 5,120$, so the bound pair $A \oplus B$ is quasi-orthogonal to both $A$ and $B$, yet unbinding with $B$ recovers $A$ losslessly!
 
-### 5.2 Sequence & Structural Permutation ($\Pi^k$ — Cyclic Shift in $S_{10240}$)
+### 5.2 Sequence & Structural Permutation ($\Pi_s$ — Parameterized Coordinate Bijections in $S_{10240}$)
 
 ```rust
 #[inline]
@@ -162,8 +165,9 @@ pub fn permute(&self, shift: usize) -> Self {
     Self { words: out }
 }
 ```
-- **Distributivity over Binding:** $\Pi^k(A \oplus B) = \Pi^k(A) \oplus \Pi^k(B)$.
-- **Non-Commutative Bigram Encoding (`Hypervector::encode_text`):** For each consecutive token pair $(t_{i-1}, t_i)$, `encode_text` bundles both the unigram $H(t_i)$ and the directed bigram $\Pi^1(H(t_{i-1})) \oplus H(t_i)$.
+- **Indexed Family of Coordinate Bijections:** Rather than a group homomorphism $s \mapsto \Pi^s$ with $\Pi_0 = \text{id}$, `permute(shift)` defines an indexed family of coordinate permutations $\Pi_{\text{shift}} \in S_{10240}$ combining inter-word cyclic shift `shift % 160` with non-zero intra-word bit rotation `((shift % 63) + 1)` so that every positional call `permute(s)` (including `s = 0` or `s = 1`) scrambles bit lanes and maps any input vector $A$ to a quasi-orthogonal region of $Q_{10240}$.
+- **Distributivity over Binding:** For any fixed `shift`, $\Pi_s(A \oplus B) = \Pi_s(A) \oplus \Pi_s(B)$ and $d_H(\Pi_s(A), \Pi_s(B)) = d_H(A, B)$.
+- **Non-Commutative Bigram Encoding (`Hypervector::encode_text`):** For each consecutive token pair $(t_{i-1}, t_i)$, `encode_text` bundles both the unigram $H(t_i)$ and the directed bigram $\Pi_1(H(t_{i-1})) \oplus H(t_i)$.
 
 ### 5.3 Infini-Attention Delta-Rule Majority Bundling (`HdcBundler`)
 

@@ -29,7 +29,7 @@ Consider the canonical packet depicted in [ahtl-packet-anatomy.svg](../../docs/i
 
 | Packet Segment | Canonical Token / Wire Syntax | Mathematical & Systems Foundation | Implementing Module |
 | :--- | :--- | :--- | :--- |
-| **1. Header & Lossless Handle** | `<<AHTLv1 #icx:7bf8239fb7c504f1` (`↦#icx:7bf8239fb7c504f1`) | 128-bit prefix of 256-bit `BLAKE3` Merkle-DAG hash over FastCDC content-addressed chunks (`CasStore`) | `crates/icx-core/src/cas.rs`, `crates/icx-core/src/dag.rs` |
+| **1. Header & Lossless Handle** | `<<AHTLv1 #icx:7bf8239fb7c504f1` (`↦#icx:7bf8239fb7c504f1`) | 64-bit (`8-byte`) big-endian prefix (`ArtifactId(pub u64)`) of 256-bit `BLAKE3` Merkle-DAG hash over FastCDC content-addressed chunks (`CasStore`) | `crates/icx-core/src/cas.rs`, `crates/icx-core/src/dag.rs` |
 | **2. Surprise & Fractal Locus** | `!0.84 @0123:0210` | **Titans** momentum surprise $S_t = 0.84$ (`arXiv:2501.00663`) + **Contractive IFS / Chaos Game** trajectory coordinate in $[-1,1]^{16}$ via Banach Contraction Mapping ($\alpha = \frac{1}{2}$) | `crates/icx-hdc/src/surprise.rs`, `crates/icx-hdc/src/fractal.rs` |
 | **3. Braille-256 VSA Sketch** | `[Braille-256: 64-Bit]` (`⋮Ψ:⠞⠧...`) | 10,240-bit **Hyperdimensional Computing (`HDC/VSA`)** vector folded via rotational XOR parity into 8 Unicode Braille glyphs (`U+2800..U+28FF`) | `crates/icx-hdc/src/hv.rs`, `crates/icx-codec/src/braille.rs` |
 | **4. Structural AST Skeleton** | `$fn:verify_token $ty:AuthErr !err:401>>` (`⊢⊕L12:verify_token⋮!ERR:401⟧`) | Single-pass **Abstract Syntax Tree (`AST`)** homomorphic projection aligned with **BPE** subword boundaries and **$QK^T / \sqrt{d_k}$** induction heads | `crates/icx-codec/src/skeleton.rs`, `crates/icx-codec/src/ahtl.rs` |
@@ -40,14 +40,14 @@ Consider the canonical packet depicted in [ahtl-packet-anatomy.svg](../../docs/i
 
 *(Cross-reference: [ref-docs/blake3-cryptographic-hash/](../blake3-cryptographic-hash/))*
 
-1. **Pre-Ingestion Secret Sanitization:** Prior to hashing, `SecretRedactor::sanitize()` (`crates/icx-codec/src/redact.rs`) strips API keys, bearer tokens, and PEM keys, replacing each match with a deterministic `[REDACTED:<kind>:<blake3_4B>]` marker.
-2. **128-Bit Prefix of 256-Bit BLAKE3 (`ArtifactId`):** The sanitized payload is hashed via the `BLAKE3` Merkle-tree compression function (7-round ChaCha permutation over 1,024-byte chunks). The top 128 bits (64-bit high + 64-bit low, rendered as 16 lowercase hexadecimal digits `#icx:7bf8239fb7c504f1`) form the `ArtifactId`.
-3. **Birthday-Bound Collision Invariant:** Under the uniform random oracle model of `BLAKE3`, the collision probability across $N$ archived context artifacts for a $k = 128$-bit handle is bounded by:
-   $$P_{\text{collision}}(N) \le \frac{N(N - 1)}{2 \cdot 2^{128}} \approx \frac{N^2}{2^{129}}$$
-   Even at $N = 2^{32} \approx 4.29 \times 10^9$ context artifacts in a multi-agent workspace, $P_{\text{collision}} \le 2^{-65} \approx 2.71 \times 10^{-20}$.
-4. **$O(1)$ Lossless Dereference:** Any agent holding `#icx:7bf8239fb7c504f1` recovers the exact byte stream or line range in `< 100 µs` via the polymorphic single-tool MCP pager:
-   - `icx(op="deref", ref="#icx:7bf8239fb7c504f1")`
-   - `icx(op="slice", ref="#icx:7bf8239fb7c504f1", start_line=40, end_line=95)`
+1. **Pre-Ingestion Secret Sanitization:** Prior to hashing, `SecretRedactor::sanitize()` (`crates/icx-codec/src/redact.rs`) strips API keys, bearer tokens, and PEM keys, replacing each match with a deterministic static category marker (`[REDACTED:API_KEY]`, `[REDACTED:GH_TOKEN]`, `[REDACTED:AWS_KEY]`, `[REDACTED:ENV_SECRET]`, `[REDACTED:PEM_PRIVATE_KEY]`, `[REDACTED:BEARER]`).
+2. **64-Bit Prefix of 256-Bit BLAKE3 (`ArtifactId`):** The sanitized payload is hashed via the `BLAKE3` Merkle-tree compression function (7-round ChaCha permutation over 1,024-byte chunks). The top 64 big-endian bits (8 bytes, rendered as 16 lowercase hexadecimal digits `#icx:7bf8239fb7c504f1`) form the `ArtifactId(pub u64)`, while `StoredArtifact` retains the full 256-bit `Blake3Digest([u8; 32])` for fail-closed verification on every read.
+3. **Birthday-Bound Collision Invariant:** Under the uniform random oracle model of `BLAKE3`, the collision probability across $N$ archived context artifacts for a $k = 64$-bit handle is bounded by:
+   $$P_{\text{collision}}(N) \le \frac{N(N - 1)}{2 \cdot 2^{64}} \approx \frac{N^2}{2^{65}}$$
+   At $N = 10^5$ context artifacts in a workspace, $P_{\text{collision}} \le 2.71 \times 10^{-10}$, and `CasStore::deref_bytes` always verifies the full 256-bit `Blake3Digest`.
+4. **$O(1)$ Lossless Dereference:** Any agent holding `#icx:7bf8239fb7c504f1` recovers the exact byte stream or line range in `< 100 µs` via the polymorphic single-tool MCP pager (`crates/icx-adapters/src/mcp.rs`):
+   - `icx(op="deref", id="#icx:7bf8239fb7c504f1")`
+   - `icx(op="slice", id="#icx:7bf8239fb7c504f1", range=[40, 95])`
 
 ---
 
