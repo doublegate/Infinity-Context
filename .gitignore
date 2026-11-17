@@ -25,8 +25,12 @@ Thumbs.db
 *.shm
 *.sock
 *.profraw
+*.profdata
+*.tmp.*
+cas_store.lock
 lcov.info
 coverage/
+.icx/
 .icx-data/
 
 # Antigravity PR reviewer: large-diff on-disk handoff (transient, removed by the script).

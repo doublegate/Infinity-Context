@@ -59,5 +59,7 @@ mod tests {
         let enc = encode_braille_sketch(&sample);
         assert_eq!(enc.chars().count(), 8);
         assert_eq!(decode_braille_sketch(&enc), Some(sample));
+        assert_eq!(decode_braille_sketch("⠀⠀"), None);
+        assert_eq!(decode_braille_sketch("⠀⠀⠀⠀⠀⠀⠀⠀⠀"), None);
     }
 }

@@ -26,6 +26,8 @@
 
 4. **Layer 4: Quality Gates**
    - Format gate: `cargo fmt --all -- --check`
+   - Zero-`unsafe` policy gate: workspace-wide `unsafe_code = "forbid"` enforced across all 8 crates in `.github/workflows/ci.yml`
    - Lint gate: `cargo clippy --workspace --all-targets -- -D warnings`
    - Test gate: `cargo test --workspace`
-   - Doc gate: `cargo doc --workspace --no-deps`
+   - Coverage gate (`>= 95%` floor): `cargo llvm-cov --workspace --all-targets --lcov --output-path lcov.info --fail-under-lines 95`
+   - Doc gate: `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`

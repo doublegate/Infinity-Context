@@ -294,4 +294,40 @@ mod tests {
         assert!(rendered.contains("src/alloc.rs:412:9"));
         assert!(rendered.contains(&id.to_string()));
     }
+
+    #[test]
+    fn skeletonizes_unified_diffs_source_code_and_plain_text() {
+        let diff = "\
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,3 +1,4 @@
+-fn old_helper() {}
++pub fn new_helper() {}
++pub struct Config { pub x: u32 }
+";
+        let diff_pkt = StructuralSkeletonizer::compress_to_packet("git_diff", diff, None, [0; 8]);
+        assert_eq!(diff_pkt.kind, PacketKind::CodeDelta);
+        let diff_str = diff_pkt.render();
+        assert!(diff_str.contains("hunks:+2/-1"));
+        assert!(diff_str.contains("⊕sym:new_helper()"));
+        assert!(diff_str.contains("⊖sym:old_helper()"));
+
+        let src = "\
+pub async fn serve() {}
+pub enum Mode { Fast }
+pub trait Handler {}
+// INVARIANT: lock-free ring
+// PASSKEY_ALPHA_123
+";
+        let src_pkt = StructuralSkeletonizer::compress_to_packet("src/lib.rs", src, None, [1; 8]);
+        let src_str = src_pkt.render();
+        assert!(src_str.contains("serve()"));
+        assert!(src_str.contains("PASSKEY_ALPHA_123"));
+
+        let plain = "just a plain note without any symbol declarations\nsecond line\n";
+        let plain_pkt =
+            StructuralSkeletonizer::compress_to_packet("notes.txt", plain, None, [2; 8]);
+        assert!(plain_pkt.render().contains("head:just_a_plain_note"));
+    }
 }

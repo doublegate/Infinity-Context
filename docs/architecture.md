@@ -8,7 +8,7 @@
 
 **Infinity-Context (`icx`)** is structured around five strict systems-engineering invariants:
 
-1. **Central-State Ownership (Module 50):** A single resident Rust daemon (`icxd`) and its memory-mapped shared-memory segment (`/dev/shm/icx-fabric-v1`) own the authoritative cross-agent state; ephemeral CLI hook invocations (`icx hook`) attach to `/dev/shm` read-only or append via lock-free atomic seqlocks and Unix Domain Socket (`UDS`) RPC.
+1. **Central-State Ownership (Module 50):** A single resident Rust daemon (`icxd`) and its `/dev/shm/icx-fabric-v1` shared-memory segment own the authoritative cross-agent state; ephemeral CLI hook invocations (`icx hook`) attach to `/dev/shm` via safe positional I/O or lock-free atomic seqlocks (`#![forbid(unsafe_code)]`) and Unix Domain Socket (`UDS`) RPC.
 2. **One-Directional Crate Dependency DAG:** No circular dependencies exist across the 8 workspace crates.
 3. **Byte-Exact Lossless Provenance (Module 20):** Every compressed token packet (`AHTL`) in the active window is backed by an immutable `BLAKE3` Merkle-DAG path (`LCM`) down to the exact raw bytes (`L0`).
 4. **Prefix-Cache Immutability (`arXiv:2610.28577`):** Sealed Cache Epochs (`E_0 .. E_{k-1}`) never mutate on the wire. Dynamic associative recall and cross-agent telepathy updates are injected exclusively into the **Ephemeral Tail Slot** after the cached prefix.
@@ -46,7 +46,7 @@ flowchart TD
 | `icx-hdc` | L1 Math/Index | 10,240-bit `Hypervector` (`[u64; 160]`), XOR binding, circular permutation, Delta-Rule majority bundling, AVX-512 `VPOPCNTDQ` Hamming distance, `FractalTrajectoryArchive` (`FCGA`), and `TitansSurpriseGate`. |
 | `icx-codec` | L1 Codec | Pre-ingestion secret redaction (`SecretRedactor`), structural AST/log/diff skeletonizer (`StructuralSkeletonizer`), and the **Alien Holographic Token Lattice (`AHTL`)** encoder/decoder. |
 | `icx-store` | L2 Storage/Graph | Persistent CAS + metadata store, in-memory Compressed Sparse Row (CSR) **Bi-Temporal Knowledge Graph**, **HippoRAG Personalized PageRank (`PPR`)**, and external agent SQLite WAL / JSONL tailer. |
-| `icx-bus` | L2 IPC/Shm | POSIX `/dev/shm/icx-fabric-v1` memory-mapped **Lock-Free Seqlock Ring Buffer** (`SeqlockTelemetryBus`) and Unix Domain Socket framing for `< 100 µs` cross-agent telepathy. |
+| `icx-bus` | L2 IPC/Shm | POSIX `/dev/shm/icx-fabric-v1` **Seqlock Ring Buffer** (`SeqlockTelemetryBus`, 100% safe atomic ring + `/dev/shm` positional I/O) and Unix Domain Socket framing for `< 100 µs` cross-agent telepathy. |
 | `icx-adapters` | L3 Harnesses | Native hook Input/Output wire translators for **Claude Code**, **OpenAI Codex**, **Antigravity CLI (`agy`)**, **Hermes Agent**, and the **Single-Tool Polymorphic MCP Pager**. |
 | `icx-proxy` | L3 Wire Plane | Transparent async HTTP/1.1, HTTP/2 & SSE reverse proxy for Anthropic, OpenAI, and Gemini APIs with automatic Cache-Epoch breakpoint injection and streaming pointer expansion. |
 | `icx-cli` | L4 Entrypoint | Unified `icx` binary providing `init`, `daemon`, `hook`, `mcp-serve`, `encode-ahtl`, `decode-ahtl`, `deref`, `status`, `doctor`, and `benchmark`. |

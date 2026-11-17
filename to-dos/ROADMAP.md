@@ -19,15 +19,16 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 
 ---
 
-### Phase 1 — Foundations, BLAKE3 CAS, LCM Merkle-DAG & `/dev/shm` Bus (COMPLETED)
-**Goal:** Establish the 8-crate Rust Cargo workspace, FastCDC + BLAKE3 Content-Addressed Store, Lossless Context Management (`LCM`) Merkle-DAG, Cache-Epoch Prefix Controller, and lock-free `/dev/shm` Seqlock Ring Buffer.  
-**Exit Criterion:** `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` pass with 100% lossless byte/line round-trip recovery and `< 1 µs` seqlock ring latency.  
-**Estimated Duration:** 3 weeks  
+### Phase 1 — Foundations, BLAKE3 CAS, LCM Merkle-DAG, `/dev/shm` Bus & Zero-`unsafe` Enforcement (COMPLETED)
+**Goal:** Establish the 8-crate Rust Cargo workspace, FastCDC + BLAKE3 Content-Addressed Store, Lossless Context Management (`LCM`) Merkle-DAG, Cache-Epoch Prefix Controller, lock-free `/dev/shm` Seqlock Ring Buffer, permanent workspace-wide `unsafe_code = "forbid"` (`std` allowed, zero `unsafe` through `v1.0.0`), and `>= 95%` Codecov line coverage.  
+**Exit Criterion:** `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo llvm-cov --workspace --all-targets --fail-under-lines 95` pass with 100% lossless byte/line round-trip recovery, zero `unsafe` code across all 8 crates, and `< 1 µs` seqlock ring latency.  
+**Estimated Duration:** 4 weeks  
 
 - [Phase 1 Overview](phase-1-foundations/overview.md)
   - [Sprint 1 — Workspace, FastCDC & BLAKE3 CAS (COMPLETED)](phase-1-foundations/sprint-1-workspace-and-cas.md)
   - [Sprint 2 — Lossless Merkle-DAG (`LCM`) & Cache-Epoch Controller (COMPLETED)](phase-1-foundations/sprint-2-merkle-dag-and-epochs.md)
   - [Sprint 3 — Lock-Free `/dev/shm` Seqlock Telepathy Bus (COMPLETED)](phase-1-foundations/sprint-3-shm-seqlock-bus.md)
+  - [Sprint 4 — Toolchain Modernization, 100% Zero-`unsafe` Conversion & `>= 95%` Codecov Enforcement (COMPLETED)](phase-1-foundations/sprint-4-zero-unsafe-enforcement.md)
 
 ---
 

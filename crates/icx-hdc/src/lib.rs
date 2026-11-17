@@ -159,3 +159,28 @@ impl HdcAssociativeIndex {
         hits
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hdc_associative_index_tracks_empty_state_and_trajectory() {
+        let mut idx = HdcAssociativeIndex::new();
+        assert!(idx.is_empty());
+        assert_eq!(idx.len(), 0);
+        let init_traj = idx.current_trajectory();
+        let receipt = idx.observe_event(
+            ArtifactId(1),
+            "src/mmu.rs",
+            "pub fn allocate_page() {}",
+            true,
+        );
+        assert!(!idx.is_empty());
+        assert_eq!(idx.len(), 1);
+        assert_ne!(idx.current_trajectory(), init_traj);
+        assert_eq!(receipt.fractal_coord, idx.current_trajectory());
+        let hits = idx.query_associative("allocate_page mmu", 3);
+        assert_eq!(hits.len(), 1);
+    }
+}

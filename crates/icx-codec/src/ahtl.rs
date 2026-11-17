@@ -285,5 +285,55 @@ mod tests {
         assert!(rendered.starts_with("⟦Δ:crates/icx-core/src/dag.rs#L42-118⊢"));
         let parsed = AhtlPacket::parse(&rendered).expect("valid AHTL packet");
         assert_eq!(parsed, pkt);
+
+        for kind in [
+            PacketKind::CodeDelta,
+            PacketKind::ToolStub,
+            PacketKind::Invariant,
+            PacketKind::Telepathy,
+            PacketKind::FoldedBranch,
+        ] {
+            assert_eq!(PacketKind::from_glyph(kind.glyph()), Some(kind));
+        }
+        assert_eq!(PacketKind::from_glyph('?'), None);
+
+        let no_range_or_deref = AhtlPacket {
+            kind: PacketKind::Invariant,
+            subject: "rule#Lbad".into(),
+            line_range: None,
+            clauses: vec![
+                AhtlClause::new(ClauseOp::Removed, "legacy", Some("v0".into())),
+                AhtlClause::new(ClauseOp::Neutral, "flag", None),
+            ],
+            deref_id: None,
+            hologram_bytes: [0; 8],
+        };
+        let r2 = no_range_or_deref.render();
+        assert_eq!(AhtlPacket::parse(&r2).unwrap(), no_range_or_deref);
+
+        assert_eq!(
+            AhtlPacket::parse("no_delims"),
+            Err(CodecError::MissingDelimiters)
+        );
+        assert_eq!(
+            AhtlPacket::parse("⟦Δ:subj⟧"),
+            Err(CodecError::MalformedBrailleSketch)
+        );
+        assert_eq!(
+            AhtlPacket::parse("⟦Δ:subj⋮Ψ:bad⟧"),
+            Err(CodecError::MalformedBrailleSketch)
+        );
+        assert_eq!(
+            AhtlPacket::parse("⟦?:subj⋮Ψ:⠀⠀⠀⠀⠀⠀⠀⠀⟧"),
+            Err(CodecError::UnknownPacketKind)
+        );
+        assert_eq!(
+            AhtlPacket::parse("⟦Δsubj⋮Ψ:⠀⠀⠀⠀⠀⠀⠀⠀⟧"),
+            Err(CodecError::MalformedSubject)
+        );
+        assert!(matches!(
+            AhtlPacket::parse("⟦Δ:subj↦#icx:bad⋮Ψ:⠀⠀⠀⠀⠀⠀⠀⠀⟧"),
+            Err(CodecError::MalformedHandle(_))
+        ));
     }
 }

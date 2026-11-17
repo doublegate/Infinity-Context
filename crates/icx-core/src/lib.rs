@@ -284,5 +284,26 @@ mod tests {
         assert!("invalid".parse::<ArtifactId>().is_err());
         assert!("#icx:1234".parse::<ArtifactId>().is_err());
         assert!("#icx:zzzzzzzzzzzzzzzz".parse::<ArtifactId>().is_err());
+        assert!(ArtifactId::parse_prefix_range("#icx:1234").is_err());
+        assert!(ArtifactId::parse_prefix_range("#icx:zzzzzzzzzzzz").is_err());
+
+        let (id, digest) = ArtifactId::hash_bytes(b"hex_test");
+        assert_eq!(id.to_short_hex12().len(), 12);
+        assert_eq!(digest.to_hex().len(), 64);
+
+        for (raw, expected) in [
+            ("claude", AgentKind::ClaudeCode),
+            ("codex-cli", AgentKind::Codex),
+            ("agy", AgentKind::AntigravityCli),
+            ("hermes-agent", AgentKind::Hermes),
+            ("gemini-cli", AgentKind::GeminiCli),
+            ("opencode", AgentKind::OpenCode),
+            ("cursor", AgentKind::Cursor),
+            ("other", AgentKind::GenericMcp),
+        ] {
+            let parsed = AgentKind::parse_agent(raw);
+            assert_eq!(parsed, expected);
+            assert_eq!(parsed.to_string(), parsed.as_str());
+        }
     }
 }

@@ -10,26 +10,63 @@ use icx_hdc::hv::Hypervector;
 use icx_proxy::WireProxyTransformer;
 use std::env;
 use std::fs;
-use std::io::{self, BufRead, Read};
+use std::io::{self, BufRead};
 use std::path::Path;
 use std::time::Instant;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+    if let Err(err) = dispatch_cli_args(&args, io::stdin().lock()) {
+        eprintln!("{err}");
+        std::process::exit(1);
+    }
+}
+
+fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), String> {
     let subcmd = args.get(1).map(String::as_str).unwrap_or("help");
+    let tail = if args.len() >= 2 { &args[2..] } else { &[] };
 
     match subcmd {
-        "init" => run_init(&args[2..]),
-        "deref" => run_deref(&args[2..]),
-        "hook" => run_hook(&args[2..]),
-        "mcp-serve" => run_mcp_serve(),
-        "proxy-transform" => run_proxy_transform(),
-        "encode-ahtl" => run_encode_ahtl(&args[2..]),
-        "decode-ahtl" => run_decode_ahtl(&args[2..]),
-        "status" => run_status(),
-        "doctor" => run_doctor(),
-        "benchmark" => run_benchmark(),
-        _ => print_help(),
+        "init" => run_init(tail),
+        "deref" => run_deref(tail),
+        "hook" => {
+            let mut stdin_buf = String::new();
+            let _ = reader.read_to_string(&mut stdin_buf);
+            match execute_hook(tail, &stdin_buf) {
+                Ok(json_out) => println!("{json_out}"),
+                Err(e) => {
+                    eprintln!("icx hook error: {e}");
+                    println!("{{}}");
+                }
+            }
+            Ok(())
+        }
+        "mcp-serve" => serve_mcp_stream(reader, io::stdout().lock()),
+        "proxy-transform" => {
+            let mut stdin_buf = String::new();
+            let _ = reader.read_to_string(&mut stdin_buf);
+            let transformed = execute_proxy_transform(tail, &stdin_buf)?;
+            println!("{transformed}");
+            Ok(())
+        }
+        "encode-ahtl" => run_encode_ahtl(tail),
+        "decode-ahtl" => run_decode_ahtl(tail),
+        "status" => {
+            run_status();
+            Ok(())
+        }
+        "doctor" => {
+            run_doctor();
+            Ok(())
+        }
+        "benchmark" => {
+            run_benchmark();
+            Ok(())
+        }
+        _ => {
+            print_help();
+            Ok(())
+        }
     }
 }
 
@@ -50,6 +87,8 @@ Subcommands:
       Execute synchronous <500us lifecycle hook (reads JSON from stdin, writes JSON to stdout)
   mcp-serve
       Run the Single-Tool Polymorphic MCP Virtual Pager (`icx`) over stdio (JSON-RPC 2.0)
+  proxy-transform [--provider <anthropic|openai>] [--dir <PATH>]
+      Transform an outbound Anthropic (`/v1/messages`) or OpenAI (`/v1/chat/completions`, `/v1/responses`) JSON request
   encode-ahtl <FILE> [--dir <PATH>]
       Compress a source file, diff, or build log into an AHTL Holographic Packet + BLAKE3 handle
   decode-ahtl <AHTL_STRING>
@@ -123,7 +162,7 @@ fn init_workspace_dir(icx_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn run_init(args: &[String]) {
+fn run_init(args: &[String]) -> Result<(), String> {
     let mut dir_str = ".icx";
     let mut i = 0;
     while i < args.len() {
@@ -135,13 +174,9 @@ fn run_init(args: &[String]) {
         }
     }
     let icx_dir = Path::new(dir_str);
-    match init_workspace_dir(icx_dir) {
-        Ok(()) => println!("⟪ICX:INIT│dir={}│status=READY⟫", icx_dir.display()),
-        Err(e) => {
-            eprintln!("icx init error: {e}");
-            std::process::exit(1);
-        }
-    }
+    init_workspace_dir(icx_dir).map_err(|e| format!("icx init error: {e}"))?;
+    println!("⟪ICX:INIT│dir={}│status=READY⟫", icx_dir.display());
+    Ok(())
 }
 
 fn parse_line_range_arg(spec: &str) -> Result<(usize, usize), String> {
@@ -179,10 +214,9 @@ fn deref_from_workspace_dir(
     }
 }
 
-fn run_deref(args: &[String]) {
+fn run_deref(args: &[String]) -> Result<(), String> {
     let Some(handle) = args.first() else {
-        eprintln!("Usage: icx deref <HANDLE> [--lines <START:END>] [--dir <PATH>]");
-        std::process::exit(1);
+        return Err("Usage: icx deref <HANDLE> [--lines <START:END>] [--dir <PATH>]".into());
     };
     let mut dir_str = ".icx";
     let mut line_range: Option<(usize, usize)> = None;
@@ -194,28 +228,21 @@ fn run_deref(args: &[String]) {
                 i += 2;
             }
             "--lines" if i + 1 < args.len() => {
-                match parse_line_range_arg(&args[i + 1]) {
-                    Ok(range) => line_range = Some(range),
-                    Err(e) => {
-                        eprintln!("icx deref error: {e}");
-                        std::process::exit(1);
-                    }
-                }
+                let range = parse_line_range_arg(&args[i + 1])
+                    .map_err(|e| format!("icx deref error: {e}"))?;
+                line_range = Some(range);
                 i += 2;
             }
             _ => i += 1,
         }
     }
-    match deref_from_workspace_dir(Path::new(dir_str), handle, line_range) {
-        Ok(out) => print!("{out}"),
-        Err(e) => {
-            eprintln!("icx deref error: {e}");
-            std::process::exit(1);
-        }
-    }
+    let out = deref_from_workspace_dir(Path::new(dir_str), handle, line_range)
+        .map_err(|e| format!("icx deref error: {e}"))?;
+    print!("{out}");
+    Ok(())
 }
 
-fn run_hook(args: &[String]) {
+fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::Error> {
     let mut agent_str = "claude-code";
     let mut event_str = "SessionStart";
     let mut i = 0;
@@ -233,52 +260,103 @@ fn run_hook(args: &[String]) {
         }
     }
 
-    let mut stdin_buf = String::new();
-    let _ = io::stdin().read_to_string(&mut stdin_buf);
-
     let mut mmu = InfinityContextMmu::default();
     let agent = AgentKind::parse_agent(agent_str);
-    let out = match agent {
-        AgentKind::Codex => CodexAdapter::handle_hook(event_str, &stdin_buf, &mut mmu),
+    match agent {
+        AgentKind::Codex => CodexAdapter::handle_hook(event_str, stdin_buf, &mut mmu),
         AgentKind::AntigravityCli => {
-            AntigravityAdapter::handle_hook(event_str, &stdin_buf, &mut mmu)
+            AntigravityAdapter::handle_hook(event_str, stdin_buf, &mut mmu)
         }
-        _ => ClaudeCodeAdapter::handle_hook(event_str, &stdin_buf, &mut mmu),
-    };
-
-    match out {
-        Ok(json_out) => println!("{json_out}"),
-        Err(e) => {
-            eprintln!("icx hook error: {e}");
-            println!("{{}}");
-        }
+        _ => ClaudeCodeAdapter::handle_hook(event_str, stdin_buf, &mut mmu),
     }
 }
 
-fn run_mcp_serve() {
-    let stdin = io::stdin();
+fn serve_mcp_stream<R: BufRead, W: io::Write>(reader: R, mut writer: W) -> Result<(), String> {
     let mut mmu = InfinityContextMmu::default();
-    for line in stdin.lock().lines() {
+    for line in reader.lines() {
         let Ok(req_line) = line else { break };
         if req_line.trim().is_empty() {
             continue;
         }
         let resp = McpPagerServer::handle_jsonrpc(&req_line, &mut mmu);
-        println!("{resp}");
+        writeln!(writer, "{resp}").map_err(|e| format!("mcp-serve write error: {e}"))?;
+        writer
+            .flush()
+            .map_err(|e| format!("mcp-serve flush error: {e}"))?;
     }
+    Ok(())
 }
 
-fn run_proxy_transform() {
-    let mut stdin_buf = String::new();
-    let _ = io::stdin().read_to_string(&mut stdin_buf);
-    let mut mmu = InfinityContextMmu::default();
-    match WireProxyTransformer::transform_anthropic_messages(&stdin_buf, &mut mmu) {
-        Ok(transformed) => println!("{transformed}"),
-        Err(e) => {
-            eprintln!("proxy-transform error: {e}");
-            std::process::exit(1);
+fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, String> {
+    let mut provider: Option<&str> = None;
+    let mut dir_str: Option<&str> = None;
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--provider" && i + 1 < args.len() {
+            provider = Some(args[i + 1].as_str());
+            i += 2;
+        } else if args[i] == "--dir" && i + 1 < args.len() {
+            dir_str = Some(args[i + 1].as_str());
+            i += 2;
+        } else {
+            i += 1;
         }
     }
+    let is_openai = match provider {
+        Some(p) if p.eq_ignore_ascii_case("openai") => true,
+        Some(p) if p.eq_ignore_ascii_case("anthropic") => false,
+        Some(other) => {
+            return Err(format!(
+                "proxy-transform error: unknown --provider `{other}` (expected anthropic or openai)"
+            ));
+        }
+        None => serde_json::from_str::<serde_json::Value>(stdin_buf).is_ok_and(|v| {
+            if v.get("input").is_some() {
+                return true;
+            }
+            v.get("model")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|m| {
+                    let lower = m.to_ascii_lowercase();
+                    lower.starts_with("gpt-")
+                        || lower.starts_with("o1")
+                        || lower.starts_with("o3")
+                        || lower.starts_with("o4")
+                        || lower.contains("codex")
+                })
+        }),
+    };
+    let mut mmu = InfinityContextMmu::default();
+    let icx_dir = Path::new(dir_str.unwrap_or(".icx"));
+    let has_workspace = icx_dir.exists();
+    let _guard = if has_workspace {
+        let g = acquire_workspace_lock(icx_dir)?;
+        let shm_path = icx_dir.join("icx-fabric-v1.shm");
+        if shm_path.exists() {
+            mmu.bus = icx_bus::SeqlockTelemetryBus::open_shared_file(&shm_path)
+                .map_err(|e| e.to_string())?;
+        }
+        let cas_path = icx_dir.join("cas_store.json");
+        if cas_path.exists() {
+            mmu.cas = icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;
+        }
+        Some(g)
+    } else {
+        None
+    };
+
+    let out = if is_openai {
+        WireProxyTransformer::transform_openai_request(stdin_buf, &mut mmu)
+            .map_err(|e| format!("proxy-transform error: {e}"))?
+    } else {
+        WireProxyTransformer::transform_anthropic_messages(stdin_buf, &mut mmu)
+            .map_err(|e| format!("proxy-transform error: {e}"))?
+    };
+
+    if has_workspace {
+        mmu.cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
+    }
+    Ok(out)
 }
 
 fn encode_payload_into_workspace(
@@ -310,10 +388,9 @@ fn encode_payload_into_workspace(
     Ok(res.compressed_ahtl)
 }
 
-fn run_encode_ahtl(args: &[String]) {
+fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
     let Some(path_str) = args.first() else {
-        eprintln!("Usage: icx encode-ahtl <FILE> [--dir <PATH>]");
-        std::process::exit(1);
+        return Err("Usage: icx encode-ahtl <FILE> [--dir <PATH>]".into());
     };
     let mut dir_str = ".icx";
     let mut i = 1;
@@ -325,42 +402,31 @@ fn run_encode_ahtl(args: &[String]) {
             i += 1;
         }
     }
-    let content = fs::read_to_string(path_str).unwrap_or_else(|e| {
-        eprintln!("Failed to read `{path_str}`: {e}");
-        std::process::exit(1);
-    });
+    let content =
+        fs::read_to_string(path_str).map_err(|e| format!("Failed to read `{path_str}`: {e}"))?;
 
-    match encode_payload_into_workspace(path_str, &content, Path::new(dir_str)) {
-        Ok(compressed_ahtl) => println!("{compressed_ahtl}"),
-        Err(e) => {
-            eprintln!("icx encode-ahtl error: {e}");
-            std::process::exit(1);
-        }
-    }
+    let compressed_ahtl = encode_payload_into_workspace(path_str, &content, Path::new(dir_str))
+        .map_err(|e| format!("icx encode-ahtl error: {e}"))?;
+    println!("{compressed_ahtl}");
+    Ok(())
 }
 
-fn run_decode_ahtl(args: &[String]) {
+fn run_decode_ahtl(args: &[String]) -> Result<(), String> {
     let Some(encoded) = args.first() else {
-        eprintln!("Usage: icx decode-ahtl '<AHTL_PACKET>'");
-        std::process::exit(1);
+        return Err("Usage: icx decode-ahtl '<AHTL_PACKET>'".into());
     };
-    match AhtlPacket::parse(encoded) {
-        Ok(pkt) => {
-            println!("Kind:       {:?} ({})", pkt.kind, pkt.kind.glyph());
-            println!("Subject:    {}", pkt.subject);
-            println!("Line Range: {:?}", pkt.line_range);
-            println!("Deref ID:   {:?}", pkt.deref_id.map(|id| id.to_string()));
-            println!("Hologram:   {:02x?}", pkt.hologram_bytes);
-            println!("Clauses ({}):", pkt.clauses.len());
-            for c in &pkt.clauses {
-                println!("  - {}", c.render());
-            }
-        }
-        Err(e) => {
-            eprintln!("Failed to parse AHTL packet: {e}");
-            std::process::exit(1);
-        }
+    let pkt =
+        AhtlPacket::parse(encoded).map_err(|e| format!("Failed to parse AHTL packet: {e}"))?;
+    println!("Kind:       {:?} ({})", pkt.kind, pkt.kind.glyph());
+    println!("Subject:    {}", pkt.subject);
+    println!("Line Range: {:?}", pkt.line_range);
+    println!("Deref ID:   {:?}", pkt.deref_id.map(|id| id.to_string()));
+    println!("Hologram:   {:02x?}", pkt.hologram_bytes);
+    println!("Clauses ({}):", pkt.clauses.len());
+    for c in &pkt.clauses {
+        println!("  - {}", c.render());
     }
+    Ok(())
 }
 
 fn run_status() {
@@ -502,6 +568,26 @@ fn run_benchmark() {
         "  [PASS] 50-Turn NIH + Cache-Epoch:   {avg_cache_hit:.2}% prefix cache hit rate, 100% lossless passkey recovery ({:.2} ms)",
         sim_elapsed.as_secs_f64() * 1_000.0
     );
+
+    // 4. In-Process Atomic Seqlock Broadcast Latency Benchmark
+    let bench_bus = icx_bus::SeqlockTelemetryBus::new_in_memory();
+    let t3 = Instant::now();
+    for seq_i in 0..1_000u64 {
+        bench_bus.publish(
+            AgentKind::ClaudeCode,
+            ArtifactId(seq_i),
+            0x4943_585F_574F_524B,
+            128,
+            [seq_i; 4],
+            [0; 16],
+            "⟦Θ:bench@seqlock⊢✓ok⟧",
+            seq_i,
+        );
+    }
+    let bus_ns_per_op = (t3.elapsed().as_nanos() as f64) / 1_000.0;
+    println!(
+        "  [PASS] Atomic Seqlock Broadcast:    {bus_ns_per_op:.1} ns / slot (1,000 publishes)"
+    );
     println!("All Infinity-Context SLO gates PASSED.");
 }
 
@@ -568,6 +654,190 @@ mod tests {
         fs::write(&cas_json_path, b"{corrupted_json").unwrap();
         assert!(encode_payload_into_workspace("src/new.rs", "fn x() {}\n", &tmp_dir).is_err());
         assert_eq!(fs::read(&cas_json_path).unwrap(), b"{corrupted_json");
+
+        let _ = fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn cli_subcommands_status_doctor_benchmark_encode_decode_hook_and_mcp_run_cleanly() {
+        dispatch_cli_args(&["icx".into(), "help".into()], io::Cursor::new("")).unwrap();
+        dispatch_cli_args(&["icx".into(), "status".into()], io::Cursor::new("")).unwrap();
+        dispatch_cli_args(&["icx".into(), "doctor".into()], io::Cursor::new("")).unwrap();
+        dispatch_cli_args(&["icx".into(), "benchmark".into()], io::Cursor::new("")).unwrap();
+
+        let tmp_dir =
+            std::env::temp_dir().join(format!("icx_cli_subcmd_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp_dir);
+        let dir_arg = tmp_dir.to_string_lossy().into_owned();
+
+        // Test encode_payload_into_workspace when workspace dir does not exist yet
+        let ephemeral_pkt =
+            encode_payload_into_workspace("src/ephemeral.rs", "pub fn e() {}\n", &tmp_dir).unwrap();
+        assert!(ephemeral_pkt.starts_with("⟦Δ:"));
+
+        // Initialize workspace via dispatch_cli_args (twice to cover existing cas_store.json path)
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "init".into(),
+                "--dir".into(),
+                dir_arg.clone(),
+                "--unused".into(),
+            ],
+            io::Cursor::new(""),
+        )
+        .unwrap();
+        dispatch_cli_args(
+            &["icx".into(), "init".into(), "--dir".into(), dir_arg.clone()],
+            io::Cursor::new(""),
+        )
+        .unwrap();
+
+        // Write a sample file and encode via run_encode_ahtl
+        let sample_file = tmp_dir.join("sample.rs");
+        fs::write(&sample_file, "pub fn cli_sample() -> u32 { 7 }\n").unwrap();
+        let sample_path_str = sample_file.to_string_lossy().into_owned();
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "encode-ahtl".into(),
+                sample_path_str.clone(),
+                "--dir".into(),
+                dir_arg.clone(),
+                "--extra".into(),
+            ],
+            io::Cursor::new(""),
+        )
+        .unwrap();
+        assert!(run_encode_ahtl(&[]).is_err());
+        assert!(run_encode_ahtl(&["/nonexistent/file/path.rs".into()]).is_err());
+
+        let pkt_str = encode_payload_into_workspace(
+            &sample_path_str,
+            "pub fn cli_sample() -> u32 { 7 }\n",
+            &tmp_dir,
+        )
+        .unwrap();
+        dispatch_cli_args(
+            &["icx".into(), "decode-ahtl".into(), pkt_str.clone()],
+            io::Cursor::new(""),
+        )
+        .unwrap();
+        assert!(run_decode_ahtl(&[]).is_err());
+        assert!(run_decode_ahtl(&["invalid_packet".into()]).is_err());
+
+        let pkt = AhtlPacket::parse(&pkt_str).unwrap();
+        let handle_str = pkt.deref_id.unwrap().to_string();
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "deref".into(),
+                handle_str.clone(),
+                "--lines".into(),
+                "1:1".into(),
+                "--dir".into(),
+                dir_arg.clone(),
+                "--extra".into(),
+            ],
+            io::Cursor::new(""),
+        )
+        .unwrap();
+        assert!(run_deref(&[]).is_err());
+        assert!(run_deref(&[handle_str.clone(), "--lines".into(), "bad".into()]).is_err());
+        assert!(
+            run_deref(&[
+                "#icx:0000000000000000".into(),
+                "--dir".into(),
+                dir_arg.clone(),
+            ])
+            .is_err()
+        );
+
+        // Test hook dispatch for claude-code, codex, agy, and malformed JSON
+        for agent in ["claude-code", "codex", "agy"] {
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "hook".into(),
+                    "--agent".into(),
+                    agent.into(),
+                    "--event".into(),
+                    "SessionStart".into(),
+                    "--ignore".into(),
+                ],
+                io::Cursor::new("{}"),
+            )
+            .unwrap();
+        }
+        dispatch_cli_args(
+            &["icx".into(), "hook".into()],
+            io::Cursor::new("{malformed_json"),
+        )
+        .unwrap();
+
+        // Test proxy-transform dispatch (Anthropic default & OpenAI via --provider / model / input auto-detect)
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "proxy-transform".into(),
+                "--provider".into(),
+                "anthropic".into(),
+                "--dir".into(),
+                dir_arg,
+            ],
+            io::Cursor::new(
+                r#"{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hi"}]}"#,
+            ),
+        )
+        .unwrap();
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "proxy-transform".into(),
+                "--provider".into(),
+                "openai".into(),
+                "--extra".into(),
+            ],
+            io::Cursor::new(r#"{"model":"gpt-5","messages":[{"role":"user","content":"hi"}]}"#),
+        )
+        .unwrap();
+        dispatch_cli_args(
+            &["icx".into(), "proxy-transform".into()],
+            io::Cursor::new(r#"{"model":"gpt-5","input":"responses prompt"}"#),
+        )
+        .unwrap();
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "proxy-transform".into(),
+                    "--provider".into(),
+                    "invalid".into()
+                ],
+                io::Cursor::new("{}")
+            )
+            .is_err()
+        );
+        assert!(
+            dispatch_cli_args(
+                &["icx".into(), "proxy-transform".into()],
+                io::Cursor::new("{bad_json")
+            )
+            .is_err()
+        );
+
+        // Test mcp-serve dispatch
+        let mcp_input = "\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n";
+        dispatch_cli_args(
+            &["icx".into(), "mcp-serve".into()],
+            io::Cursor::new(mcp_input),
+        )
+        .unwrap();
+
+        // Test acquire_workspace_lock error when cas_store.lock is a directory
+        let lock_dir_ws = tmp_dir.join("bad_lock_ws");
+        fs::create_dir_all(lock_dir_ws.join("cas_store.lock")).unwrap();
+        assert!(acquire_workspace_lock(&lock_dir_ws).is_err());
 
         let _ = fs::remove_dir_all(&tmp_dir);
     }

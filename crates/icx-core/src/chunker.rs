@@ -202,5 +202,16 @@ mod tests {
         assert!(line_spans.len() > 4);
         assert_eq!(line_spans.first().unwrap().start_line, 1);
         assert_eq!(line_spans.last().unwrap().end_line, 500);
+
+        let def_cfg = ChunkerConfig::default();
+        assert_eq!(def_cfg.avg_size, 8192);
+        assert_eq!(build_gear_table(), GEAR_TABLE);
+        assert_eq!(chunk_bytes(&[], def_cfg).len(), 0);
+        let small = chunk_bytes(b"short_payload_no_newline", def_cfg);
+        assert_eq!(small, vec![(0, 24)]);
+        let small_lines = chunk_bytes_with_lines(b"line1\nline2_no_nl", def_cfg);
+        assert_eq!(small_lines.len(), 1);
+        assert_eq!(small_lines[0].start_line, 1);
+        assert_eq!(small_lines[0].end_line, 2);
     }
 }

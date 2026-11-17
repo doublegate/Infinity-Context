@@ -27,5 +27,5 @@
 
 ## 3. Unsafe Code & Memory Safety Policy
 
-- `crates/icx-core`, `crates/icx-codec`, `crates/icx-hdc`, `crates/icx-store`, `crates/icx-adapters`, `crates/icx-proxy`, and `crates/icx-cli` forbid `unsafe` (`#[forbid(unsafe_code)]`).
-- `crates/icx-bus` confines `unsafe` strictly to the POSIX `mmap` shared-memory ring buffer (`SeqlockRing`), with every `unsafe` block accompanied by an explicit `// SAFETY:` invariant proof verifying alignment, bounds, and atomic seqlock memory ordering.
+- **Permanent Workspace-Wide `#[forbid(unsafe_code)]` (`std` Allowed, Zero `unsafe`):** All 8 workspace crates (`crates/icx-core`, `crates/icx-codec`, `crates/icx-hdc`, `crates/icx-store`, `crates/icx-bus`, `crates/icx-adapters`, `crates/icx-proxy`, and `crates/icx-cli`) inherit `[workspace.lints]` with `unsafe_code = "forbid"` permanently enforced through `v1.0.0` and beyond.
+- `crates/icx-bus` implements `FabricHeader` (64 B) and `SeqlockSlot` (4,096 B) using 100% safe `AtomicU32` and `AtomicU64` word arrays and safe `/dev/shm` positional file I/O (`std::os::unix::fs::FileExt::{read_exact_at, write_all_at}` and OS-managed `File::try_lock()`), eliminating all `unsafe` blocks and raw pointer operations.
