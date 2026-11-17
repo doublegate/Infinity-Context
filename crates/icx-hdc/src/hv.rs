@@ -165,42 +165,41 @@ impl Hypervector {
     pub fn encode_text(text: &str) -> Self {
         const MAX_TEXT_TOKENS: usize = 1024;
         const MAX_RAW_SCANS: usize = 16_384;
-        const MAX_UNIGRAM_REINFORCEMENTS: u8 = 2;
-        const MAX_BIGRAM_REINFORCEMENTS: u8 = 1;
+        const MAX_UNIGRAM_REINFORCEMENTS: u64 = 2;
+        const MAX_BIGRAM_REINFORCEMENTS: u64 = 1;
         const SLOT_COUNT: usize = 4096;
         const SLOT_MASK: usize = SLOT_COUNT - 1;
+        const COUNT_MASK: u64 = 0b11;
 
         #[inline]
-        fn try_reinforce_slot(
-            slots: &mut [(u64, u8); SLOT_COUNT],
-            hv: &Hypervector,
-            cap: u8,
-        ) -> bool {
-            let key = (hv.words[0] ^ hv.words[1].rotate_left(13)) | 1;
-            let base = (key as usize) & SLOT_MASK;
+        fn try_reinforce_slot(slots: &mut [u64; SLOT_COUNT], hv: &Hypervector, cap: u64) -> bool {
+            let key = ((hv.words[0] ^ hv.words[1].rotate_left(13)) & !COUNT_MASK) | 4;
+            let base = ((key >> 2) as usize) & SLOT_MASK;
             for probe in 0..8usize {
                 let idx = (base + probe) & SLOT_MASK;
-                let (slot_key, slot_count) = slots[idx];
+                let entry = slots[idx];
+                let slot_key = entry & !COUNT_MASK;
                 if slot_key == key {
+                    let slot_count = entry & COUNT_MASK;
                     if slot_count >= cap {
                         return false;
                     }
-                    slots[idx].1 = slot_count + 1;
+                    slots[idx] = key | (slot_count + 1);
                     return true;
                 }
-                if slot_key == 0 {
-                    slots[idx] = (key, 1);
+                if entry == 0 {
+                    slots[idx] = key | 1;
                     return true;
                 }
             }
             // If all 8 probe slots are occupied by other keys, evict the tail probe slot
             // so novel tokens within the 1,024-token horizon are never dropped.
-            slots[(base + 7) & SLOT_MASK] = (key, 1);
+            slots[(base + 7) & SLOT_MASK] = key | 1;
             true
         }
 
         let mut bundler = HdcBundler::new();
-        let mut slots = [(0u64, 0u8); SLOT_COUNT];
+        let mut slots = [0u64; SLOT_COUNT];
         let mut stack_lower = [0u8; 128];
         let mut prev_hv: Option<Self> = None;
         let mut prev_raw: Option<&str> = None;
@@ -228,10 +227,6 @@ impl Hypervector {
                 prev_raw = Some(tok);
                 consecutive_repeats = 1;
             }
-            tokens_seen += 1;
-            if tokens_seen > MAX_TEXT_TOKENS {
-                break;
-            }
 
             let heap_lower: String;
             let lower: &str = if !tok.bytes().any(|b| b.is_ascii_uppercase()) {
@@ -246,8 +241,10 @@ impl Hypervector {
                 heap_lower.as_str()
             };
             let hv = Self::from_seed("tok", lower);
-            if try_reinforce_slot(&mut slots, &hv, MAX_UNIGRAM_REINFORCEMENTS) {
+            let accepted_unigram = try_reinforce_slot(&mut slots, &hv, MAX_UNIGRAM_REINFORCEMENTS);
+            if accepted_unigram {
                 bundler.add_delta(&hv);
+                tokens_seen += 1;
             }
 
             if let Some(prev) = prev_hv {
@@ -257,6 +254,9 @@ impl Hypervector {
                 }
             }
             prev_hv = Some(hv);
+            if tokens_seen >= MAX_TEXT_TOKENS {
+                break;
+            }
         }
 
         bundler.finalize()
@@ -501,15 +501,18 @@ impl HdcBundler {
         self.readout.unbind(role)
     }
 
+    /// Returns `true` if `hv`'s 128-bit fingerprint is recorded in `seen_fingerprints`.
+    #[inline]
+    pub fn contains_fingerprint(&self, hv: &Hypervector) -> bool {
+        self.seen_fingerprints
+            .contains(&hv.dedup_fingerprint_u128())
+    }
+
     /// Returns `true` if `hv`'s 128-bit fingerprint has already been bundled and its
     /// representation in `readout` remains active (`similarity >= 0.15`).
     #[inline]
     pub fn is_actively_bundled(&self, hv: &Hypervector) -> bool {
-        self.count > 0
-            && self
-                .seen_fingerprints
-                .contains(&hv.dedup_fingerprint_u128())
-            && self.readout.similarity(hv) >= 0.15
+        self.count > 0 && self.contains_fingerprint(hv) && self.readout.similarity(hv) >= 0.15
     }
 
     /// Adds a hypervector using the Infini-attention Delta Rule: vectors already strongly present
@@ -744,10 +747,11 @@ mod tests {
         let hv_rep_single = Hypervector::encode_text(&rep_single);
         assert!(hv_rep_single.similarity(&Hypervector::from_seed("tok", "ok")) > 0.25);
         assert!(hv_rep_single.similarity(&Hypervector::from_seed("tok", "panic_412")) > 0.25);
-        let rep_alt = "ok err ".repeat(1000);
+        let rep_alt = format!("{}panic_412", "ok err ".repeat(600));
         let hv_rep_alt = Hypervector::encode_text(&rep_alt);
-        assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "ok")) > 0.25);
-        assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "err")) > 0.25);
+        assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "ok")) > 0.20);
+        assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "err")) > 0.20);
+        assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "panic_412")) > 0.15);
 
         // Verify > 256 distinct tokens do not drop subsequent novel tokens within the 1,024-token horizon
         let mut many_distinct = String::new();

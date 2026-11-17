@@ -295,13 +295,21 @@ impl BiTemporalGraph {
         let mut effective_tx_ms = now_ms;
         if is_functional {
             for e in &mut self.edges {
-                if e.t_invalid.is_none() && e.source_entity == src && e.relation == rel {
-                    let inv_valid = now_ms.max(e.t_valid.saturating_add(1));
-                    let inv_tx = now_ms.max(e.t_tx_start.saturating_add(1));
-                    e.t_invalid = Some(inv_valid);
-                    e.t_tx_end = Some(inv_tx);
-                    effective_valid_ms = effective_valid_ms.max(inv_valid);
-                    effective_tx_ms = effective_tx_ms.max(inv_tx);
+                if e.source_entity == src && e.relation == rel {
+                    if let Some(inv) = e.t_invalid {
+                        effective_valid_ms = effective_valid_ms.max(inv);
+                    } else {
+                        let inv_valid = effective_valid_ms.max(e.t_valid.saturating_add(1));
+                        e.t_invalid = Some(inv_valid);
+                        effective_valid_ms = effective_valid_ms.max(inv_valid);
+                    }
+                    if let Some(tx_end) = e.t_tx_end {
+                        effective_tx_ms = effective_tx_ms.max(tx_end);
+                    } else {
+                        let inv_tx = effective_tx_ms.max(e.t_tx_start.saturating_add(1));
+                        e.t_tx_end = Some(inv_tx);
+                        effective_tx_ms = effective_tx_ms.max(inv_tx);
+                    }
                 }
             }
         }
@@ -338,9 +346,6 @@ impl BiTemporalGraph {
     /// Explicitly invalidates an active edge by `edge_id`, stamping `t_invalid = Some(now_ms)`
     /// and `t_tx_end = Some(now_ms)`. Returns `true` if an active edge was found and invalidated.
     pub fn invalidate_edge(&mut self, edge_id: u64, now_ms: u64) -> bool {
-        if edge_id == 0 {
-            return false;
-        }
         for e in &mut self.edges {
             if e.edge_id == edge_id && e.t_invalid.is_none() {
                 e.t_invalid = Some(now_ms.max(e.t_valid.saturating_add(1)));
@@ -516,13 +521,18 @@ impl BiTemporalGraph {
         let mut loaded: Self =
             serde_json::from_slice(&bytes).map_err(|e| IcxError::Io(e.to_string()))?;
         loaded.entities.clear();
+        loaded.edges.retain(|e| {
+            !e.source_entity.trim().is_empty()
+                && !e.relation.trim().is_empty()
+                && !e.target_entity.trim().is_empty()
+        });
         if loaded.edges.iter().any(|e| e.edge_id == 0) {
             for e in &mut loaded.edges {
                 e.edge_id = e.edge_id.saturating_add(1);
             }
         }
         let mut seen_ids = BTreeSet::new();
-        let mut active_functional: BTreeMap<(String, String), usize> = BTreeMap::new();
+        let mut functional_groups: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
         let mut max_next_id = loaded.next_edge_id.max(1);
 
         for idx in 0..loaded.edges.len() {
@@ -535,11 +545,6 @@ impl BiTemporalGraph {
             let src = loaded.edges[idx].source_entity.trim().to_owned();
             let rel = loaded.edges[idx].relation.trim().to_owned();
             let dst = loaded.edges[idx].target_entity.trim().to_owned();
-            if src.is_empty() || rel.is_empty() || dst.is_empty() {
-                return Err(IcxError::Io(
-                    "empty entity or relation in bitemporal_graph.json".to_owned(),
-                ));
-            }
             loaded.edges[idx].source_entity.clone_from(&src);
             loaded.edges[idx].relation.clone_from(&rel);
             loaded.edges[idx].target_entity.clone_from(&dst);
@@ -554,36 +559,8 @@ impl BiTemporalGraph {
             if let Some(tx_end) = loaded.edges[idx].t_tx_end {
                 loaded.edges[idx].t_tx_end = Some(tx_end.max(t_tx_start.saturating_add(1)));
             }
-            if loaded.edges[idx].is_functional && loaded.edges[idx].t_invalid.is_none() {
-                let key = (src, rel);
-                if let Some(&prev_idx) = active_functional.get(&key) {
-                    let prev_ord = (
-                        loaded.edges[prev_idx].t_valid,
-                        loaded.edges[prev_idx].t_tx_start,
-                        loaded.edges[prev_idx].edge_id,
-                    );
-                    let cur_ord = (t_valid, t_tx_start, edge_id);
-                    let (older_idx, newer_idx) = if prev_ord <= cur_ord {
-                        (prev_idx, idx)
-                    } else {
-                        (idx, prev_idx)
-                    };
-                    let inv_valid = loaded.edges[newer_idx]
-                        .t_valid
-                        .max(loaded.edges[older_idx].t_valid.saturating_add(1));
-                    let inv_tx = loaded.edges[newer_idx]
-                        .t_tx_start
-                        .max(loaded.edges[older_idx].t_tx_start.saturating_add(1));
-                    loaded.edges[older_idx].t_invalid = Some(inv_valid);
-                    loaded.edges[older_idx].t_tx_end = Some(inv_tx);
-                    loaded.edges[newer_idx].t_valid =
-                        loaded.edges[newer_idx].t_valid.max(inv_valid);
-                    loaded.edges[newer_idx].t_tx_start =
-                        loaded.edges[newer_idx].t_tx_start.max(inv_tx);
-                    active_functional.insert(key, newer_idx);
-                } else {
-                    active_functional.insert(key, idx);
-                }
+            if loaded.edges[idx].is_functional {
+                functional_groups.entry((src, rel)).or_default().push(idx);
             }
 
             let w = loaded.edges[idx].weight;
@@ -594,6 +571,60 @@ impl BiTemporalGraph {
             };
             max_next_id = max_next_id.max(edge_id.saturating_add(1));
         }
+
+        for indices in functional_groups.values_mut() {
+            if indices.len() <= 1 {
+                continue;
+            }
+            indices.sort_by_key(|&i| {
+                (
+                    loaded.edges[i].t_valid,
+                    loaded.edges[i].t_tx_start,
+                    loaded.edges[i].edge_id,
+                )
+            });
+            let last_active_pos = indices
+                .iter()
+                .rposition(|&i| loaded.edges[i].t_invalid.is_none());
+            for pos in 0..indices.len() {
+                let cur_i = indices[pos];
+                if pos > 0 {
+                    let prev_i = indices[pos - 1];
+                    if let Some(prev_inv) = loaded.edges[prev_i].t_invalid {
+                        loaded.edges[cur_i].t_valid = loaded.edges[cur_i].t_valid.max(prev_inv);
+                    }
+                    if let Some(prev_tx_end) = loaded.edges[prev_i].t_tx_end {
+                        loaded.edges[cur_i].t_tx_start =
+                            loaded.edges[cur_i].t_tx_start.max(prev_tx_end);
+                    }
+                }
+                let must_close = last_active_pos.is_some_and(|last| pos < last)
+                    || (loaded.edges[cur_i].t_invalid.is_none() && pos + 1 < indices.len());
+                if must_close && loaded.edges[cur_i].t_invalid.is_none() {
+                    let next_valid = indices
+                        .get(pos + 1)
+                        .map(|&ni| loaded.edges[ni].t_valid)
+                        .unwrap_or(loaded.edges[cur_i].t_valid);
+                    let next_tx = indices
+                        .get(pos + 1)
+                        .map(|&ni| loaded.edges[ni].t_tx_start)
+                        .unwrap_or(loaded.edges[cur_i].t_tx_start);
+                    loaded.edges[cur_i].t_invalid =
+                        Some(next_valid.max(loaded.edges[cur_i].t_valid.saturating_add(1)));
+                    loaded.edges[cur_i].t_tx_end =
+                        Some(next_tx.max(loaded.edges[cur_i].t_tx_start.saturating_add(1)));
+                } else if let Some(inv) = loaded.edges[cur_i].t_invalid {
+                    loaded.edges[cur_i].t_invalid =
+                        Some(inv.max(loaded.edges[cur_i].t_valid.saturating_add(1)));
+                    let tx_end = loaded.edges[cur_i]
+                        .t_tx_end
+                        .unwrap_or(inv)
+                        .max(loaded.edges[cur_i].t_tx_start.saturating_add(1));
+                    loaded.edges[cur_i].t_tx_end = Some(tx_end);
+                }
+            }
+        }
+
         loaded.next_edge_id = max_next_id.max(1);
         Ok(loaded)
     }
@@ -747,30 +778,35 @@ mod tests {
         .unwrap();
         assert!(BiTemporalGraph::load_from_dir(&tmp_dir).is_err());
 
+        // Verify load_from_dir prunes legacy empty-endpoint edges while keeping valid edges intact
         fs::write(
             &json_path,
-            r#"{"edges":[{"edge_id":0,"source_entity":" ","relation":"r","target_entity":"b","is_functional":false,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":[],"next_edge_id":1}"#,
+            r#"{"edges":[{"edge_id":0,"source_entity":" ","relation":"r","target_entity":"b","is_functional":false,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":1,"source_entity":"a","relation":"head","target_entity":"","is_functional":false,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":2,"source_entity":"a","relation":"status","target_entity":"ok","is_functional":true,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":[],"next_edge_id":3}"#,
         )
         .unwrap();
-        assert!(BiTemporalGraph::load_from_dir(&tmp_dir).is_err());
+        let pruned = BiTemporalGraph::load_from_dir(&tmp_dir).expect("prunes legacy empty edges");
+        assert_eq!(pruned.edge_count(), 1);
+        assert_eq!(pruned.active_edge_count(), 1);
 
-        // Verify load_from_dir migrates legacy 0-based edge_ids and supersedes older duplicate functional edges even when out of order
+        // Verify load_from_dir migrates legacy 0-based edge_ids and repairs 3 out-of-order functional edges with non-overlapping intervals
         fs::write(
             &json_path,
-            r#"{"edges":[{"edge_id":0,"source_entity":"a","relation":"status","target_entity":"NEW","is_functional":true,"t_valid":20,"t_invalid":null,"t_tx_start":20,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":1,"source_entity":"a","relation":"status","target_entity":"OLD","is_functional":true,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":["stale"],"next_edge_id":0}"#,
+            r#"{"edges":[{"edge_id":2,"source_entity":"a","relation":"status","target_entity":"NEW","is_functional":true,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":1,"source_entity":"a","relation":"status","target_entity":"MID","is_functional":true,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":0,"source_entity":"a","relation":"status","target_entity":"OLD","is_functional":true,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":["stale"],"next_edge_id":0}"#,
         )
         .unwrap();
         let mut repaired =
             BiTemporalGraph::load_from_dir(&tmp_dir).expect("repaired load succeeds");
         assert_eq!(repaired.active_edge_count(), 1);
-        assert_eq!(repaired.entity_count(), 3);
+        assert_eq!(repaired.entity_count(), 4);
+        assert_eq!(repaired.query_edges_from("a", Some(10)).len(), 1);
+        assert_eq!(repaired.query_edges_from("a", Some(11)).len(), 1);
         let active_edge = repaired
             .edges()
             .iter()
             .find(|e| e.t_invalid.is_none())
             .unwrap();
         assert_eq!(active_edge.target_entity, "NEW");
-        assert_eq!(active_edge.edge_id, 1);
+        assert_eq!(active_edge.edge_id, 3);
         assert!(repaired.invalidate_edge(active_edge.edge_id, 50));
         assert_eq!(
             g.upsert_edge(" ", "status", "ok", true, 100, ArtifactId(1), 1.0),

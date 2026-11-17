@@ -438,9 +438,16 @@ unprefixed_secret = {unpref_sec}
         );
         assert_eq!(
             InfinityContextMmu::extract_exit_code(
-                &serde_json::json!({"toolResponse": "{\"exit_code\": 42}"})
+                &serde_json::json!({"toolResponse": {"exit_code": 42}})
             ),
             Some(42)
+        );
+        assert_eq!(
+            InfinityContextMmu::extract_exit_code(
+                &serde_json::json!({"tool_response": "{\"exit_code\": 42}"})
+            ),
+            None,
+            "plain-text string tool_response stdout must not be parsed as authoritative hook metadata"
         );
         assert_eq!(
             InfinityContextMmu::extract_exit_code(

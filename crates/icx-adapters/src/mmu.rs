@@ -70,13 +70,16 @@ impl InfinityContextMmu {
     }
 
     /// Extracts an optional process `exit_code` from a structured hook JSON payload
-    /// (checking top-level and nested `"tool_response"`, `"toolResponse"`, `"toolResult"`,
-    /// or `"result"` containers for `"exit_code"` and `"exitCode"`).
+    /// (checking top-level and object-typed nested `"tool_response"`, `"toolResponse"`,
+    /// `"toolResult"`, or `"result"` containers for `"exit_code"` and `"exitCode"`).
     pub fn extract_exit_code(payload: &serde_json::Value) -> Option<i32> {
         let parse_code = |v: &serde_json::Value| -> Option<i32> {
             v.as_i64().and_then(|n| i32::try_from(n).ok())
         };
         let extract_from_obj = |obj: &serde_json::Value| -> Option<i32> {
+            if !obj.is_object() {
+                return None;
+            }
             for key in ["exit_code", "exitCode"] {
                 if let Some(code) = obj.get(key).and_then(parse_code) {
                     return Some(code);
@@ -88,17 +91,10 @@ impl InfinityContextMmu {
             return Some(code);
         }
         for container in ["tool_response", "toolResponse", "toolResult", "result"] {
-            if let Some(resp) = payload.get(container) {
-                if let Some(code) = extract_from_obj(resp) {
-                    return Some(code);
-                }
-                if let Some(s) = resp.as_str()
-                    && s.trim_start().starts_with('{')
-                    && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s)
-                    && let Some(code) = extract_from_obj(&parsed)
-                {
-                    return Some(code);
-                }
+            if let Some(resp) = payload.get(container)
+                && let Some(code) = extract_from_obj(resp)
+            {
+                return Some(code);
             }
         }
         None

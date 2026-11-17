@@ -254,7 +254,7 @@ impl HdcAssociativeIndex {
 
     #[inline]
     fn subject_matches_token(subject_lower: &str, tok: &str) -> bool {
-        if tok.len() >= 4 {
+        if !tok.contains('/') && !tok.contains(':') && tok.chars().count() >= 4 {
             return subject_lower.contains(tok);
         }
         let is_word_char = |c: char| c.is_alphanumeric() || c == '_';

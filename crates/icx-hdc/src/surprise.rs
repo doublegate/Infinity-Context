@@ -183,10 +183,17 @@ impl TitansSurpriseGate {
 
         let novelty = if self.events_seen == 0 {
             1.0
-        } else if !is_anomaly && self.bundler.is_actively_bundled(hv) {
-            0.0
         } else {
-            (1.0 - self.bundler.finalize().similarity(hv)).clamp(0.0, 1.0)
+            let sim = self.bundler.finalize().similarity(hv);
+            if !is_anomaly
+                && sim >= 0.15
+                && self.bundler.count() > 0
+                && self.bundler.contains_fingerprint(hv)
+            {
+                0.0
+            } else {
+                (1.0 - sim).clamp(0.0, 1.0)
+            }
         };
 
         let instantaneous = (0.65 * novelty + 0.35 * entropy + anomaly_boost).clamp(0.0, 1.0);
@@ -204,7 +211,7 @@ impl TitansSurpriseGate {
             }
         } else if novelty >= 0.15 {
             let weight = ((effective * novelty * 32.0).round() as i16).clamp(1, 64);
-            let _ = self.bundler.add_weighted_unique(hv, weight);
+            self.bundler.add_weighted(hv, weight);
         }
         self.events_seen += 1;
         let tier = if effective >= 0.70 {
