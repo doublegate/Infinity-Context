@@ -569,6 +569,42 @@ fn run_benchmark() {
         per_10k_us
     );
 
+    // 1b. Two-Stage HdcAssociativeIndex & CSR BiTemporalGraph PPR Benchmark
+    let mut bench_idx = icx_hdc::HdcAssociativeIndex::new();
+    for i in 0..250u64 {
+        let _ = bench_idx.observe_event(
+            ArtifactId(i),
+            &format!("src/module_{i}.rs"),
+            &format!("pub fn helper_{i}() -> usize {{ {i} }}"),
+            false,
+        );
+    }
+    let _ = bench_idx.observe_event_with_exit_code(
+        ArtifactId(99_999),
+        "crates/icx-store/src/graph_ppr.rs",
+        "pub fn personalized_pagerank() { panic!(\"E0502 csr_fault\"); }",
+        Some(1),
+        true,
+    );
+    let t_idx = Instant::now();
+    let stage_hits = bench_idx.query_associative("graph_ppr personalized_pagerank", 5);
+    let idx_us = t_idx.elapsed().as_secs_f64() * 1_000_000.0;
+    assert_eq!(stage_hits[0].artifact_id, ArtifactId(99_999));
+
+    let mut bench_graph = icx_store::BiTemporalGraph::new();
+    for i in 0..200u64 {
+        let u = format!("mod:m_{i}");
+        let v = format!("mod:m_{}", i + 1);
+        bench_graph.upsert_edge(&u, "calls", &v, false, 100 + i, ArtifactId(i), 1.0);
+    }
+    let t_ppr = Instant::now();
+    let ppr_hits = bench_graph.personalized_pagerank(&["mod:m_0"], None, 0.15, 8, 5);
+    let ppr_us = t_ppr.elapsed().as_secs_f64() * 1_000_000.0;
+    assert_ne!(ppr_hits.len(), 0);
+    println!(
+        "  [PASS] Two-Stage HDC + CSR PPR:     {idx_us:.2} us (two-stage query), {ppr_us:.2} us (201-node CSR PPR)"
+    );
+
     // 2. AHTL Log Compression Ratio & Latency Benchmark
     let mut log_fixture = String::from("running 400 tests\n");
     for i in 0..399 {

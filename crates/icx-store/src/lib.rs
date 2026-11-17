@@ -3,4 +3,4 @@
 
 pub mod graph;
 
-pub use graph::{BiTemporalEdge, BiTemporalGraph, PprRankedNode};
+pub use graph::{BiTemporalEdge, BiTemporalGraph, CsrGraphSnapshot, PprRankedNode};

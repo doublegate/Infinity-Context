@@ -158,12 +158,28 @@ impl HdcAssociativeIndex {
         content: &str,
         force_anomaly: bool,
     ) -> ObservationReceipt {
+        self.observe_event_with_exit_code(artifact_id, subject, content, None, force_anomaly)
+    }
+
+    /// Encodes and indexes an event with an optional process `exit_code`, advancing the Fractal
+    /// trajectory and Titans Surprise Gate.
+    pub fn observe_event_with_exit_code(
+        &mut self,
+        artifact_id: ArtifactId,
+        subject: &str,
+        content: &str,
+        exit_code: Option<i32>,
+        force_anomaly: bool,
+    ) -> ObservationReceipt {
         let subject_lower = subject.to_ascii_lowercase();
         let composite_hv = Hypervector::encode_text(&format!("{subject} {content}"));
 
-        let verdict = self
-            .surprise_gate
-            .observe(&composite_hv, content, force_anomaly);
+        let verdict = self.surprise_gate.observe_with_exit_code(
+            &composite_hv,
+            content,
+            exit_code,
+            force_anomaly,
+        );
         let current_trajectory = self
             .trajectory_archive
             .record_step(artifact_id, &composite_hv);
@@ -173,7 +189,10 @@ impl HdcAssociativeIndex {
         let quad = quad_u16.to_be_bytes();
         let surp_byte = (verdict.momentum_surprise.clamp(0.0, 1.0) * 255.0) as u8;
         let tier_bits = verdict.tier as u8; // Bits 0..=1: 0 = PinHighResolution, 1 = FoldAhtlStub, 2 = ColdBeacon
-        let err_flag = if force_anomaly || TitansSurpriseGate::has_diagnostic_anomaly(content) {
+        let err_flag = if force_anomaly
+            || exit_code.is_some_and(|c| c != 0)
+            || TitansSurpriseGate::has_diagnostic_anomaly(content)
+        {
             1u8 << 2 // FLAG_HAS_ERROR
         } else {
             0u8
@@ -222,7 +241,7 @@ impl HdcAssociativeIndex {
         let hdc_sim = (text_sim + 0.25 * lexical_overlap).clamp(0.0, 1.0);
         let suffix = self
             .current_trajectory()
-            .shared_suffix_depth(&e.fractal_coord);
+            .verified_suffix_depth(&e.fractal_coord);
         let combined =
             0.65 * hdc_sim + 0.20 * e.surprise + 0.15 * ((suffix as f32) / 8.0).clamp(0.0, 1.0);
 

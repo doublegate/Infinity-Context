@@ -28,6 +28,7 @@ Thumbs.db
 *.profdata
 *.tmp.*
 cas_store.lock
+bitemporal_graph.json
 lcov.info
 coverage/
 .icx/

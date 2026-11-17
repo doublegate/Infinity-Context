@@ -2,9 +2,11 @@
 //! `arXiv:2405.14831`) for multi-hop structural associative recall and automatic contradiction
 //! invalidation.
 
-use icx_core::ArtifactId;
+use icx_core::{ArtifactId, IcxError};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::path::Path;
 
 /// A directed edge in the `BiTemporalGraph` carrying valid-time and transaction-time intervals.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -48,9 +50,131 @@ pub struct PprRankedNode {
     pub provenance_artifacts: Vec<ArtifactId>,
 }
 
+/// Compressed Sparse Row (`CSR`) snapshot of valid edges at a point in time `at_ms`,
+/// enabling cache-contiguous $O(V + E)$ HippoRAG Personalized PageRank (`PPR`) power iteration.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CsrGraphSnapshot {
+    pub nodes: Vec<String>,
+    pub row_ptr: Vec<usize>,
+    pub col_idx: Vec<usize>,
+    pub weights: Vec<f32>,
+    pub inv_out_weight: Vec<f32>,
+    pub prov_row_ptr: Vec<usize>,
+    pub prov_ids: Vec<ArtifactId>,
+}
+
+impl CsrGraphSnapshot {
+    /// Number of distinct entity vertices in the CSR snapshot.
+    #[inline]
+    pub const fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Number of directed CSR adjacency entries (forward + reverse weighted transitions).
+    #[inline]
+    pub const fn directed_edge_count(&self) -> usize {
+        self.col_idx.len()
+    }
+
+    /// Returns the provenance `ArtifactId` slice associated with node index `node_idx`.
+    #[inline]
+    pub fn node_provenance(&self, node_idx: usize) -> &[ArtifactId] {
+        let start = self.prov_row_ptr[node_idx];
+        let end = self.prov_row_ptr[node_idx + 1];
+        &self.prov_ids[start..end]
+    }
+
+    /// Executes HippoRAG Personalized PageRank (`arXiv:2405.14831`) power iteration over the
+    /// contiguous CSR arrays in $O(\text{iterations} \cdot (V + E))$ time.
+    pub fn run_ppr(
+        &self,
+        seed_entities: &[&str],
+        alpha: f32,
+        iterations: usize,
+        top_k: usize,
+    ) -> Vec<PprRankedNode> {
+        let n = self.nodes.len();
+        if n == 0 || seed_entities.is_empty() || top_k == 0 {
+            return Vec::new();
+        }
+
+        let mut teleport = vec![0.0f32; n];
+        let mut active_seeds = 0usize;
+        for &seed in seed_entities {
+            if seed.is_empty() {
+                continue;
+            }
+            for (idx, entity_str) in self.nodes.iter().enumerate() {
+                if entity_str == seed || entity_str.contains(seed) {
+                    teleport[idx] += 1.0;
+                    active_seeds += 1;
+                }
+            }
+        }
+        if active_seeds == 0 {
+            return Vec::new();
+        }
+        let seed_sum: f32 = teleport.iter().sum();
+        for v in &mut teleport {
+            *v /= seed_sum;
+        }
+
+        let restart = if alpha.is_nan() {
+            0.15
+        } else {
+            alpha.clamp(0.05, 0.50)
+        };
+        let mut rank = teleport.clone();
+        let mut next_rank = vec![0.0f32; n];
+
+        for _ in 0..iterations.max(1) {
+            let mut dangling_mass = 0.0f32;
+            for u in 0..n {
+                if self.inv_out_weight[u] == 0.0 {
+                    dangling_mass += (1.0 - restart) * rank[u];
+                }
+            }
+            let base_tele = restart + dangling_mass;
+            for i in 0..n {
+                next_rank[i] = base_tele * teleport[i];
+            }
+            for u in 0..n {
+                let inv_w = self.inv_out_weight[u];
+                if inv_w > 0.0 {
+                    let mass = (1.0 - restart) * rank[u] * inv_w;
+                    let start = self.row_ptr[u];
+                    let end = self.row_ptr[u + 1];
+                    for idx in start..end {
+                        next_rank[self.col_idx[idx]] += mass * self.weights[idx];
+                    }
+                }
+            }
+            rank.copy_from_slice(&next_rank);
+        }
+
+        let mut results: Vec<PprRankedNode> = (0..n)
+            .filter(|&i| rank[i] > 1e-5)
+            .map(|i| PprRankedNode {
+                entity: self.nodes[i].clone(),
+                score: rank[i],
+                provenance_artifacts: self.node_provenance(i).to_vec(),
+            })
+            .collect();
+
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(core::cmp::Ordering::Equal)
+                .then_with(|| a.entity.cmp(&b.entity))
+        });
+        results.truncate(top_k);
+        results
+    }
+}
+
 /// Bi-Temporal Knowledge Graph supporting automatic functional contradiction invalidation and
-/// HippoRAG Personalized PageRank (`PPR`) traversal.
-#[derive(Clone, Debug, Default)]
+/// HippoRAG Personalized PageRank (`PPR`) traversal over a Compressed Sparse Row (`CSR`) snapshot.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct BiTemporalGraph {
     edges: Vec<BiTemporalEdge>,
     entities: BTreeSet<String>,
@@ -61,6 +185,16 @@ impl BiTemporalGraph {
     /// Creates a new empty `BiTemporalGraph`.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Total number of distinct entities in the graph.
+    pub fn entity_count(&self) -> usize {
+        self.entities.len()
+    }
+
+    /// Returns a slice of all edges (active and historical) in the graph.
+    pub fn edges(&self) -> &[BiTemporalEdge] {
+        &self.edges
     }
 
     /// Total number of historical + active edges in the graph.
@@ -74,8 +208,9 @@ impl BiTemporalGraph {
     }
 
     /// Inserts or updates a relational edge. If `is_functional` is true, any existing active edge
-    /// with the same `(source_entity, relation)` and a different `target_entity` is automatically
-    /// invalidated by stamping `t_invalid = Some(now_ms)` and `t_tx_end = Some(now_ms)`.
+    /// with the same `(source_entity, relation)` is automatically superseded by stamping
+    /// `t_invalid = Some(now_ms)` and `t_tx_end = Some(now_ms)`, guaranteeing at most one active
+    /// edge per functional `(source_entity, relation)` pair.
     pub fn upsert_edge(
         &mut self,
         source_entity: &str,
@@ -92,11 +227,7 @@ impl BiTemporalGraph {
 
         if is_functional {
             for e in &mut self.edges {
-                if e.t_invalid.is_none()
-                    && e.source_entity == src
-                    && e.relation == rel
-                    && e.target_entity != dst
-                {
+                if e.t_invalid.is_none() && e.source_entity == src && e.relation == rel {
                     e.t_invalid = Some(now_ms);
                     e.t_tx_end = Some(now_ms);
                 }
@@ -109,6 +240,12 @@ impl BiTemporalGraph {
         let edge_id = self.next_edge_id;
         self.next_edge_id += 1;
 
+        let clean_weight = if weight.is_nan() {
+            0.01
+        } else {
+            weight.max(0.01)
+        };
+
         self.edges.push(BiTemporalEdge {
             edge_id,
             source_entity: src,
@@ -120,10 +257,23 @@ impl BiTemporalGraph {
             t_tx_start: now_ms,
             t_tx_end: None,
             provenance,
-            weight: weight.max(0.01),
+            weight: clean_weight,
         });
 
         edge_id
+    }
+
+    /// Explicitly invalidates an active edge by `edge_id`, stamping `t_invalid = Some(now_ms)`
+    /// and `t_tx_end = Some(now_ms)`. Returns `true` if an active edge was found and invalidated.
+    pub fn invalidate_edge(&mut self, edge_id: u64, now_ms: u64) -> bool {
+        for e in &mut self.edges {
+            if e.edge_id == edge_id && e.t_invalid.is_none() {
+                e.t_invalid = Some(now_ms);
+                e.t_tx_end = Some(now_ms);
+                return true;
+            }
+        }
+        false
     }
 
     /// Queries edges leaving `source_entity` valid at `at_ms` (`None` = current active edges).
@@ -138,20 +288,24 @@ impl BiTemporalGraph {
             .collect()
     }
 
-    /// Runs HippoRAG Personalized PageRank (`arXiv:2405.14831`) seeded on `seed_entities` over
-    /// edges valid at `at_ms` (`None` = currently valid edges).
-    pub fn personalized_pagerank(
-        &self,
-        seed_entities: &[&str],
-        at_ms: Option<u64>,
-        alpha: f32,
-        iterations: usize,
-        top_k: usize,
-    ) -> Vec<PprRankedNode> {
-        if self.entities.is_empty() || seed_entities.is_empty() {
-            return Vec::new();
-        }
+    /// Queries edges entering `target_entity` valid at `at_ms` (`None` = current active edges).
+    pub fn query_edges_to(&self, target_entity: &str, at_ms: Option<u64>) -> Vec<&BiTemporalEdge> {
+        self.edges
+            .iter()
+            .filter(|e| e.target_entity == target_entity && e.is_active_at(at_ms))
+            .collect()
+    }
 
+    /// Queries all edges with a given `relation` valid at `at_ms` (`None` = current active edges).
+    pub fn query_relation(&self, relation: &str, at_ms: Option<u64>) -> Vec<&BiTemporalEdge> {
+        self.edges
+            .iter()
+            .filter(|e| e.relation == relation && e.is_active_at(at_ms))
+            .collect()
+    }
+
+    /// Compiles a contiguous Compressed Sparse Row (`CSR`) snapshot of all edges valid at `at_ms`.
+    pub fn build_csr(&self, at_ms: Option<u64>) -> CsrGraphSnapshot {
         let nodes: Vec<String> = self.entities.iter().cloned().collect();
         let node_to_idx: BTreeMap<&str, usize> = nodes
             .iter()
@@ -160,25 +314,6 @@ impl BiTemporalGraph {
             .collect();
         let n = nodes.len();
 
-        let mut teleport = vec![0.0f32; n];
-        let mut active_seeds = 0usize;
-        for &seed in seed_entities {
-            for (entity_str, &idx) in &node_to_idx {
-                if *entity_str == seed || entity_str.contains(seed) {
-                    teleport[idx] += 1.0;
-                    active_seeds += 1;
-                }
-            }
-        }
-        if active_seeds == 0 {
-            return Vec::new();
-        }
-        let seed_sum: f32 = teleport.iter().sum();
-        for v in &mut teleport {
-            *v /= seed_sum;
-        }
-
-        // Build bidirectional weighted adjacency list over valid edges
         let mut adj: Vec<Vec<(usize, f32)>> = vec![Vec::new(); n];
         let mut provenance_map: Vec<BTreeSet<ArtifactId>> = vec![BTreeSet::new(); n];
 
@@ -197,47 +332,80 @@ impl BiTemporalGraph {
             }
         }
 
-        let restart = alpha.clamp(0.05, 0.50);
-        let mut rank = teleport.clone();
-        let mut next_rank = vec![0.0f32; n];
+        let total_edges: usize = adj.iter().map(Vec::len).sum();
+        let total_prov: usize = provenance_map.iter().map(BTreeSet::len).sum();
 
-        for _ in 0..iterations.max(1) {
-            for i in 0..n {
-                next_rank[i] = restart * teleport[i];
+        let mut row_ptr = Vec::with_capacity(n + 1);
+        let mut col_idx = Vec::with_capacity(total_edges);
+        let mut weights = Vec::with_capacity(total_edges);
+        let mut inv_out_weight = Vec::with_capacity(n);
+
+        let mut prov_row_ptr = Vec::with_capacity(n + 1);
+        let mut prov_ids = Vec::with_capacity(total_prov);
+
+        row_ptr.push(0);
+        prov_row_ptr.push(0);
+
+        for u in 0..n {
+            let mut sum_w = 0.0f32;
+            for &(v, w) in &adj[u] {
+                col_idx.push(v);
+                weights.push(w);
+                sum_w += w;
             }
-            for u in 0..n {
-                let out_weight_sum: f32 = adj[u].iter().map(|(_, w)| *w).sum();
-                if out_weight_sum > 0.0 {
-                    let mass = (1.0 - restart) * rank[u] / out_weight_sum;
-                    for &(v, w) in &adj[u] {
-                        next_rank[v] += mass * w;
-                    }
-                } else {
-                    // Dangling node redistributes to teleport vector
-                    for i in 0..n {
-                        next_rank[i] += (1.0 - restart) * rank[u] * teleport[i];
-                    }
-                }
+            row_ptr.push(col_idx.len());
+            inv_out_weight.push(if sum_w > 0.0 { 1.0 / sum_w } else { 0.0 });
+
+            for &aid in &provenance_map[u] {
+                prov_ids.push(aid);
             }
-            rank.copy_from_slice(&next_rank);
+            prov_row_ptr.push(prov_ids.len());
         }
 
-        let mut results: Vec<PprRankedNode> = (0..n)
-            .filter(|&i| rank[i] > 1e-5)
-            .map(|i| PprRankedNode {
-                entity: nodes[i].clone(),
-                score: rank[i],
-                provenance_artifacts: provenance_map[i].iter().copied().collect(),
-            })
-            .collect();
+        CsrGraphSnapshot {
+            nodes,
+            row_ptr,
+            col_idx,
+            weights,
+            inv_out_weight,
+            prov_row_ptr,
+            prov_ids,
+        }
+    }
 
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(core::cmp::Ordering::Equal)
-        });
-        results.truncate(top_k);
-        results
+    /// Runs HippoRAG Personalized PageRank (`arXiv:2405.14831`) seeded on `seed_entities` over
+    /// edges valid at `at_ms` (`None` = currently valid edges) via a CSR snapshot.
+    pub fn personalized_pagerank(
+        &self,
+        seed_entities: &[&str],
+        at_ms: Option<u64>,
+        alpha: f32,
+        iterations: usize,
+        top_k: usize,
+    ) -> Vec<PprRankedNode> {
+        if self.entities.is_empty() || seed_entities.is_empty() || top_k == 0 {
+            return Vec::new();
+        }
+        self.build_csr(at_ms)
+            .run_ppr(seed_entities, alpha, iterations, top_k)
+    }
+
+    /// Atomically persists the `BiTemporalGraph` to `<dir>/bitemporal_graph.json`.
+    pub fn save_to_dir(&self, dir: &Path) -> Result<(), IcxError> {
+        fs::create_dir_all(dir).map_err(|e| IcxError::Io(e.to_string()))?;
+        let final_path = dir.join("bitemporal_graph.json");
+        let tmp_path = dir.join(format!("bitemporal_graph.json.tmp.{}", std::process::id()));
+        let bytes = serde_json::to_vec_pretty(self).map_err(|e| IcxError::Io(e.to_string()))?;
+        fs::write(&tmp_path, bytes).map_err(|e| IcxError::Io(e.to_string()))?;
+        fs::rename(&tmp_path, &final_path).map_err(|e| IcxError::Io(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Loads a persisted `BiTemporalGraph` from `<dir>/bitemporal_graph.json`.
+    pub fn load_from_dir(dir: &Path) -> Result<Self, IcxError> {
+        let path = dir.join("bitemporal_graph.json");
+        let bytes = fs::read(&path).map_err(|e| IcxError::Io(e.to_string()))?;
+        serde_json::from_slice(&bytes).map_err(|e| IcxError::Io(e.to_string()))
     }
 }
 
@@ -307,5 +475,60 @@ mod tests {
         assert!(names.contains(&"fn:alloc_page"));
         assert!(names.contains(&"PASS_ALIGN"));
         assert!(!names.contains(&"FAIL_ALIGN"));
+
+        // Re-upserting a functional relation with the SAME target_entity supersedes the old edge
+        // so at most one active edge exists for `(fn:alloc_page, status)`
+        let e_same = g.upsert_edge(
+            "fn:alloc_page",
+            "status",
+            "PASS_ALIGN",
+            true,
+            300,
+            art_pass,
+            f32::NAN,
+        );
+        let current_after = g.query_edges_from("fn:alloc_page", None);
+        assert_eq!(current_after.len(), 1);
+        assert_eq!(current_after[0].edge_id, e_same);
+        assert_eq!(current_after[0].t_valid, 300);
+
+        // Query incoming edges and by relation
+        let incoming = g.query_edges_to("PASS_ALIGN", None);
+        assert_eq!(incoming.len(), 1);
+        let by_rel = g.query_relation("status", None);
+        assert_eq!(by_rel.len(), 1);
+        assert_eq!(g.entity_count(), 5);
+        assert_eq!(g.edge_count(), 5);
+        assert_eq!(g.active_edge_count(), 3);
+        assert_eq!(g.edges().len(), 5);
+
+        // Inspect CSR snapshot and dangling node (`FAIL_ALIGN` has no active edges at None)
+        let csr = g.build_csr(None);
+        assert_eq!(csr.node_count(), 5);
+        assert_eq!(csr.directed_edge_count(), 6);
+        let ppr_nan = csr.run_ppr(&["", "FAIL_ALIGN"], f32::NAN, 4, 5);
+        assert_eq!(ppr_nan.len(), 1);
+        assert_eq!(ppr_nan[0].entity, "FAIL_ALIGN");
+        assert_eq!(csr.run_ppr(&["nonexistent_seed"], 0.15, 4, 5).len(), 0);
+        assert_eq!(csr.run_ppr(&["mod:mmu"], 0.15, 4, 0).len(), 0);
+        assert_eq!(
+            g.personalized_pagerank(&["mod:mmu"], None, 0.15, 4, 0)
+                .len(),
+            0
+        );
+
+        // Explicit edge invalidation
+        assert!(g.invalidate_edge(e_same, 400));
+        assert!(!g.invalidate_edge(e_same, 450));
+        assert!(!g.invalidate_edge(999_999, 450));
+        assert_eq!(g.query_edges_from("fn:alloc_page", Some(50)).len(), 0);
+
+        // Atomic save_to_dir / load_from_dir round-trip
+        let tmp_dir = std::env::temp_dir().join(format!("icx_graph_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp_dir);
+        g.save_to_dir(&tmp_dir).expect("save_to_dir succeeds");
+        let loaded = BiTemporalGraph::load_from_dir(&tmp_dir).expect("load_from_dir succeeds");
+        assert_eq!(loaded, g);
+        let _ = fs::remove_dir_all(&tmp_dir);
     }
 }

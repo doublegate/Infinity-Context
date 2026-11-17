@@ -12,3 +12,4 @@ workspace = true
 [dependencies]
 icx-core.workspace = true
 serde.workspace = true
+serde_json.workspace = true

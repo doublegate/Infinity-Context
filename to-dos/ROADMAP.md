@@ -4,8 +4,8 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 
 ## Status
 
-- **Current Version:** `v0.3.0` (`Phase 0` `v0.1.0`, `Phase 1` `v0.2.0`, and `Phase 2` `v0.3.0` All Complete)
-- **Current Phase:** Phase 2 Complete (Alien Holographic Token Lattice `AHTL` v1.0 Dual-Profile Codec, Braille-256 Bijection, Multi-Language `StructuralSkeletonizer` & 4-Tier `SecretRedactor` All Green) — **Ready to start Phase 3**
+- **Current Version:** `v0.4.0` (`Phase 0` `v0.1.0`, `Phase 1` `v0.2.0`, `Phase 2` `v0.3.0`, and `Phase 3` `v0.4.0` All Complete)
+- **Current Phase:** Phase 3 Complete (10,240-Bit `HDC` Engine, Infini-Attention Delta Bundler, Contractive IFS `FractalTrajectoryArchive`, `TitansSurpriseGate`, and `BiTemporalGraph` + `CsrGraphSnapshot` Personalized PageRank All Green) — **Ready to start Phase 4**
 - **Active Workspace:** 8 Rust crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`) — `std`-based, permanently `unsafe_code = "forbid"` (`0` `unsafe` blocks), Rust Edition `2024` / MSRV `1.100`, `>= 95%` Codecov line coverage
 
 ---
@@ -45,15 +45,15 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 
 ---
 
-### Phase 3 — Hyperdimensional (`HDC`), Fractal (`FCGA`) & Bi-Temporal Graph Index
+### Phase 3 — Hyperdimensional (`HDC`), Fractal (`FCGA`) & Bi-Temporal Graph Index (COMPLETED — `v0.4.0`)
 **Goal:** Build the sub-50µs 10,240-bit HDC associative memory engine, Contractive IFS Fractal Trajectory Archive, Titans Surprise-Gated Momentum tracker, and Bi-Temporal CSR Graph with HippoRAG Personalized PageRank.  
 **Exit Criterion:** Associative recall queries complete in `< 50 µs` over 10,000 nodes; Fractal suffix matching identifies shared trajectory suffixes in $O(1)$ time; Bi-Temporal functional edges auto-invalidate stale facts.  
 **Estimated Duration:** 3 weeks  
 
 - [Phase 3 Overview](phase-3-hyperdimensional-and-fractal-index/overview.md)
-  - [Sprint 1 — 10,240-Bit HDC/HRR Engine & Infini-Attention Delta Bundler](phase-3-hyperdimensional-and-fractal-index/sprint-1-hdc-10240bit-engine.md)
-  - [Sprint 2 — Fractal Chaos-Game Archive (`FCGA`) & Titans Surprise Gate](phase-3-hyperdimensional-and-fractal-index/sprint-2-fractal-ifs-and-surprise-gate.md)
-  - [Sprint 3 — Bi-Temporal CSR Knowledge Graph & Personalized PageRank (`PPR`)](phase-3-hyperdimensional-and-fractal-index/sprint-3-bitemporal-graph-and-ppr.md)
+  - [Sprint 1 — 10,240-Bit HDC/HRR Engine & Infini-Attention Delta Bundler (COMPLETED)](phase-3-hyperdimensional-and-fractal-index/sprint-1-hdc-10240bit-engine.md)
+  - [Sprint 2 — Fractal Chaos-Game Archive (`FCGA`) & Titans Surprise Gate (COMPLETED)](phase-3-hyperdimensional-and-fractal-index/sprint-2-fractal-ifs-and-surprise-gate.md)
+  - [Sprint 3 — Bi-Temporal CSR Knowledge Graph & Personalized PageRank (`PPR`) (COMPLETED)](phase-3-hyperdimensional-and-fractal-index/sprint-3-bitemporal-graph-and-ppr.md)
 
 ---
 
