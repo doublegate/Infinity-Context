@@ -576,7 +576,6 @@ impl HdcBundler {
         self.readout.unbind(role)
     }
 
-    /// Returns `true` if `hv`'s 128-bit fingerprint is recorded in `seen_fingerprints`.
     /// Returns `true` if `hv`'s 128-bit fingerprint has already been added to this bundler
     /// via `add`, `add_weighted`, or `add_weighted_unique` (internal stack-only `add_delta`
     /// updates do not populate `seen_fingerprints`).

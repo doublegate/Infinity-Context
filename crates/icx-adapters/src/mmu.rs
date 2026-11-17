@@ -351,10 +351,14 @@ impl InfinityContextMmu {
         let cas_res = self.cas.resolve_handle(handle_or_prefix);
         let dag_res = self.dag.resolve_handle(handle_or_prefix);
         match (cas_res, dag_res) {
-            (Ok(cid), Ok(did)) if cid != did => {
-                Err(IcxError::AmbiguousHandlePrefix(handle_or_prefix.to_owned()))
+            (Ok(cid), Ok(did)) => {
+                if cid == did {
+                    Ok(cid)
+                } else {
+                    Err(IcxError::AmbiguousHandlePrefix(handle_or_prefix.to_owned()))
+                }
             }
-            (Ok(cid), Ok(_) | Err(IcxError::ArtifactNotFound(_))) => Ok(cid),
+            (Ok(cid), Err(IcxError::ArtifactNotFound(_))) => Ok(cid),
             (Err(IcxError::ArtifactNotFound(_)), Ok(did)) => Ok(did),
             (Err(e), _) | (_, Err(e)) => Err(e),
         }

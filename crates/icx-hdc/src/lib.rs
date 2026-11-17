@@ -170,37 +170,25 @@ impl HdcAssociativeIndex {
                 mask |= Self::token_bloom_bits32(tok);
             }
         }
-        for tok in subject_lower.split(|c: char| !c.is_alphanumeric() && c != '_' && c != '/') {
-            if tok.len() >= 2
-                && tok.contains('/')
-                && tok
-                    .split(|c: char| !c.is_alphanumeric() && c != '_')
-                    .all(|sub| sub.len() < 2)
-            {
-                mask |= Self::token_bloom_bits32(tok);
-            }
-        }
-        for tok in subject_lower.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':') {
-            if tok.len() >= 2
-                && tok.contains(':')
-                && tok
-                    .split(|c: char| !c.is_alphanumeric() && c != '_')
-                    .all(|sub| sub.len() < 2)
-            {
-                mask |= Self::token_bloom_bits32(tok);
-            }
-        }
-        for tok in
+        for comp in
             subject_lower.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
         {
-            if tok.len() >= 2
-                && tok.contains('/')
-                && tok.contains(':')
-                && tok
-                    .split(|c: char| !c.is_alphanumeric() && c != '_')
-                    .all(|sub| sub.len() < 2)
-            {
-                mask |= Self::token_bloom_bits32(tok);
+            let mut short_spans = [0usize; 8];
+            let mut span_len = 0usize;
+            let mut byte_idx = 0usize;
+            for seg in comp.split(['/', ':']) {
+                let start = byte_idx;
+                let end = start + seg.len();
+                byte_idx = end + 1;
+                if !seg.is_empty() && seg.len() < 2 && span_len < short_spans.len() {
+                    short_spans[span_len] = start;
+                    for &prev_start in &short_spans[..span_len] {
+                        mask |= Self::token_bloom_bits32(&comp[prev_start..end]);
+                    }
+                    span_len += 1;
+                } else {
+                    span_len = 0;
+                }
             }
         }
         if !subject_lower.is_empty() {
@@ -561,9 +549,13 @@ mod tests {
         ));
         assert!(!HdcAssociativeIndex::subject_matches_token("myfoo", ""));
         let _ = trait_ref.observe_event(ArtifactId(1000), "", "empty subject body", false);
-        let _ =
-            trait_ref.observe_event(ArtifactId(1001), "a/b x:y a:b/c", "short composite", false);
-        let _ = trait_ref.query_associative("a:b/c", 5);
+        let _ = trait_ref.observe_event(
+            ArtifactId(1001),
+            "dir/a/b x:y a:b/c",
+            "short composite",
+            false,
+        );
+        let _ = trait_ref.query_associative("a:b/c a/b", 5);
 
         // Verify requesting top_k > 64 returns all requested hits up to entries.len()
         let large_hits = trait_ref.query_associative("helper module", 100);

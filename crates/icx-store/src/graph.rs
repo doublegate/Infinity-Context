@@ -515,11 +515,6 @@ impl BiTemporalGraph {
         });
         let mut seen_ids = BTreeSet::new();
         let mut functional_groups: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
-        if loaded.edges.iter().any(|e| e.edge_id == 0) {
-            for e in &mut loaded.edges {
-                e.edge_id = e.edge_id.saturating_add(1);
-            }
-        }
         let mut max_next_id = loaded.next_edge_id.max(1);
 
         for idx in 0..loaded.edges.len() {
@@ -620,7 +615,6 @@ impl BiTemporalGraph {
             ordered.sort_by_key(|&i| {
                 (
                     loaded.edges[i].t_valid,
-                    loaded.edges[i].t_invalid.unwrap_or(u64::MAX),
                     loaded.edges[i].t_tx_start,
                     loaded.edges[i].edge_id,
                 )
@@ -811,7 +805,7 @@ mod tests {
         assert_eq!(pruned.edge_count(), 1);
         assert_eq!(pruned.active_edge_count(), 1);
 
-        // Verify load_from_dir migrates legacy 0-based edge_ids and repairs 3 out-of-order functional edges with non-overlapping intervals
+        // Verify load_from_dir advances next_edge_id past legacy 0-based edge_ids and repairs 3 out-of-order functional edges with non-overlapping intervals
         fs::write(
             &json_path,
             r#"{"edges":[{"edge_id":2,"source_entity":"a","relation":"status","target_entity":"NEW","is_functional":true,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":1,"source_entity":"a","relation":"status","target_entity":"MID","is_functional":true,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":0,"source_entity":"a","relation":"status","target_entity":"OLD","is_functional":true,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":["stale"],"next_edge_id":0}"#,
@@ -829,7 +823,7 @@ mod tests {
             .find(|e| e.t_invalid.is_none())
             .unwrap();
         assert_eq!(active_edge.target_entity, "NEW");
-        assert_eq!(active_edge.edge_id, 3);
+        assert_eq!(active_edge.edge_id, 2);
         assert!(repaired.invalidate_edge(active_edge.edge_id, 50));
 
         // Verify load_from_dir preserves an active winner whose t_valid (50) precedes an already-invalidated empty edge (100..100)
@@ -853,10 +847,10 @@ mod tests {
         );
 
         // Verify load_from_dir advances an out-of-order active winner past an earlier non-empty closed interval [100, 200)
-        // and preserves the longer interval when two closed edges share the same t_valid ([100, 200) and [100, 150))
+        // and preserves chronological supersession order when two closed edges share the same t_valid
         fs::write(
             &json_path,
-            r#"{"edges":[{"edge_id":1,"source_entity":"a","relation":"status","target_entity":"HIST_LONG","is_functional":true,"t_valid":100,"t_invalid":200,"t_tx_start":100,"t_tx_end":200,"provenance":1,"weight":1.0},{"edge_id":2,"source_entity":"a","relation":"status","target_entity":"HIST_SHORT","is_functional":true,"t_valid":100,"t_invalid":150,"t_tx_start":100,"t_tx_end":150,"provenance":1,"weight":1.0},{"edge_id":3,"source_entity":"a","relation":"status","target_entity":"ACTIVE_LATE","is_functional":true,"t_valid":50,"t_invalid":null,"t_tx_start":50,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":[],"next_edge_id":4}"#,
+            r#"{"edges":[{"edge_id":1,"source_entity":"a","relation":"status","target_entity":"HIST_SHORT","is_functional":true,"t_valid":100,"t_invalid":150,"t_tx_start":100,"t_tx_end":150,"provenance":1,"weight":1.0},{"edge_id":2,"source_entity":"a","relation":"status","target_entity":"HIST_LONG","is_functional":true,"t_valid":100,"t_invalid":200,"t_tx_start":100,"t_tx_end":200,"provenance":1,"weight":1.0},{"edge_id":3,"source_entity":"a","relation":"status","target_entity":"ACTIVE_LATE","is_functional":true,"t_valid":50,"t_invalid":null,"t_tx_start":50,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":[],"next_edge_id":4}"#,
         )
         .unwrap();
         let hist_graph = BiTemporalGraph::load_from_dir(&tmp_dir)
