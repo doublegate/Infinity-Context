@@ -85,6 +85,14 @@ impl InfinityContextMmu {
             while !raw_text.is_char_boundary(bound) {
                 bound -= 1;
             }
+            // Prefer cutting at a newline near the cap so trailing secrets are not split mid-line.
+            let search_floor = bound.saturating_sub(4096);
+            if let Some(rel_nl) = raw_text.as_bytes()[search_floor..bound]
+                .iter()
+                .rposition(|&b| b == b'\n')
+            {
+                bound = search_floor + rel_nl + 1;
+            }
             &raw_text[..bound]
         } else {
             raw_text

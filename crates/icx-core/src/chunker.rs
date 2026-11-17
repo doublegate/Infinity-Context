@@ -109,6 +109,20 @@ pub fn chunk_bytes(data: &[u8], cfg: ChunkerConfig) -> Vec<(usize, usize)> {
     chunks
 }
 
+/// Computes `(start_line, end_line, next_current_line)` for a single chunk byte slice.
+#[inline]
+pub(crate) fn advance_chunk_line_span(slice: &[u8], current_line: u32) -> (u32, u32, u32) {
+    let start_line = current_line;
+    let newlines = slice.iter().filter(|&&b| b == b'\n').count() as u32;
+    let next_line = current_line.saturating_add(newlines);
+    let end_line = if slice.last() == Some(&b'\n') {
+        next_line.saturating_sub(1).max(start_line)
+    } else {
+        next_line
+    };
+    (start_line, end_line, next_line)
+}
+
 /// Splits `data` using Normalized FastCDC (`chunk_bytes`) and indexes the exact 1-based
 /// `[start_line, end_line]` boundaries across the resulting chunk spans.
 pub fn chunk_bytes_with_lines(data: &[u8], cfg: ChunkerConfig) -> Vec<ChunkLineSpan> {
@@ -118,14 +132,8 @@ pub fn chunk_bytes_with_lines(data: &[u8], cfg: ChunkerConfig) -> Vec<ChunkLineS
 
     for (offset, len) in spans {
         let slice = &data[offset..offset + len];
-        let start_line = current_line;
-        let newlines = slice.iter().filter(|&&b| b == b'\n').count() as u32;
-        let end_line = if slice.last() == Some(&b'\n') {
-            (current_line + newlines).saturating_sub(1).max(start_line)
-        } else {
-            current_line + newlines
-        };
-        current_line += newlines;
+        let (start_line, end_line, next_line) = advance_chunk_line_span(slice, current_line);
+        current_line = next_line;
         out.push(ChunkLineSpan {
             offset,
             len,

@@ -1,7 +1,7 @@
 //! BLAKE3 Content-Addressed Store (`CasStore`) with chunk-level `LineIndexEntry` indexing,
 //! selective chunk line slicing, 48-bit/64-bit prefix resolution, and cold grep.
 
-use crate::chunker::{chunk_bytes_with_lines, ChunkerConfig};
+use crate::chunker::{advance_chunk_line_span, chunk_bytes_with_lines, ChunkerConfig};
 use crate::{ArtifactId, Blake3Digest, ContentAddressedStore, IcxError, ICX_MAX_INGEST_BYTES};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -324,6 +324,9 @@ impl CasStore {
         context_lines: usize,
         max_matches: usize,
     ) -> Result<Vec<ColdMatch>, IcxError> {
+        if max_matches == 0 {
+            return Ok(Vec::new());
+        }
         let mut matches = Vec::new();
         let ids: Vec<ArtifactId> = match target_id {
             Some(id) => vec![id],
@@ -333,23 +336,34 @@ impl CasStore {
         for id in ids {
             let bytes = self.deref_bytes(id)?;
             let text = String::from_utf8_lossy(&bytes);
-            let lines: Vec<&str> = text.lines().collect();
-            for (idx, &line) in lines.iter().enumerate() {
-                if line.contains(pattern) {
-                    let line_text = if context_lines == 0 {
-                        line.to_owned()
-                    } else {
+            if context_lines == 0 {
+                // Streaming zero-context path: avoid collecting all `&str` lines into a Vec.
+                for (idx, line) in text.lines().enumerate() {
+                    if line.contains(pattern) {
+                        matches.push(ColdMatch {
+                            artifact_id: id,
+                            line_number: idx + 1,
+                            line_text: line.to_owned(),
+                        });
+                        if matches.len() >= max_matches {
+                            return Ok(matches);
+                        }
+                    }
+                }
+            } else {
+                let lines: Vec<&str> = text.lines().collect();
+                for (idx, &line) in lines.iter().enumerate() {
+                    if line.contains(pattern) {
                         let start = idx.saturating_sub(context_lines);
                         let end = (idx + context_lines + 1).min(lines.len());
-                        lines[start..end].join("\n")
-                    };
-                    matches.push(ColdMatch {
-                        artifact_id: id,
-                        line_number: idx + 1,
-                        line_text,
-                    });
-                    if matches.len() >= max_matches {
-                        return Ok(matches);
+                        matches.push(ColdMatch {
+                            artifact_id: id,
+                            line_number: idx + 1,
+                            line_text: lines[start..end].join("\n"),
+                        });
+                        if matches.len() >= max_matches {
+                            return Ok(matches);
+                        }
                     }
                 }
             }
@@ -376,10 +390,14 @@ impl CasStore {
         let tmp_path = dir_path.join(format!("cas_store.json.{}.{}.tmp", std::process::id(), seq));
         let final_path = dir_path.join("cas_store.json");
         let write_res = (|| -> std::io::Result<()> {
-            let mut f = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&tmp_path)?;
+            let mut opts = OpenOptions::new();
+            opts.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                opts.mode(0o600);
+            }
+            let mut f = opts.open(&tmp_path)?;
             f.write_all(&encoded)?;
             f.sync_all()?;
             drop(f);
@@ -402,7 +420,10 @@ impl CasStore {
         let mut verified_chunks = BTreeMap::new();
         for (cid, cdigest, bytes) in snapshot.chunks {
             let (computed_id, computed_digest) = ArtifactId::hash_bytes(&bytes);
-            if computed_id != cid || computed_digest != cdigest {
+            if computed_id != cid
+                || computed_digest != cdigest
+                || verified_chunks.contains_key(&cid)
+            {
                 return Err(IcxError::IntegrityViolation(cid));
             }
             verified_chunks.insert(cid, (cdigest, bytes));
@@ -413,6 +434,7 @@ impl CasStore {
             let id = art.id;
             if ArtifactId::from_digest(&art.full_digest) != id
                 || art.chunk_ids.len() != art.line_index.len()
+                || store.artifacts.contains_key(&id)
             {
                 return Err(IcxError::IntegrityViolation(id));
             }
@@ -430,16 +452,11 @@ impl CasStore {
             let mut out = Vec::with_capacity(computed_bytes);
             let mut current_line: u32 = 1;
             for (&cid, entry) in art.chunk_ids.iter().zip(art.line_index.iter()) {
-                let (cdigest, bytes) = verified_chunks
+                let (_, bytes) = verified_chunks
                     .get(&cid)
                     .ok_or(IcxError::ArtifactNotFound(id))?;
-                let start_line = current_line;
-                let newlines = bytes.iter().filter(|&&b| b == b'\n').count() as u32;
-                let end_line = if bytes.last() == Some(&b'\n') {
-                    (current_line + newlines).saturating_sub(1).max(start_line)
-                } else {
-                    current_line + newlines
-                };
+                let (start_line, end_line, next_line) =
+                    advance_chunk_line_span(bytes, current_line);
                 if entry.chunk_id != cid
                     || entry.byte_offset as usize != out.len()
                     || entry.byte_len as usize != bytes.len()
@@ -448,12 +465,8 @@ impl CasStore {
                 {
                     return Err(IcxError::IntegrityViolation(id));
                 }
-                current_line += newlines;
+                current_line = next_line;
                 out.extend_from_slice(bytes);
-                store
-                    .chunks
-                    .entry(cid)
-                    .or_insert_with(|| (*cdigest, bytes.clone()));
             }
             let expected_total_lines = if out.is_empty() {
                 0
@@ -466,6 +479,13 @@ impl CasStore {
                 || art.total_lines != expected_total_lines
             {
                 return Err(IcxError::IntegrityViolation(id));
+            }
+            for &cid in &art.chunk_ids {
+                if !store.chunks.contains_key(&cid) {
+                    if let Some((cdigest, bytes)) = verified_chunks.get(&cid) {
+                        store.chunks.insert(cid, (*cdigest, bytes.clone()));
+                    }
+                }
             }
             store.artifacts.insert(id, art);
         }

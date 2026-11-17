@@ -82,7 +82,8 @@ impl ArtifactId {
     /// Parses either a 16-hex Profile B handle (`#icx:<16-hex>`) or a 12-hex Profile A prefix
     /// (`#icx:<12-hex>`) into an inclusive `[min_id, max_id]` range for $O(\log N)$ `BTreeMap` lookup.
     pub fn parse_prefix_range(s: &str) -> Result<(Self, Self), IcxError> {
-        let trimmed = s.strip_prefix("#icx:").unwrap_or(s);
+        let trimmed_input = s.trim();
+        let trimmed = trimmed_input.strip_prefix("#icx:").unwrap_or(trimmed_input);
         if !trimmed.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(IcxError::InvalidHandle(s.to_owned()));
         }
@@ -114,7 +115,8 @@ impl FromStr for ArtifactId {
     type Err = IcxError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let trimmed = s.strip_prefix("#icx:").unwrap_or(s);
+        let trimmed_input = s.trim();
+        let trimmed = trimmed_input.strip_prefix("#icx:").unwrap_or(trimmed_input);
         if trimmed.len() != 16 || !trimmed.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(IcxError::InvalidHandle(s.to_owned()));
         }
