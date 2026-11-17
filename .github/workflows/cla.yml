@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 DoubleGate
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Contributor License Agreement check (CLA.md). A pull request's authors must
+# have signed the CLA before it can be merged; they sign by posting the
+# comment the check asks for. Signatures are stored in the `cla-signatures`
+# branch of this repository. The logic is in .github/scripts/cla-check.sh
+# (`--selftest` checks it offline).
+name: CLA
+
+on:
+  issue_comment:
+    types: [created, edited]
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, closed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request number to re-evaluate"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  statuses: write
+
+# One run at a time across the repository, so two signatures never race on
+# the signatures file (the script also retries on a conflict).
+concurrency:
+  group: cla-check
+  cancel-in-progress: false
+
+jobs:
+  cla:
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.pull_request && github.event.issue.state == 'open' &&
+       (contains(github.event.comment.body, 'recheck') ||
+        contains(github.event.comment.body, 'I hereby sign the CLA') ||
+        contains(github.event.comment.body, 'I hereby sign and agree to the CLA')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Check signatures
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
+          BEFORE_SHA: ${{ github.event.before }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_USER: ${{ github.event.comment.user.login }}
+          COMMENT_USER_ID: ${{ github.event.comment.user.id }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: bash .github/scripts/cla-check.sh

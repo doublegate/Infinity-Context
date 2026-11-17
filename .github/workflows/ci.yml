@@ -5,19 +5,29 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   check:
-    name: Format, Clippy, Test & Benchmark
+    name: Format, Clippy, Test, Docs, Benchmark & Self-Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy
@@ -30,3 +40,91 @@ jobs:
         run: cargo doc --workspace --no-deps
       - name: Run benchmark & SLO gate
         run: cargo run --release -p icx-cli -- benchmark
+      - name: Run CLI doctor check
+        run: cargo run --release -p icx-cli -- doctor
+      - name: Antigravity reviewer self-test
+        run: bash scripts/agy-review-selftest.sh
+      - name: CLA script self-test
+        run: bash .github/scripts/cla-check.sh --selftest
+
+  coverage:
+    name: Code Coverage (Codecov)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "coverage"
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate LCOV coverage report & enforce coverage floor
+        run: cargo llvm-cov --workspace --all-targets --lcov --output-path lcov.info --fail-under-lines 65
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: ${{ secrets.CODECOV_TOKEN != '' }}
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  secrets:
+    name: Secret Scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks (pinned, checksum-verified)
+        run: |
+          curl -sSfL --retry 3 --retry-all-errors -o "$RUNNER_TEMP/gitleaks.tgz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/gitleaks.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP" gitleaks
+          rm "$RUNNER_TEMP/gitleaks.tgz"
+      - name: Scan git history (including merge-commit patches)
+        run: |
+          "$RUNNER_TEMP/gitleaks" git . --log-opts="--all --full-history -m" --no-banner --redact --exit-code 1
+      - name: Verify merge-commit secret detection fixture
+        run: |
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          git -C "$tmpdir" init -q -b main
+          git -C "$tmpdir" config user.name "Test"
+          git -C "$tmpdir" config user.email "test@example.com"
+          echo "clean" > "$tmpdir/file.txt"
+          git -C "$tmpdir" add file.txt
+          git -C "$tmpdir" commit -q -m "init"
+          git -C "$tmpdir" checkout -q -b side
+          echo "side" > "$tmpdir/side.txt"
+          git -C "$tmpdir" add side.txt
+          git -C "$tmpdir" commit -q -m "side"
+          git -C "$tmpdir" checkout -q main
+          echo "main2" > "$tmpdir/main2.txt"
+          git -C "$tmpdir" add main2.txt
+          git -C "$tmpdir" commit -q -m "main2"
+          git -C "$tmpdir" merge -q --no-commit side
+          hdr_begin="-----BEGIN OPENSSH"
+          hdr_end="-----END OPENSSH"
+          key_tail="PRIVATE KEY-----"
+          b64_line="$(printf 'synthetic-merge-commit-test-private-key-payload-0123456789abcdef' | base64 -w0)"
+          printf '%s %s\n%s\n%s %s\n' \
+            "$hdr_begin" "$key_tail" \
+            "$b64_line" \
+            "$hdr_end" "$key_tail" > "$tmpdir/merge_only.key"
+          git -C "$tmpdir" add merge_only.key
+          git -C "$tmpdir" commit -q -m "merge with evil resolution"
+          rc=0
+          "$RUNNER_TEMP/gitleaks" git "$tmpdir" --log-opts="--all --full-history -m" --no-banner --redact --exit-code 42 || rc=$?
+          if [ "$rc" -ne 42 ]; then
+            echo "ERROR: expected gitleaks detection exit code 42 for synthetic merge secret, got $rc" >&2
+            exit 1
+          fi

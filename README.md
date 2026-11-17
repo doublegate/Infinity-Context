@@ -12,19 +12,24 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/doublegate/Infinity-Context/actions"><img src="https://github.com/doublegate/Infinity-Context/workflows/CI/badge.svg" alt="CI Status"></a>
+  <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/ci.yml"><img src="https://github.com/doublegate/Infinity-Context/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
   <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/reuse.yml"><img src="https://img.shields.io/badge/REUSE-3.3%20compliant-brightgreen.svg" alt="REUSE 3.3 Compliant"></a>
+  <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/cla.yml"><img src="https://img.shields.io/badge/CLA-enforced-success.svg" alt="CLA Enforced"></a>
+  <a href="https://codecov.io/gh/doublegate/Infinity-Context"><img src="https://img.shields.io/badge/coverage-Codecov-f01f7a.svg?logo=codecov" alt="Codecov Coverage"></a>
+  <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/antigravity-review.yml"><img src="https://img.shields.io/badge/PR%20review-Antigravity%20(agy)-4285F4.svg" alt="Antigravity PR Review"></a>
+  <a href="SECURITY.md"><img src="https://img.shields.io/badge/gitleaks-verified-0ea5e9.svg" alt="Gitleaks Secret Scan"></a><br/>
   <a href="LICENSING.md"><img src="https://img.shields.io/badge/code-GPL--3.0--or--later%20%7C%20AGPL--3.0--or--later-blue.svg" alt="Code License: GPL-3.0-or-later | AGPL-3.0-or-later"></a>
   <a href="LICENSING.md"><img src="https://img.shields.io/badge/specs-CC--BY--NC--ND--4.0-blueviolet.svg" alt="Specs: CC-BY-NC-ND-4.0"></a>
-  <a href="PATENTS.md"><img src="https://img.shields.io/badge/status-Patent%20Pending-amber.svg" alt="Status: Patent Pending"></a>
-  <a href="COMMERCIAL.md"><img src="https://img.shields.io/badge/commercial%20%26%20patent%20license-available-orange.svg" alt="Commercial & Patent License Available"></a><br/>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.80%2B-orange.svg?logo=rust" alt="Rust: 1.80+"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-v0.1.0-informational.svg" alt="Version: v0.1.0"></a>
-  <a href="#alien-holographic-token-lattice-ahtl"><img src="https://img.shields.io/badge/AHTL%20compression-72.1x%20(197%20%C2%B5s)-blueviolet.svg" alt="AHTL Compression: 72.1x"></a>
-  <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/lossless%20recovery-100%25%20(BLAKE3%20CAS)-brightgreen.svg" alt="Lossless Recovery: 100%"></a>
-  <a href="#prefix-cache-locked-epoch-controller"><img src="https://img.shields.io/badge/prefix--cache%20hit-94.38%25-success.svg" alt="Prefix-Cache Hit: 94.38%"></a>
-  <a href="#plane-3-10240-bit-hdc-fractal-ifs--bi-temporal-ppr-index"><img src="https://img.shields.io/badge/10%2C240--bit%20HDC%20scan-1.31%20%C2%B5s%2Fnode-00b4d8.svg" alt="HDC Scan: 1.31 us/node"></a><br/>
-  <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20Code%20%7C%20Codex%20CLI%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20MCP-lightgrey.svg" alt="Supported Agents"></a>
+  <a href="PATENTS.md"><img src="https://img.shields.io/badge/patents-5%20Pending%20Families-d97706.svg" alt="Patents: 5 Pending Families"></a>
+  <a href="COMMERCIAL.md"><img src="https://img.shields.io/badge/commercial%20license-available-ea580c.svg" alt="Commercial License Available"></a><br/>
+  <a href="#alien-holographic-token-lattice-ahtl"><img src="https://img.shields.io/badge/AHTL%20compression-72.1x%20(197%20%C2%B5s)-7c3aed.svg" alt="AHTL Compression: 72.1x"></a>
+  <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/lossless%20recovery-100%25%20(BLAKE3%20CAS)-16a34a.svg" alt="Lossless Recovery: 100%"></a>
+  <a href="#prefix-cache-locked-epoch-controller"><img src="https://img.shields.io/badge/prefix--cache%20hit-94.38%25-059669.svg" alt="Prefix-Cache Hit: 94.38%"></a>
+  <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/10%2C240--bit%20HDC%20scan-1.31%20%C2%B5s%2Fnode-0284c7.svg" alt="HDC Scan: 1.31 us/node"></a><br/>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.80%2B%20(8%20crates)-f97316.svg?logo=rust" alt="Rust: 1.80+ (8 crates)"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v0.1.0-2563eb.svg" alt="Release: v0.1.0"></a>
+  <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/shm%20seqlock-%3C300%20ns-0d9488.svg" alt="SHM Seqlock: <300 ns"></a>
+  <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20MCP-475569.svg" alt="Supported Agents"></a>
 </p>
 
 </div>
@@ -332,6 +337,7 @@ Infinity-Context/
 ### Prerequisites
 
 - **Rust 1.80+** (`stable` toolchain via [rustup](https://rustup.rs))
+- **`jq` 1.6+** (required when running the local CI/CLA/reviewer self-test suites in `scripts/` and `.github/scripts/`)
 
 ### Build, Test & Verify
 
@@ -433,13 +439,15 @@ Development is organized into 5 phases and 14 sprints tracked in [`to-dos/ROADMA
 
 ## Contributing
 
-Contributions are welcome and are accepted under the [Contributor License Agreement (`CLA.md`)](CLA.md). Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before opening a pull request. All changes must pass:
+Contributions are welcome and are accepted under the [Contributor License Agreement (`CLA.md`)](CLA.md). Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before opening a pull request. Ensure **Rust 1.80+** and **`jq`** are installed, as all changes must pass:
 
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+bash scripts/agy-review-selftest.sh
+bash .github/scripts/cla-check.sh --selftest
 uvx reuse lint
 ```
 
@@ -452,7 +460,7 @@ uvx reuse lint
 - **Core workspace crates, CLI & build tooling (`crates/icx-{core,hdc,codec,store,bus,cli}`, `scripts/`):** **GNU General Public License v3.0 or later (`GPL-3.0-or-later`)** ([`LICENSE`](LICENSE), [`COPYING`](COPYING), [`LICENSES/GPL-3.0-or-later.txt`](LICENSES/GPL-3.0-or-later.txt)).
 - **Networked proxy, MCP server & agent interception crates (`crates/icx-proxy`, `crates/icx-adapters`):** Dual copyleft under **`GPL-3.0-or-later AND AGPL-3.0-or-later`** ([`LICENSES/AGPL-3.0-or-later.txt`](LICENSES/AGPL-3.0-or-later.txt)), enforcing Section 13 remote-network source disclosure on hosted, cloud, or SaaS deployments.
 - **Architectural specifications, mathematical derivations, forensic reports & branding (`docs/`, `ref-docs/`, `images/`, `assets/`):** **Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (`CC-BY-NC-ND-4.0`)** ([`LICENSES/CC-BY-NC-ND-4.0.txt`](LICENSES/CC-BY-NC-ND-4.0.txt)) subject to [`PATENTS.md`](PATENTS.md) (`LicenseRef-InfinityContext-Commercial`).
-- **Patent-Pending Status & Commercial Licensing:** The systems, symbolic codecs (`AHTL`), hyperdimensional/fractal indexing algorithms (`HDC`/`FCGA`), prefix-cache-locked epoch paging, and `/dev/shm` seqlock telepathy protocols disclosed herein are **Patent Pending** ([`PATENTS.md`](PATENTS.md)). Corporations and organizations wishing to embed, distribute, host as a closed-source cloud/SaaS service, or commercially re-implement **Infinity-Context (`icx`)** without `GPL-3.0` / `AGPL-3.0` / `CC-BY-NC-ND-4.0` obligations must obtain a commercial and patent license — see [`COMMERCIAL.md`](COMMERCIAL.md) and [`PATENTS.md`](PATENTS.md). Contributions are governed by the [Contributor License Agreement (`CLA.md`)](CLA.md).
+- **Patent-Pending Status & Commercial Licensing:** The systems across all five architectural planes of **Infinity-Context (`icx`)**—including the non-human symbolic codec (`AHTL` & bijective Braille-256 sketching), Virtual Context MMU and 4-tier `BLAKE3` Merkle-DAG with subtask context-folding, 10,240-bit hyperdimensional associative memory (`HDC`) with Infini-attention Delta-Rule bundling and Contractive IFS fractal archiving (`FCGA`), Titans surprise-gated bi-temporal Personalized PageRank (`PPR`) and 4-zone prefix-cache-locked epoch breakpoint rotation, and the lock-free `/dev/shm` seqlock telepathy ring bus with multi-harness hook interception and single-tool polymorphic MCP paging—are covered by **five pending patent invention families** ([`PATENTS.md`](PATENTS.md)). Corporations and organizations wishing to embed, distribute, host as a closed-source cloud/SaaS service, or commercially re-implement **Infinity-Context (`icx`)** without `GPL-3.0` / `AGPL-3.0` / `CC-BY-NC-ND-4.0` obligations must obtain a commercial and patent license — see [`COMMERCIAL.md`](COMMERCIAL.md) and [`PATENTS.md`](PATENTS.md). Contributions are governed by the [Contributor License Agreement (`CLA.md`)](CLA.md).
 
 ---
 

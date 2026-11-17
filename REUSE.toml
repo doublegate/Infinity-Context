@@ -14,8 +14,10 @@ version = 1
 path = [
   "*",
   ".ai-memory.toml",
+  ".coderabbit.yaml",
   ".editorconfig",
   ".gitignore",
+  ".gitleaks.toml",
   ".markdownlint.json",
   ".github/**",
   "crates/icx-core/**",
@@ -54,16 +56,14 @@ SPDX-FileComment = "Network-facing wire proxy, MCP server, and agent adapter cra
 #    Permits non-commercial viewing/sharing with attribution while prohibiting
 #    commercial re-implementation or derivative commercial specs without a license.
 # ---------------------------------------------------------------------------
+# Note: "ref-docs/**" below is intentionally overridden for third-party academic
+# preprints ("ref-docs/papers/*.pdf") by Block 6 at the bottom of this file.
 [[annotations]]
 path = [
   "docs/**",
   "images/**",
   "assets/**",
-  "ref-docs/*.md",
-  "ref-docs/agent-internals/**",
-  "ref-docs/prior-art/**",
-  "ref-docs/novel-methods/**",
-  "ref-docs/papers/INDEX.md",
+  "ref-docs/**",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 DoubleGate"
