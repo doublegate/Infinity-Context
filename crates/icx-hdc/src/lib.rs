@@ -224,41 +224,57 @@ impl HdcAssociativeIndex {
             .map(str::to_ascii_lowercase)
             .collect();
 
-        let mut hits: Vec<AssociativeHit> = if self.entries.len() <= 64 {
-            self.entries
-                .iter()
-                .map(|e| self.score_entry(e, &q_hv, &q_tokens))
-                .collect()
-        } else {
-            let q_sub64 = q_hv.sub_hypervector_64();
-            let mut q_bloom32 = 0u32;
-            for tok in &q_tokens {
-                q_bloom32 |= Self::token_bloom_bits32(tok);
-                for sub in tok.split(|c: char| !c.is_alphanumeric() && c != '_') {
-                    if sub.len() >= 2 {
-                        q_bloom32 |= Self::token_bloom_bits32(sub);
+        let candidate_cap = top_k
+            .saturating_mul(4)
+            .clamp(16, 64)
+            .max(top_k)
+            .min(self.entries.len());
+
+        let mut hits: Vec<AssociativeHit> =
+            if self.entries.len() <= 64 || candidate_cap == self.entries.len() {
+                self.entries
+                    .iter()
+                    .map(|e| self.score_entry(e, &q_hv, &q_tokens))
+                    .collect()
+            } else {
+                let q_sub64 = q_hv.sub_hypervector_64();
+                let mut q_bloom32 = 0u32;
+                for tok in &q_tokens {
+                    q_bloom32 |= Self::token_bloom_bits32(tok);
+                    for sub in tok.split(|c: char| !c.is_alphanumeric() && c != '_') {
+                        if sub.len() >= 2 {
+                            q_bloom32 |= Self::token_bloom_bits32(sub);
+                        }
                     }
                 }
-            }
-            let cur_quad = self.current_trajectory.quadrant_signature_u16();
-            let candidate_cap = (top_k * 4).clamp(16, 64).min(self.entries.len());
-            let mut candidates: Vec<(u32, usize)> = Vec::with_capacity(candidate_cap);
-            let mut min_score = 0u32;
-            let mut min_pos = 0usize;
+                let cur_quad = self.current_trajectory.quadrant_signature_u16();
+                let mut candidates: Vec<(u32, usize)> = Vec::with_capacity(candidate_cap);
+                let mut min_score = 0u32;
+                let mut min_pos = 0usize;
 
-            for (idx, s) in self.summaries.iter().enumerate() {
-                let sim64 = 64u32.saturating_sub((q_sub64 ^ s.hv_sub64).count_ones());
-                let bloom_hits = (q_bloom32 & s.subj_bloom32).count_ones();
-                let quad_sim = 16u32.saturating_sub((cur_quad ^ s.quadrant_u16).count_ones());
-                let coarse = sim64 * 8
-                    + bloom_hits * 64
-                    + (u32::from(s.surprise_q8) >> 1)
-                    + quad_sim * 4
-                    + u32::from(s.flags & 0x04) * 4;
+                for (idx, s) in self.summaries.iter().enumerate() {
+                    let sim64 = 64u32.saturating_sub((q_sub64 ^ s.hv_sub64).count_ones());
+                    let bloom_hits = (q_bloom32 & s.subj_bloom32).count_ones();
+                    let quad_sim = 16u32.saturating_sub((cur_quad ^ s.quadrant_u16).count_ones());
+                    let coarse = sim64 * 8
+                        + bloom_hits * 64
+                        + (u32::from(s.surprise_q8) >> 1)
+                        + quad_sim * 4
+                        + u32::from(s.flags & 0x04) * 4;
 
-                if candidates.len() < candidate_cap {
-                    candidates.push((coarse, idx));
-                    if candidates.len() == candidate_cap {
+                    if candidates.len() < candidate_cap {
+                        candidates.push((coarse, idx));
+                        if candidates.len() == candidate_cap {
+                            let (pos, &(sc, _)) = candidates
+                                .iter()
+                                .enumerate()
+                                .min_by_key(|&(_, &(sc, _))| sc)
+                                .unwrap();
+                            min_pos = pos;
+                            min_score = sc;
+                        }
+                    } else if coarse > min_score {
+                        candidates[min_pos] = (coarse, idx);
                         let (pos, &(sc, _)) = candidates
                             .iter()
                             .enumerate()
@@ -267,23 +283,13 @@ impl HdcAssociativeIndex {
                         min_pos = pos;
                         min_score = sc;
                     }
-                } else if coarse > min_score {
-                    candidates[min_pos] = (coarse, idx);
-                    let (pos, &(sc, _)) = candidates
-                        .iter()
-                        .enumerate()
-                        .min_by_key(|&(_, &(sc, _))| sc)
-                        .unwrap();
-                    min_pos = pos;
-                    min_score = sc;
                 }
-            }
 
-            candidates
-                .into_iter()
-                .map(|(_, idx)| self.score_entry(&self.entries[idx], &q_hv, &q_tokens))
-                .collect()
-        };
+                candidates
+                    .into_iter()
+                    .map(|(_, idx)| self.score_entry(&self.entries[idx], &q_hv, &q_tokens))
+                    .collect()
+            };
 
         hits.sort_by(|a, b| {
             b.combined_score
@@ -354,5 +360,9 @@ mod tests {
         let staged_hits = trait_ref.query_associative("quantum_needle locate_quantum_passkey", 5);
         assert_eq!(staged_hits.len(), 5);
         assert_eq!(staged_hits[0].artifact_id, ArtifactId(999));
+
+        // Verify requesting top_k > 64 returns all requested hits up to entries.len()
+        let large_hits = trait_ref.query_associative("helper module", 100);
+        assert_eq!(large_hits.len(), 100);
     }
 }

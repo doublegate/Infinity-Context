@@ -2,6 +2,7 @@
 //! Delta-Rule majority bundler (`arXiv:2404.07143`).
 
 use core::ops::{BitXor, BitXorAssign};
+use std::collections::BTreeSet;
 
 pub const HV_WORDS: usize = 160;
 pub const HV_BITS: usize = HV_WORDS * 64; // 10,240 bits
@@ -285,6 +286,28 @@ impl Hypervector {
         out
     }
 
+    /// Computes a non-linear 128-bit fingerprint over all 160 words for collision-free
+    /// deduplication in `HdcBundler` (distinguishing structured vectors such as `H` and `!H`
+    /// whose linear XOR parity digests coincide).
+    #[inline]
+    pub const fn dedup_fingerprint_u128(&self) -> u128 {
+        let mut h1 = 0xCBF2_9CE4_8422_2325u64;
+        let mut h2 = 0x8422_2325_CBF2_9CE4u64;
+        let mut i = 0;
+        while i < HV_WORDS {
+            let w = self.words[i];
+            let lane = (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            h1 = (h1 ^ w.wrapping_add(lane))
+                .wrapping_mul(0x0000_0100_0000_01B3)
+                .rotate_left(29);
+            h2 = (h2 ^ w.rotate_left(17).wrapping_sub(lane))
+                .wrapping_mul(0xBF58_476D_1CE4_E5B9)
+                .rotate_right(23);
+            i += 1;
+        }
+        ((h1 as u128) << 64) | (h2 as u128)
+    }
+
     /// Computes the 64-bit rotational XOR-tree parity fold (`hv:<16-hex>` in Profile A).
     #[inline]
     pub fn hv_digest_u64(&self) -> u64 {
@@ -354,8 +377,7 @@ pub struct HdcBundler {
     acc: [i16; HV_BITS],
     readout: Hypervector,
     count: usize,
-    seen_digests: [u64; 32],
-    seen_len: usize,
+    seen_fingerprints: BTreeSet<u128>,
 }
 
 impl Default for HdcBundler {
@@ -371,24 +393,22 @@ impl HdcBundler {
             acc: [0i16; HV_BITS],
             readout: Hypervector::zero(),
             count: 0,
-            seen_digests: [0u64; 32],
-            seen_len: 0,
+            seen_fingerprints: BTreeSet::new(),
         }
     }
 
-    /// Number of non-duplicate hypervectors accumulated into the bundle.
+    /// Number of hypervector accumulation updates applied to the bundle.
     #[inline]
     pub const fn count(&self) -> usize {
         self.count
     }
 
-    /// Resets the accumulator, readout, and seen-digest history to the empty zero state.
+    /// Resets the accumulator, readout, and seen-fingerprint set to the empty zero state.
     pub fn reset(&mut self) {
         self.acc = [0i16; HV_BITS];
         self.readout = Hypervector::zero();
         self.count = 0;
-        self.seen_digests = [0u64; 32];
-        self.seen_len = 0;
+        self.seen_fingerprints.clear();
     }
 
     /// Unbinds a role hypervector from the current bundle readout (`M \oplus R \approx F`).
@@ -398,13 +418,12 @@ impl HdcBundler {
     }
 
     /// Adds a hypervector using the Infini-attention Delta Rule: vectors already strongly present
-    /// in the bundle (`similarity >= 0.85` or matching a recently bundled digest) receive zero
-    /// delta weight so repetitive boilerplate never saturates the accumulator, while novel/orthogonal
-    /// vectors receive full weight.
+    /// in the bundle (`similarity >= 0.85` or matching a previously bundled 128-bit fingerprint)
+    /// receive zero delta weight so repetitive boilerplate never saturates the accumulator, while
+    /// novel/orthogonal vectors receive full weight.
     pub fn add(&mut self, hv: &Hypervector) {
-        let digest = hv.hv_digest_u64();
-        let active_seen = self.seen_len.min(self.seen_digests.len());
-        if self.seen_digests[..active_seen].contains(&digest) {
+        let fp = hv.dedup_fingerprint_u128();
+        if self.seen_fingerprints.contains(&fp) {
             return;
         }
         let weight: i16 = if self.count == 0 {
@@ -417,9 +436,7 @@ impl HdcBundler {
             let novelty = (1.0 - sim).clamp(0.0, 1.0);
             ((novelty * 16.0).round() as i16).max(1)
         };
-        let slot = self.seen_len % self.seen_digests.len();
-        self.seen_digests[slot] = digest;
-        self.seen_len += 1;
+        self.seen_fingerprints.insert(fp);
         self.add_weighted(hv, weight);
     }
 
@@ -427,6 +444,7 @@ impl HdcBundler {
     /// symmetrically via coordinate parity `((word_idx ^ bit) & 1) == 0` so the thresholded
     /// readout stays balanced around Hamming weight `5,120`.
     pub fn add_weighted(&mut self, hv: &Hypervector, weight: i16) {
+        self.seen_fingerprints.insert(hv.dedup_fingerprint_u128());
         let w = weight.clamp(1, 64);
         for word_idx in 0..HV_WORDS {
             let word = hv.words[word_idx];
@@ -541,6 +559,25 @@ mod tests {
         assert!(
             unbound.similarity(&anomaly) > 0.25,
             "role-filler unbinding from bundle must recover anomaly after 100x trailing boilerplate"
+        );
+
+        // Verify that a vector and its bitwise complement (which share hv_digest_u64) do not collide
+        bundler.reset();
+        let all_zero = Hypervector::zero();
+        let all_ones = Hypervector {
+            words: [u64::MAX; HV_WORDS],
+        };
+        assert_eq!(all_zero.hv_digest_u64(), all_ones.hv_digest_u64());
+        assert_ne!(
+            all_zero.dedup_fingerprint_u128(),
+            all_ones.dedup_fingerprint_u128()
+        );
+        bundler.add(&all_zero);
+        bundler.add(&all_ones);
+        assert_eq!(
+            bundler.count(),
+            2,
+            "antipodal complement must not be discarded as a duplicate"
         );
     }
 
