@@ -18,12 +18,11 @@ When multiple agents (e.g., Claude Code editing backend Rust code, Codex running
 
 ## 2. `/dev/shm/icx-fabric-v1` Lock-Free Seqlock Ring Layout
 
-The shared memory file `/dev/shm/icx-fabric-v1` (or `$XDG_RUNTIME_DIR/icx-fabric-v1.shm`) has a fixed size of `16 MiB` (`16,777,216` bytes) mapped via `mmap(PROT_READ | PROT_WRITE, MAP_SHARED)`:
+The shared memory file `/dev/shm/icx-fabric-v1` (or `$XDG_RUNTIME_DIR/icx-fabric-v1.shm`) has a fixed size of `1,048,640` bytes (`64 B` header + `256 x 4,096 B` slots) mapped via `mmap(PROT_READ | PROT_WRITE, MAP_SHARED)`:
 
 ```text
-Offset 0x0000_0000 .. 0x0000_0FFF (4 KiB): FabricHeader (Magic, Version, Epoch, WriteCursor)
-Offset 0x0000_1000 .. 0x0000_FFFF (60 KiB): ActiveAgentTable (64 Agent Slot Descriptors x 960B)
-Offset 0x0001_0000 .. 0x00FF_FFFF (~16 MiB): SeqlockSlotRing (4,080 Slots x 4,096 Bytes)
+Offset 0x0000_0000 .. 0x0000_003F (64 B):     FabricHeader (Magic, Version, RootSeqlock, WriteSeq, ActiveAgentsMask, GlobalDagRoot)
+Offset 0x0000_0040 .. 0x0010_003F (1,048,576 B): SeqlockSlotRing (256 Slots x 4,096 Bytes)
 ```
 
 ### 2.1 `FabricHeader` & `SeqlockSlot` Layout (`#[repr(C, align(64))]`)
@@ -53,11 +52,10 @@ pub struct SeqlockSlot {
     pub artifact_id: u64,
     pub workspace_hash: u64,
     pub agent_kind: u8,
-    pub packet_kind: u8,
     pub surprise_q8: u8,
-    pub _reserved_u8: u8,
     pub payload_len: u16,
-    pub _reserved_u16: u16,
+    pub packet_kind: u8,
+    pub _reserved: [u8; 3],
     /// Compact 256-bit sketch of the 10,240-bit HDC hypervector
     pub hdc_sketch: [u64; 4],
     /// Quantized 16-D Fractal Chaos-Game coordinate (i16 fixed-point in [-32767, 32767])

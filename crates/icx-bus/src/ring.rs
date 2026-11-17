@@ -53,11 +53,10 @@ pub struct SeqlockSlot {
     pub artifact_id: u64,
     pub workspace_hash: u64,
     pub agent_kind: u8,
-    pub packet_kind: u8,
     pub surprise_q8: u8,
-    pub _reserved_u8: u8,
     pub payload_len: u16,
-    pub _reserved_u16: u16,
+    pub packet_kind: u8,
+    pub _reserved: [u8; 3],
     pub hdc_sketch: [u64; 4],
     pub fractal_q15: [i16; 16],
     pub _pad: [u8; 24],
@@ -287,15 +286,8 @@ impl SeqlockTelemetryBus {
             } else if cur == stalled_odd {
                 spins += 1;
                 if spins >= MAX_WRITER_SPIN_ITERS {
-                    let next_odd = cur.wrapping_add(2);
-                    if header
-                        .root_seqlock
-                        .compare_exchange(cur, next_odd, Ordering::AcqRel, Ordering::Acquire)
-                        .is_ok()
-                    {
-                        break next_odd;
-                    }
-                    spins = 0;
+                    // Preserve exclusive ownership if a concurrent writer is descheduled or stalled.
+                    return;
                 }
             } else {
                 stalled_odd = cur;
@@ -392,14 +384,8 @@ impl SeqlockTelemetryBus {
             } else if cur == stalled_odd {
                 spins += 1;
                 if spins >= MAX_WRITER_SPIN_ITERS {
-                    if cur == odd_version
-                        || seqlock_ref
-                            .compare_exchange(cur, odd_version, Ordering::AcqRel, Ordering::Acquire)
-                            .is_ok()
-                    {
-                        break;
-                    }
-                    spins = 0;
+                    // Bounded skip path: never steal an odd slot from a descheduled or crashed writer.
+                    return seq + 1;
                 }
             } else {
                 stalled_odd = cur;
@@ -413,17 +399,7 @@ impl SeqlockTelemetryBus {
             copy_len -= 1;
         }
         let raw_bytes = &ahtl_packet.as_bytes()[..copy_len];
-        let pkt_kind = if ahtl_packet.contains("⟦Δ:") || ahtl_packet.contains("⊢Δ:") {
-            b'D'
-        } else if ahtl_packet.contains("⟦Ω:") || ahtl_packet.contains("⊢Ω:") {
-            b'O'
-        } else if ahtl_packet.contains("⟦Φ:") || ahtl_packet.contains("⊢Φ:") {
-            b'F'
-        } else if ahtl_packet.contains("⟦Ψ:") || ahtl_packet.contains("⊢Ψ:") {
-            b'P'
-        } else {
-            b'T'
-        };
+        let pkt_kind = Self::classify_packet_kind(ahtl_packet);
 
         // SAFETY: This thread holds exclusive write access to `slot_ptr` (`slot.seqlock == odd_version`)
         // derived directly from the mutable backing pointer (`UnsafeCell` or `MmapMut`).
@@ -543,6 +519,29 @@ impl SeqlockTelemetryBus {
         events.sort_by_key(|e| e.seq);
         events.dedup_by_key(|e| e.seq);
         events
+    }
+
+    fn classify_packet_kind(ahtl_packet: &str) -> u8 {
+        let trimmed = ahtl_packet.trim_start();
+        let inner = if let Some(rest) = trimmed.strip_prefix("⟦Θ:") {
+            match rest.split_once('⊢') {
+                Some((_, after_turnstile)) => after_turnstile,
+                None => return b'T',
+            }
+        } else {
+            trimmed.strip_prefix('⟦').unwrap_or(trimmed)
+        };
+        if inner.starts_with("Δ:") {
+            b'D'
+        } else if inner.starts_with("Ω:") {
+            b'O'
+        } else if inner.starts_with("Φ:") {
+            b'F'
+        } else if inner.starts_with("Ψ:") {
+            b'P'
+        } else {
+            b'T'
+        }
     }
 
     /// Wait-free optimistic poll filtered to events matching `workspace_hash` (`docs/security-and-threat-model.md` §1).
@@ -705,7 +704,8 @@ mod tests {
         assert_eq!(from_b[0].artifact_id, id);
         let _ = std::fs::remove_file(&shm_path);
 
-        // Simulate a crashed writer leaving slot[0].seqlock and header.root_seqlock stuck on odd (1)
+        // Simulate a crashed writer leaving slot[0].seqlock stuck on odd (1) and verify
+        // subsequent publishes skip the stalled slot cleanly without hanging or stealing ownership
         let recovery_bus = SeqlockTelemetryBus::new_in_memory();
         // SAFETY: `recovery_bus` owns a valid `FabricMemoryLayout` and we only mutate atomic fields.
         unsafe {
@@ -714,8 +714,7 @@ mod tests {
             (*ptr).header.root_seqlock.store(1, Ordering::Release);
         }
         recovery_bus.set_global_dag_root([0x55; 32]);
-        assert_eq!(recovery_bus.global_dag_root(), [0x55; 32]);
-        // Publish 257 events so the ring wraps around to slot[0] and recovers the stalled odd slot
+        // Publish 257 events so the ring wraps around slot[0] twice without hanging
         for i in 0..=ICX_RING_SLOTS as u64 {
             recovery_bus.publish(
                 AgentKind::Hermes,
@@ -729,5 +728,7 @@ mod tests {
             );
         }
         assert_eq!(recovery_bus.write_sequence(), (ICX_RING_SLOTS as u64) + 1);
+        let recovered_events = recovery_bus.poll_workspace_since(0, 0x9999);
+        assert_eq!(recovered_events.len(), ICX_RING_SLOTS - 1);
     }
 }
