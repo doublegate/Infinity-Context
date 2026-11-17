@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 DoubleGate
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
 # Contributor License Agreement check (CLA.md), run by .github/workflows/cla.yml.
 # `cla-check.sh --selftest` checks the decision logic offline.
 
@@ -123,12 +126,8 @@ commit_authors_by_oid() {
 }
 
 list_committers_range() {
-    local b_sha="$1" h_sha="$2" pr_num="${3:-}" shas pr_shas c_sha c_out
-    shas="$(gh api "repos/${REPO:-}/compare/${b_sha}...${h_sha}" --jq '.commits[].sha')" || return 1
-    if [ -n "$pr_num" ] && [ "$(printf '%s\n' "$shas" | sed '/^$/d' | wc -l)" -ge 250 ]; then
-        pr_shas="$(gh api --paginate "repos/${REPO:-}/pulls/${pr_num}/commits" --jq '.[].sha')" || return 1
-        shas="$(printf '%s\n%s\n' "$shas" "$pr_shas" | awk 'NF && !seen[$0]++')"
-    fi
+    local b_sha="$1" h_sha="$2" shas c_sha c_out
+    shas="$(gh api --paginate "repos/${REPO:-}/compare/${b_sha}...${h_sha}" --jq '.commits[].sha')" || return 1
     while IFS= read -r c_sha; do
         [ -z "$c_sha" ] && continue
         c_out="$(commit_authors_by_oid "$c_sha")" || return 1
@@ -464,6 +463,7 @@ record_signer() {
         echo "CLA: @$s_login neither opened pull request #$s_pr nor authored/co-authored a commit in it; nothing recorded"
         return 0
     fi
+    read_signatures
     if signed_of "$sig_doc" | grep -Fxq -- "$s_uid"; then
         return 0
     fi
@@ -609,7 +609,7 @@ evaluate_pr_head() {
         -f state="$state" -f context='CLA' -f description="$desc" -f target_url="$DOC_URL" >/dev/null
     status_published=yes
 
-    for target_pr in $(printf '%s\n%s\n' "$eval_pr" "$(printf '%s\n' "$shared_prs_rows" | awk -F'\t' '$1 != "" { print $1 }')" | awk '!seen[$0]++'); do
+    while IFS= read -r target_pr; do
         [ -z "$target_pr" ] && continue
         existing="$(gh api --paginate "repos/$REPO/issues/$target_pr/comments" \
             --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- infinity-context-cla-check -->"))) | .id' | sed -n 1p)"
@@ -618,7 +618,7 @@ evaluate_pr_head() {
         elif [ -n "$unsigned" ]; then
             gh api -X POST "repos/$REPO/issues/$target_pr/comments" -f body="$body" >/dev/null
         fi
-    done
+    done < <(printf '%s\n%s\n' "$eval_pr" "$(printf '%s\n' "$shared_prs_rows" | awk -F'\t' '$1 != "" { print $1 }')" | awk '!seen[$0]++')
 
     echo "CLA (PR #$eval_pr @ $eval_head_sha): $state${unsigned:+ (unsigned: $(printf '%s' "$unsigned" | tr '\n' ' '))}"
 }
