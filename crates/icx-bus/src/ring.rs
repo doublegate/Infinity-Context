@@ -129,13 +129,12 @@ pub struct FabricMemoryLayout {
 impl FabricMemoryLayout {
     /// Allocates the `FabricHeader` and `ICX_RING_SLOTS` page-aligned `SeqlockSlot`s directly on the heap.
     pub fn new() -> Self {
-        let mut slots = Vec::with_capacity(ICX_RING_SLOTS);
-        for _ in 0..ICX_RING_SLOTS {
-            slots.push(SeqlockSlot::new());
-        }
+        let slots: Box<[SeqlockSlot]> = std::iter::repeat_with(SeqlockSlot::new)
+            .take(ICX_RING_SLOTS)
+            .collect();
         Self {
             header: FabricHeader::new(),
-            slots: slots.into_boxed_slice(),
+            slots,
         }
     }
 }
@@ -143,6 +142,14 @@ impl FabricMemoryLayout {
 impl Default for FabricMemoryLayout {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+struct FileUnlockGuard<'a>(&'a File);
+
+impl Drop for FileUnlockGuard<'_> {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
     }
 }
 
@@ -202,9 +209,8 @@ impl SharedFileStore {
         for _attempt in 0..5_000u32 {
             match self.file.try_lock() {
                 Ok(()) => {
-                    let res = f();
-                    let _ = self.file.unlock();
-                    return res;
+                    let _unlock = FileUnlockGuard(&self.file);
+                    return f();
                 }
                 Err(std::fs::TryLockError::WouldBlock) => {
                     std::thread::sleep(std::time::Duration::from_micros(50));

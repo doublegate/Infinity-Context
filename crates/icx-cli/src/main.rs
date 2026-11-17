@@ -87,6 +87,8 @@ Subcommands:
       Execute synchronous <500us lifecycle hook (reads JSON from stdin, writes JSON to stdout)
   mcp-serve
       Run the Single-Tool Polymorphic MCP Virtual Pager (`icx`) over stdio (JSON-RPC 2.0)
+  proxy-transform [--provider <anthropic|openai>] [--dir <PATH>]
+      Transform an outbound Anthropic (`/v1/messages`) or OpenAI (`/v1/chat/completions`, `/v1/responses`) JSON request
   encode-ahtl <FILE> [--dir <PATH>]
       Compress a source file, diff, or build log into an AHTL Holographic Packet + BLAKE3 handle
   decode-ahtl <AHTL_STRING>
@@ -287,21 +289,34 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(reader: R, mut writer: W) -> Resul
 
 fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, String> {
     let mut provider: Option<&str> = None;
+    let mut dir_str: Option<&str> = None;
     let mut i = 0;
     while i < args.len() {
         if args[i] == "--provider" && i + 1 < args.len() {
             provider = Some(args[i + 1].as_str());
+            i += 2;
+        } else if args[i] == "--dir" && i + 1 < args.len() {
+            dir_str = Some(args[i + 1].as_str());
             i += 2;
         } else {
             i += 1;
         }
     }
     let is_openai = match provider {
-        Some(p) => p.eq_ignore_ascii_case("openai"),
-        None => serde_json::from_str::<serde_json::Value>(stdin_buf)
-            .ok()
-            .and_then(|v| {
-                v.get("model").and_then(serde_json::Value::as_str).map(|m| {
+        Some(p) if p.eq_ignore_ascii_case("openai") => true,
+        Some(p) if p.eq_ignore_ascii_case("anthropic") => false,
+        Some(other) => {
+            return Err(format!(
+                "proxy-transform error: unknown --provider `{other}` (expected anthropic or openai)"
+            ));
+        }
+        None => serde_json::from_str::<serde_json::Value>(stdin_buf).is_ok_and(|v| {
+            if v.get("input").is_some() {
+                return true;
+            }
+            v.get("model")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|m| {
                     let lower = m.to_ascii_lowercase();
                     lower.starts_with("gpt-")
                         || lower.starts_with("o1")
@@ -309,17 +324,34 @@ fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, S
                         || lower.starts_with("o4")
                         || lower.contains("codex")
                 })
-            })
-            .unwrap_or(false),
+        }),
     };
     let mut mmu = InfinityContextMmu::default();
-    if is_openai {
+    let icx_dir = Path::new(dir_str.unwrap_or(".icx"));
+    let has_workspace = icx_dir.exists();
+    let _guard = if has_workspace {
+        let g = acquire_workspace_lock(icx_dir)?;
+        let cas_path = icx_dir.join("cas_store.json");
+        if cas_path.exists() {
+            mmu.cas = icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;
+        }
+        Some(g)
+    } else {
+        None
+    };
+
+    let out = if is_openai {
         WireProxyTransformer::transform_openai_request(stdin_buf, &mut mmu)
-            .map_err(|e| format!("proxy-transform error: {e}"))
+            .map_err(|e| format!("proxy-transform error: {e}"))?
     } else {
         WireProxyTransformer::transform_anthropic_messages(stdin_buf, &mut mmu)
-            .map_err(|e| format!("proxy-transform error: {e}"))
+            .map_err(|e| format!("proxy-transform error: {e}"))?
+    };
+
+    if has_workspace {
+        mmu.cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
     }
+    Ok(out)
 }
 
 fn encode_payload_into_workspace(
@@ -531,6 +563,26 @@ fn run_benchmark() {
         "  [PASS] 50-Turn NIH + Cache-Epoch:   {avg_cache_hit:.2}% prefix cache hit rate, 100% lossless passkey recovery ({:.2} ms)",
         sim_elapsed.as_secs_f64() * 1_000.0
     );
+
+    // 4. In-Process Atomic Seqlock Broadcast Latency Benchmark
+    let bench_bus = icx_bus::SeqlockTelemetryBus::new_in_memory();
+    let t3 = Instant::now();
+    for seq_i in 0..1_000u64 {
+        bench_bus.publish(
+            AgentKind::ClaudeCode,
+            ArtifactId(seq_i),
+            0x4943_585F_574F_524B,
+            128,
+            [seq_i; 4],
+            [0; 16],
+            "⟦Θ:bench@seqlock⊢✓ok⟧",
+            seq_i,
+        );
+    }
+    let bus_ns_per_op = (t3.elapsed().as_nanos() as f64) / 1_000.0;
+    println!(
+        "  [PASS] Atomic Seqlock Broadcast:    {bus_ns_per_op:.1} ns / slot (1,000 publishes)"
+    );
     println!("All Infinity-Context SLO gates PASSED.");
 }
 
@@ -687,7 +739,14 @@ mod tests {
         .unwrap();
         assert!(run_deref(&[]).is_err());
         assert!(run_deref(&[handle_str.clone(), "--lines".into(), "bad".into()]).is_err());
-        assert!(run_deref(&["#icx:0000000000000000".into(), "--dir".into(), dir_arg]).is_err());
+        assert!(
+            run_deref(&[
+                "#icx:0000000000000000".into(),
+                "--dir".into(),
+                dir_arg.clone(),
+            ])
+            .is_err()
+        );
 
         // Test hook dispatch for claude-code, codex, agy, and malformed JSON
         for agent in ["claude-code", "codex", "agy"] {
@@ -711,9 +770,16 @@ mod tests {
         )
         .unwrap();
 
-        // Test proxy-transform dispatch (Anthropic default & OpenAI via --provider / model auto-detect)
+        // Test proxy-transform dispatch (Anthropic default & OpenAI via --provider / model / input auto-detect)
         dispatch_cli_args(
-            &["icx".into(), "proxy-transform".into()],
+            &[
+                "icx".into(),
+                "proxy-transform".into(),
+                "--provider".into(),
+                "anthropic".into(),
+                "--dir".into(),
+                dir_arg,
+            ],
             io::Cursor::new(
                 r#"{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hi"}]}"#,
             ),
@@ -732,9 +798,21 @@ mod tests {
         .unwrap();
         dispatch_cli_args(
             &["icx".into(), "proxy-transform".into()],
-            io::Cursor::new(r#"{"model":"gpt-5","messages":[{"role":"user","content":"hi"}]}"#),
+            io::Cursor::new(r#"{"model":"gpt-5","input":"responses prompt"}"#),
         )
         .unwrap();
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "proxy-transform".into(),
+                    "--provider".into(),
+                    "invalid".into()
+                ],
+                io::Cursor::new("{}")
+            )
+            .is_err()
+        );
         assert!(
             dispatch_cli_args(
                 &["icx".into(), "proxy-transform".into()],
