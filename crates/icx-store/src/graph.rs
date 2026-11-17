@@ -291,11 +291,17 @@ impl BiTemporalGraph {
             return 0;
         }
 
+        let mut effective_valid_ms = now_ms;
+        let mut effective_tx_ms = now_ms;
         if is_functional {
             for e in &mut self.edges {
                 if e.t_invalid.is_none() && e.source_entity == src && e.relation == rel {
-                    e.t_invalid = Some(now_ms.max(e.t_valid));
-                    e.t_tx_end = Some(now_ms.max(e.t_tx_start));
+                    let inv_valid = now_ms.max(e.t_valid.saturating_add(1));
+                    let inv_tx = now_ms.max(e.t_tx_start.saturating_add(1));
+                    e.t_invalid = Some(inv_valid);
+                    e.t_tx_end = Some(inv_tx);
+                    effective_valid_ms = effective_valid_ms.max(inv_valid);
+                    effective_tx_ms = effective_tx_ms.max(inv_tx);
                 }
             }
         }
@@ -318,9 +324,9 @@ impl BiTemporalGraph {
             relation: rel,
             target_entity: dst,
             is_functional,
-            t_valid: now_ms,
+            t_valid: effective_valid_ms,
             t_invalid: None,
-            t_tx_start: now_ms,
+            t_tx_start: effective_tx_ms,
             t_tx_end: None,
             provenance,
             weight: clean_weight,
@@ -337,8 +343,8 @@ impl BiTemporalGraph {
         }
         for e in &mut self.edges {
             if e.edge_id == edge_id && e.t_invalid.is_none() {
-                e.t_invalid = Some(now_ms.max(e.t_valid));
-                e.t_tx_end = Some(now_ms.max(e.t_tx_start));
+                e.t_invalid = Some(now_ms.max(e.t_valid.saturating_add(1)));
+                e.t_tx_end = Some(now_ms.max(e.t_tx_start.saturating_add(1)));
                 return true;
             }
         }
@@ -510,9 +516,14 @@ impl BiTemporalGraph {
         let mut loaded: Self =
             serde_json::from_slice(&bytes).map_err(|e| IcxError::Io(e.to_string()))?;
         loaded.entities.clear();
+        if loaded.edges.iter().any(|e| e.edge_id == 0) {
+            for e in &mut loaded.edges {
+                e.edge_id = e.edge_id.saturating_add(1);
+            }
+        }
         let mut seen_ids = BTreeSet::new();
         let mut active_functional: BTreeMap<(String, String), usize> = BTreeMap::new();
-        let mut max_next_id = loaded.next_edge_id;
+        let mut max_next_id = loaded.next_edge_id.max(1);
 
         for idx in 0..loaded.edges.len() {
             let edge_id = loaded.edges[idx].edge_id;
@@ -538,17 +549,40 @@ impl BiTemporalGraph {
             let t_valid = loaded.edges[idx].t_valid;
             let t_tx_start = loaded.edges[idx].t_tx_start;
             if let Some(inv) = loaded.edges[idx].t_invalid {
-                loaded.edges[idx].t_invalid = Some(inv.max(t_valid));
+                loaded.edges[idx].t_invalid = Some(inv.max(t_valid.saturating_add(1)));
             }
             if let Some(tx_end) = loaded.edges[idx].t_tx_end {
-                loaded.edges[idx].t_tx_end = Some(tx_end.max(t_tx_start));
+                loaded.edges[idx].t_tx_end = Some(tx_end.max(t_tx_start.saturating_add(1)));
             }
             if loaded.edges[idx].is_functional && loaded.edges[idx].t_invalid.is_none() {
-                if let Some(prev_idx) = active_functional.insert((src, rel), idx) {
-                    let prev_valid = loaded.edges[prev_idx].t_valid;
-                    let prev_tx = loaded.edges[prev_idx].t_tx_start;
-                    loaded.edges[prev_idx].t_invalid = Some(t_valid.max(prev_valid));
-                    loaded.edges[prev_idx].t_tx_end = Some(t_tx_start.max(prev_tx));
+                let key = (src, rel);
+                if let Some(&prev_idx) = active_functional.get(&key) {
+                    let prev_ord = (
+                        loaded.edges[prev_idx].t_valid,
+                        loaded.edges[prev_idx].t_tx_start,
+                        loaded.edges[prev_idx].edge_id,
+                    );
+                    let cur_ord = (t_valid, t_tx_start, edge_id);
+                    let (older_idx, newer_idx) = if prev_ord <= cur_ord {
+                        (prev_idx, idx)
+                    } else {
+                        (idx, prev_idx)
+                    };
+                    let inv_valid = loaded.edges[newer_idx]
+                        .t_valid
+                        .max(loaded.edges[older_idx].t_valid.saturating_add(1));
+                    let inv_tx = loaded.edges[newer_idx]
+                        .t_tx_start
+                        .max(loaded.edges[older_idx].t_tx_start.saturating_add(1));
+                    loaded.edges[older_idx].t_invalid = Some(inv_valid);
+                    loaded.edges[older_idx].t_tx_end = Some(inv_tx);
+                    loaded.edges[newer_idx].t_valid =
+                        loaded.edges[newer_idx].t_valid.max(inv_valid);
+                    loaded.edges[newer_idx].t_tx_start =
+                        loaded.edges[newer_idx].t_tx_start.max(inv_tx);
+                    active_functional.insert(key, newer_idx);
+                } else {
+                    active_functional.insert(key, idx);
                 }
             }
 
@@ -560,7 +594,7 @@ impl BiTemporalGraph {
             };
             max_next_id = max_next_id.max(edge_id.saturating_add(1));
         }
-        loaded.next_edge_id = max_next_id;
+        loaded.next_edge_id = max_next_id.max(1);
         Ok(loaded)
     }
 }
@@ -681,14 +715,15 @@ mod tests {
             0
         );
 
-        // Explicit edge invalidation (including non-monotonic timestamp clamping)
+        // Explicit edge invalidation (including non-monotonic timestamp clamping to t_valid + 1)
+        assert!(!g.invalidate_edge(0, 250));
         assert!(g.invalidate_edge(e_same, 250));
         assert_eq!(
             g.edges()
                 .iter()
                 .find(|e| e.edge_id == e_same)
                 .and_then(|e| e.t_invalid),
-            Some(300)
+            Some(301)
         );
         assert!(!g.invalidate_edge(e_same, 450));
         assert!(!g.invalidate_edge(999_999, 450));
@@ -719,15 +754,24 @@ mod tests {
         .unwrap();
         assert!(BiTemporalGraph::load_from_dir(&tmp_dir).is_err());
 
-        // Verify load_from_dir supersedes duplicate active functional edges on load
+        // Verify load_from_dir migrates legacy 0-based edge_ids and supersedes older duplicate functional edges even when out of order
         fs::write(
             &json_path,
-            r#"{"edges":[{"edge_id":0,"source_entity":"a","relation":"status","target_entity":"OLD","is_functional":true,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":1,"source_entity":"a","relation":"status","target_entity":"NEW","is_functional":true,"t_valid":20,"t_invalid":null,"t_tx_start":20,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":["stale"],"next_edge_id":2}"#,
+            r#"{"edges":[{"edge_id":0,"source_entity":"a","relation":"status","target_entity":"NEW","is_functional":true,"t_valid":20,"t_invalid":null,"t_tx_start":20,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":1,"source_entity":"a","relation":"status","target_entity":"OLD","is_functional":true,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":["stale"],"next_edge_id":0}"#,
         )
         .unwrap();
-        let repaired = BiTemporalGraph::load_from_dir(&tmp_dir).expect("repaired load succeeds");
+        let mut repaired =
+            BiTemporalGraph::load_from_dir(&tmp_dir).expect("repaired load succeeds");
         assert_eq!(repaired.active_edge_count(), 1);
         assert_eq!(repaired.entity_count(), 3);
+        let active_edge = repaired
+            .edges()
+            .iter()
+            .find(|e| e.t_invalid.is_none())
+            .unwrap();
+        assert_eq!(active_edge.target_entity, "NEW");
+        assert_eq!(active_edge.edge_id, 1);
+        assert!(repaired.invalidate_edge(active_edge.edge_id, 50));
         assert_eq!(
             g.upsert_edge(" ", "status", "ok", true, 100, ArtifactId(1), 1.0),
             0

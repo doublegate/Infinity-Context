@@ -438,6 +438,12 @@ unprefixed_secret = {unpref_sec}
         );
         assert_eq!(
             InfinityContextMmu::extract_exit_code(
+                &serde_json::json!({"toolResponse": "{\"exit_code\": 42}"})
+            ),
+            Some(42)
+        );
+        assert_eq!(
+            InfinityContextMmu::extract_exit_code(
                 &serde_json::json!({"tool_response": {"status": 200, "code": 200}})
             ),
             None,

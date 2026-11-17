@@ -160,20 +160,26 @@ impl Hypervector {
     }
 
     /// Encodes a text string into a composite hypervector by binding token unigrams and
-    /// permutation-shifted bigrams using allocation-free stack Delta-Rule bundling with
-    /// bounded per-term reinforcement and a `1,024`-token scan cap.
+    /// permutation-shifted bigrams using stack Delta-Rule bundling with bounded per-term
+    /// reinforcement and a `1,024`-token scan cap.
     pub fn encode_text(text: &str) -> Self {
         const MAX_TEXT_TOKENS: usize = 1024;
         const MAX_RAW_SCANS: usize = 16_384;
         const MAX_UNIGRAM_REINFORCEMENTS: u8 = 2;
         const MAX_BIGRAM_REINFORCEMENTS: u8 = 1;
+        const SLOT_COUNT: usize = 4096;
+        const SLOT_MASK: usize = SLOT_COUNT - 1;
 
         #[inline]
-        fn try_reinforce_slot(slots: &mut [(u64, u8); 256], hv: &Hypervector, cap: u8) -> bool {
+        fn try_reinforce_slot(
+            slots: &mut [(u64, u8); SLOT_COUNT],
+            hv: &Hypervector,
+            cap: u8,
+        ) -> bool {
             let key = (hv.words[0] ^ hv.words[1].rotate_left(13)) | 1;
-            let base = (key as usize) & 255;
-            for probe in 0..4usize {
-                let idx = (base + probe) & 255;
+            let base = (key as usize) & SLOT_MASK;
+            for probe in 0..8usize {
+                let idx = (base + probe) & SLOT_MASK;
                 let (slot_key, slot_count) = slots[idx];
                 if slot_key == key {
                     if slot_count >= cap {
@@ -187,11 +193,15 @@ impl Hypervector {
                     return true;
                 }
             }
-            false
+            // If all 8 probe slots are occupied by other keys, evict the tail probe slot
+            // so novel tokens within the 1,024-token horizon are never dropped.
+            slots[(base + 7) & SLOT_MASK] = (key, 1);
+            true
         }
 
         let mut bundler = HdcBundler::new();
-        let mut slots = [(0u64, 0u8); 256];
+        let mut slots = [(0u64, 0u8); SLOT_COUNT];
+        let mut stack_lower = [0u8; 128];
         let mut prev_hv: Option<Self> = None;
         let mut prev_raw: Option<&str> = None;
         let mut consecutive_repeats = 0usize;
@@ -223,8 +233,19 @@ impl Hypervector {
                 break;
             }
 
-            let lower = tok.to_ascii_lowercase();
-            let hv = Self::from_seed("tok", &lower);
+            let heap_lower: String;
+            let lower: &str = if !tok.bytes().any(|b| b.is_ascii_uppercase()) {
+                tok
+            } else if tok.len() <= stack_lower.len() {
+                for (dst, &src) in stack_lower[..tok.len()].iter_mut().zip(tok.as_bytes()) {
+                    *dst = src.to_ascii_lowercase();
+                }
+                core::str::from_utf8(&stack_lower[..tok.len()]).unwrap_or(tok)
+            } else {
+                heap_lower = tok.to_ascii_lowercase();
+                heap_lower.as_str()
+            };
+            let hv = Self::from_seed("tok", lower);
             if try_reinforce_slot(&mut slots, &hv, MAX_UNIGRAM_REINFORCEMENTS) {
                 bundler.add_delta(&hv);
             }
@@ -727,6 +748,19 @@ mod tests {
         let hv_rep_alt = Hypervector::encode_text(&rep_alt);
         assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "ok")) > 0.25);
         assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "err")) > 0.25);
+
+        // Verify > 256 distinct tokens do not drop subsequent novel tokens within the 1,024-token horizon
+        let mut many_distinct = String::new();
+        for i in 0..300usize {
+            many_distinct.push_str(&format!("UniqueTok_{i:03} "));
+        }
+        let prefix_hv = Hypervector::encode_text(&many_distinct);
+        many_distinct.push_str("TailDiagnostic_999 TailDiagnostic_999");
+        let full_hv = Hypervector::encode_text(&many_distinct);
+        assert_ne!(
+            prefix_hv, full_hv,
+            "novel tokens past 256 must not be dropped"
+        );
     }
 
     #[test]

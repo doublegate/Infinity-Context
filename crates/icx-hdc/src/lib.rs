@@ -43,7 +43,7 @@ struct EntrySummary {
 #[derive(Clone, Debug)]
 pub struct IndexedEntry {
     pub artifact_id: ArtifactId,
-    pub subject: String,
+    subject: String,
     subject_lower: String,
     pub hv: Hypervector,
     pub fractal_coord: FractalCoord,
@@ -69,6 +69,12 @@ impl IndexedEntry {
             fractal_coord,
             surprise,
         }
+    }
+
+    /// Returns the original subject string.
+    #[inline]
+    pub fn subject(&self) -> &str {
+        &self.subject
     }
 
     /// Returns the cached lowercase subject string.
@@ -441,6 +447,7 @@ mod tests {
             FractalCoord::default(),
             0.5,
         );
+        assert_eq!(manual_entry.subject(), "src/Manual.rs");
         assert_eq!(manual_entry.subject_lower(), "src/manual.rs");
         assert_ne!(idx.current_trajectory(), init_traj);
         assert_eq!(receipt.fractal_coord, idx.current_trajectory());
