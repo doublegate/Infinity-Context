@@ -202,7 +202,7 @@ impl TitansSurpriseGate {
             }
         } else if novelty >= 0.15 {
             let weight = ((effective * novelty * 32.0).round() as i16).clamp(1, 64);
-            self.bundler.add_weighted(hv, weight);
+            let _ = self.bundler.add_weighted_unique(hv, weight);
         }
         self.events_seen += 1;
         let tier = if effective >= 0.70 {
@@ -284,5 +284,17 @@ mod tests {
             "100,000 steps at alpha=0.0001 must decay momentum below 0.001 (got {})",
             slow_decay_gate.momentum()
         );
+
+        // Verify alternating routine boilerplate (A, B, C) is deduplicated by add_weighted_unique
+        let mut alt_gate = TitansSurpriseGate::default();
+        let a = Hypervector::from_seed("routine", "boilerplate_a");
+        let b = Hypervector::from_seed("routine", "boilerplate_b");
+        let c = Hypervector::from_seed("routine", "boilerplate_c");
+        for _ in 0..8 {
+            let _ = alt_gate.observe(&a, "ok a", false);
+            let _ = alt_gate.observe(&b, "ok b", false);
+            let _ = alt_gate.observe(&c, "ok c", false);
+        }
+        assert_eq!(alt_gate.bundler.count(), 3);
     }
 }

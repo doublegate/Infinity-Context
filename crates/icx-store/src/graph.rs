@@ -58,17 +58,17 @@ pub struct PprRankedNode {
 /// enabling cache-contiguous $O(V + E)$ HippoRAG Personalized PageRank (`PPR`) power iteration.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CsrGraphSnapshot {
-    pub nodes: Vec<String>,
-    pub row_ptr: Vec<usize>,
-    pub col_idx: Vec<usize>,
-    pub weights: Vec<f32>,
-    pub inv_out_weight: Vec<f32>,
-    pub prov_row_ptr: Vec<usize>,
-    pub prov_ids: Vec<ArtifactId>,
+    nodes: Vec<String>,
+    row_ptr: Vec<usize>,
+    col_idx: Vec<usize>,
+    weights: Vec<f32>,
+    inv_out_weight: Vec<f32>,
+    prov_row_ptr: Vec<usize>,
+    prov_ids: Vec<ArtifactId>,
 }
 
 impl CsrGraphSnapshot {
-    /// Number of distinct entity vertices in the CSR snapshot.
+    /// Number of distinct active entity vertices in the CSR snapshot.
     #[inline]
     pub const fn node_count(&self) -> usize {
         self.nodes.len()
@@ -78,6 +78,48 @@ impl CsrGraphSnapshot {
     #[inline]
     pub const fn directed_edge_count(&self) -> usize {
         self.col_idx.len()
+    }
+
+    /// Read-only slice of entity names in CSR vertex index order.
+    #[inline]
+    pub fn nodes(&self) -> &[String] {
+        &self.nodes
+    }
+
+    /// Read-only CSR row pointer array (`len == node_count() + 1`).
+    #[inline]
+    pub fn row_ptr(&self) -> &[usize] {
+        &self.row_ptr
+    }
+
+    /// Read-only CSR column index array (`len == directed_edge_count()`).
+    #[inline]
+    pub fn col_idx(&self) -> &[usize] {
+        &self.col_idx
+    }
+
+    /// Read-only CSR edge weight array (`len == directed_edge_count()`).
+    #[inline]
+    pub fn weights(&self) -> &[f32] {
+        &self.weights
+    }
+
+    /// Read-only per-vertex inverse outgoing weight array (`0.0` for dangling vertices).
+    #[inline]
+    pub fn inv_out_weight(&self) -> &[f32] {
+        &self.inv_out_weight
+    }
+
+    /// Read-only provenance row pointer array (`len == node_count() + 1`).
+    #[inline]
+    pub fn prov_row_ptr(&self) -> &[usize] {
+        &self.prov_row_ptr
+    }
+
+    /// Read-only flattened provenance `ArtifactId` array.
+    #[inline]
+    pub fn prov_ids(&self) -> &[ArtifactId] {
+        &self.prov_ids
     }
 
     /// Returns the provenance `ArtifactId` slice associated with node index `node_idx`.
@@ -239,8 +281,8 @@ impl BiTemporalGraph {
         if is_functional {
             for e in &mut self.edges {
                 if e.t_invalid.is_none() && e.source_entity == src && e.relation == rel {
-                    e.t_invalid = Some(now_ms);
-                    e.t_tx_end = Some(now_ms);
+                    e.t_invalid = Some(now_ms.max(e.t_valid));
+                    e.t_tx_end = Some(now_ms.max(e.t_tx_start));
                 }
             }
         }
@@ -279,8 +321,8 @@ impl BiTemporalGraph {
     pub fn invalidate_edge(&mut self, edge_id: u64, now_ms: u64) -> bool {
         for e in &mut self.edges {
             if e.edge_id == edge_id && e.t_invalid.is_none() {
-                e.t_invalid = Some(now_ms);
-                e.t_tx_end = Some(now_ms);
+                e.t_invalid = Some(now_ms.max(e.t_valid));
+                e.t_tx_end = Some(now_ms.max(e.t_tx_start));
                 return true;
             }
         }
@@ -319,8 +361,17 @@ impl BiTemporalGraph {
     }
 
     /// Compiles a contiguous Compressed Sparse Row (`CSR`) snapshot of all edges valid at `at_ms`.
+    /// Only entities incident to at least one edge active at `at_ms` are included in the snapshot,
+    /// ensuring invalidated historical entities cannot be seeded or returned with empty provenance.
     pub fn build_csr(&self, at_ms: Option<u64>) -> CsrGraphSnapshot {
-        let nodes: Vec<String> = self.entities.iter().cloned().collect();
+        let mut active_entities = BTreeSet::new();
+        for e in &self.edges {
+            if e.is_active_at(at_ms) {
+                active_entities.insert(e.source_entity.clone());
+                active_entities.insert(e.target_entity.clone());
+            }
+        }
+        let nodes: Vec<String> = active_entities.into_iter().collect();
         let node_to_idx: BTreeMap<&str, usize> = nodes
             .iter()
             .enumerate()
@@ -442,16 +493,56 @@ impl BiTemporalGraph {
         let bytes = fs::read(&path).map_err(|e| IcxError::Io(e.to_string()))?;
         let mut loaded: Self =
             serde_json::from_slice(&bytes).map_err(|e| IcxError::Io(e.to_string()))?;
+        loaded.entities.clear();
+        let mut seen_ids = BTreeSet::new();
+        let mut active_functional: BTreeMap<(String, String), usize> = BTreeMap::new();
         let mut max_next_id = loaded.next_edge_id;
-        for e in &mut loaded.edges {
-            loaded.entities.insert(e.source_entity.clone());
-            loaded.entities.insert(e.target_entity.clone());
-            if e.weight.is_finite() {
-                e.weight = e.weight.clamp(0.01, 1_000.0);
-            } else {
-                e.weight = 1.0;
+
+        for idx in 0..loaded.edges.len() {
+            let edge_id = loaded.edges[idx].edge_id;
+            if !seen_ids.insert(edge_id) {
+                return Err(IcxError::Io(format!(
+                    "duplicate edge_id {edge_id} in bitemporal_graph.json"
+                )));
             }
-            max_next_id = max_next_id.max(e.edge_id.saturating_add(1));
+            let src = loaded.edges[idx].source_entity.trim().to_owned();
+            let rel = loaded.edges[idx].relation.trim().to_owned();
+            let dst = loaded.edges[idx].target_entity.trim().to_owned();
+            if src.is_empty() || rel.is_empty() || dst.is_empty() {
+                return Err(IcxError::Io(
+                    "empty entity or relation in bitemporal_graph.json".to_owned(),
+                ));
+            }
+            loaded.edges[idx].source_entity.clone_from(&src);
+            loaded.edges[idx].relation.clone_from(&rel);
+            loaded.edges[idx].target_entity.clone_from(&dst);
+            loaded.entities.insert(src.clone());
+            loaded.entities.insert(dst);
+
+            let t_valid = loaded.edges[idx].t_valid;
+            let t_tx_start = loaded.edges[idx].t_tx_start;
+            if let Some(inv) = loaded.edges[idx].t_invalid {
+                loaded.edges[idx].t_invalid = Some(inv.max(t_valid));
+            }
+            if let Some(tx_end) = loaded.edges[idx].t_tx_end {
+                loaded.edges[idx].t_tx_end = Some(tx_end.max(t_tx_start));
+            }
+            if loaded.edges[idx].is_functional && loaded.edges[idx].t_invalid.is_none() {
+                if let Some(prev_idx) = active_functional.insert((src, rel), idx) {
+                    let prev_valid = loaded.edges[prev_idx].t_valid;
+                    let prev_tx = loaded.edges[prev_idx].t_tx_start;
+                    loaded.edges[prev_idx].t_invalid = Some(t_valid.max(prev_valid));
+                    loaded.edges[prev_idx].t_tx_end = Some(t_tx_start.max(prev_tx));
+                }
+            }
+
+            let w = loaded.edges[idx].weight;
+            loaded.edges[idx].weight = if w.is_finite() {
+                w.clamp(0.01, 1_000.0)
+            } else {
+                1.0
+            };
+            max_next_id = max_next_id.max(edge_id.saturating_add(1));
         }
         loaded.next_edge_id = max_next_id;
         Ok(loaded)
@@ -551,14 +642,21 @@ mod tests {
         assert_eq!(g.active_edge_count(), 3);
         assert_eq!(g.edges().len(), 5);
 
-        // Inspect CSR snapshot and dangling node (`FAIL_ALIGN` has no active edges at None)
+        // Inspect CSR snapshot (invalidated `FAIL_ALIGN` has no active edges at `None` and is excluded)
         let csr = g.build_csr(None);
-        assert_eq!(csr.node_count(), 5);
+        assert_eq!(csr.node_count(), 4);
         assert_eq!(csr.directed_edge_count(), 6);
+        assert_eq!(csr.nodes().len(), 4);
+        assert_eq!(csr.row_ptr().len(), 5);
+        assert_eq!(csr.col_idx().len(), 6);
+        assert_eq!(csr.weights().len(), 6);
+        assert_eq!(csr.inv_out_weight().len(), 4);
+        assert_eq!(csr.prov_row_ptr().len(), 5);
+        assert_ne!(csr.prov_ids().len(), 0);
         assert_eq!(csr.node_provenance(999).len(), 0);
-        let ppr_nan = csr.run_ppr(&["", "FAIL_ALIGN"], f32::NAN, 4, 5);
-        assert_eq!(ppr_nan.len(), 1);
-        assert_eq!(ppr_nan[0].entity, "FAIL_ALIGN");
+        assert_eq!(csr.run_ppr(&["", "FAIL_ALIGN"], f32::NAN, 4, 5).len(), 0);
+        let ppr_sub = csr.run_ppr(&["  ", "Pager"], f32::NAN, 4, 5);
+        assert_ne!(ppr_sub.len(), 0);
         assert_eq!(csr.run_ppr(&["nonexistent_seed"], 0.15, 4, 5).len(), 0);
         assert_eq!(csr.run_ppr(&["mod:mmu"], 0.15, 4, 0).len(), 0);
         assert_eq!(
@@ -567,18 +665,54 @@ mod tests {
             0
         );
 
-        // Explicit edge invalidation
-        assert!(g.invalidate_edge(e_same, 400));
+        // Explicit edge invalidation (including non-monotonic timestamp clamping)
+        assert!(g.invalidate_edge(e_same, 250));
+        assert_eq!(
+            g.edges()
+                .iter()
+                .find(|e| e.edge_id == e_same)
+                .and_then(|e| e.t_invalid),
+            Some(300)
+        );
         assert!(!g.invalidate_edge(e_same, 450));
         assert!(!g.invalidate_edge(999_999, 450));
         assert_eq!(g.query_edges_from("fn:alloc_page", Some(50)).len(), 0);
 
-        // Atomic save_to_dir / load_from_dir round-trip
-        let tmp_dir = std::env::temp_dir().join(format!("icx_graph_test_{}", std::process::id()));
+        // Atomic save_to_dir / load_from_dir round-trip and validation error paths
+        let seq = GRAPH_TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp_dir =
+            std::env::temp_dir().join(format!("icx_graph_test_{}_{}", std::process::id(), seq));
         let _ = fs::remove_dir_all(&tmp_dir);
         g.save_to_dir(&tmp_dir).expect("save_to_dir succeeds");
         let loaded = BiTemporalGraph::load_from_dir(&tmp_dir).expect("load_from_dir succeeds");
         assert_eq!(loaded, g);
+
+        // Verify load_from_dir rejects duplicate edge_id and empty entity names
+        let json_path = tmp_dir.join("bitemporal_graph.json");
+        fs::write(
+            &json_path,
+            r#"{"edges":[{"edge_id":0,"source_entity":"a","relation":"r","target_entity":"b","is_functional":true,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":0,"source_entity":"a","relation":"r","target_entity":"c","is_functional":true,"t_valid":20,"t_invalid":null,"t_tx_start":20,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":[],"next_edge_id":2}"#,
+        )
+        .unwrap();
+        assert!(BiTemporalGraph::load_from_dir(&tmp_dir).is_err());
+
+        fs::write(
+            &json_path,
+            r#"{"edges":[{"edge_id":0,"source_entity":" ","relation":"r","target_entity":"b","is_functional":false,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":[],"next_edge_id":1}"#,
+        )
+        .unwrap();
+        assert!(BiTemporalGraph::load_from_dir(&tmp_dir).is_err());
+
+        // Verify load_from_dir supersedes duplicate active functional edges on load
+        fs::write(
+            &json_path,
+            r#"{"edges":[{"edge_id":0,"source_entity":"a","relation":"status","target_entity":"OLD","is_functional":true,"t_valid":10,"t_invalid":null,"t_tx_start":10,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":1,"source_entity":"a","relation":"status","target_entity":"NEW","is_functional":true,"t_valid":20,"t_invalid":null,"t_tx_start":20,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":["stale"],"next_edge_id":2}"#,
+        )
+        .unwrap();
+        let repaired = BiTemporalGraph::load_from_dir(&tmp_dir).expect("repaired load succeeds");
+        assert_eq!(repaired.active_edge_count(), 1);
+        assert_eq!(repaired.entity_count(), 3);
+
         let _ = fs::remove_dir_all(&tmp_dir);
     }
 }

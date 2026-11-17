@@ -170,6 +170,8 @@ impl FractalCoord {
 
     /// Quantizes the 16 coordinates into signed `Q1.14` fixed-point (`scale = 16,384 = 2^{14}`,
     /// `docs/ahtl/03-fractal-ifs-chaos-game-coordinates.md` §4) supporting bit-exact shift arithmetic.
+    /// Input coordinates are clamped to the `FractalCoord` invariant attractor domain `[-1.0, 1.0]^16`
+    /// (`[-16384, +16384]` within signed `Q1.14`'s `[-2.0, +1.99994]` range).
     #[inline]
     pub fn to_q1_14(&self) -> [i16; 16] {
         let mut out = [0i16; 16];
@@ -324,8 +326,8 @@ impl FractalTrajectoryArchive {
 
     /// Queries the archive for historical trajectory states sharing at least `min_suffix_depth`
     /// trailing transitions with `target`, returning `(ArtifactId, shared_suffix_depth, chebyshev_distance)`
-    /// sorted by `shared_suffix_depth` descending, `chebyshev_distance` ascending, and 64-bit Morton
-    /// XOR proximity ascending.
+    /// sorted by `shared_suffix_depth` descending, `chebyshev_distance` ascending, 64-bit Morton
+    /// XOR proximity ascending, and 16-D Euclidean ($L_2$) distance ascending.
     pub fn query_shared_suffix(
         &self,
         target: &FractalCoord,
@@ -336,7 +338,7 @@ impl FractalTrajectoryArchive {
             return Vec::new();
         }
         let target_morton = target.morton_z64();
-        let mut matches: Vec<(ArtifactId, u32, f64, u64)> = self
+        let mut matches: Vec<(ArtifactId, u32, f64, u64, f64)> = self
             .entries
             .iter()
             .filter_map(|&(morton, id, ref coord)| {
@@ -347,6 +349,7 @@ impl FractalTrajectoryArchive {
                         depth,
                         target.chebyshev_distance(coord),
                         morton ^ target_morton,
+                        target.euclidean_distance(coord),
                     ))
                 } else {
                     None
@@ -358,11 +361,13 @@ impl FractalTrajectoryArchive {
             b.1.cmp(&a.1)
                 .then_with(|| a.2.partial_cmp(&b.2).unwrap_or(core::cmp::Ordering::Equal))
                 .then_with(|| a.3.cmp(&b.3))
+                .then_with(|| a.4.partial_cmp(&b.4).unwrap_or(core::cmp::Ordering::Equal))
+                .then_with(|| a.0.0.cmp(&b.0.0))
         });
         matches.truncate(top_k);
         matches
             .into_iter()
-            .map(|(id, d, c, _)| (id, d, c))
+            .map(|(id, d, c, _, _)| (id, d, c))
             .collect()
     }
 }

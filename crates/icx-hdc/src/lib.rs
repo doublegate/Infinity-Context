@@ -51,6 +51,26 @@ pub struct IndexedEntry {
 }
 
 impl IndexedEntry {
+    /// Creates a new `IndexedEntry` with precomputed lowercase subject invariant.
+    pub fn new(
+        artifact_id: ArtifactId,
+        subject: impl Into<String>,
+        hv: Hypervector,
+        fractal_coord: FractalCoord,
+        surprise: f32,
+    ) -> Self {
+        let subject = subject.into();
+        let subject_lower = subject.to_ascii_lowercase();
+        Self {
+            artifact_id,
+            subject,
+            subject_lower,
+            hv,
+            fractal_coord,
+            surprise,
+        }
+    }
+
     /// Returns the cached lowercase subject string.
     #[inline]
     pub fn subject_lower(&self) -> &str {
@@ -227,6 +247,19 @@ impl HdcAssociativeIndex {
     }
 
     #[inline]
+    fn subject_matches_token(subject_lower: &str, tok: &str) -> bool {
+        if tok.len() >= 4 && (tok.contains('/') || tok.contains(':') || tok.contains('.')) {
+            return subject_lower.contains(tok);
+        }
+        for seg in subject_lower.split(|c: char| !c.is_alphanumeric() && c != '_') {
+            if seg == tok || (tok.len() >= 4 && seg.contains(tok)) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[inline]
     fn score_entry(
         &self,
         e: &IndexedEntry,
@@ -236,7 +269,7 @@ impl HdcAssociativeIndex {
         let text_sim = q_hv.similarity(&e.hv);
         let lexical_overlap = q_tokens
             .iter()
-            .filter(|t| e.subject_lower.contains(t.as_str()))
+            .filter(|t| Self::subject_matches_token(&e.subject_lower, t.as_str()))
             .count() as f32;
         let hdc_sim = (text_sim + 0.25 * lexical_overlap).clamp(0.0, 1.0);
         let suffix = self
@@ -285,12 +318,15 @@ impl HdcAssociativeIndex {
                 let mut q_bloom32 = 0u32;
                 for tok in &q_tokens {
                     q_bloom32 |= Self::token_bloom_bits32(tok);
-                    for sub in tok.split(|c: char| !c.is_alphanumeric() && c != '_') {
-                        if sub.len() >= 2 {
-                            q_bloom32 |= Self::token_bloom_bits32(sub);
+                    if tok.contains(':') || tok.contains('/') {
+                        for sub in tok.split(|c: char| !c.is_alphanumeric() && c != '_') {
+                            if sub.len() >= 2 {
+                                q_bloom32 |= Self::token_bloom_bits32(sub);
+                            }
                         }
                     }
                 }
+                let q_bloom_bits = q_bloom32.count_ones().max(1);
                 let cur_quad = self.current_trajectory().quadrant_signature_u16();
                 let mut candidates: Vec<(u32, usize)> = Vec::with_capacity(candidate_cap);
                 let mut min_score = 0u32;
@@ -298,10 +334,12 @@ impl HdcAssociativeIndex {
 
                 for (idx, s) in self.summaries.iter().enumerate() {
                     let sim64 = 64u32.saturating_sub((q_sub64 ^ s.hv_sub64).count_ones());
-                    let bloom_hits = (q_bloom32 & s.subj_bloom32).count_ones();
+                    let raw_bloom_hits = (q_bloom32 & s.subj_bloom32).count_ones();
+                    let subj_density = s.subj_bloom32.count_ones().max(2);
+                    let norm_bloom = (raw_bloom_hits * 64) / subj_density.max(q_bloom_bits);
                     let quad_sim = 16u32.saturating_sub((cur_quad ^ s.quadrant_u16).count_ones());
-                    let coarse = sim64 * 8
-                        + bloom_hits * 64
+                    let coarse = sim64 * 10
+                        + norm_bloom * 4
                         + (u32::from(s.surprise_q8) >> 1)
                         + quad_sim * 4
                         + u32::from(s.flags & 0x04) * 4;
@@ -386,6 +424,14 @@ mod tests {
             idx.latest_entry().map(IndexedEntry::subject_lower),
             Some("src/mmu.rs")
         );
+        let manual_entry = IndexedEntry::new(
+            ArtifactId(7),
+            "src/Manual.rs",
+            Hypervector::zero(),
+            FractalCoord::default(),
+            0.5,
+        );
+        assert_eq!(manual_entry.subject_lower(), "src/manual.rs");
         assert_ne!(idx.current_trajectory(), init_traj);
         assert_eq!(receipt.fractal_coord, idx.current_trajectory());
         let hits = idx.query_associative("allocate_page mmu", 3);

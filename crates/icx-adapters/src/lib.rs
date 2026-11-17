@@ -408,6 +408,24 @@ unprefixed_secret = {unpref_sec}
         let capped_tail = mmu.build_ephemeral_tail_slot(AgentKind::Cursor, "hermes_step", 3);
         assert!(capped_tail.contains("⟪ICX:TAIL_SLOT│agent=cursor"));
 
+        // Verify ingest_payload_with_exit_code records exit_code functional edge and error flag
+        let exit_res = mmu.ingest_payload_with_exit_code(
+            AgentKind::ClaudeCode,
+            "cargo_test_exit",
+            "test suite finished",
+            Some(101),
+            false,
+        );
+        assert!(exit_res.surprise >= 0.45);
+        assert_eq!(
+            mmu.graph
+                .query_edges_from("cargo_test_exit", None)
+                .iter()
+                .find(|e| e.relation == "exit_code")
+                .map(|e| e.target_entity.as_str()),
+            Some("101")
+        );
+
         // Verify MMU error paths for missing artifacts and malformed handles
         assert!(mmu.resolve_handle("not_a_handle").is_err());
         assert!(mmu.deref_text(icx_core::ArtifactId(0xDEAD_BEEF)).is_err());

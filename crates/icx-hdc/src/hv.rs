@@ -105,11 +105,23 @@ impl Hypervector {
         Self { words }
     }
 
-    /// Binds a semantic role (`"role"`) to a filler token (`"tok"`) via XOR (`R \oplus F`).
+    /// Binds a semantic role (`"role"`) to a filler token (`"tok"`) via XOR (`R \oplus F`)
+    /// using `Self::from_seed`. To unbind with a role vector, generate the role key with
+    /// `Hypervector::from_seed("role", &role.to_ascii_lowercase())` (or use
+    /// `Self::bind_role_filler_framed` when working in the length-framed seed namespace).
     #[inline]
     pub fn bind_role_filler(role: &str, filler: &str) -> Self {
         let r = Self::from_seed("role", &role.to_ascii_lowercase());
         let f = Self::from_seed("tok", &filler.to_ascii_lowercase());
+        r.bind(&f)
+    }
+
+    /// Binds a semantic role (`"role"`) to a filler token (`"tok"`) via XOR (`R \oplus F`)
+    /// using length-framed `Self::from_seed_framed` keys.
+    #[inline]
+    pub fn bind_role_filler_framed(role: &str, filler: &str) -> Self {
+        let r = Self::from_seed_framed("role", &role.to_ascii_lowercase());
+        let f = Self::from_seed_framed("tok", &filler.to_ascii_lowercase());
         r.bind(&f)
     }
 
@@ -148,7 +160,7 @@ impl Hypervector {
     }
 
     /// Encodes a text string into a composite hypervector by binding token unigrams and
-    /// permutation-shifted bigrams.
+    /// permutation-shifted bigrams using allocation-free stack Delta-Rule bundling.
     pub fn encode_text(text: &str) -> Self {
         let mut bundler = HdcBundler::new();
         let mut prev_hv: Option<Self> = None;
@@ -162,11 +174,11 @@ impl Hypervector {
             }
             let lower = tok.to_ascii_lowercase();
             let hv = Self::from_seed("tok", &lower);
-            bundler.add(&hv);
+            bundler.add_delta(&hv);
 
             if let Some(prev) = prev_hv {
                 let bigram = prev.permute(1).bind(&hv);
-                bundler.add(&bigram);
+                bundler.add_delta(&bigram);
             }
             prev_hv = Some(hv);
         }
@@ -436,6 +448,24 @@ impl HdcBundler {
         self.accumulate_raw(hv, weight);
     }
 
+    /// Adds a hypervector using the stack-only Infini-attention Delta Rule without allocating
+    /// in `seen_fingerprints`: vectors already strongly present in the bundle (`similarity >= 0.85`)
+    /// receive zero delta weight, while novel/under-represented tokens reinforce the bundle.
+    #[inline]
+    pub fn add_delta(&mut self, hv: &Hypervector) {
+        let weight: i16 = if self.count == 0 {
+            16
+        } else {
+            let sim = self.readout.similarity(hv);
+            if sim >= 0.85 {
+                return;
+            }
+            let novelty = (1.0 - sim).clamp(0.0, 1.0);
+            ((novelty * 16.0).round() as i16).max(1)
+        };
+        self.accumulate_raw(hv, weight);
+    }
+
     /// Adds a hypervector with an explicit integer weight (`1..=64`), breaking exact `0` ties
     /// symmetrically via coordinate parity `((word_idx ^ bit) & 1) == 0` so the thresholded
     /// readout stays balanced around Hamming weight `5,120`.
@@ -444,12 +474,18 @@ impl HdcBundler {
         self.accumulate_raw(hv, weight);
     }
 
-    /// Adds a hypervector with an explicit integer weight (`1..=64`) only if its 128-bit
-    /// fingerprint has not already been bundled, returning `true` when accumulated.
+    /// Adds a hypervector with an explicit integer weight (`1..=64`) if its 128-bit fingerprint
+    /// has not already been bundled or if its representation in `readout` has been diluted below
+    /// `similarity < 0.15` by subsequent novel updates, returning `true` when accumulated.
     pub fn add_weighted_unique(&mut self, hv: &Hypervector, weight: i16) -> bool {
-        if !self.seen_fingerprints.insert(hv.dedup_fingerprint_u128()) {
+        let fp = hv.dedup_fingerprint_u128();
+        if self.seen_fingerprints.contains(&fp)
+            && self.count > 0
+            && self.readout.similarity(hv) >= 0.15
+        {
             return false;
         }
+        self.seen_fingerprints.insert(fp);
         self.accumulate_raw(hv, weight);
         true
     }
@@ -525,6 +561,11 @@ mod tests {
         let role_fn = Hypervector::from_seed("role", "fn");
         let tok_alloc = Hypervector::from_seed("tok", "alloc_page");
         assert_eq!(rf.unbind(&role_fn), tok_alloc);
+
+        let rf_framed = Hypervector::bind_role_filler_framed("fn", "alloc_page");
+        let role_framed = Hypervector::from_seed_framed("role", "fn");
+        let tok_framed = Hypervector::from_seed_framed("tok", "alloc_page");
+        assert_eq!(rf_framed.unbind(&role_framed), tok_framed);
 
         assert_eq!(Hypervector::encode_sequence(&[]), Hypervector::zero());
         let seq_ab = Hypervector::encode_sequence(&[a, b]);

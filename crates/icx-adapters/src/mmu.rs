@@ -79,6 +79,19 @@ impl InfinityContextMmu {
         raw_text: &str,
         force_anomaly: bool,
     ) -> IngestResult {
+        self.ingest_payload_with_exit_code(agent, subject, raw_text, None, force_anomaly)
+    }
+
+    /// Ingests a tool output or turn with an optional process `exit_code` (`Some(code != 0)`
+    /// triggers Titans anomaly boost and records a functional `exit_code` edge in `BiTemporalGraph`).
+    pub fn ingest_payload_with_exit_code(
+        &mut self,
+        agent: AgentKind,
+        subject: &str,
+        raw_text: &str,
+        exit_code: Option<i32>,
+        force_anomaly: bool,
+    ) -> IngestResult {
         self.clock_ms += 10;
         let bounded_raw = if raw_text.len() > icx_core::ICX_MAX_INGEST_BYTES {
             let mut bound = icx_core::ICX_MAX_INGEST_BYTES;
@@ -109,9 +122,13 @@ impl InfinityContextMmu {
         let raw_bytes = sanitized.len();
         let (artifact_id, _) = self.cas.put_bytes(sanitized.as_bytes());
 
-        let mut receipt =
-            self.hdc_index
-                .observe_event(artifact_id, subject, &sanitized, force_anomaly);
+        let mut receipt = self.hdc_index.observe_event_with_exit_code(
+            artifact_id,
+            subject,
+            &sanitized,
+            exit_code,
+            force_anomaly,
+        );
         if was_redacted {
             receipt.hologram_bytes[7] |= icx_codec::FLAG_IS_REDACTED;
         }
@@ -126,6 +143,17 @@ impl InfinityContextMmu {
 
         // Populate Bi-Temporal Graph with extracted clause relations
         let edge_weight = receipt.verdict.momentum_surprise.max(0.2);
+        if let Some(code) = exit_code {
+            self.graph.upsert_edge(
+                subject,
+                "exit_code",
+                &code.to_string(),
+                true,
+                self.clock_ms,
+                artifact_id,
+                edge_weight,
+            );
+        }
         for clause in &packet.clauses {
             if let Some(val) = &clause.value {
                 let is_functional = matches!(
