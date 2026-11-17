@@ -71,6 +71,12 @@ impl ToolArtifactNode {
         }
         hasher.update(&(self.ahtl_stub.len() as u64).to_be_bytes());
         hasher.update(self.ahtl_stub.as_bytes());
+        let surprise_bits = if self.surprise_score == 0.0 {
+            0u32
+        } else {
+            self.surprise_score.to_bits()
+        };
+        hasher.update(&surprise_bits.to_be_bytes());
         hasher.update(&self.created_at_ms.to_be_bytes());
         hasher.update(&(self.token_estimate as u64).to_be_bytes());
         Blake3Digest(*hasher.finalize().as_bytes())
@@ -230,6 +236,8 @@ impl MerkleContextDag {
         role: &str,
         raw_artifact: ArtifactId,
         ahtl_repr: &str,
+        surprise: f32,
+        token_estimate: usize,
     ) -> Blake3Digest {
         let mut hasher = blake3::Hasher::new();
         hasher.update(b"ICX_DAG_TURN_V1");
@@ -240,6 +248,13 @@ impl MerkleContextDag {
         hasher.update(&raw_artifact.0.to_be_bytes());
         hasher.update(&(ahtl_repr.len() as u64).to_be_bytes());
         hasher.update(ahtl_repr.as_bytes());
+        let surprise_bits = if surprise == 0.0 {
+            0u32
+        } else {
+            surprise.to_bits()
+        };
+        hasher.update(&surprise_bits.to_be_bytes());
+        hasher.update(&(token_estimate as u64).to_be_bytes());
         Blake3Digest(*hasher.finalize().as_bytes())
     }
 
@@ -256,7 +271,15 @@ impl MerkleContextDag {
         let ordinal = self.next_ordinal;
         self.next_ordinal += 1;
 
-        let digest = Self::compute_turn_digest(ordinal, agent, role, raw_artifact, &ahtl_repr);
+        let digest = Self::compute_turn_digest(
+            ordinal,
+            agent,
+            role,
+            raw_artifact,
+            &ahtl_repr,
+            surprise,
+            token_estimate,
+        );
         let id = ArtifactId::from_digest(&digest);
 
         let node = DagNode::Turn {
@@ -378,6 +401,21 @@ impl MerkleContextDag {
         Ok(expanded)
     }
 
+    /// Recursively collects all descendant node IDs (including intermediate `L2` branch IDs and `L1` leaves)
+    /// under `branch_id`.
+    pub(crate) fn collect_all_descendant_ids(
+        &self,
+        branch_id: ArtifactId,
+        out: &mut Vec<ArtifactId>,
+    ) {
+        if let Some(DagNode::SubTrajectoryBranch { child_turns, .. }) = self.nodes.get(&branch_id) {
+            for &cid in child_turns {
+                out.push(cid);
+                self.collect_all_descendant_ids(cid, out);
+            }
+        }
+    }
+
     fn format_l3_epoch_body(&self, child_nodes: &[ArtifactId]) -> Result<Vec<String>, IcxError> {
         let mut body_packets = Vec::with_capacity(child_nodes.len());
         for &cid in child_nodes {
@@ -439,9 +477,11 @@ impl MerkleContextDag {
         let body_packets = self
             .format_l3_epoch_body(&valid_children)
             .unwrap_or_default();
-        for &cid in &valid_children {
+        for (&cid, pkt) in valid_children.iter().zip(body_packets.iter()) {
             if let Some(n) = self.nodes.get(&cid) {
                 hasher.update(&n.digest().0);
+                hasher.update(&(pkt.len() as u64).to_be_bytes());
+                hasher.update(pkt.as_bytes());
             }
         }
 
@@ -532,7 +572,7 @@ impl MerkleContextDag {
     }
 
     /// Inserts a pre-built `DagNode` into the DAG.
-    pub fn insert_node(&mut self, node: DagNode) -> ArtifactId {
+    pub(crate) fn insert_node(&mut self, node: DagNode) -> ArtifactId {
         let id = node.id();
         self.nodes.insert(id, node);
         id
@@ -560,10 +600,18 @@ impl MerkleContextDag {
                 role,
                 raw_artifact,
                 ahtl_repr,
-                ..
+                surprise,
+                token_estimate,
             } => {
-                let recomputed =
-                    Self::compute_turn_digest(*ordinal, *agent, role, *raw_artifact, ahtl_repr);
+                let recomputed = Self::compute_turn_digest(
+                    *ordinal,
+                    *agent,
+                    role,
+                    *raw_artifact,
+                    ahtl_repr,
+                    *surprise,
+                    *token_estimate,
+                );
                 if recomputed != *digest
                     || ArtifactId::from_digest(&recomputed) != *node_id
                     || *node_id != id
@@ -588,7 +636,7 @@ impl MerkleContextDag {
                 label,
                 child_turns,
                 folded_ahtl_commit,
-                ..
+                raw_tokens_saved,
             } => {
                 let expected_prefix = format!("⟦Φ:{}⊢steps={}⋮✓", label, child_turns.len());
                 let expected_suffix = format!("↦{node_id}⟧");
@@ -606,6 +654,7 @@ impl MerkleContextDag {
                 hasher.update(&(label.len() as u64).to_be_bytes());
                 hasher.update(label.as_bytes());
                 hasher.update(&(child_turns.len() as u64).to_be_bytes());
+                let mut expected_saved = 0usize;
                 for &tid in child_turns {
                     self.verify_merkle_integrity(tid)?;
                     let child = self
@@ -614,6 +663,7 @@ impl MerkleContextDag {
                         .ok_or(IcxError::ArtifactNotFound(tid))?;
                     hasher.update(&tid.0.to_be_bytes());
                     hasher.update(&child.digest().0);
+                    expected_saved = expected_saved.saturating_add(child.raw_token_count());
                 }
                 hasher.update(&(outcome_summary.len() as u64).to_be_bytes());
                 hasher.update(outcome_summary.as_bytes());
@@ -621,6 +671,7 @@ impl MerkleContextDag {
                 if recomputed != *digest
                     || ArtifactId::from_digest(&recomputed) != *node_id
                     || *node_id != id
+                    || *raw_tokens_saved != expected_saved
                 {
                     return Err(IcxError::IntegrityViolation(id));
                 }
@@ -631,9 +682,9 @@ impl MerkleContextDag {
                 id: node_id,
                 merkle_root,
                 child_nodes,
+                raw_tokens,
                 compressed_tokens,
                 ahtl_frame,
-                ..
             } => {
                 for &cid in child_nodes {
                     self.verify_merkle_integrity(cid)?;
@@ -648,6 +699,7 @@ impl MerkleContextDag {
                         epoch_index: exp_idx,
                         id: exp_id,
                         merkle_root: exp_root,
+                        raw_tokens: exp_raw,
                         compressed_tokens: exp_comp,
                         ahtl_frame: exp_frame,
                         ..
@@ -657,6 +709,7 @@ impl MerkleContextDag {
                             || exp_root != *merkle_root
                             || exp_id != *node_id
                             || *node_id != id
+                            || exp_raw != *raw_tokens
                             || exp_comp != *compressed_tokens
                             || exp_frame != *ahtl_frame
                         {
@@ -669,12 +722,14 @@ impl MerkleContextDag {
                     hasher.update(&epoch_index.to_be_bytes());
                     hasher.update(&(child_nodes.len() as u64).to_be_bytes());
                     let body_packets = self.format_l3_epoch_body(child_nodes)?;
-                    for &cid in child_nodes {
+                    for (&cid, pkt) in child_nodes.iter().zip(body_packets.iter()) {
                         let child = self
                             .nodes
                             .get(&cid)
                             .ok_or(IcxError::ArtifactNotFound(cid))?;
                         hasher.update(&child.digest().0);
+                        hasher.update(&(pkt.len() as u64).to_be_bytes());
+                        hasher.update(pkt.as_bytes());
                     }
                     let recomputed = Blake3Digest(*hasher.finalize().as_bytes());
                     let root_short = &recomputed.to_hex()[..8];

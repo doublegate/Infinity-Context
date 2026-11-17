@@ -92,10 +92,10 @@ In addition to BLAKE3's internal hardware flags (`CHUNK_START = 0x01`, `CHUNK_EN
 | Subsystem / Tier | Domain Prefix String | Hashed Fields | Output Type |
 | :--- | :--- | :--- | :--- |
 | **`L0` Raw Chunk & Artifact (`CasStore`)** | *(Raw byte stream)* | `blake3::hash(raw_bytes)` | `(ArtifactId, Blake3Digest)` |
-| **`L1` Turn / Episode (`DagNode::Turn`)** | `b"ICX_DAG_TURN_V1"` | `ordinal_be8 \|\| [agent_u8] \|\| role_len_be8 \|\| role \|\| raw_id_be8 \|\| ahtl_len_be8 \|\| ahtl_repr` | `DagNode::Turn` (`ArtifactId`) |
-| **`L1` Tool Artifact (`DagNode::ToolArtifact`)** | `b"ICX_DAG_TOOL_V1"` | `raw_id_be8 \|\| full_digest_32B \|\| [agent_u8] \|\| session_id \|\| tool_name \|\| exit_code \|\| totals \|\| chunks[..] \|\| line_index[..] \|\| ahtl_stub \|\| created_at_ms \|\| tok_est` | `DagNode::ToolArtifact` (`ArtifactId`) |
+| **`L1` Turn / Episode (`DagNode::Turn`)** | `b"ICX_DAG_TURN_V1"` | `ordinal_be8 \|\| [agent_u8] \|\| role_len_be8 \|\| role \|\| raw_id_be8 \|\| ahtl_len_be8 \|\| ahtl_repr \|\| surprise_be4 \|\| tok_est_be8` | `DagNode::Turn` (`ArtifactId`) |
+| **`L1` Tool Artifact (`DagNode::ToolArtifact`)** | `b"ICX_DAG_TOOL_V1"` | `raw_id_be8 \|\| full_digest_32B \|\| [agent_u8] \|\| session_id \|\| tool_name \|\| exit_code \|\| totals \|\| chunks[..] \|\| line_index[..] \|\| ahtl_stub \|\| surprise_be4 \|\| created_at_ms \|\| tok_est_be8` | `DagNode::ToolArtifact` (`ArtifactId`) |
 | **`L2` Folded Branch (`SubTrajectoryBranch`)** | `b"ICX_DAG_BRANCH_V1"` | `label_len_be8 \|\| label \|\| count_be8 \|\| (child_id_be8 \|\| child_digest_32B)[..] \|\| summary_len_be8 \|\| outcome_summary` | `DagNode::SubTrajectoryBranch` |
-| **`L3` Sealed Cache Epoch (`CacheEpoch`)** | `b"ICX_DAG_EPOCH_V1"` | `epoch_index_be4 \|\| child_count_be8 \|\| child_node_digests_32B[..]` | `DagNode::CacheEpoch` |
+| **`L3` Sealed Cache Epoch (`CacheEpoch`)** | `b"ICX_DAG_EPOCH_V1"` | `epoch_index_be4 \|\| child_count_be8 \|\| (child_digest_32B \|\| pkt_len_be8 \|\| pkt_bytes)[..]` | `DagNode::CacheEpoch` |
 | **`L4` Folded Cache Epoch (`CacheEpoch`)** | `b"ICX_DAG_EPOCH_FOLD_V1"` | `first_epoch_index_be4 \|\| epoch_count_be8 \|\| child_epoch_roots_32B[..]` | `DagNode::CacheEpoch` |
 | **`Q_10240` HDC Basis (`Hypervector`)** | `b"ICX_HDC_10240_V1:"` | `domain \|\| b"::" \|\| symbol` $\to$ `finalize_xof()` (1,280 B) | `Hypervector([u64; 160])` |
 

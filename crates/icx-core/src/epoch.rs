@@ -99,6 +99,7 @@ pub struct CacheEpochController {
     pinned_head: String,
     sealed_epochs: Vec<DagNode>,
     unsealed_turn_ids: Vec<ArtifactId>,
+    next_epoch_index: u32,
 }
 
 impl CacheEpochController {
@@ -109,6 +110,7 @@ impl CacheEpochController {
             pinned_head: pinned_head.into(),
             sealed_epochs: Vec::new(),
             unsealed_turn_ids: Vec::new(),
+            next_epoch_index: 0,
         }
     }
 
@@ -151,13 +153,12 @@ impl CacheEpochController {
     /// Records an existing `L1` (`Turn`, `ToolArtifact`) or `L2` (`SubTrajectoryBranch`) node into
     /// the active window and triggers an amortized Epoch Rollover if thresholds are exceeded.
     pub fn record_node(&mut self, dag: &mut MerkleContextDag, node_id: ArtifactId) {
-        if let Some(DagNode::SubTrajectoryBranch { child_turns, .. }) = dag.get_node(node_id) {
-            let mut to_remove = child_turns.clone();
-            if let Ok(expanded) = dag.expand_branch(node_id) {
-                for leaf in expanded {
-                    to_remove.push(leaf.id());
-                }
-            }
+        if matches!(
+            dag.get_node(node_id),
+            Some(DagNode::SubTrajectoryBranch { .. })
+        ) {
+            let mut to_remove = Vec::new();
+            dag.collect_all_descendant_ids(node_id, &mut to_remove);
             if let Some(first_pos) = self
                 .unsealed_turn_ids
                 .iter()
@@ -224,7 +225,8 @@ impl CacheEpochController {
             .filter_map(|&id| dag.get_node(id).map(DagNode::raw_token_count))
             .fold(0usize, usize::saturating_add);
 
-        let epoch_idx = self.sealed_epochs.len() as u32;
+        let epoch_idx = self.next_epoch_index;
+        self.next_epoch_index = self.next_epoch_index.saturating_add(1);
         let epoch_node = dag.seal_epoch(epoch_idx, to_seal, raw_tokens);
         let id = epoch_node.id();
         self.sealed_epochs.push(epoch_node);

@@ -167,7 +167,7 @@ impl McpPagerServer {
             }
             "fold" => {
                 let summary = args.get("q").and_then(Value::as_str).unwrap_or("completed");
-                match mmu.dag.fold_branch(summary) {
+                match mmu.epochs.fold_branch(&mut mmu.dag, summary) {
                     Ok(bid) => format!("⟪ICX:BRANCH_FOLDED│{bid}⟫"),
                     Err(e) => format!("ERR: {e}"),
                 }
