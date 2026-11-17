@@ -14,7 +14,7 @@ pub use claude::ClaudeCodeAdapter;
 pub use codex::CodexAdapter;
 pub use hermes::{HermesAdapter, HermesMessage};
 pub use mcp::McpPagerServer;
-pub use mmu::{InfinityContextMmu, IngestResult, DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES};
+pub use mmu::{DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES, InfinityContextMmu, IngestResult};
 
 #[cfg(test)]
 mod tests {

@@ -6,7 +6,7 @@
 
 use crate::mmu::InfinityContextMmu;
 use icx_core::AgentKind;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Native hook adapter for Claude Code (`2.1.326+`).
 #[derive(Clone, Debug, Default)]

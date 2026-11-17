@@ -42,11 +42,7 @@ pub fn decode_braille_sketch(s: &str) -> Option<[u8; 8]> {
         out[count] = braille_to_byte(c)?;
         count += 1;
     }
-    if count == 8 {
-        Some(out)
-    } else {
-        None
-    }
+    if count == 8 { Some(out) } else { None }
 }
 
 #[cfg(test)]

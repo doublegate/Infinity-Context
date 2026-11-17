@@ -23,5 +23,5 @@ jobs:
     name: REUSE 3.3 Compliance
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: fsfe/reuse-action@v6
