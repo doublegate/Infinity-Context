@@ -9,6 +9,8 @@ use std::collections::BTreeMap;
 /// Default Titans surprise threshold (`>= 0.65`) for retaining full `L1` AHTL clauses inside sealed epochs (`docs/virtual-memory-and-dag-engine.md` §4.2).
 pub const EPOCH_HIGH_SURPRISE_THRESHOLD: f32 = 0.65;
 
+const MAX_DAG_RECURSION_DEPTH: usize = 64;
+
 /// `L1`: Tool execution artifact metadata, chunk list, line index, and AHTL stub (`docs/data-model.md` §2).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ToolArtifactNode {
@@ -222,6 +224,99 @@ impl MerkleContextDag {
         self.nodes.get(&id)
     }
 
+    /// Resolves either a full 64-bit handle (`#icx:<16-hex>`) or a compact 48-bit Profile A prefix
+    /// (`#icx:<12-hex>`) against stored DAG nodes (`L1`–`L4`), failing closed with
+    /// `IcxError::AmbiguousHandlePrefix` if multiple DAG nodes share the same 48-bit prefix.
+    pub fn resolve_handle(&self, handle_or_prefix: &str) -> Result<ArtifactId, IcxError> {
+        let (min_id, max_id) = ArtifactId::parse_prefix_range(handle_or_prefix)?;
+        if min_id == max_id {
+            return if self.nodes.contains_key(&min_id) {
+                Ok(min_id)
+            } else {
+                Err(IcxError::ArtifactNotFound(min_id))
+            };
+        }
+        let mut matches = self.nodes.range(min_id..=max_id);
+        let Some((&first, _)) = matches.next() else {
+            return Err(IcxError::ArtifactNotFound(min_id));
+        };
+        if matches.next().is_some() {
+            return Err(IcxError::AmbiguousHandlePrefix(handle_or_prefix.to_owned()));
+        }
+        Ok(first)
+    }
+
+    /// Reconstructs and cryptographically verifies the full text representation of a DAG node
+    /// (`Turn`, `ToolArtifact`, `SubTrajectoryBranch`, or `L3`/`L4` `CacheEpoch`), expanding
+    /// folded child turns or child epoch frames so `#icx:<hex>` references in `L2`/`L4` commits
+    /// can be paged back losslessly.
+    pub fn deref_node_text(&self, id: ArtifactId) -> Result<String, IcxError> {
+        self.verify_merkle_integrity(id)?;
+        self.deref_node_text_with_depth(id, 0)
+    }
+
+    fn deref_node_text_with_depth(&self, id: ArtifactId, depth: usize) -> Result<String, IcxError> {
+        if depth > MAX_DAG_RECURSION_DEPTH {
+            return Err(IcxError::IntegrityViolation(id));
+        }
+        let node = self.nodes.get(&id).ok_or(IcxError::ArtifactNotFound(id))?;
+        match node {
+            DagNode::Turn { ahtl_repr, .. } => Ok(ahtl_repr.clone()),
+            DagNode::ToolArtifact(tool) => Ok(tool.ahtl_stub.clone()),
+            DagNode::SubTrajectoryBranch {
+                folded_ahtl_commit, ..
+            } => {
+                let leaves = self.expand_branch_with_depth(id, depth + 1)?;
+                let mut lines = Vec::with_capacity(1 + leaves.len());
+                lines.push(folded_ahtl_commit.clone());
+                for leaf in leaves {
+                    lines.push(leaf.ahtl_representation().to_owned());
+                }
+                Ok(lines.join("\n"))
+            }
+            DagNode::CacheEpoch {
+                ahtl_frame,
+                child_nodes,
+                ..
+            } => {
+                let is_l4_folded = ahtl_frame
+                    .lines()
+                    .next()
+                    .is_some_and(|hdr| hdr.contains("│folded="));
+                if is_l4_folded {
+                    let mut parts = Vec::with_capacity(1 + child_nodes.len());
+                    parts.push(ahtl_frame.clone());
+                    for &cid in child_nodes {
+                        parts.push(self.deref_node_text_with_depth(cid, depth + 1)?);
+                    }
+                    Ok(parts.join("\n"))
+                } else {
+                    Ok(ahtl_frame.clone())
+                }
+            }
+        }
+    }
+
+    /// Reconstructs and slices a 1-based inclusive line range `[start_line, end_line]` from a DAG node.
+    pub fn deref_node_lines(
+        &self,
+        id: ArtifactId,
+        start_line: usize,
+        end_line: usize,
+    ) -> Result<String, IcxError> {
+        let full = self.deref_node_text(id)?;
+        let lines: Vec<&str> = full.lines().collect();
+        let total = lines.len();
+        if start_line == 0 || start_line > end_line || end_line > total {
+            return Err(IcxError::InvalidLineRange {
+                start: start_line,
+                end: end_line,
+                total,
+            });
+        }
+        Ok(lines[start_line - 1..end_line].join("\n"))
+    }
+
     fn record_node_in_active_scope(&mut self, id: ArtifactId) {
         if let Some(branch) = self.branch_stack.last_mut() {
             branch.turn_ids.push(id);
@@ -375,6 +470,17 @@ impl MerkleContextDag {
     /// Losslessly expands an `L2` `SubTrajectoryBranch` node into its ordered sequence of underlying
     /// `L1` child nodes (`Turn` and `ToolArtifact`), recursively unfolding any nested `L2` branches.
     pub fn expand_branch(&self, branch_id: ArtifactId) -> Result<Vec<&DagNode>, IcxError> {
+        self.expand_branch_with_depth(branch_id, 0)
+    }
+
+    fn expand_branch_with_depth(
+        &self,
+        branch_id: ArtifactId,
+        depth: usize,
+    ) -> Result<Vec<&DagNode>, IcxError> {
+        if depth > MAX_DAG_RECURSION_DEPTH {
+            return Err(IcxError::IntegrityViolation(branch_id));
+        }
         let node = self
             .nodes
             .get(&branch_id)
@@ -392,7 +498,7 @@ impl MerkleContextDag {
                 .ok_or(IcxError::ArtifactNotFound(cid))?;
             match child {
                 DagNode::SubTrajectoryBranch { .. } => {
-                    let nested = self.expand_branch(cid)?;
+                    let nested = self.expand_branch_with_depth(cid, depth + 1)?;
                     expanded.extend(nested);
                 }
                 _ => expanded.push(child),
@@ -408,10 +514,22 @@ impl MerkleContextDag {
         branch_id: ArtifactId,
         out: &mut Vec<ArtifactId>,
     ) {
+        self.collect_all_descendant_ids_with_depth(branch_id, out, 0);
+    }
+
+    fn collect_all_descendant_ids_with_depth(
+        &self,
+        branch_id: ArtifactId,
+        out: &mut Vec<ArtifactId>,
+        depth: usize,
+    ) {
+        if depth > MAX_DAG_RECURSION_DEPTH {
+            return;
+        }
         if let Some(DagNode::SubTrajectoryBranch { child_turns, .. }) = self.nodes.get(&branch_id) {
             for &cid in child_turns {
                 out.push(cid);
-                self.collect_all_descendant_ids(cid, out);
+                self.collect_all_descendant_ids_with_depth(cid, out, depth + 1);
             }
         }
     }
@@ -473,6 +591,7 @@ impl MerkleContextDag {
         hasher.update(b"ICX_DAG_EPOCH_V1");
         hasher.update(&epoch_index.to_be_bytes());
         hasher.update(&(valid_children.len() as u64).to_be_bytes());
+        hasher.update(&(raw_tokens as u64).to_be_bytes());
 
         let body_packets = self
             .format_l3_epoch_body(&valid_children)
@@ -590,6 +709,17 @@ impl MerkleContextDag {
     /// Cryptographically recomputes and verifies the domain-separated BLAKE3 Merkle digest of `id`
     /// and (recursively) all of its descendant DAG nodes.
     pub fn verify_merkle_integrity(&self, id: ArtifactId) -> Result<bool, IcxError> {
+        self.verify_merkle_integrity_with_depth(id, 0)
+    }
+
+    fn verify_merkle_integrity_with_depth(
+        &self,
+        id: ArtifactId,
+        depth: usize,
+    ) -> Result<bool, IcxError> {
+        if depth > MAX_DAG_RECURSION_DEPTH {
+            return Err(IcxError::IntegrityViolation(id));
+        }
         let node = self.nodes.get(&id).ok_or(IcxError::ArtifactNotFound(id))?;
         match node {
             DagNode::Turn {
@@ -656,7 +786,7 @@ impl MerkleContextDag {
                 hasher.update(&(child_turns.len() as u64).to_be_bytes());
                 let mut expected_saved = 0usize;
                 for &tid in child_turns {
-                    self.verify_merkle_integrity(tid)?;
+                    self.verify_merkle_integrity_with_depth(tid, depth + 1)?;
                     let child = self
                         .nodes
                         .get(&tid)
@@ -687,7 +817,7 @@ impl MerkleContextDag {
                 ahtl_frame,
             } => {
                 for &cid in child_nodes {
-                    self.verify_merkle_integrity(cid)?;
+                    self.verify_merkle_integrity_with_depth(cid, depth + 1)?;
                 }
                 let is_l4_folded = ahtl_frame
                     .lines()
@@ -721,6 +851,7 @@ impl MerkleContextDag {
                     hasher.update(b"ICX_DAG_EPOCH_V1");
                     hasher.update(&epoch_index.to_be_bytes());
                     hasher.update(&(child_nodes.len() as u64).to_be_bytes());
+                    hasher.update(&(*raw_tokens as u64).to_be_bytes());
                     let body_packets = self.format_l3_epoch_body(child_nodes)?;
                     for (&cid, pkt) in child_nodes.iter().zip(body_packets.iter()) {
                         let child = self
@@ -912,6 +1043,17 @@ mod tests {
         let folded_l4 = dag.fold_epochs(&[ep0.id(), ep1.id()]).unwrap();
         assert!(dag.verify_merkle_integrity(folded_l4.id()).unwrap());
         assert!(folded_l4.ahtl_representation().contains("folded=2"));
+
+        // Verify DAG-aware handle resolution and dereferencing on L3 and L4 epoch handles
+        assert_eq!(
+            dag.resolve_handle(&ep0.id().to_short_handle()).unwrap(),
+            ep0.id()
+        );
+        let l4_deref = dag.deref_node_text(folded_l4.id()).unwrap();
+        assert!(l4_deref.contains("ep=0000"));
+        assert!(l4_deref.contains("ep=0001"));
+        let l4_slice = dag.deref_node_lines(folded_l4.id(), 1, 2).unwrap();
+        assert!(l4_slice.contains("folded=2"));
 
         // Corrupt a leaf turn digest and verify recursive Merkle check fails closed
         dag.corrupt_node_digest_for_test(t1);

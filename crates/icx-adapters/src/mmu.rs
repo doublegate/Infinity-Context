@@ -255,20 +255,48 @@ impl InfinityContextMmu {
         self.epochs.assemble_window(&self.dag, tail)
     }
 
-    /// Dereferences full lossless bytes as UTF-8 text from an `#icx:<hex>` handle.
-    pub fn deref_text(&self, id: ArtifactId) -> Result<String, IcxError> {
-        let bytes = self.cas.deref_bytes(id)?;
-        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    /// Resolves either a 64-bit (`#icx:<16-hex>`) or 48-bit (`#icx:<12-hex>`) handle across both
+    /// `CasStore` (`L0` artifacts) and `MerkleContextDag` (`L1`–`L4` turns, folded branches, and epochs).
+    pub fn resolve_handle(&self, handle_or_prefix: &str) -> Result<ArtifactId, IcxError> {
+        let cas_res = self.cas.resolve_handle(handle_or_prefix);
+        let dag_res = self.dag.resolve_handle(handle_or_prefix);
+        match (cas_res, dag_res) {
+            (Ok(cid), Ok(did)) => {
+                if cid == did {
+                    Ok(cid)
+                } else {
+                    Err(IcxError::AmbiguousHandlePrefix(handle_or_prefix.to_owned()))
+                }
+            }
+            (Ok(cid), Err(IcxError::ArtifactNotFound(_))) => Ok(cid),
+            (Err(IcxError::ArtifactNotFound(_)), Ok(did)) => Ok(did),
+            (Err(e), _) | (_, Err(e)) => Err(e),
+        }
     }
 
-    /// Dereferences an inclusive 1-based line slice from an `#icx:<hex>` handle.
+    /// Dereferences full lossless bytes as UTF-8 text from an `#icx:<hex>` handle (`CasStore` or `MerkleContextDag`).
+    pub fn deref_text(&self, id: ArtifactId) -> Result<String, IcxError> {
+        match self.cas.deref_bytes(id) {
+            Ok(bytes) => Ok(String::from_utf8_lossy(&bytes).into_owned()),
+            Err(IcxError::ArtifactNotFound(_)) => self.dag.deref_node_text(id),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Dereferences an inclusive 1-based line slice from an `#icx:<hex>` handle (`CasStore` or `MerkleContextDag`).
     pub fn deref_lines(
         &self,
         id: ArtifactId,
         start_line: usize,
         end_line: usize,
     ) -> Result<String, IcxError> {
-        self.cas.deref_lines(id, start_line, end_line)
+        match self.cas.deref_lines(id, start_line, end_line) {
+            Ok(text) => Ok(text),
+            Err(IcxError::ArtifactNotFound(_)) => {
+                self.dag.deref_node_lines(id, start_line, end_line)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Searches cold storage for `pattern`.
