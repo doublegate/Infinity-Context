@@ -1,6 +1,8 @@
 //! 10,240-bit Binary/Bipolar Hyperdimensional Computing (`HDC/HRR`) algebra and Infini-attention
 //! Delta-Rule majority bundler (`arXiv:2404.07143`).
 
+use core::ops::{BitXor, BitXorAssign};
+
 pub const HV_WORDS: usize = 160;
 pub const HV_BITS: usize = HV_WORDS * 64; // 10,240 bits
 
@@ -14,6 +16,40 @@ pub struct Hypervector {
 impl Default for Hypervector {
     fn default() -> Self {
         Self::zero()
+    }
+}
+
+impl BitXor for Hypervector {
+    type Output = Self;
+
+    #[inline]
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        self.bind(&rhs)
+    }
+}
+
+impl BitXor for &Hypervector {
+    type Output = Hypervector;
+
+    #[inline]
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        self.bind(rhs)
+    }
+}
+
+impl BitXorAssign<&Self> for Hypervector {
+    #[inline]
+    fn bitxor_assign(&mut self, rhs: &Self) {
+        for i in 0..HV_WORDS {
+            self.words[i] ^= rhs.words[i];
+        }
+    }
+}
+
+impl BitXorAssign for Hypervector {
+    #[inline]
+    fn bitxor_assign(&mut self, rhs: Self) {
+        *self ^= &rhs;
     }
 }
 
@@ -44,6 +80,57 @@ impl Hypervector {
             words[i] = u64::from_le_bytes(*chunk);
         }
         Self { words }
+    }
+
+    /// Deterministically generates a 10,240-bit hypervector with injective length-prefixed tuple
+    /// framing (`docs/ahtl/04-hyperdimensional-10240-bit-lattice.md` §3.1), preventing collisions
+    /// even when user-supplied `domain` strings contain `"::"`.
+    pub fn from_seed_framed(domain: &str, symbol: &str) -> Self {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(b"ICX_HDC_10240_FRAMED_V1:");
+        hasher.update(&(domain.len() as u64).to_le_bytes());
+        hasher.update(domain.as_bytes());
+        hasher.update(&(symbol.len() as u64).to_le_bytes());
+        hasher.update(symbol.as_bytes());
+        let mut xof = hasher.finalize_xof();
+
+        let mut raw = [0u8; HV_WORDS * 8];
+        xof.fill(&mut raw);
+
+        let mut words = [0u64; HV_WORDS];
+        for (i, chunk) in raw.as_chunks::<8>().0.iter().enumerate() {
+            words[i] = u64::from_le_bytes(*chunk);
+        }
+        Self { words }
+    }
+
+    /// Binds a semantic role (`"role"`) to a filler token (`"tok"`) via XOR (`R \oplus F`).
+    #[inline]
+    pub fn bind_role_filler(role: &str, filler: &str) -> Self {
+        let r = Self::from_seed("role", &role.to_ascii_lowercase());
+        let f = Self::from_seed("tok", &filler.to_ascii_lowercase());
+        r.bind(&f)
+    }
+
+    /// Encodes an ordered sequence of hypervectors $(H_0, H_1, \dots, H_{k-1})$ using
+    /// non-commutative position-shifted XOR binding:
+    /// $$S(H_0, \dots, H_{k-1}) = \bigoplus_{i=0}^{k-1} \Pi_{k-1-i}(H_i)$$
+    pub fn encode_sequence(items: &[Self]) -> Self {
+        if items.is_empty() {
+            return Self::zero();
+        }
+        let k = items.len();
+        let mut acc = Self::zero();
+        for (i, item) in items.iter().enumerate() {
+            let shift = k - 1 - i;
+            let term = if shift == 0 {
+                *item
+            } else {
+                item.permute(shift)
+            };
+            acc ^= &term;
+        }
+        acc
     }
 
     /// Deterministically generates a 10,240-bit hypervector from a 64-bit integer seed using
@@ -100,7 +187,13 @@ impl Hypervector {
         Self { words: out }
     }
 
-    /// Circular permutation ($\Pi^k$) rotating words and bits for sequence order encoding.
+    /// Unbinds a role or key hypervector from a bound pair or bundle (`(R \oplus F) \oplus R = F`).
+    #[inline]
+    pub fn unbind(&self, key: &Self) -> Self {
+        self.bind(key)
+    }
+
+    /// Circular permutation ($\Pi_s$) rotating words and bits for sequence order encoding.
     #[inline]
     pub fn permute(&self, shift: usize) -> Self {
         let word_shift = shift % HV_WORDS;
@@ -111,6 +204,31 @@ impl Hypervector {
             out[i] = self.words[src].rotate_left(bit_shift);
         }
         Self { words: out }
+    }
+
+    /// Exact inverse permutation ($\Pi_s^{-1}$) satisfying `hv.permute(s).inverse_permute(s) == hv`.
+    #[inline]
+    pub fn inverse_permute(&self, shift: usize) -> Self {
+        let word_shift = shift % HV_WORDS;
+        let bit_shift = ((shift % 63) + 1) as u32;
+        let mut out = [0u64; HV_WORDS];
+        for i in 0..HV_WORDS {
+            let src = (i + word_shift) % HV_WORDS;
+            out[i] = self.words[src].rotate_right(bit_shift);
+        }
+        Self { words: out }
+    }
+
+    /// Total Hamming weight ($\operatorname{wt}(H) \in [0, 10240]$).
+    #[inline]
+    pub const fn popcount(&self) -> u32 {
+        let mut ones = 0u32;
+        let mut i = 0;
+        while i < HV_WORDS {
+            ones += self.words[i].count_ones();
+            i += 1;
+        }
+        ones
     }
 
     /// Exact Hamming distance computed via hardware `POPCNT` / auto-vectorized `VPOPCNTDQ`.
@@ -144,6 +262,27 @@ impl Hypervector {
     pub fn similarity(&self, other: &Self) -> f32 {
         let d = self.hamming_distance(other).min(5120);
         1.0 - ((d as f32) / 5120.0)
+    }
+
+    /// Bipolar cosine similarity $\frac{1}{D}\langle \pm 1_A, \pm 1_B \rangle \in [-1.0, +1.0]$
+    /// where `1.0` is identical (`d == 0`), `0.0` is orthogonal (`d == 5120`), and `-1.0` is antipodal (`d == 10240`).
+    #[inline]
+    pub fn cosine_bipolar(&self, other: &Self) -> f32 {
+        let d = self.hamming_distance(other) as f32;
+        1.0 - ((2.0 * d) / (HV_BITS as f32))
+    }
+
+    /// Extracts an unbiased 64-bit sub-hypervector by sampling bit 0 of the first 64 `u64` words,
+    /// enabling $< 2\text{ ns}$ L2-cache pre-screening in `HdcAssociativeIndex`.
+    #[inline]
+    pub const fn sub_hypervector_64(&self) -> u64 {
+        let mut out = 0u64;
+        let mut i = 0;
+        while i < 64 {
+            out |= (self.words[i] & 1) << i;
+            i += 1;
+        }
+        out
     }
 
     /// Computes the 64-bit rotational XOR-tree parity fold (`hv:<16-hex>` in Profile A).
@@ -215,6 +354,8 @@ pub struct HdcBundler {
     acc: [i16; HV_BITS],
     readout: Hypervector,
     count: usize,
+    seen_digests: [u64; 32],
+    seen_len: usize,
 }
 
 impl Default for HdcBundler {
@@ -230,13 +371,42 @@ impl HdcBundler {
             acc: [0i16; HV_BITS],
             readout: Hypervector::zero(),
             count: 0,
+            seen_digests: [0u64; 32],
+            seen_len: 0,
         }
     }
 
+    /// Number of non-duplicate hypervectors accumulated into the bundle.
+    #[inline]
+    pub const fn count(&self) -> usize {
+        self.count
+    }
+
+    /// Resets the accumulator, readout, and seen-digest history to the empty zero state.
+    pub fn reset(&mut self) {
+        self.acc = [0i16; HV_BITS];
+        self.readout = Hypervector::zero();
+        self.count = 0;
+        self.seen_digests = [0u64; 32];
+        self.seen_len = 0;
+    }
+
+    /// Unbinds a role hypervector from the current bundle readout (`M \oplus R \approx F`).
+    #[inline]
+    pub fn unbind_query(&self, role: &Hypervector) -> Hypervector {
+        self.readout.unbind(role)
+    }
+
     /// Adds a hypervector using the Infini-attention Delta Rule: vectors already strongly present
-    /// in the bundle (`similarity >= 0.85`) receive zero delta weight so repetitive boilerplate
-    /// never saturates the accumulator, while novel/orthogonal vectors receive full weight.
+    /// in the bundle (`similarity >= 0.85` or matching a recently bundled digest) receive zero
+    /// delta weight so repetitive boilerplate never saturates the accumulator, while novel/orthogonal
+    /// vectors receive full weight.
     pub fn add(&mut self, hv: &Hypervector) {
+        let digest = hv.hv_digest_u64();
+        let active_seen = self.seen_len.min(self.seen_digests.len());
+        if self.seen_digests[..active_seen].contains(&digest) {
+            return;
+        }
         let weight: i16 = if self.count == 0 {
             16
         } else {
@@ -247,10 +417,15 @@ impl HdcBundler {
             let novelty = (1.0 - sim).clamp(0.0, 1.0);
             ((novelty * 16.0).round() as i16).max(1)
         };
+        let slot = self.seen_len % self.seen_digests.len();
+        self.seen_digests[slot] = digest;
+        self.seen_len += 1;
         self.add_weighted(hv, weight);
     }
 
-    /// Adds a hypervector with an explicit integer weight (`1..=64`).
+    /// Adds a hypervector with an explicit integer weight (`1..=64`), breaking exact `0` ties
+    /// symmetrically via coordinate parity `((word_idx ^ bit) & 1) == 0` so the thresholded
+    /// readout stays balanced around Hamming weight `5,120`.
     pub fn add_weighted(&mut self, hv: &Hypervector, weight: i16) {
         let w = weight.clamp(1, 64);
         for word_idx in 0..HV_WORDS {
@@ -261,7 +436,7 @@ impl HdcBundler {
                 let delta = if ((word >> bit) & 1) != 0 { w } else { -w };
                 let val = self.acc[base + bit].saturating_add(delta);
                 self.acc[base + bit] = val;
-                if val >= 0 {
+                if val > 0 || (val == 0 && ((word_idx ^ bit) & 1) == 0) {
                     out_word |= 1u64 << bit;
                 }
             }
@@ -289,25 +464,83 @@ mod tests {
             a.similarity(&b) < 0.05,
             "unrelated seeds must be quasi-orthogonal"
         );
-        let bound = a.bind(&b);
-        assert_eq!(bound.bind(&b), a, "XOR binding must be self-inverse");
+        assert!(a.cosine_bipolar(&b).abs() < 0.05);
+        assert!((a.cosine_bipolar(&a) - 1.0).abs() < 1e-6);
+        let pop = a.popcount();
+        assert!(
+            (4900..=5340).contains(&pop),
+            "expected balanced Hamming weight near 5120, got {pop}"
+        );
+
+        let bound = core::ops::BitXor::bitxor(&a, &b);
+        assert_eq!(bound, a ^ b);
+        assert_eq!(bound.unbind(&b), a, "XOR binding must be self-inverse");
+        let mut c = a;
+        c ^= &b;
+        c ^= b;
+        assert_eq!(c, a);
+
+        // Verify permutation isometry, inverse_permute, framed seeds, role-filler, and sequence encoding
+        for shift in [0usize, 1, 7, 63, 64, 159, 160, 321] {
+            let pa = a.permute(shift);
+            let pb = b.permute(shift);
+            assert_eq!(pa.hamming_distance(&pb), a.hamming_distance(&b));
+            assert_eq!(pa.inverse_permute(shift), a);
+        }
+
+        let f1 = Hypervector::from_seed_framed("a::b", "c");
+        let f2 = Hypervector::from_seed_framed("a", "b::c");
+        assert_ne!(f1, f2);
+        assert!(f1.similarity(&f2) < 0.05);
+
+        let rf = Hypervector::bind_role_filler("fn", "alloc_page");
+        let role_fn = Hypervector::from_seed("role", "fn");
+        let tok_alloc = Hypervector::from_seed("tok", "alloc_page");
+        assert_eq!(rf.unbind(&role_fn), tok_alloc);
+
+        assert_eq!(Hypervector::encode_sequence(&[]), Hypervector::zero());
+        let seq_ab = Hypervector::encode_sequence(&[a, b]);
+        let seq_ba = Hypervector::encode_sequence(&[b, a]);
+        assert_ne!(seq_ab, seq_ba, "sequence encoding must be non-commutative");
+        assert!(seq_ab.similarity(&seq_ba) < 0.05);
     }
 
     #[test]
     fn delta_rule_bundler_prevents_boilerplate_saturation() {
-        let mut bundler = HdcBundler::new();
+        let mut bundler = HdcBundler::default();
         let boilerplate = Hypervector::from_seed("log", "test_ok_boilerplate");
         let anomaly = Hypervector::from_seed("err", "panic_align_offset_412");
 
-        for _ in 0..50 {
+        // 100 identical boilerplate vectors followed by 1 novel anomaly vector via `add`
+        for _ in 0..100 {
             bundler.add(&boilerplate);
         }
-        bundler.add_weighted(&anomaly, 48);
+        bundler.add(&anomaly);
+        assert_eq!(bundler.count(), 2);
 
         let memory = bundler.finalize();
         assert!(
             memory.similarity(&anomaly) > 0.25,
-            "anomaly must remain retrievable despite 50x boilerplate repetition"
+            "anomaly must remain retrievable despite 100x boilerplate repetition"
+        );
+        assert!(
+            memory.similarity(&boilerplate) > 0.25,
+            "boilerplate must also remain retrievable in balanced superposition"
+        );
+
+        // Also verify reverse order (1 anomaly followed by 100 identical boilerplate vectors)
+        bundler.reset();
+        assert_eq!(bundler.count(), 0);
+        let role_err = Hypervector::from_seed("role", "err");
+        let bound_anomaly = role_err.bind(&anomaly);
+        bundler.add(&bound_anomaly);
+        for _ in 0..100 {
+            bundler.add(&boilerplate);
+        }
+        let unbound = bundler.unbind_query(&role_err);
+        assert!(
+            unbound.similarity(&anomaly) > 0.25,
+            "role-filler unbinding from bundle must recover anomaly after 100x trailing boilerplate"
         );
     }
 

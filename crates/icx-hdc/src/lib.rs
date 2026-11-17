@@ -12,11 +12,39 @@ use crate::surprise::{SurpriseVerdict, TitansSurpriseGate};
 use icx_core::ArtifactId;
 use serde::{Deserialize, Serialize};
 
+/// Normative trait contract for the Hyperdimensional & Fractal Associative Memory Index (`docs/interfaces.md` §3).
+pub trait AssociativeMemoryIndex: Send + Sync {
+    /// Encodes text and metadata into a 10,240-bit Hypervector, updates the Fractal IFS trajectory,
+    /// computes the Titans Surprise score, and indexes the artifact.
+    fn observe_event(
+        &mut self,
+        artifact_id: ArtifactId,
+        subject: &str,
+        content: &str,
+        is_anomaly: bool,
+    ) -> ObservationReceipt;
+
+    /// Queries the associative index using combined HDC Hamming similarity and Fractal suffix matching.
+    fn query_associative(&self, query_text: &str, top_k: usize) -> Vec<AssociativeHit>;
+}
+
+/// Compact 16-byte L2-cache-friendly summary of an `IndexedEntry` for Stage-1 spectral pre-screening.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+struct EntrySummary {
+    hv_sub64: u64,
+    subj_bloom32: u32,
+    quadrant_u16: u16,
+    surprise_q8: u8,
+    flags: u8,
+}
+
 /// Entry stored in the `HdcAssociativeIndex`.
 #[derive(Clone, Debug)]
 pub struct IndexedEntry {
     pub artifact_id: ArtifactId,
     pub subject: String,
+    subject_lower: String,
     pub hv: Hypervector,
     pub fractal_coord: FractalCoord,
     pub surprise: f32,
@@ -44,6 +72,7 @@ pub struct ObservationReceipt {
 #[derive(Clone, Debug, Default)]
 pub struct HdcAssociativeIndex {
     entries: Vec<IndexedEntry>,
+    summaries: Vec<EntrySummary>,
     current_trajectory: FractalCoord,
     surprise_gate: TitansSurpriseGate,
 }
@@ -74,6 +103,30 @@ impl HdcAssociativeIndex {
         self.entries.last()
     }
 
+    #[inline]
+    fn token_bloom_bits32(tok: &str) -> u32 {
+        let mut h = 0x811C_9DC5u32;
+        for &b in tok.as_bytes() {
+            h ^= u32::from(b.to_ascii_lowercase());
+            h = h.wrapping_mul(0x0100_0193);
+        }
+        (1u32 << (h & 31)) | (1u32 << ((h >> 5) & 31))
+    }
+
+    #[inline]
+    fn compute_subject_bloom32(subject_lower: &str) -> u32 {
+        let mut mask = 0u32;
+        for tok in subject_lower.split(|c: char| !c.is_alphanumeric() && c != '_') {
+            if tok.len() >= 2 {
+                mask |= Self::token_bloom_bits32(tok);
+            }
+        }
+        if !subject_lower.is_empty() {
+            mask |= Self::token_bloom_bits32(subject_lower);
+        }
+        mask
+    }
+
     /// Encodes and indexes an event, advancing the Fractal trajectory and Titans Surprise Gate.
     pub fn observe_event(
         &mut self,
@@ -82,9 +135,8 @@ impl HdcAssociativeIndex {
         content: &str,
         force_anomaly: bool,
     ) -> ObservationReceipt {
-        let subj_hv = Hypervector::from_seed("subj", &subject.to_ascii_lowercase());
-        let text_hv = Hypervector::encode_text(&format!("{subject} {content}"));
-        let composite_hv = subj_hv.bind(&text_hv).permute(1);
+        let subject_lower = subject.to_ascii_lowercase();
+        let composite_hv = Hypervector::encode_text(&format!("{subject} {content}"));
 
         let verdict = self
             .surprise_gate
@@ -92,10 +144,8 @@ impl HdcAssociativeIndex {
         self.current_trajectory = self.current_trajectory.step(&composite_hv);
 
         let sketch = composite_hv.sketch_u32().to_be_bytes();
-        let quad = self
-            .current_trajectory
-            .quadrant_signature_u16()
-            .to_be_bytes();
+        let quad_u16 = self.current_trajectory.quadrant_signature_u16();
+        let quad = quad_u16.to_be_bytes();
         let surp_byte = (verdict.momentum_surprise.clamp(0.0, 1.0) * 255.0) as u8;
         let tier_bits = verdict.tier as u8; // Bits 0..=1: 0 = PinHighResolution, 1 = FoldAhtlStub, 2 = ColdBeacon
         let err_flag = if force_anomaly || TitansSurpriseGate::has_diagnostic_anomaly(content) {
@@ -108,9 +158,18 @@ impl HdcAssociativeIndex {
             sketch[0], sketch[1], sketch[2], sketch[3], quad[0], quad[1], surp_byte, flags_byte,
         ];
 
+        self.summaries.push(EntrySummary {
+            hv_sub64: composite_hv.sub_hypervector_64(),
+            subj_bloom32: Self::compute_subject_bloom32(&subject_lower),
+            quadrant_u16: quad_u16,
+            surprise_q8: surp_byte,
+            flags: flags_byte,
+        });
+
         self.entries.push(IndexedEntry {
             artifact_id,
             subject: subject.to_owned(),
+            subject_lower,
             hv: composite_hv,
             fractal_coord: self.current_trajectory,
             surprise: verdict.momentum_surprise,
@@ -123,9 +182,41 @@ impl HdcAssociativeIndex {
         }
     }
 
-    /// Queries the associative index using 10,240-bit HDC Hamming similarity, Fractal trajectory
-    /// suffix matching, and Titans Surprise weighting.
+    #[inline]
+    fn score_entry(
+        &self,
+        e: &IndexedEntry,
+        q_hv: &Hypervector,
+        q_tokens: &[String],
+    ) -> AssociativeHit {
+        let text_sim = q_hv.similarity(&e.hv);
+        let lexical_overlap = q_tokens
+            .iter()
+            .filter(|t| e.subject_lower.contains(t.as_str()))
+            .count() as f32;
+        let hdc_sim = (text_sim + 0.25 * lexical_overlap).clamp(0.0, 1.0);
+        let suffix = self
+            .current_trajectory
+            .shared_suffix_depth(&e.fractal_coord);
+        let combined =
+            0.65 * hdc_sim + 0.20 * e.surprise + 0.15 * ((suffix as f32) / 8.0).clamp(0.0, 1.0);
+
+        AssociativeHit {
+            artifact_id: e.artifact_id,
+            subject: e.subject.clone(),
+            hdc_similarity: hdc_sim,
+            shared_fractal_suffix: suffix,
+            combined_score: combined,
+        }
+    }
+
+    /// Queries the associative index using a two-stage pipeline:
+    /// 1. Stage 1 L2-cache spectral/Bloom pre-screening over 16-byte `EntrySummary` records.
+    /// 2. Stage 2 exact 10,240-bit `hamming_distance_simd` and $O(1)$ Chebyshev `shared_suffix_depth` refinement.
     pub fn query_associative(&self, query_text: &str, top_k: usize) -> Vec<AssociativeHit> {
+        if top_k == 0 || self.entries.is_empty() {
+            return Vec::new();
+        }
         let q_hv = Hypervector::encode_text(query_text);
         let q_tokens: Vec<String> = query_text
             .split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
@@ -133,33 +224,66 @@ impl HdcAssociativeIndex {
             .map(str::to_ascii_lowercase)
             .collect();
 
-        let mut hits: Vec<AssociativeHit> = self
-            .entries
-            .iter()
-            .map(|e| {
-                let text_sim = q_hv.similarity(&e.hv);
-                let subj_lower = e.subject.to_ascii_lowercase();
-                let lexical_overlap = q_tokens
-                    .iter()
-                    .filter(|t| subj_lower.contains(t.as_str()))
-                    .count() as f32;
-                let hdc_sim = (text_sim + 0.25 * lexical_overlap).clamp(0.0, 1.0);
-                let suffix = self
-                    .current_trajectory
-                    .shared_suffix_depth(&e.fractal_coord);
-                let combined = 0.65 * hdc_sim
-                    + 0.20 * e.surprise
-                    + 0.15 * ((suffix as f32) / 8.0).clamp(0.0, 1.0);
-
-                AssociativeHit {
-                    artifact_id: e.artifact_id,
-                    subject: e.subject.clone(),
-                    hdc_similarity: hdc_sim,
-                    shared_fractal_suffix: suffix,
-                    combined_score: combined,
+        let mut hits: Vec<AssociativeHit> = if self.entries.len() <= 64 {
+            self.entries
+                .iter()
+                .map(|e| self.score_entry(e, &q_hv, &q_tokens))
+                .collect()
+        } else {
+            let q_sub64 = q_hv.sub_hypervector_64();
+            let mut q_bloom32 = 0u32;
+            for tok in &q_tokens {
+                q_bloom32 |= Self::token_bloom_bits32(tok);
+                for sub in tok.split(|c: char| !c.is_alphanumeric() && c != '_') {
+                    if sub.len() >= 2 {
+                        q_bloom32 |= Self::token_bloom_bits32(sub);
+                    }
                 }
-            })
-            .collect();
+            }
+            let cur_quad = self.current_trajectory.quadrant_signature_u16();
+            let candidate_cap = (top_k * 4).clamp(16, 64).min(self.entries.len());
+            let mut candidates: Vec<(u32, usize)> = Vec::with_capacity(candidate_cap);
+            let mut min_score = 0u32;
+            let mut min_pos = 0usize;
+
+            for (idx, s) in self.summaries.iter().enumerate() {
+                let sim64 = 64u32.saturating_sub((q_sub64 ^ s.hv_sub64).count_ones());
+                let bloom_hits = (q_bloom32 & s.subj_bloom32).count_ones();
+                let quad_sim = 16u32.saturating_sub((cur_quad ^ s.quadrant_u16).count_ones());
+                let coarse = sim64 * 8
+                    + bloom_hits * 64
+                    + (u32::from(s.surprise_q8) >> 1)
+                    + quad_sim * 4
+                    + u32::from(s.flags & 0x04) * 4;
+
+                if candidates.len() < candidate_cap {
+                    candidates.push((coarse, idx));
+                    if candidates.len() == candidate_cap {
+                        let (pos, &(sc, _)) = candidates
+                            .iter()
+                            .enumerate()
+                            .min_by_key(|&(_, &(sc, _))| sc)
+                            .unwrap();
+                        min_pos = pos;
+                        min_score = sc;
+                    }
+                } else if coarse > min_score {
+                    candidates[min_pos] = (coarse, idx);
+                    let (pos, &(sc, _)) = candidates
+                        .iter()
+                        .enumerate()
+                        .min_by_key(|&(_, &(sc, _))| sc)
+                        .unwrap();
+                    min_pos = pos;
+                    min_score = sc;
+                }
+            }
+
+            candidates
+                .into_iter()
+                .map(|(_, idx)| self.score_entry(&self.entries[idx], &q_hv, &q_tokens))
+                .collect()
+        };
 
         hits.sort_by(|a, b| {
             b.combined_score
@@ -168,6 +292,22 @@ impl HdcAssociativeIndex {
         });
         hits.truncate(top_k);
         hits
+    }
+}
+
+impl AssociativeMemoryIndex for HdcAssociativeIndex {
+    fn observe_event(
+        &mut self,
+        artifact_id: ArtifactId,
+        subject: &str,
+        content: &str,
+        is_anomaly: bool,
+    ) -> ObservationReceipt {
+        Self::observe_event(self, artifact_id, subject, content, is_anomaly)
+    }
+
+    fn query_associative(&self, query_text: &str, top_k: usize) -> Vec<AssociativeHit> {
+        Self::query_associative(self, query_text, top_k)
     }
 }
 
@@ -193,5 +333,26 @@ mod tests {
         assert_eq!(receipt.fractal_coord, idx.current_trajectory());
         let hits = idx.query_associative("allocate_page mmu", 3);
         assert_eq!(hits.len(), 1);
+        assert_eq!(idx.query_associative("allocate_page", 0).len(), 0);
+
+        // Exercise trait object / trait method surface and >64 entry two-stage pre-screening path
+        let trait_ref: &mut dyn AssociativeMemoryIndex = &mut idx;
+        for i in 2..=120u64 {
+            let _ = trait_ref.observe_event(
+                ArtifactId(i),
+                &format!("src/module_{i}.rs"),
+                &format!("pub fn helper_{i}() -> usize {{ {i} }}"),
+                false,
+            );
+        }
+        let _ = trait_ref.observe_event(
+            ArtifactId(999),
+            "crates/icx-core/src/quantum_needle.rs",
+            "pub fn locate_quantum_passkey() { panic!(\"E0502 quantum fault\"); }",
+            true,
+        );
+        let staged_hits = trait_ref.query_associative("quantum_needle locate_quantum_passkey", 5);
+        assert_eq!(staged_hits.len(), 5);
+        assert_eq!(staged_hits[0].artifact_id, ArtifactId(999));
     }
 }
