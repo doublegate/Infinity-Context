@@ -11,7 +11,8 @@
    cargo fmt --all -- --check
    cargo clippy --workspace --all-targets -- -D warnings
    cargo test --workspace
-   cargo doc --workspace --no-deps
+   cargo llvm-cov --workspace --all-targets --lcov --output-path lcov.info --fail-under-lines 95
+   RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
    cargo run --release -p icx-cli -- benchmark
    uvx reuse lint
    ```

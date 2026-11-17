@@ -63,6 +63,49 @@ impl WireProxyTransformer {
 
         serde_json::to_string(&root)
     }
+
+    /// Transforms an OpenAI `/v1/chat/completions` or `/v1/responses` JSON request body,
+    /// preserving the 1,024-token automatic prefix cache while virtualizing oversized middle turns
+    /// and appending the Ephemeral Tail Slot.
+    pub fn transform_openai_request(
+        body_json: &str,
+        mmu: &mut InfinityContextMmu,
+    ) -> Result<String, serde_json::Error> {
+        let mut root: Value = serde_json::from_str(body_json)?;
+        let protect_tail = 2usize;
+
+        if let Some(messages) = root.get_mut("messages").and_then(Value::as_array_mut) {
+            let total = messages.len();
+            if total > protect_tail {
+                let fold_end = total - protect_tail;
+                for (idx, msg) in messages[..fold_end].iter_mut().enumerate() {
+                    if let Some(content_str) = msg.get("content").and_then(Value::as_str) {
+                        if content_str.len() >= mmu.tool_virtualize_threshold {
+                            let subj = format!("openai_turn_{idx}");
+                            let res =
+                                mmu.ingest_payload(AgentKind::Codex, &subj, content_str, false);
+                            msg["content"] = Value::String(res.compressed_ahtl);
+                        }
+                    }
+                }
+            }
+
+            let last_query = messages
+                .last()
+                .and_then(|m| m.get("content"))
+                .and_then(Value::as_str)
+                .unwrap_or("openai_turn")
+                .to_owned();
+            let tail_slot = mmu.build_ephemeral_tail_slot(AgentKind::Codex, &last_query, 3);
+            if let Some(last_msg) = messages.last_mut() {
+                if let Some(orig) = last_msg.get("content").and_then(Value::as_str) {
+                    last_msg["content"] = Value::String(format!("{orig}\n{tail_slot}"));
+                }
+            }
+        }
+
+        serde_json::to_string(&root)
+    }
 }
 
 #[cfg(test)]
@@ -70,7 +113,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn anthropic_wire_transformer_injects_cache_control_and_virtualizes_middle_history() {
+    fn anthropic_and_openai_wire_transformers_inject_cache_control_and_virtualize_middle_history() {
         let mut mmu = InfinityContextMmu::default();
         let big_middle = "fn bulky_middle() {}\n".repeat(60);
         let req = json!({
@@ -102,6 +145,65 @@ mod tests {
                 .unwrap()
                 .contains("⟪ICX:TAIL_SLOT"),
             "final turn must receive the Ephemeral Tail Slot"
+        );
+
+        let openai_transformed =
+            WireProxyTransformer::transform_openai_request(&req, &mut mmu).unwrap();
+        let openai_val: Value = serde_json::from_str(&openai_transformed).unwrap();
+        let o_msgs = openai_val["messages"].as_array().unwrap();
+        assert!(
+            o_msgs[0]["content"]
+                .as_str()
+                .unwrap()
+                .starts_with("⟦Δ:openai_turn_0")
+        );
+        assert!(
+            o_msgs[2]["content"]
+                .as_str()
+                .unwrap()
+                .contains("⟪ICX:TAIL_SLOT")
+        );
+
+        let def_transformer = WireProxyTransformer;
+        assert!(format!("{def_transformer:?}").contains("WireProxyTransformer"));
+        let short_req = json!({
+            "model": "gpt-5",
+            "messages": [
+                { "role": "user", "content": "short 1" },
+                { "role": "assistant", "content": "short 2" },
+                { "role": "user", "content": "short 3" }
+            ]
+        })
+        .to_string();
+        let short_anth =
+            WireProxyTransformer::transform_anthropic_messages(&short_req, &mut mmu).unwrap();
+        assert!(short_anth.contains("ephemeral"));
+        let short_oai =
+            WireProxyTransformer::transform_openai_request(&short_req, &mut mmu).unwrap();
+        assert!(short_oai.contains("short 1"));
+
+        let empty_anth =
+            WireProxyTransformer::transform_anthropic_messages("{}", &mut mmu).unwrap();
+        assert_eq!(empty_anth, "{}");
+        let empty_oai = WireProxyTransformer::transform_openai_request("{}", &mut mmu).unwrap();
+        assert_eq!(empty_oai, "{}");
+
+        let two_msg = json!({
+            "messages": [
+                { "role": "user", "content": "first" },
+                { "role": "user", "content": "second" }
+            ]
+        })
+        .to_string();
+        assert!(
+            WireProxyTransformer::transform_anthropic_messages(&two_msg, &mut mmu)
+                .unwrap()
+                .contains("⟪ICX:TAIL_SLOT")
+        );
+        assert!(
+            WireProxyTransformer::transform_openai_request(&two_msg, &mut mmu)
+                .unwrap()
+                .contains("⟪ICX:TAIL_SLOT")
         );
     }
 }

@@ -26,7 +26,8 @@
   <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/lossless%20recovery-100%25%20(BLAKE3%20CAS)-16a34a.svg" alt="Lossless Recovery: 100%"></a>
   <a href="#prefix-cache-locked-epoch-controller"><img src="https://img.shields.io/badge/prefix--cache%20hit-94.38%25-059669.svg" alt="Prefix-Cache Hit: 94.38%"></a>
   <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/10%2C240--bit%20HDC%20scan-1.31%20%C2%B5s%2Fnode-0284c7.svg" alt="HDC Scan: 1.31 us/node"></a><br/>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.80%2B%20(8%20crates)-f97316.svg?logo=rust" alt="Rust: 1.80+ (8 crates)"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.100%2B%20(Edition%202024)-f97316.svg?logo=rust" alt="Rust: 1.100+ (Edition 2024)"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/unsafe_code-forbid%20(100%25%20safe)-16a34a.svg" alt="unsafe_code: forbid (100% safe)"></a>
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v0.1.0-2563eb.svg" alt="Release: v0.1.0"></a>
   <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/shm%20seqlock-%3C300%20ns-0d9488.svg" alt="SHM Seqlock: <300 ns"></a>
   <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20MCP-475569.svg" alt="Supported Agents"></a>
@@ -85,7 +86,7 @@ Every `AHTL` packet compresses bulky tool logs by **12x–72x** in under **200 m
 | **Plane 2: `icx-core` (`LCM`)** | Gear-hash **FastCDC** content-defined chunking, `zstd`-compressed **BLAKE3 Content-Addressed Storage (`CAS`)**, 4-level **Merkle-DAG** (`L0 RawChunk` -> `L1 EpisodeNode` -> `L2 FoldedSubtask` -> `L3 EpochRoot`), and **Context-Folding** subtask rollback. | **100% byte-exact** lossless passkey & byte recovery |
 | **Plane 3: `icx-hdc` & `icx-store`** | **10,240-bit Binary Spatter Code (`BSC`) Hypervectors (`[u64; 160]`)**, **Infini-Attention Delta-Rule Bundler**, **Contractive IFS Fractal Chaos-Game Archive (`FCGA`)**, **Titans Surprise Gate**, and **Bi-Temporal Graph + HippoRAG Personalized PageRank (`PPR`)**. | **1.31 µs / node** (`1.30 ms / 1,000 nodes`) SIMD scan |
 | **Plane 4: `icx-proxy`** | **Prefix-Cache-Locked Epoch Controller** that keeps epochs `0..K` 100% byte-frozen across turns, aligning Anthropic 4-slot `cache_control: {"type": "ephemeral"}` breakpoints and OpenAI 1,024-token prefix boundaries. | **94.38% KV prefix-cache hit rate** across 64 turns |
-| **Plane 5: `icx-bus` & `icx-adapters`** | Lock-free POSIX `/dev/shm/icx-fabric-v1.shm` **Seqlock Ring Buffer** (`512 x 2,048-byte` `#[repr(C, align(64))]` slots) + native adapters for Claude Code, Codex CLI, Antigravity CLI (`agy`), Hermes Agent, and a `< 150-token` **Single-Tool Polymorphic MCP Pager (`icx`)**. | **< 300 ns** cross-agent seqlock broadcast |
+| **Plane 5: `icx-bus` & `icx-adapters`** | Lock-free POSIX `/dev/shm/icx-fabric-v1.shm` **Seqlock Ring Buffer** (`256 x 4,096-byte` `#[repr(C, align(64))]` 100% safe atomic slots) + native adapters for Claude Code, Codex CLI, Antigravity CLI (`agy`), Hermes Agent, and a `< 150-token` **Single-Tool Polymorphic MCP Pager (`icx`)**. | **< 300 ns** cross-agent seqlock broadcast |
 
 ---
 
@@ -113,7 +114,7 @@ For theme-adaptive viewing in GitHub Dark and Light modes, the vector 5-Plane Ar
 
 ### 8-Crate Workspace & Subsystem Dependency Graph
 
-The workspace enforces a strict acyclic dependency DAG from foundational types (`icx-core`) up to the CLI binary (`icx-cli`). Every crate forbids `unsafe` code (`unsafe_code = "forbid"`) except `icx-bus`, where POSIX `/dev/shm` `mmap` seqlock operations are isolated and documented with `// SAFETY:` invariants ([source `.dot`](images/infinity-context-crate-graph.dot) | [vector `.svg`](images/infinity-context-crate-graph.svg)):
+The workspace enforces a strict acyclic dependency DAG from foundational types (`icx-core`) up to the CLI binary (`icx-cli`). Every single crate in the 8-crate workspace compiles with `unsafe_code = "forbid"` (`std` allowed, 100% zero `unsafe` code across the entire project through `v1.0.0`) ([source `.dot`](images/infinity-context-crate-graph.dot) | [vector `.svg`](images/infinity-context-crate-graph.svg)):
 
 <div align="center">
   <img src="images/infinity-context-crate-graph.png" alt="Infinity-Context (icx) 8-Crate Workspace & Subsystem Dependency Graph" width="100%" />
@@ -311,10 +312,10 @@ Infinity-Context/
 │   ├── icx-hdc/                # 10,240-bit Hypervector, HdcBundler, FractalCoord, TitansSurpriseGate
 │   ├── icx-codec/              # AhtlPacket, Braille-256 bijection, StructuralSkeletonizer, SecretRedactor
 │   ├── icx-store/              # BiTemporalGraph & HippoRAG PersonalizedPageRank (PPR)
-│   ├── icx-bus/                # POSIX /dev/shm SeqlockTelemetryBus (512 x 2048B lock-free ring)
+│   ├── icx-bus/                # POSIX /dev/shm SeqlockTelemetryBus (256 x 4096B 100% safe lock-free ring)
 │   ├── icx-adapters/           # InfinityContextMmu, Claude/Codex/agy/Hermes adapters, McpPagerServer
 │   ├── icx-proxy/              # WireProxyTransformer (Anthropic 4-slot & OpenAI 1024-tok prefix cache)
-│   └── icx-cli/                # `icx` binary entry point (hook, mcp-serve, proxy-transform, benchmark, doctor)
+│   └── icx-cli/                # `icx` binary entry point (init, deref, hook, mcp-serve, proxy-transform, benchmark, doctor)
 ├── images/                     # High-resolution logos & Graphviz (.dot / .png / .svg) relationship graphs
 ├── assets/                     # Multi-size icon packs (PNG/SVG/ICO), banners, web manifest & Social Preview card
 ├── docs/                       # 13 implementation-grade specification documents
@@ -336,7 +337,7 @@ Infinity-Context/
 
 ### Prerequisites
 
-- **Rust 1.80+** (`stable` toolchain via [rustup](https://rustup.rs))
+- **Rust 1.100+** (Edition `2024`, `stable` toolchain via [rustup](https://rustup.rs))
 - **`jq` 1.6+** (required when running the local CI/CLA/reviewer self-test suites in `scripts/` and `.github/scripts/`)
 
 ### Build, Test & Verify
@@ -349,6 +350,9 @@ cd Infinity-Context
 # Run the full test suite across all 8 workspace crates
 cargo test --workspace
 
+# Initialize a workspace `.icx/` CAS store and `/dev/shm` Seqlock fabric
+cargo run --release -p icx-cli -- init --dir .icx
+
 # Inspect local AI agent installations (Claude Code, Codex, Antigravity, Hermes) and /dev/shm readiness
 cargo run --release -p icx-cli -- doctor
 
@@ -356,28 +360,28 @@ cargo run --release -p icx-cli -- doctor
 cargo run --release -p icx-cli -- benchmark
 
 # Display active MMU, Merkle-DAG, HDC index, and /dev/shm telemetry status
-cargo run --release -p icx-cli -- status --store .icx-data
+cargo run --release -p icx-cli -- status
 ```
 
 ### Encode & Dereference `AHTL` Holographic Packets
 
 ```bash
 # Compress a file or tool log into an AHTL packet and persist its lossless BLAKE3 CAS chunk
-cargo run --release -p icx-cli -- encode-ahtl README.md --store .icx-data
+cargo run --release -p icx-cli -- encode-ahtl README.md --dir .icx
 
-# Losslessly dereference a #icx:<16-hex> handle back to exact original bytes
-cargo run --release -p icx-cli -- decode-ahtl "#icx:7bf8239fb7c504f1" --store .icx-data
+# Losslessly dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle back to exact original bytes or line slice
+cargo run --release -p icx-cli -- deref "#icx:7bf8239fb7c504f1" --lines 1:40 --dir .icx
 ```
 
 ### Agent Hook & MCP Server Commands
 
 ```bash
 # Run as a synchronous lifecycle hook for Claude Code, Codex, Antigravity (agy), or Hermes
-cargo run --release -p icx-cli -- hook claude PostToolUse --store .icx-data < tool_event.json
-cargo run --release -p icx-cli -- hook agy BeforeModel --store .icx-data < agy_event.json
+cargo run --release -p icx-cli -- hook --agent claude-code --event PostToolUse < tool_event.json
+cargo run --release -p icx-cli -- hook --agent agy --event PreInvocation < agy_event.json
 
 # Launch the Single-Tool Polymorphic MCP Pager Server over stdio
-cargo run --release -p icx-cli -- mcp-serve --store .icx-data
+cargo run --release -p icx-cli -- mcp-serve
 ```
 
 ---
@@ -416,8 +420,8 @@ cargo run --release -p icx-cli -- mcp-serve --store .icx-data
 
 ## Unsafe Code Policy & Security
 
-- **Workspace-Wide `unsafe_code = "forbid"`:** Seven of the eight crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-adapters`, `icx-proxy`, `icx-cli`) compile with `#[forbid(unsafe_code)]`.
-- **Isolated Seqlock Shared Memory (`icx-bus`):** Unsafe Rust is permitted **only** inside [`crates/icx-bus/src/lib.rs`](crates/icx-bus/src/lib.rs) to perform POSIX `shm_open` / `mmap` mapping and lock-free `read_volatile` / `write_volatile` seqlock slot transfers over `#[repr(C, align(64))]` structures. Every `unsafe` block carries an explicit `// SAFETY:` invariant comment.
+- **Permanent Workspace-Wide `unsafe_code = "forbid"` (`std` Allowed, Zero `unsafe`):** All eight workspace crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`) compile with `#[forbid(unsafe_code)]`, enforced permanently by a dedicated CI gate through `v1.0.0` and beyond.
+- **100% Safe Atomic Word-Packed Seqlock Shared Memory (`icx-bus`):** [`SeqlockTelemetryBus`](crates/icx-bus/src/ring.rs) implements the 64-byte `FabricHeader` and 4,096-byte `SeqlockSlot` using 100% safe `AtomicU32` and `AtomicU64` word arrays (`#[repr(C, align(64))]`) and safe `/dev/shm` positional I/O (`std::os::unix::fs::FileExt::{read_exact_at, write_all_at}` and OS-managed `File::try_lock()`), with zero `unsafe` blocks or raw pointer casts anywhere in the codebase.
 - **Pre-Ingestion Secret Redaction & Prompt-Injection Sanitization:** [`SecretRedactor`](crates/icx-codec/src/redact.rs) strips Anthropic (`sk-ant-*`), OpenAI (`sk-proj-*`), GitHub (`ghp_*`, `github_pat_*`), AWS (`AKIA*`), Slack (`xox[baprs]-*`), Bearer tokens, PEM private keys, and fake system/role boundary injection delimiters **before** any payload is hashed into `CasStore` or broadcast on `/dev/shm`.
 
 See [Security & Threat Model](docs/security-and-threat-model.md) and [SECURITY.md](SECURITY.md) for full details.
@@ -426,10 +430,10 @@ See [Security & Threat Model](docs/security-and-threat-model.md) and [SECURITY.m
 
 ## Roadmap
 
-Development is organized into 5 phases and 14 sprints tracked in [`to-dos/ROADMAP.md`](to-dos/ROADMAP.md):
+Development is organized into 5 phases and 15 sprints tracked in [`to-dos/ROADMAP.md`](to-dos/ROADMAP.md):
 
 - **Phase 0: Research, Forensics & Workspace Bootstrap** — [Overview (`v0.1.0` Complete)](to-dos/phase-0-precursory-setup/overview.md)
-- **Phase 1: Core CAS, Merkle-DAG (`LCM`) & `/dev/shm` Seqlock Bus** — [Overview](to-dos/phase-1-foundations/overview.md)
+- **Phase 1: Core CAS, Merkle-DAG (`LCM`), `/dev/shm` Seqlock Bus & Zero-`unsafe` Enforcement** — [Overview (`Sprints 1–4` Complete)](to-dos/phase-1-foundations/overview.md)
 - **Phase 2: Alien Holographic Token Lattice (`AHTL`), Braille-256 & Secret Redaction** — [Overview](to-dos/phase-2-alien-codec-and-compression/overview.md)
 - **Phase 3: 10,240-Bit HDC, Fractal IFS (`FCGA`), Titans Gate & Bi-Temporal PPR** — [Overview](to-dos/phase-3-hyperdimensional-and-fractal-index/overview.md)
 - **Phase 4: Cross-Agent Adapters, Polymorphic MCP Pager & Cache-Epoch Wire Proxy** — [Overview](to-dos/phase-4-cross-agent-interception/overview.md)
@@ -439,12 +443,13 @@ Development is organized into 5 phases and 14 sprints tracked in [`to-dos/ROADMA
 
 ## Contributing
 
-Contributions are welcome and are accepted under the [Contributor License Agreement (`CLA.md`)](CLA.md). Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before opening a pull request. Ensure **Rust 1.80+** and **`jq`** are installed, as all changes must pass:
+Contributions are welcome and are accepted under the [Contributor License Agreement (`CLA.md`)](CLA.md). Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before opening a pull request. Ensure **Rust 1.100+** and **`jq`** are installed, as all changes must pass:
 
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo llvm-cov --workspace --all-targets --lcov --output-path lcov.info --fail-under-lines 95
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 bash scripts/agy-review-selftest.sh
 bash .github/scripts/cla-check.sh --selftest

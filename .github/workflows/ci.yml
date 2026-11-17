@@ -30,6 +30,26 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Check formatting
         run: cargo fmt --all -- --check
+      - name: Enforce workspace-wide zero-unsafe policy
+        run: |
+          if ! grep -Eq '^unsafe_code = "forbid"$' Cargo.toml; then
+            echo "ERROR: root Cargo.toml must set unsafe_code = \"forbid\"" >&2
+            exit 1
+          fi
+          for manifest in crates/*/Cargo.toml; do
+            if grep -Eq 'unsafe_code[[:space:]]*=[[:space:]]*"(allow|warn)"' "$manifest"; then
+              echo "ERROR: $manifest weakens unsafe_code = \"forbid\"" >&2
+              exit 1
+            fi
+            if ! grep -A2 '^\[lints\]$' "$manifest" | grep -Eq '^workspace = true$'; then
+              echo "ERROR: $manifest must inherit workspace lints ([lints] workspace = true)" >&2
+              exit 1
+            fi
+          done
+          if grep -rnE 'allow\(unsafe_code\)|\bunsafe[[:space:]]+(\{|fn\b|trait\b|impl\b|extern\b)' crates/; then
+            echo "ERROR: unsafe code is strictly forbidden across the Infinity-Context workspace" >&2
+            exit 1
+          fi
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Run tests
@@ -62,7 +82,7 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Generate LCOV coverage report & enforce coverage floor
-        run: cargo llvm-cov --workspace --all-targets --lcov --output-path lcov.info --fail-under-lines 65
+        run: cargo llvm-cov --workspace --all-targets --lcov --output-path lcov.info --fail-under-lines 95
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
         with:

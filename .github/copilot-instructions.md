@@ -16,14 +16,14 @@
 4. **Plane 4 — Prefix-Cache-Locked Wire Proxy (`crates/icx-proxy`):**
    - `WireProxyTransformer` managing the 4-zone prompt memory map (`Zone 0` Pinned System/Tools, `Zone 1` Sealed `L3` Cache Epochs, `Zone 2` Active Window, `Zone 3` Ephemeral Dynamic Recall Tail) for Anthropic 4-breakpoint `cache_control` and OpenAI 1,024-token prefix caching.
 5. **Plane 5 — Lock-Free `/dev/shm` Seqlock Telepathy Bus & Multi-Harness Adapters (`crates/icx-bus`, `crates/icx-adapters`, `crates/icx-cli`):**
-   - `SeqlockTelemetryBus` (`512 x 2,048-byte` `#[repr(C, align(64))]` slots in `/dev/shm/icx-fabric-v1.shm` with zero-stack-overflow heap fallback), `ClaudeCodeAdapter`, `CodexAdapter`, `AntigravityAdapter`, `HermesAdapter`, and Single-Tool Polymorphic `McpPagerServer` (`icx`, 138 tokens).
+   - `SeqlockTelemetryBus` (`256 x 4,096-byte` `#[repr(C, align(64))]` atomic word-packed slots in `/dev/shm/icx-fabric-v1.shm` with safe positional I/O and heap-allocated in-process ring), `ClaudeCodeAdapter`, `CodexAdapter`, `AntigravityAdapter`, `HermesAdapter`, and Single-Tool Polymorphic `McpPagerServer` (`icx`, 138 tokens).
 
 ---
 
 ## 2. Hard Safety & Engineering Invariants
 
-- **Workspace-Wide `#[forbid(unsafe_code)]`:** Enforced in 7 of the 8 crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-adapters`, `icx-proxy`, `icx-cli`).
-- **Isolated Seqlock Shared Memory (`crates/icx-bus`):** `unsafe` is permitted **only** in `crates/icx-bus/src/lib.rs` for POSIX `shm_open`/`mmap` and volatile seqlock operations over `#[repr(C, align(64))]` types, and every `unsafe` block must document its invariant in a `// SAFETY:` comment.
+- **Permanent Workspace-Wide `#[forbid(unsafe_code)]` (`std` Allowed, Zero `unsafe`):** Enforced across **all 8 crates** (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`) through `v1.0.0` and beyond. No `unsafe` blocks, functions, traits, or impls are permitted anywhere in the repository.
+- **Safe Atomic Word-Packed Seqlock Bus (`crates/icx-bus`):** `FabricHeader` (64 B) and `SeqlockSlot` (4,096 B) are implemented using 100% safe `AtomicU32` and `AtomicU64` word arrays and safe `/dev/shm` positional file I/O (`FileExt::{read_exact_at, write_all_at}` + `File::try_lock()`).
 - **Antigravity (`agy`) Exit-Code-0 Guard:** `AntigravityAdapter::exit_code()` in `crates/icx-adapters` must **always** return `0` on all code paths (binary forensics verified that exit code `2` triggers an emergency abort in `agy`).
 - **Pre-Hash Secret Redaction:** `SecretRedactor::sanitize()` must run **before** `CasStore::put_bytes()` or `SeqlockTelemetryBus::publish()`. Synthetic unit-test fixtures in `crates/icx-codec/src/redact.rs` are intentional test vectors allowlisted in `.gitleaks.toml`.
 - **Fail-Closed Untrusted Input Handling:** Never `unwrap()` or `panic!()` on untrusted external input (tool outputs, JSON-RPC arguments, or corrupted CAS blobs).

@@ -18,7 +18,7 @@ When multiple agents (e.g., Claude Code editing backend Rust code, Codex running
 
 ## 2. `/dev/shm/icx-fabric-v1` Lock-Free Seqlock Ring Layout
 
-The shared memory file `/dev/shm/icx-fabric-v1` (or `$XDG_RUNTIME_DIR/icx-fabric-v1.shm`) has a fixed size of `1,048,640` bytes (`64 B` header + `256 x 4,096 B` slots) mapped via `mmap(PROT_READ | PROT_WRITE, MAP_SHARED)`:
+The shared memory file `/dev/shm/icx-fabric-v1` (or `.icx/icx-fabric-v1.shm`) has a fixed size of `1,048,640` bytes (`64 B` header + `256 x 4,096 B` slots) accessed via 100% safe positional I/O (`std::os::unix::fs::FileExt::{read_exact_at, write_all_at}`) or in-process aligned atomic memory (`#![forbid(unsafe_code)]`):
 
 ```text
 Offset 0x0000_0000 .. 0x0000_003F (64 B):     FabricHeader (Magic, Version, RootSeqlock, WriteSeq, ActiveAgentsMask, GlobalDagRoot)
@@ -30,39 +30,38 @@ Offset 0x0000_0040 .. 0x0010_003F (1,048,576 B): SeqlockSlotRing (256 Slots x 4,
 ```rust
 pub const ICX_SHM_MAGIC: u64 = 0x4943_585F_4641_4231; // "ICX_FAB1"
 pub const ICX_RING_SLOTS: usize = 256;
+pub const ICX_AHTL_INLINE_CAP: usize = 3968;
+pub const ICX_AHTL_INLINE_WORDS: usize = ICX_AHTL_INLINE_CAP / 8;
 
 #[repr(C, align(64))]
 pub struct FabricHeader {
-    pub magic: std::sync::atomic::AtomicU64,
-    pub version: u32,
-    pub root_seqlock: std::sync::atomic::AtomicU32,
+    pub magic: core::sync::atomic::AtomicU64,
+    pub version: core::sync::atomic::AtomicU32,
+    pub root_seqlock: core::sync::atomic::AtomicU32,
     /// Monotonically increasing global sequence counter (AtomicU64)
-    pub write_seq: std::sync::atomic::AtomicU64,
+    pub write_seq: core::sync::atomic::AtomicU64,
     /// Bitmask of active AgentKind variants attached to the fabric
-    pub active_agents_mask: std::sync::atomic::AtomicU64,
+    pub active_agents_mask: core::sync::atomic::AtomicU64,
     /// Latest sealed global Merkle-DAG root hash (seqlock-versioned via `root_seqlock`)
-    pub global_dag_root: [std::sync::atomic::AtomicU64; 4],
+    pub global_dag_root: [core::sync::atomic::AtomicU64; 4],
 }
 
 #[repr(C, align(64))]
 pub struct SeqlockSlot {
     /// Odd while writer is mutating; even (= (seq + 1) * 2) when committed
-    pub seqlock: std::sync::atomic::AtomicU64,
-    pub timestamp_ms: u64,
-    pub artifact_id: u64,
-    pub workspace_hash: u64,
-    pub agent_kind: u8,
-    pub surprise_q8: u8,
-    pub payload_len: u16,
-    pub packet_kind: u8,
-    pub _reserved: [u8; 3],
+    pub seqlock: core::sync::atomic::AtomicU64,
+    pub timestamp_ms: core::sync::atomic::AtomicU64,
+    pub artifact_id: core::sync::atomic::AtomicU64,
+    pub workspace_hash: core::sync::atomic::AtomicU64,
+    /// Packed metadata word: agent_kind (u8), surprise_q8 (u8), payload_len (u16), packet_kind (u8)
+    pub packed_meta: core::sync::atomic::AtomicU64,
     /// Compact 256-bit sketch of the 10,240-bit HDC hypervector
-    pub hdc_sketch: [u64; 4],
-    /// Quantized 16-D Fractal Chaos-Game coordinate (i16 fixed-point in [-32767, 32767])
-    pub fractal_q15: [i16; 16],
-    pub _pad: [u8; 24],
-    /// Inline UTF-8 AHTL Holographic Packet (up to 3,968 bytes)
-    pub ahtl_bytes: [u8; 3968],
+    pub hdc_sketch: [core::sync::atomic::AtomicU64; 4],
+    /// Quantized 16-D Fractal Chaos-Game coordinate (16 x i16 packed into 4 x AtomicU64)
+    pub fractal_q15_words: [core::sync::atomic::AtomicU64; 4],
+    pub reserved_pad: [core::sync::atomic::AtomicU64; 3],
+    /// Inline UTF-8 AHTL Holographic Packet (up to 3,968 bytes packed into 496 x AtomicU64)
+    pub ahtl_words: [core::sync::atomic::AtomicU64; ICX_AHTL_INLINE_WORDS],
 }
 ```
 

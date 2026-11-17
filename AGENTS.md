@@ -51,13 +51,14 @@
 
 ## 4. Project Conventions & Quality Gates
 
-- **Language:** Rust (Stable `1.80+`).
+- **Language:** Rust (Stable `1.100+`, Edition `2024`).
 - **License & IP Governance:** `GPL-3.0-or-later` / `AGPL-3.0-or-later` for code (`LICENSE`, `COPYING`), `CC-BY-NC-ND-4.0` for specifications/diagrams, and patent-pending + commercial reservation (`LICENSING.md`, `PATENTS.md`, `COMMERCIAL.md`, `CLA.md`), enforced via REUSE 3.3 (`REUSE.toml` + `uvx reuse lint`).
-- **Safety:** `unsafe_code = "forbid"` workspace-wide, except inside `crates/icx-bus` where POSIX `mmap` seqlock operations are isolated and documented with `// SAFETY:` invariants.
-- **Formatting & Linting:**
+- **Safety:** `std` is permitted across the workspace, and `unsafe_code = "forbid"` is permanently enforced across all 8 crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`) through `v1.0.0` and beyond (zero `unsafe` code anywhere in the repository).
+- **Formatting, Linting & Coverage (`>= 95%`):**
   ```bash
   cargo fmt --all -- --check
   cargo clippy --workspace --all-targets -- -D warnings
+  cargo llvm-cov --workspace --all-targets --lcov --output-path lcov.info --fail-under-lines 95
   ```
 - **Testing & Benchmarking:**
   ```bash

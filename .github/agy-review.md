@@ -12,7 +12,7 @@ Authoritative context:
 ## Priorities (in order)
 
 1. Lossless data integrity (`#icx:<16-hex>` BLAKE3 content-addressed storage and fail-closed digest verification on read).
-2. Memory safety and soundness (`unsafe_code = "forbid"` in all crates except `icx-bus`, where every `unsafe` block requires a `// SAFETY:` invariant comment).
+2. Memory safety and soundness (`unsafe_code = "forbid"` enforced permanently across all 8 workspace crates; zero `unsafe` code is permitted anywhere in the repository).
 3. Pre-hash secret redaction and prompt-injection boundary sanitization (`SecretRedactor` must run before `CasStore` hashing or `/dev/shm` broadcast).
 4. Cross-agent hook and wire invariants (e.g., `AntigravityAdapter::exit_code() == 0` so `agy` never triggers an emergency abort on exit code `2`; byte-frozen sealed epochs in `CacheEpochController`).
 5. Honest documentation: every metric or claim in `README.md` or `docs/` must be backed by code and reproducible via `cargo test --workspace` or `cargo run --release -p icx-cli -- benchmark`.
@@ -21,9 +21,8 @@ Authoritative context:
 
 ### Memory safety and `unsafe` policy
 
-- Any `unsafe` block outside `crates/icx-bus/src/`.
-- Any `unsafe` block in `crates/icx-bus/src/` that lacks an explicit `// SAFETY:` comment stating the upheld invariant, or that violates 64-byte alignment / seqlock ordering (`Acquire` / `Release` fences).
-- Constructing `FabricMemoryLayout` (~1 MiB) on the stack instead of heap-allocating via `alloc_zeroed`.
+- Any `unsafe` block, function, trait, or impl anywhere in `crates/`, or any weakening of `unsafe_code = "forbid"` in `Cargo.toml`.
+- Constructing `FabricMemoryLayout` (~1 MiB) on the stack instead of heap-allocating its slot slice.
 
 ### Lossless CAS, AHTL codec, and security boundaries
 

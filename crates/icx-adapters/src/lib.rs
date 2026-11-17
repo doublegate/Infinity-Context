@@ -177,4 +177,212 @@ mod tests {
         assert_eq!(stop_val["decision"], "continue");
         let _ = AgentKind::Codex;
     }
+
+    #[test]
+    fn all_adapters_and_mcp_operations_conform_to_wire_contracts() {
+        let mut mmu = InfinityContextMmu::default();
+
+        // ClaudeCodeAdapter all events
+        let cs = ClaudeCodeAdapter::handle_hook("SessionStart", "", &mut mmu).unwrap();
+        assert!(cs.contains("SessionStart"));
+        let cu =
+            ClaudeCodeAdapter::handle_hook("UserPromptSubmit", r#"{"prompt":"fix bug"}"#, &mut mmu)
+                .unwrap();
+        assert!(cu.contains("UserPromptSubmit"));
+        let cp_short = ClaudeCodeAdapter::handle_hook(
+            "PostToolUse",
+            r#"{"tool_name":"Read","tool_response":{"ok":true}}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        assert_eq!(cp_short, "{}");
+        let cp_none = ClaudeCodeAdapter::handle_hook("PostToolUse", "{}", &mut mmu).unwrap();
+        assert_eq!(cp_none, "{}");
+        let cpre = ClaudeCodeAdapter::handle_hook("PreCompact", "{}", &mut mmu).unwrap();
+        assert!(cpre.contains("systemMessage"));
+        let cpost = ClaudeCodeAdapter::handle_hook("PostCompact", "{}", &mut mmu).unwrap();
+        assert!(cpost.contains("systemMessage"));
+        assert_eq!(
+            ClaudeCodeAdapter::handle_hook("UnknownEvent", "{}", &mut mmu).unwrap(),
+            "{}"
+        );
+
+        // CodexAdapter all events
+        let xs = CodexAdapter::handle_hook("session-start", "", &mut mmu).unwrap();
+        assert!(xs.contains("SessionStart"));
+        let xu = CodexAdapter::handle_hook(
+            "user-prompt-submit",
+            r#"{"prompt":"inspect dag"}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(xu.contains("UserPromptSubmit"));
+        let xp1 = CodexAdapter::handle_hook(
+            "post-tool-use",
+            r#"{"tool_name":"shell","tool_response":"line1\nline2"}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(xp1.contains("PostToolUse"));
+        let xp2 = CodexAdapter::handle_hook(
+            "PostToolUse",
+            r#"{"tool_name":"shell","tool_response":{"code":0}}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(xp2.contains("PostToolUse"));
+        let xp3 = CodexAdapter::handle_hook("PostToolUse", "{}", &mut mmu).unwrap();
+        assert!(xp3.contains("PostToolUse"));
+        let xc = CodexAdapter::handle_hook("pre-compact", "{}", &mut mmu).unwrap();
+        assert!(xc.contains("systemMessage"));
+        let xunk = CodexAdapter::handle_hook("other", "{}", &mut mmu).unwrap();
+        assert!(xunk.contains(r#""continue":true"#));
+
+        // AntigravityAdapter remaining events
+        let asess = AntigravityAdapter::handle_hook("session-start", "", &mut mmu).unwrap();
+        assert!(asess.contains("injectSteps"));
+        let apre = AntigravityAdapter::handle_hook("PreToolUse", "{}", &mut mmu).unwrap();
+        assert!(apre.contains("allow"));
+        let apost_ok = AntigravityAdapter::handle_hook(
+            "PostToolUse",
+            r#"{"toolCall":{"name":"run","args":{"cmd":"ls"}}}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        assert_eq!(apost_ok, "{}");
+        let apost_err = AntigravityAdapter::handle_hook(
+            "PostToolUse",
+            r#"{"toolCall":{"name":"run","args":{"cmd":"ls"}},"error":"failed"}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        assert_eq!(apost_err, "{}");
+        let astop_done = AntigravityAdapter::handle_hook(
+            "Stop",
+            r#"{"terminationReason":"COMPLETED","continuationActive":true}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(astop_done.contains(r#""decision":"stop""#));
+        assert_eq!(
+            AntigravityAdapter::handle_hook("Other", "{}", &mut mmu).unwrap(),
+            "{}"
+        );
+
+        // HermesAdapter short & long windows
+        let short_msgs = vec![HermesMessage {
+            role: "user".into(),
+            content: "short query".into(),
+            tool_call_id: None,
+            name: None,
+        }];
+        let short_sel = HermesAdapter::select_context(&short_msgs, 1, 1, &mut mmu);
+        assert_eq!(short_sel.len(), 2);
+
+        let mut long_msgs = Vec::new();
+        for i in 0..6 {
+            long_msgs.push(HermesMessage {
+                role: if i == 0 {
+                    "system".into()
+                } else {
+                    "tool".into()
+                },
+                content: format!("tool result payload {i}"),
+                tool_call_id: Some(format!("call_{i}")),
+                name: Some(format!("tool_{i}")),
+            });
+        }
+        let long_sel = HermesAdapter::select_context(&long_msgs, 1, 1, &mut mmu);
+        assert_eq!(long_sel.len(), 4);
+        assert!(
+            long_sel[1]
+                .content
+                .contains("⟪ICX:HERMES_EPOCH│folded_msgs=4⟫")
+        );
+
+        // McpPagerServer JSON-RPC methods and error paths
+        let bad_json = McpPagerServer::handle_jsonrpc("{bad", &mut mmu);
+        assert_eq!(bad_json["error"]["code"], -32700);
+        let init_resp = McpPagerServer::handle_jsonrpc(
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#,
+            &mut mmu,
+        );
+        assert_eq!(
+            init_resp["result"]["serverInfo"]["name"],
+            "infinity-context-mmu"
+        );
+        let list_resp = McpPagerServer::handle_jsonrpc(
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
+            &mut mmu,
+        );
+        assert_eq!(list_resp["result"]["tools"][0]["name"], "icx");
+        let unknown_m = McpPagerServer::handle_jsonrpc(
+            r#"{"jsonrpc":"2.0","id":3,"method":"unknown/method"}"#,
+            &mut mmu,
+        );
+        assert_eq!(unknown_m["error"]["code"], -32601);
+
+        assert!(
+            McpPagerServer::execute_icx_op(&serde_json::json!({"op":"deref"}), &mut mmu)
+                .starts_with("ERR:")
+        );
+        assert!(
+            McpPagerServer::execute_icx_op(&serde_json::json!({"op":"deref","id":"bad"}), &mut mmu)
+                .starts_with("ERR:")
+        );
+        assert!(
+            McpPagerServer::execute_icx_op(&serde_json::json!({"op":"slice"}), &mut mmu)
+                .starts_with("ERR:")
+        );
+        assert!(
+            McpPagerServer::execute_icx_op(&serde_json::json!({"op":"slice","id":"bad"}), &mut mmu)
+                .starts_with("ERR:")
+        );
+        assert!(
+            McpPagerServer::execute_icx_op(
+                &serde_json::json!({"op":"grep","id":"bad","q":"x"}),
+                &mut mmu
+            )
+            .starts_with("ERR:")
+        );
+        let grep_all =
+            McpPagerServer::execute_icx_op(&serde_json::json!({"op":"grep","q":"line1"}), &mut mmu);
+        assert!(grep_all.contains("line1"));
+        let recall_out = McpPagerServer::execute_icx_op(
+            &serde_json::json!({"op":"recall","q":"shell line1"}),
+            &mut mmu,
+        );
+        assert!(recall_out.contains("⟪ICX:TAIL_SLOT"));
+        let fold_err = McpPagerServer::execute_icx_op(
+            &serde_json::json!({"op":"fold","q":"no_open_branch"}),
+            &mut mmu,
+        );
+        assert!(fold_err.starts_with("ERR:"));
+        let xagent_out =
+            McpPagerServer::execute_icx_op(&serde_json::json!({"op":"xagent"}), &mut mmu);
+        assert_ne!(xagent_out, "");
+        let status_out =
+            McpPagerServer::execute_icx_op(&serde_json::json!({"op":"status"}), &mut mmu);
+        assert!(status_out.contains("⟪ICX:STATUS"));
+
+        // Publish > 4 sibling telepathy events and verify build_ephemeral_tail_slot caps at 4
+        for i in 0..6u64 {
+            mmu.ingest_payload(
+                AgentKind::Hermes,
+                &format!("hermes_step_{i}"),
+                "status:ok\n",
+                false,
+            );
+        }
+        let capped_tail = mmu.build_ephemeral_tail_slot(AgentKind::Cursor, "hermes_step", 3);
+        assert!(capped_tail.contains("⟪ICX:TAIL_SLOT│agent=cursor"));
+
+        // Verify MMU error paths for missing artifacts and malformed handles
+        assert!(mmu.resolve_handle("not_a_handle").is_err());
+        assert!(mmu.deref_text(icx_core::ArtifactId(0xDEAD_BEEF)).is_err());
+        assert!(
+            mmu.deref_lines(icx_core::ArtifactId(0xDEAD_BEEF), 1, 2)
+                .is_err()
+        );
+    }
 }
