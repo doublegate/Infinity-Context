@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 760" width="1360" height="760">
+  <defs>
+    <style>
+      .bg { fill: #0d1117; }
+      .panel { fill: #161b22; stroke: #30363d; stroke-width: 2; rx: 10; }
+      .node-root { fill: #4d2d18; stroke: #f0883e; stroke-width: 2; rx: 6; }
+      .node-parent { fill: #3b235a; stroke: #bc8cff; stroke-width: 2; rx: 6; }
+      .node-chunk { fill: #1f3a60; stroke: #58a6ff; stroke-width: 2; rx: 6; }
+      .node-icx { fill: #123d2a; stroke: #3fb950; stroke-width: 2; rx: 6; }
+      .title { fill: #f0f6fc; font-family: monospace; font-size: 20px; font-weight: bold; }
+      .subtitle { fill: #8b949e; font-family: monospace; font-size: 12px; }
+      .label { fill: #e6edf3; font-family: monospace; font-size: 13px; font-weight: bold; }
+      .code { fill: #79c0ff; font-family: monospace; font-size: 11.5px; }
+      .edge { stroke: #8b949e; stroke-width: 2; fill: none; }
+    </style>
+  </defs>
+  <rect class="bg" width="1360" height="760"/>
+  <text x="680" y="36" text-anchor="middle" class="title">BLAKE3 Binary Merkle Tree &amp; Infinity-Context (icx) Cryptographic Architecture</text>
+  <text x="680" y="58" text-anchor="middle" class="subtitle">Left-Full Binary Chunk Tree (1 KiB Leaves) -&gt; 4-Tier LCM MerkleContextDag &amp; 10,240-Bit XOF Hypervectors</text>
+
+  <!-- Left Panel: BLAKE3 Binary Merkle Tree -->
+  <rect class="panel" x="30" y="80" width="630" height="650"/>
+  <text x="55" y="108" class="label">1. BLAKE3 1,024-Byte Chunk Binary Merkle Tree</text>
+  <text x="55" y="130" class="subtitle">Left subtrees are full powers-of-2; CV stack depth = popcnt(chunks)</text>
+
+  <!-- Tree Diagram -->
+  <g transform="translate(55, 155)">
+    <!-- Root -->
+    <rect class="node-root" x="200" y="0" width="180" height="52"/>
+    <text x="290" y="22" text-anchor="middle" class="label">Root Parent p2</text>
+    <text x="290" y="40" text-anchor="middle" class="code">d = PARENT | ROOT</text>
+
+    <!-- Level 1 -->
+    <line class="edge" x1="290" y1="52" x2="140" y2="95"/>
+    <line class="edge" x1="290" y1="52" x2="440" y2="95"/>
+    <rect class="node-parent" x="55" y="95" width="170" height="50"/>
+    <text x="140" y="117" text-anchor="middle" class="label">Parent Node p0</text>
+    <text x="140" y="134" text-anchor="middle" class="code">d = PARENT (t=0)</text>
+
+    <rect class="node-parent" x="355" y="95" width="170" height="50"/>
+    <text x="440" y="117" text-anchor="middle" class="label">Parent Node p1</text>
+    <text x="440" y="134" text-anchor="middle" class="code">d = PARENT (t=0)</text>
+
+    <!-- Leaves c0..c3 -->
+    <line class="edge" x1="140" y1="145" x2="65" y2="195"/>
+    <line class="edge" x1="140" y1="145" x2="215" y2="195"/>
+    <line class="edge" x1="440" y1="145" x2="365" y2="195"/>
+    <line class="edge" x1="440" y1="145" x2="515" y2="195"/>
+
+    <rect class="node-chunk" x="0" y="195" width="130" height="64"/>
+    <text x="65" y="218" text-anchor="middle" class="label">Chunk c0</text>
+    <text x="65" y="236" text-anchor="middle" class="code">1024B (16 blk)</text>
+    <text x="65" y="252" text-anchor="middle" class="code">t = 0</text>
+
+    <rect class="node-chunk" x="150" y="195" width="130" height="64"/>
+    <text x="215" y="218" text-anchor="middle" class="label">Chunk c1</text>
+    <text x="215" y="236" text-anchor="middle" class="code">1024B (16 blk)</text>
+    <text x="215" y="252" text-anchor="middle" class="code">t = 1</text>
+
+    <rect class="node-chunk" x="300" y="195" width="130" height="64"/>
+    <text x="365" y="218" text-anchor="middle" class="label">Chunk c2</text>
+    <text x="365" y="236" text-anchor="middle" class="code">1024B (16 blk)</text>
+    <text x="365" y="252" text-anchor="middle" class="code">t = 2</text>
+
+    <rect class="node-chunk" x="450" y="195" width="130" height="64"/>
+    <text x="515" y="218" text-anchor="middle" class="label">Chunk c3</text>
+    <text x="515" y="236" text-anchor="middle" class="code">&lt;= 1024B</text>
+    <text x="515" y="252" text-anchor="middle" class="code">t = 3</text>
+
+    <!-- Explanation Box -->
+    <rect class="node-icx" x="0" y="285" width="580" height="260"/>
+    <text x="20" y="313" class="label">Incremental Chaining Value Stack Invariant</text>
+    <text x="20" y="338" class="code">while total_chunks &amp; 1 == 0 {</text>
+    <text x="20" y="358" class="code">    new_cv = parent_cv(pop_stack(), new_cv, key, flags);</text>
+    <text x="20" y="378" class="code">    total_chunks &gt;&gt;= 1;</text>
+    <text x="20" y="398" class="code">}</text>
+    <text x="20" y="418" class="code">push_stack(new_cv); // max 54 entries (1728 B) for 2^64 B</text>
+    <text x="20" y="450" class="subtitle">- SIMD: 4-way (SSE4.1/NEON), 8-way (AVX2), 16-way (AVX-512)</text>
+    <text x="20" y="474" class="subtitle">- Verified Streaming (Bao): O(log N) sub-chunk verification</text>
+    <text x="20" y="498" class="subtitle">- Soundness: Subtree-free, Radical-decodable, Msg-complete</text>
+    <text x="20" y="522" class="subtitle">- Speed: 0.49 cpb AVX-512 (1 thread); &gt;120 GiB/s (48 cores)</text>
+  </g>
+
+  <!-- Right Panel: Infinity-Context (icx) Mapping -->
+  <rect class="panel" x="680" y="80" width="650" height="650"/>
+  <text x="705" y="108" class="label">2. Infinity-Context (icx) BLAKE3 Integration Mapping</text>
+  <g transform="translate(705, 130)">
+    <rect class="node-chunk" x="0" y="0" width="600" height="122"/>
+    <text x="20" y="26" class="label">A. CasStore Content-Addressed Storage &amp; #icx:&lt;16-hex&gt; Handles</text>
+    <text x="20" y="52" class="code">Blake3Digest([u8; 32]) = blake3::hash(raw_bytes)</text>
+    <text x="20" y="76" class="code">ArtifactId(u64)        = u64::from_be_bytes(digest[0..8])</text>
+    <text x="20" y="102" class="subtitle">FastCDC chunks (2..64 KiB) -&gt; Zstd CAS + 256-bit verification</text>
+
+    <rect class="node-parent" x="0" y="140" width="600" height="250"/>
+    <text x="20" y="168" class="label">B. 4-Tier Lossless MerkleContextDag (crates/icx-core/src/dag.rs)</text>
+    <text x="20" y="196" class="code">L0 RawChunk:        blake3::hash(chunk_bytes) -&gt; #icx:&lt;hex16&gt;</text>
+    <text x="20" y="222" class="code">L1 Turn / Episode:  Hasher(&quot;ICX_DAG_TURN_V1&quot; || ord || agent ||</text>
+    <text x="20" y="242" class="code">                           role || raw_id || ahtl_repr)</text>
+    <text x="20" y="268" class="code">L2 FoldedSubtask:   Hasher(&quot;ICX_DAG_BRANCH_V1&quot; || label ||</text>
+    <text x="20" y="288" class="code">                           child_turn_ids[..] || summary)</text>
+    <text x="20" y="314" class="code">L3 EpochRoot:       Hasher(&quot;ICX_DAG_EPOCH_V1&quot; || epoch_idx ||</text>
+    <text x="20" y="334" class="code">                           child_node_digests[..])</text>
+    <text x="20" y="366" class="subtitle">Domain-separated tags prevent cross-tier Merkle ambiguity.</text>
+
+    <rect class="node-root" x="0" y="408" width="600" height="165"/>
+    <text x="20" y="435" class="label">C. 10,240-Bit Hypervector XOF Basis (crates/icx-hdc/src/hv.rs)</text>
+    <text x="20" y="462" class="code">let mut h = blake3::Hasher::new();</text>
+    <text x="20" y="482" class="code">h.update(b&quot;ICX_HDC_10240_V1:&quot;); h.update(domain); h.update(sym);</text>
+    <text x="20" y="502" class="code">h.finalize_xof().fill(&amp;mut raw_1280_bytes); // 20 x 64B blocks</text>
+    <text x="20" y="530" class="subtitle">Produces [u64; 160] (10,240 bits, 64B-aligned for AVX-512)</text>
+    <text x="20" y="552" class="subtitle">with zero stored lookup tables and strict orthogonality.</text>
+  </g>
+</svg>

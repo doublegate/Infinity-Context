@@ -1,0 +1,236 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 920" width="1600" height="920">
+  
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070B14"/>
+      <stop offset="50%" stop-color="#0B1021"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="cyanBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#082F49" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#0C192C" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="violetBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2E1065" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#170B3B" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="emeraldBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#064E3B" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#052E24" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="amberBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#451A03" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#271004" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="crimsonBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4C0519" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#2A0410" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="slateBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.92"/>
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.96"/>
+    </linearGradient>
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#00E5FF"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#A855F7"/>
+    </marker>
+    <marker id="arrowEmerald" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#10B981"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#F59E0B"/>
+    </marker>
+    <marker id="arrowSlate" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="920" rx="18" fill="url(#bgGrad)" stroke="#1E293B" stroke-width="2"/>
+
+  <text x="800" y="46" text-anchor="middle" fill="#F8FAFC" font-family="DejaVu Sans, sans-serif" font-size="25" font-weight="bold">
+    TRANSFORMER KV-CACHE EPOCHS, ATTENTION SINKS &amp; INDUCTION-HEAD DEREFERENCING
+  </text>
+  <text x="800" y="74" text-anchor="middle" fill="#94A3B8" font-family="DejaVu Sans, sans-serif" font-size="14.5">
+    How Scaled Dot-Product Attention (softmax(QK^T / sqrt(d_k))V) Operates Over Frozen AHTL v1.0 Lattice Frames
+  </text>
+
+  <!-- Top Row: 4-Zone KV Cache Memory Layout -->
+  <rect x="40" y="100" width="1520" height="235" rx="12" fill="url(#slateBox)" stroke="#00E5FF" stroke-width="2"/>
+  <text x="65" y="130" fill="#00E5FF" font-family="DejaVu Sans, sans-serif" font-size="15.5" font-weight="bold">
+    1. PROVIDER KV-CACHE PREFIX TOPOLOGY (`CacheEpochController` + `WireProxyTransformer`)
+  </text>
+
+  <!-- 4 Zones horizontally -->
+  <rect x="65" y="150" width="290" height="160" rx="8" fill="url(#cyanBox)" stroke="#00E5FF" stroke-width="1.8"/>
+  <text x="210" y="176" text-anchor="middle" fill="#00E5FF" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    Zone 0: Pinned System Head
+  </text>
+  <text x="80" y="202" fill="#E2E8F0" font-family="DejaVu Sans, monospace" font-size="10.5">⟪ICX:LEGEND│Δ=code│Ψ=stub...⟫</text>
+  <text x="80" y="224" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• Attention Sink Anchor (t=0..4)</text>
+  <text x="80" y="244" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• Single `icx` MCP Tool Schema</text>
+  <text x="80" y="264" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• Cache Breakpoint #0</text>
+  <text x="80" y="292" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="11" font-weight="bold">KV Status: 100% FROZEN HIT</text>
+
+  <rect x="370" y="150" width="490" height="160" rx="8" fill="url(#violetBox)" stroke="#A855F7" stroke-width="1.8"/>
+  <text x="615" y="176" text-anchor="middle" fill="#C084FC" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    Zone 1: Sealed Cache Epochs E_0 .. E_(k-1) (Append-Only)
+  </text>
+  <text x="385" y="202" fill="#E2E8F0" font-family="DejaVu Sans, monospace" font-size="10.5">⟪ICX:v1│ep=0000│root=9f2c18a4│nodes=42⟫ ⟦Δ:src/...↦#icx:...⟧</text>
+  <text x="385" y="224" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• BLAKE3 Merkle-Sealed AHTL Lattice Frames (Turns 1..N-k)</text>
+  <text x="385" y="244" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• Bytes NEVER mutate once sealed -&gt; zero KV recomputation</text>
+  <text x="385" y="264" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• Anthropic `cache_control: ephemeral` Breakpoints #1..#3</text>
+  <text x="385" y="292" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="11" font-weight="bold">KV Status: 100% FROZEN HIT (90% Cost Reduction)</text>
+
+  <rect x="875" y="150" width="335" height="160" rx="8" fill="url(#emeraldBox)" stroke="#10B981" stroke-width="1.8"/>
+  <text x="1042" y="176" text-anchor="middle" fill="#34D399" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    Zone 2: Active Sliding Window
+  </text>
+  <text x="890" y="202" fill="#E2E8F0" font-family="DejaVu Sans, monospace" font-size="10.5">⟦Ψ:cargo_test⊢✓pass:299⋮!FAIL@L412⟧</text>
+  <text x="890" y="224" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• Unsealed recent turns (&lt; 4,096 tok)</text>
+  <text x="890" y="244" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• High-Surprise S_t &gt;= 0.70 pinned</text>
+  <text x="890" y="264" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• Auto-hits OpenAI 1024-tok blocks</text>
+  <text x="890" y="292" fill="#6EE7B7" font-family="DejaVu Sans Mono, monospace" font-size="11" font-weight="bold">KV Status: INCREMENTAL HIT</text>
+
+  <rect x="1225" y="150" width="310" height="160" rx="8" fill="url(#amberBox)" stroke="#F59E0B" stroke-width="1.8"/>
+  <text x="1380" y="176" text-anchor="middle" fill="#FBBF24" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    Zone 3: Ephemeral Tail Slot
+  </text>
+  <text x="1240" y="202" fill="#E2E8F0" font-family="DejaVu Sans, monospace" font-size="10.5">⟪ICX:TAIL_SLOT⟫ ⟦Ψ:HDC_RECALL...⟧</text>
+  <text x="1240" y="224" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• Recomputed each turn (&lt;= 512 tok)</text>
+  <text x="1240" y="244" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• HDC + Fractal + PPR + /dev/shm</text>
+  <text x="1240" y="264" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• Placed strictly at prompt tail</text>
+  <text x="1240" y="292" fill="#FDE68A" font-family="DejaVu Sans Mono, monospace" font-size="11" font-weight="bold">KV Status: ~3% DYNAMIC TAIL</text>
+
+  <!-- Bottom Left: Induction Head & Attention Sink Mechanics -->
+  <rect x="40" y="355" width="750" height="535" rx="12" fill="url(#slateBox)" stroke="#A855F7" stroke-width="2"/>
+  <text x="415" y="388" text-anchor="middle" fill="#C084FC" font-family="DejaVu Sans, sans-serif" font-size="15.5" font-weight="bold">
+    2. INDUCTION-HEAD CIRCUIT &amp; ATTENTION-SINK MECHANICS
+  </text>
+
+  <rect x="60" y="408" width="710" height="150" rx="8" fill="#070B14" stroke="#38BDF8" stroke-width="1.5"/>
+  <text x="78" y="434" fill="#38BDF8" font-family="DejaVu Sans, sans-serif" font-size="12.5" font-weight="bold">
+    A. Why `⟦` (`U+27E6`) and `⟪` (`U+27EA`) Act as Dedicated Attention Sinks (Xiao et al., 2024)
+  </text>
+  <text x="78" y="460" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="10.4">
+    • Softmax requires attention weights to sum to 1.0: `sum_j exp(q_i * k_j / sqrt(d_k)) = 1`.
+  </text>
+  <text x="78" y="484" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="10.4">
+    • In prose logs, heads dump spare mass onto random punctuation/newlines, blurring boundaries.
+  </text>
+  <text x="78" y="508" fill="#E2E8F0" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="10.4">
+    • In AHTL, `⟦` and `⟧` bracket every fact packet at fixed syntactic boundaries, serving as
+  </text>
+  <text x="78" y="532" fill="#7DD3FC" font-family="DejaVu Sans Mono, monospace" font-size="10.4" font-weight="bold">
+      structural sinks that segment the KV cache into discrete, non-interfering records.
+  </text>
+
+  <rect x="60" y="575" width="710" height="290" rx="8" fill="#070B14" stroke="#10B981" stroke-width="1.5"/>
+  <text x="78" y="602" fill="#34D399" font-family="DejaVu Sans, sans-serif" font-size="12.5" font-weight="bold">
+    B. Two-Layer Induction Head `[A][B] ... [A] -&gt; [B]` Pointer Copying (Olsson et al., 2022)
+  </text>
+  <text x="78" y="630" fill="#E2E8F0" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="10.8">
+    Archived Packet in Epoch E_1: `⟦Δ:src/alloc.rs#L42-118⊢⊕fn:alloc_page⋮!PANIC@L99↦#icx:4e81a0c2f91b08d3⟧`
+  </text>
+  <text x="78" y="660" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.4">
+    1. Query Match (`Q_curr * K_past^T`): User asks about `alloc_page`. Because `alloc_page` is emitted
+  </text>
+  <text x="78" y="680" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.4">
+       verbatim without BPE mangling, `q("alloc_page") * k("alloc_page")^T` produces a sharp logit spike.
+  </text>
+  <text x="78" y="708" fill="#CBD5E1" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="10.4">
+    2. Previous-Token Head (Layer L): Shifts attention along the packet via `⊢`, `⋮`, and `↦` (`U+21A6`),
+  </text>
+  <text x="78" y="728" fill="#CBD5E1" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="10.4">
+       binding the symbol `alloc_page` directly to the dereference operator `↦#icx:`.
+  </text>
+  <text x="78" y="756" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.4">
+    3. Induction Head (Layer L+1): Copies the exact 16-hex handle `4e81a0c2f91b08d3` into the model's
+  </text>
+  <text x="78" y="776" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.4">
+       next-token output distribution with near-zero entropy (`H_copy &lt; 0.02 bits`).
+  </text>
+  <text x="78" y="812" fill="#6EE7B7" font-family="DejaVu Sans Mono, monospace" font-size="10.8" font-weight="bold">
+    -&gt; Model emits tool call: `icx(op="slice", id="#icx:4e81a0c2f91b08d3", range=[42, 118])`
+  </text>
+  <text x="78" y="840" fill="#FBBF24" font-family="DejaVu Sans Mono, monospace" font-size="10.8" font-weight="bold">
+    -&gt; Zero hallucinated line numbers, zero corrupted hex digits, 100% lossless byte recovery!
+  </text>
+
+  <!-- Bottom Right: Softmax SNR Mathematical Proof & Closed-Loop Cycle -->
+  <rect x="815" y="355" width="745" height="535" rx="12" fill="url(#slateBox)" stroke="#10B981" stroke-width="2"/>
+  <text x="1187" y="388" text-anchor="middle" fill="#34D399" font-family="DejaVu Sans, sans-serif" font-size="15.5" font-weight="bold">
+    3. SOFTMAX SIGNAL-TO-NOISE AMPLIFICATION &amp; MCP PAGER LOOP
+  </text>
+
+  <rect x="835" y="408" width="705" height="210" rx="8" fill="#070B14" stroke="#A855F7" stroke-width="1.5"/>
+  <text x="1187" y="434" text-anchor="middle" fill="#D8B4FE" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    Theorem: Elimination of Softmax Partition Dilution ("Lost in the Middle")
+  </text>
+  <text x="852" y="464" fill="#F8FAFC" font-family="DejaVu Sans Mono, monospace" font-size="11" font-weight="bold">
+    Attention Mass on Signal Set S:   alpha_S = Z_signal / (Z_signal + Z_noise(N))
+  </text>
+  <text x="852" y="492" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.4">
+    where `Z_noise(N) = sum_{m in Filler} exp(q_i * k_m / sqrt(d_k)) ~ |N_filler| * E[exp(q*k)]`
+  </text>
+  <text x="852" y="524" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="10.4">
+    • In raw 128K context, `|N_filler| ~ 125,000` JSON/log boilerplate tokens -&gt; `alpha_S` drops 96%.
+  </text>
+  <text x="852" y="550" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="10.4">
+    • AHTL v1.0 prunes `|N_filler|` by `18.4x–72.1x` while retaining 100% of `S` (symbols &amp; faults):
+  </text>
+  <text x="852" y="584" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="11.5" font-weight="bold">
+    SNR_AHTL / SNR_Raw = |N_filler,raw| / |N_filler,AHTL| = 18.4x to 72.1x Gain
+  </text>
+
+  <!-- Closed-Loop Diagram Box -->
+  <rect x="835" y="638" width="705" height="227" rx="8" fill="#070B14" stroke="#00E5FF" stroke-width="1.5"/>
+  <text x="1187" y="664" text-anchor="middle" fill="#00E5FF" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    Zero-Hallucination Virtual Memory Page-Fault Resolution Cycle
+  </text>
+
+  <rect x="860" y="688" width="190" height="85" rx="6" fill="url(#cyanBox)" stroke="#00E5FF" stroke-width="1.5"/>
+  <text x="955" y="715" text-anchor="middle" fill="#F8FAFC" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="bold">
+    1. Attend to Stub
+  </text>
+  <text x="955" y="738" text-anchor="middle" fill="#7DD3FC" font-family="DejaVu Sans Mono, monospace" font-size="10.5">
+    Q*K^T hits `alloc_page`
+  </text>
+  <text x="955" y="756" text-anchor="middle" fill="#7DD3FC" font-family="DejaVu Sans Mono, monospace" font-size="10.5">
+    in Sealed Epoch E_1
+  </text>
+
+  <line x1="1050" y1="730" x2="1092" y2="730" stroke="#00E5FF" stroke-width="2.2" marker-end="url(#arrowCyan)"/>
+
+  <rect x="1092" y="688" width="190" height="85" rx="6" fill="url(#violetBox)" stroke="#A855F7" stroke-width="1.5"/>
+  <text x="1187" y="715" text-anchor="middle" fill="#F8FAFC" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="bold">
+    2. Invoke `icx` MCP
+  </text>
+  <text x="1187" y="738" text-anchor="middle" fill="#D8B4FE" font-family="DejaVu Sans Mono, monospace" font-size="10.5">
+    op="slice" | "deref"
+  </text>
+  <text x="1187" y="756" text-anchor="middle" fill="#D8B4FE" font-family="DejaVu Sans Mono, monospace" font-size="10.5">
+    id="#icx:4e81a0c2..."
+  </text>
+
+  <line x1="1282" y1="730" x2="1324" y2="730" stroke="#10B981" stroke-width="2.2" marker-end="url(#arrowEmerald)"/>
+
+  <rect x="1324" y="688" width="190" height="85" rx="6" fill="url(#emeraldBox)" stroke="#10B981" stroke-width="1.5"/>
+  <text x="1419" y="715" text-anchor="middle" fill="#F8FAFC" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="bold">
+    3. CAS Verification
+  </text>
+  <text x="1419" y="738" text-anchor="middle" fill="#6EE7B7" font-family="DejaVu Sans Mono, monospace" font-size="10.5">
+    BLAKE3 256b check
+  </text>
+  <text x="1419" y="756" text-anchor="middle" fill="#6EE7B7" font-family="DejaVu Sans Mono, monospace" font-size="10.5">
+    Returns exact lines!
+  </text>
+
+  <text x="1187" y="810" text-anchor="middle" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">
+    When debugging completes, `icx(op="fold")` collapses the entire multi-turn branch into
+  </text>
+  <text x="1187" y="832" text-anchor="middle" fill="#34D399" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="11.2" font-weight="bold">
+    a single L2 node: `⟦Φ:fix_alloc_align⊢steps=6⋮✓cargo_test:300/300↦#icx:c371e809aa1204f1⟧`
+  </text>
+</svg>

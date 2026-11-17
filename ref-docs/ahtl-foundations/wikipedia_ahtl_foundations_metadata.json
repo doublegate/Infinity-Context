@@ -1,0 +1,1252 @@
+{
+  "Iterated_function_system": {
+    "summary": {
+      "type": "standard",
+      "title": "Iterated function system",
+      "displaytitle": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Iterated function system</span></span>",
+      "namespace": {
+        "id": 0,
+        "text": ""
+      },
+      "wikibase_item": "Q1502167",
+      "titles": {
+        "canonical": "Iterated_function_system",
+        "normalized": "Iterated function system",
+        "display": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Iterated function system</span></span>"
+      },
+      "pageid": 505225,
+      "thumbnail": {
+        "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/31/Sierpinski1.png/330px-Sierpinski1.png?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+        "width": 330,
+        "height": 170
+      },
+      "originalimage": {
+        "source": "https://upload.wikimedia.org/wikipedia/commons/3/31/Sierpinski1.png?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail_unscaled",
+        "width": 465,
+        "height": 240
+      },
+      "lang": "en",
+      "dir": "ltr",
+      "revision": "1378322357",
+      "tid": "b6e244bc-bf86-11f1-a6b2-2ef11363b44d",
+      "timestamp": "2026-10-04T00:01:14Z",
+      "description": "Method for the construction of fractals",
+      "description_source": "local",
+      "content_urls": {
+        "desktop": {
+          "page": "https://en.wikipedia.org/wiki/Iterated_function_system",
+          "revisions": "https://en.wikipedia.org/wiki/Iterated_function_system?action=history",
+          "edit": "https://en.wikipedia.org/wiki/Iterated_function_system?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Iterated_function_system"
+        },
+        "mobile": {
+          "page": "https://en.wikipedia.org/wiki/Iterated_function_system",
+          "revisions": "https://en.wikipedia.org/wiki/Special:History/Iterated_function_system",
+          "edit": "https://en.wikipedia.org/wiki/Iterated_function_system?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Iterated_function_system"
+        }
+      },
+      "extract": "In mathematics, iterated function systems (IFSs) are a method of constructing fractals; the resulting fractals are often self-similar. IFS fractals are more related to set theory than fractal geometry. They were introduced in 1981.",
+      "extract_html": "<p>In mathematics, <b>iterated function systems</b> (<b>IFSs</b>) are a method of constructing fractals; the resulting fractals are often self-similar. IFS fractals are more related to set theory than fractal geometry. They were introduced in 1981.</p>"
+    },
+    "media_count": 8,
+    "media_titles": [
+      "File:Sierpinski1.png",
+      "File:Chris_Ursitti_fractal_0000.png",
+      "File:Chaosgame.gif",
+      "File:Ifs-construction.png",
+      "File:Fractal_fern_explained.png",
+      "File:Menger_sponge_(IFS).jpg",
+      "File:Coupe_d'arbre.png",
+      "File:HERBO_avecTige.png"
+    ],
+    "media_items": [
+      {
+        "title": "File:Sierpinski1.png",
+        "leadImage": true,
+        "section_id": 0,
+        "type": "image",
+        "caption": {
+          "html": "<a rel=\"mw:WikiLink\" href=\"./Sierpiński_triangle\" title=\"Sierpiński triangle\" id=\"mwBw\">Sierpiński triangle</a> created using IFS (colored to illustrate self-similar structure)",
+          "text": "Sierpiński triangle created using IFS (colored to illustrate self-similar structure)"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/3/31/Sierpinski1.png/330px-Sierpinski1.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:Chris_Ursitti_fractal_0000.png",
+        "leadImage": false,
+        "section_id": 0,
+        "type": "image",
+        "caption": {
+          "html": "Colored IFS designed using <a rel=\"mw:WikiLink\" href=\"./Apophysis_(software)\" title=\"Apophysis (software)\" id=\"mwDA\">Apophysis</a> software and rendered by the <a rel=\"mw:WikiLink\" href=\"./Electric_Sheep\" title=\"Electric Sheep\" id=\"mwDQ\">Electric Sheep</a>",
+          "text": "Colored IFS designed using Apophysis software and rendered by the Electric Sheep"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/8/8f/Chris_Ursitti_fractal_0000.png/330px-Chris_Ursitti_fractal_0000.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:Chaosgame.gif",
+        "leadImage": false,
+        "section_id": 2,
+        "type": "image",
+        "caption": {
+          "html": "Construction of an IFS by the <a rel=\"mw:WikiLink\" href=\"./Chaos_game\" title=\"Chaos game\" id=\"mwNQ\">chaos game</a> (animated)",
+          "text": "Construction of an IFS by the chaos game (animated)"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//upload.wikimedia.org/wikipedia/commons/4/4c/Chaosgame.gif?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail_unscaled",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:Ifs-construction.png",
+        "leadImage": false,
+        "section_id": 2,
+        "type": "image",
+        "caption": {
+          "html": "IFS being made with two functions",
+          "text": "IFS being made with two functions"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/8/86/Ifs-construction.png/500px-Ifs-construction.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:Fractal_fern_explained.png",
+        "leadImage": false,
+        "section_id": 3,
+        "type": "image",
+        "caption": {
+          "html": "<a rel=\"mw:WikiLink\" href=\"./Barnsley's_fern\" title=\"Barnsley's fern\" class=\"mw-redirect\" id=\"mwjg\">Barnsley's fern</a>, an early IFS",
+          "text": "Barnsley's fern, an early IFS"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/4/4b/Fractal_fern_explained.png/330px-Fractal_fern_explained.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:Menger_sponge_(IFS).jpg",
+        "leadImage": false,
+        "section_id": 3,
+        "type": "image",
+        "caption": {
+          "html": "<a rel=\"mw:WikiLink\" href=\"./Menger_sponge\" title=\"Menger sponge\" id=\"mwkw\">Menger sponge</a>, a 3-dimensional IFS",
+          "text": "Menger sponge, a 3-dimensional IFS"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/9/9b/Menger_sponge_%28IFS%29.jpg/500px-Menger_sponge_%28IFS%29.jpg?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:Coupe_d'arbre.png",
+        "leadImage": false,
+        "section_id": 3,
+        "type": "image",
+        "caption": {
+          "html": "IFS \"tree\" constructed with non-linear function Julia",
+          "text": "IFS \"tree\" constructed with non-linear function Julia"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/5/51/Coupe_d%27arbre.png/500px-Coupe_d%27arbre.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:HERBO_avecTige.png",
+        "leadImage": false,
+        "section_id": 3,
+        "type": "image",
+        "caption": {
+          "html": "",
+          "text": ""
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/8/85/HERBO_avecTige.png/500px-HERBO_avecTige.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      }
+    ]
+  },
+  "Chaos_game": {
+    "summary": {
+      "type": "standard",
+      "title": "Chaos game",
+      "displaytitle": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Chaos game</span></span>",
+      "namespace": {
+        "id": 0,
+        "text": ""
+      },
+      "wikibase_item": "Q3129337",
+      "titles": {
+        "canonical": "Chaos_game",
+        "normalized": "Chaos game",
+        "display": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Chaos game</span></span>"
+      },
+      "pageid": 2572603,
+      "thumbnail": {
+        "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/ff/Sierpinski_chaos_animated.gif/330px-Sierpinski_chaos_animated.gif?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+        "width": 330,
+        "height": 286
+      },
+      "originalimage": {
+        "source": "https://upload.wikimedia.org/wikipedia/commons/f/ff/Sierpinski_chaos_animated.gif?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail_unscaled",
+        "width": 700,
+        "height": 607
+      },
+      "lang": "en",
+      "dir": "ltr",
+      "revision": "1385835378",
+      "tid": "02dde5ec-e0f2-11f1-be61-842fa41f396c",
+      "timestamp": "2026-11-15T12:42:26Z",
+      "description": "Fractal creation method",
+      "description_source": "local",
+      "content_urls": {
+        "desktop": {
+          "page": "https://en.wikipedia.org/wiki/Chaos_game",
+          "revisions": "https://en.wikipedia.org/wiki/Chaos_game?action=history",
+          "edit": "https://en.wikipedia.org/wiki/Chaos_game?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Chaos_game"
+        },
+        "mobile": {
+          "page": "https://en.wikipedia.org/wiki/Chaos_game",
+          "revisions": "https://en.wikipedia.org/wiki/Special:History/Chaos_game",
+          "edit": "https://en.wikipedia.org/wiki/Chaos_game?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Chaos_game"
+        }
+      },
+      "extract": "In mathematics, the term chaos game originally referred to a method of creating a fractal, using a polygon and an initial point selected at random inside it. The fractal is created by iteratively creating a sequence of points, starting with the initial random point, in which each point in the sequence is a given fraction of the distance between the previous point and one of the vertices of the polygon; the vertex is chosen at random in each iteration. Repeating this iterative process a large number of times, selecting the vertex at random on each iteration, and throwing out the first few points in the sequence, will often produce a fractal shape. Using a regular triangle and the factor 1/2 will result in the Sierpinski triangle, while creating the proper arrangement with four points and a factor 1/2 will create a display of a \"Sierpinski Tetrahedron\", the three-dimensional analogue of the Sierpinski triangle. As the number of points is increased to a number N, the arrangement forms a corresponding (N-1)-dimensional Sierpinski Simplex.",
+      "extract_html": "<p>In mathematics, the term <b>chaos game</b> originally referred to a method of creating a fractal, using a polygon and an initial point selected at random inside it. The fractal is created by iteratively creating a sequence of points, starting with the initial random point, in which each point in the sequence is a given fraction of the distance between the previous point and one of the vertices of the polygon; the vertex is chosen at random in each iteration. Repeating this iterative process a large number of times, selecting the vertex at random on each iteration, and throwing out the first few points in the sequence, will often produce a fractal shape. Using a regular triangle and the factor 1/2 will result in the Sierpinski triangle, while creating the proper arrangement with four points and a factor 1/2 will create a display of a \"Sierpinski Tetrahedron\", the three-dimensional analogue of the Sierpinski triangle. As the number of points is increased to a number N, the arrangement forms a corresponding (N-1)-dimensional Sierpinski Simplex.</p>"
+    },
+    "media_count": 26,
+    "media_titles": [
+      "File:Sierpinski_chaos_animated.gif",
+      "File:Sierpinski_Chaos.gif",
+      "File:R_opt_vs_N.png",
+      "File:Penta_opt_1e5points.png",
+      "File:Hexa_opt_1e5points.png",
+      "File:Hepta_opt_1e5points.png",
+      "File:Octa_opt_1e5points.png",
+      "File:Nona_opt_1e5points.png",
+      "File:Deca_opt_1e5points.png",
+      "File:Hepta_1p4_1e5points_2.png",
+      "File:Hepta_1p6_1e5points.png",
+      "File:Hepta_2_1e5points_4.png",
+      "File:Hepta_2p1_1e5points.png",
+      "File:V4_unrestrict.gif",
+      "File:V4_ban1.gif",
+      "File:V4_ban1_inc1.gif",
+      "File:V4_ban1_inc2.gif",
+      "File:Chaos_Game_square-EH-1.png",
+      "File:Chaos_Game_pentagon-EH-1.png",
+      "File:Chaos_Game_pentagon-EH-2.png",
+      "File:V4jump2_3_center.gif",
+      "File:V4jump2_4_center.gif",
+      "File:EU81043_1-r05_letters.png",
+      "File:EU81043_1-r2_letters.png",
+      "File:Comparison-EU81043_1-NC_001643_1-r05_letters.png",
+      "File:Comparison-EU81043_1-NC_001643_1-r2_Letters.png"
+    ],
+    "media_items": [
+      {
+        "title": "File:Sierpinski_chaos_animated.gif",
+        "leadImage": true,
+        "section_id": 0,
+        "type": "image",
+        "caption": {
+          "html": "Animated creation of a <a rel=\"mw:WikiLink\" href=\"./Sierpinski_triangle\" title=\"Sierpinski triangle\" class=\"mw-redirect\" id=\"mwCQ\">Sierpinski triangle</a> using a chaos game method",
+          "text": "Animated creation of a Sierpinski triangle using a chaos game method"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/f/ff/Sierpinski_chaos_animated.gif/500px-Sierpinski_chaos_animated.gif?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:Sierpinski_Chaos.gif",
+        "leadImage": false,
+        "section_id": 0,
+        "type": "image",
+        "caption": {
+          "html": "The way the \"chaos game\" works is illustrated well when every path is accounted for.",
+          "text": "The way the \"chaos game\" works is illustrated well when every path is accounted for."
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/b/b6/Sierpinski_Chaos.gif/500px-Sierpinski_Chaos.gif?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:R_opt_vs_N.png",
+        "leadImage": false,
+        "section_id": 1,
+        "type": "image",
+        "caption": {
+          "html": "Optimal value of r for every N-sided regular polygons, with N going from 5 to 20.",
+          "text": "Optimal value of r for every N-sided regular polygons, with N going from 5 to 20."
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/4/4d/R_opt_vs_N.png/500px-R_opt_vs_N.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:Penta_opt_1e5points.png",
+        "leadImage": false,
+        "section_id": 1,
+        "type": "image",
+        "gallery_id": "mwYA",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/f/fa/Penta_opt_1e5points.png/250px-Penta_opt_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/f/fa/Penta_opt_1e5points.png/500px-Penta_opt_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Hexa_opt_1e5points.png",
+        "leadImage": false,
+        "section_id": 1,
+        "type": "image",
+        "gallery_id": "mwYA",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/0/0e/Hexa_opt_1e5points.png/250px-Hexa_opt_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/0/0e/Hexa_opt_1e5points.png/500px-Hexa_opt_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Hepta_opt_1e5points.png",
+        "leadImage": false,
+        "section_id": 1,
+        "type": "image",
+        "gallery_id": "mwYA",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/a/a7/Hepta_opt_1e5points.png/250px-Hepta_opt_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/a/a7/Hepta_opt_1e5points.png/500px-Hepta_opt_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Octa_opt_1e5points.png",
+        "leadImage": false,
+        "section_id": 1,
+        "type": "image",
+        "gallery_id": "mwYA",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/6/6f/Octa_opt_1e5points.png/250px-Octa_opt_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/6/6f/Octa_opt_1e5points.png/500px-Octa_opt_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Nona_opt_1e5points.png",
+        "leadImage": false,
+        "section_id": 1,
+        "type": "image",
+        "gallery_id": "mwYA",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/f/f3/Nona_opt_1e5points.png/250px-Nona_opt_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/f/f3/Nona_opt_1e5points.png/500px-Nona_opt_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Deca_opt_1e5points.png",
+        "leadImage": false,
+        "section_id": 1,
+        "type": "image",
+        "gallery_id": "mwYA",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/b/b0/Deca_opt_1e5points.png/250px-Deca_opt_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/b/b0/Deca_opt_1e5points.png/500px-Deca_opt_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Hepta_1p4_1e5points_2.png",
+        "leadImage": false,
+        "section_id": 2,
+        "type": "image",
+        "gallery_id": "mwkA",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/1/17/Hepta_1p4_1e5points_2.png/250px-Hepta_1p4_1e5points_2.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/1/17/Hepta_1p4_1e5points_2.png/500px-Hepta_1p4_1e5points_2.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Hepta_1p6_1e5points.png",
+        "leadImage": false,
+        "section_id": 2,
+        "type": "image",
+        "gallery_id": "mwkA",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/e/ee/Hepta_1p6_1e5points.png/250px-Hepta_1p6_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/e/ee/Hepta_1p6_1e5points.png/500px-Hepta_1p6_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Hepta_2_1e5points_4.png",
+        "leadImage": false,
+        "section_id": 2,
+        "type": "image",
+        "gallery_id": "mwkA",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/d/d0/Hepta_2_1e5points_4.png/250px-Hepta_2_1e5points_4.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/d/d0/Hepta_2_1e5points_4.png/500px-Hepta_2_1e5points_4.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Hepta_2p1_1e5points.png",
+        "leadImage": false,
+        "section_id": 2,
+        "type": "image",
+        "gallery_id": "mwkA",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/7/77/Hepta_2p1_1e5points.png/250px-Hepta_2p1_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/7/77/Hepta_2p1_1e5points.png/500px-Hepta_2p1_1e5points.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:V4_unrestrict.gif",
+        "leadImage": false,
+        "section_id": 3,
+        "type": "image",
+        "caption": {
+          "html": "A point inside a square repeatedly jumps half of the distance towards a randomly chosen vertex. No fractal appears. However, this is an illusion; in fact, this is a very special view of a <a rel=\"mw:WikiLink\" href=\"./Sierpiński_triangle#Analogues_in_higher_dimensions\" title=\"Sierpiński triangle\" id=\"mwrg\">Sierpiński tetrahedron</a> that makes it look like a flat square.<sup about=\"#mwt42\" class=\"mw-ref reference\" id=\"cite_ref-7\" rel=\"dc:references\" typeof=\"mw:Extension/ref\" data-mw=\"{&quot;name&quot;:&quot;ref&quot;,&quot;attrs&quot;:{},&quot;body&quot;:{&quot;id&quot;:&quot;mw-reference-text-cite_note-7&quot;}}\"><a href=\"./Chaos_game#cite_note-7\" id=\"mwrw\"><span class=\"mw-reflink-text\" id=\"mwsA\"><span class=\"cite-bracket\" id=\"mwsQ\">[</span>7<span class=\"cite-bracket\" id=\"mwsg\">]</span></span></a></sup>",
+          "text": "A point inside a square repeatedly jumps half of the distance towards a randomly chosen vertex. No fractal appears. However, this is an illusion; in fact, this is a very special view of a Sierpiński tetrahedron that makes it look like a flat square.[7]"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/a/a8/V4_unrestrict.gif/330px-V4_unrestrict.gif?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:V4_ban1.gif",
+        "leadImage": false,
+        "section_id": 3,
+        "type": "image",
+        "caption": {
+          "html": "A point inside a square repeatedly jumps half of the distance towards a randomly chosen vertex, but the currently chosen vertex cannot be the same as the previously chosen vertex.",
+          "text": "A point inside a square repeatedly jumps half of the distance towards a randomly chosen vertex, but the currently chosen vertex cannot be the same as the previously chosen vertex."
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/a/a5/V4_ban1.gif/330px-V4_ban1.gif?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:V4_ban1_inc1.gif",
+        "leadImage": false,
+        "section_id": 3,
+        "type": "image",
+        "caption": {
+          "html": "A point inside a square repeatedly jumps half of the distance towards a randomly chosen vertex, but the currently chosen vertex cannot be 1 place away (anti-clockwise) from the previously chosen vertex.",
+          "text": "A point inside a square repeatedly jumps half of the distance towards a randomly chosen vertex, but the currently chosen vertex cannot be 1 place away (anti-clockwise) from the previously chosen vertex."
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/8/89/V4_ban1_inc1.gif/330px-V4_ban1_inc1.gif?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:V4_ban1_inc2.gif",
+        "leadImage": false,
+        "section_id": 3,
+        "type": "image",
+        "gallery_id": "mwwA",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/3/3e/V4_ban1_inc2.gif/250px-V4_ban1_inc2.gif?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//upload.wikimedia.org/wikipedia/commons/3/3e/V4_ban1_inc2.gif?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail_unscaled",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Chaos_Game_square-EH-1.png",
+        "leadImage": false,
+        "section_id": 3,
+        "type": "image",
+        "gallery_id": "mwwA",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/e/ea/Chaos_Game_square-EH-1.png/250px-Chaos_Game_square-EH-1.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/e/ea/Chaos_Game_square-EH-1.png/500px-Chaos_Game_square-EH-1.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Chaos_Game_pentagon-EH-1.png",
+        "leadImage": false,
+        "section_id": 3,
+        "type": "image",
+        "gallery_id": "mwwA",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/d/d8/Chaos_Game_pentagon-EH-1.png/250px-Chaos_Game_pentagon-EH-1.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/d/d8/Chaos_Game_pentagon-EH-1.png/500px-Chaos_Game_pentagon-EH-1.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Chaos_Game_pentagon-EH-2.png",
+        "leadImage": false,
+        "section_id": 3,
+        "type": "image",
+        "gallery_id": "mwwA",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/c/c2/Chaos_Game_pentagon-EH-2.png/250px-Chaos_Game_pentagon-EH-2.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/c/c2/Chaos_Game_pentagon-EH-2.png/500px-Chaos_Game_pentagon-EH-2.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:V4jump2_3_center.gif",
+        "leadImage": false,
+        "section_id": 4,
+        "type": "image",
+        "caption": {
+          "html": "A Vicsek fractal generated by the chaos game",
+          "text": "A Vicsek fractal generated by the chaos game"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/2/2b/V4jump2_3_center.gif/330px-V4jump2_3_center.gif?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:V4jump2_4_center.gif",
+        "leadImage": false,
+        "section_id": 4,
+        "type": "image",
+        "caption": {
+          "html": "A Sierpinski carpet generated by the chaos game",
+          "text": "A Sierpinski carpet generated by the chaos game"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/9/94/V4jump2_4_center.gif/330px-V4jump2_4_center.gif?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:EU81043_1-r05_letters.png",
+        "leadImage": false,
+        "section_id": 5,
+        "type": "image",
+        "caption": {
+          "html": "Chaos game representation of the homo sapiens mitochondrion genome complete sequence(GenBank: EU810403.1) (r=0.5)",
+          "text": "Chaos game representation of the homo sapiens mitochondrion genome complete sequence(GenBank: EU810403.1) (r=0.5)"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/5/5d/EU81043_1-r05_letters.png/500px-EU81043_1-r05_letters.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:EU81043_1-r2_letters.png",
+        "leadImage": false,
+        "section_id": 5,
+        "type": "image",
+        "caption": {
+          "html": "Chaos game representation of the homo sapiens mitochondrion genome complete sequence(GenBank: EU810403.1) (r=2)",
+          "text": "Chaos game representation of the homo sapiens mitochondrion genome complete sequence(GenBank: EU810403.1) (r=2)"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/a/a5/EU81043_1-r2_letters.png/500px-EU81043_1-r2_letters.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:Comparison-EU81043_1-NC_001643_1-r05_letters.png",
+        "leadImage": false,
+        "section_id": 5,
+        "type": "image",
+        "gallery_id": "mwARI",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/e/e3/Comparison-EU81043_1-NC_001643_1-r05_letters.png/250px-Comparison-EU81043_1-NC_001643_1-r05_letters.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/e/e3/Comparison-EU81043_1-NC_001643_1-r05_letters.png/500px-Comparison-EU81043_1-NC_001643_1-r05_letters.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Comparison-EU81043_1-NC_001643_1-r2_Letters.png",
+        "leadImage": false,
+        "section_id": 5,
+        "type": "image",
+        "gallery_id": "mwARI",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/b/b9/Comparison-EU81043_1-NC_001643_1-r2_Letters.png/250px-Comparison-EU81043_1-NC_001643_1-r2_Letters.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/b/b9/Comparison-EU81043_1-NC_001643_1-r2_Letters.png/500px-Comparison-EU81043_1-NC_001643_1-r2_Letters.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      }
+    ]
+  },
+  "Banach_fixed-point_theorem": {
+    "summary": {
+      "type": "standard",
+      "title": "Banach fixed-point theorem",
+      "displaytitle": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Banach fixed-point theorem</span></span>",
+      "namespace": {
+        "id": 0,
+        "text": ""
+      },
+      "wikibase_item": "Q220680",
+      "titles": {
+        "canonical": "Banach_fixed-point_theorem",
+        "normalized": "Banach fixed-point theorem",
+        "display": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Banach fixed-point theorem</span></span>"
+      },
+      "pageid": 46676,
+      "lang": "en",
+      "dir": "ltr",
+      "revision": "1357724986",
+      "tid": "c318bd71-5ff5-11f1-ac5d-56a17b3c6c48",
+      "timestamp": "2026-06-04T09:14:17Z",
+      "description": "Theorem about metric spaces",
+      "description_source": "local",
+      "content_urls": {
+        "desktop": {
+          "page": "https://en.wikipedia.org/wiki/Banach_fixed-point_theorem",
+          "revisions": "https://en.wikipedia.org/wiki/Banach_fixed-point_theorem?action=history",
+          "edit": "https://en.wikipedia.org/wiki/Banach_fixed-point_theorem?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Banach_fixed-point_theorem"
+        },
+        "mobile": {
+          "page": "https://en.wikipedia.org/wiki/Banach_fixed-point_theorem",
+          "revisions": "https://en.wikipedia.org/wiki/Special:History/Banach_fixed-point_theorem",
+          "edit": "https://en.wikipedia.org/wiki/Banach_fixed-point_theorem?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Banach_fixed-point_theorem"
+        }
+      },
+      "extract": "In mathematics, the Banach fixed-point theorem is an important tool in the theory of metric spaces; it guarantees the existence and uniqueness of fixed points of certain self-maps of metric spaces and provides a constructive method to find those fixed points. It can be understood as an abstract formulation of Picard's method of successive approximations. The theorem is named after Stefan Banach (1892–1945) who first stated it in 1922.",
+      "extract_html": "<p>In mathematics, the <b>Banach fixed-point theorem</b> is an important tool in the theory of metric spaces; it guarantees the existence and uniqueness of fixed points of certain self-maps of metric spaces and provides a constructive method to find those fixed points. It can be understood as an abstract formulation of Picard's method of successive approximations. The theorem is named after Stefan Banach (1892–1945) who first stated it in 1922.</p>"
+    },
+    "media_count": 0,
+    "media_titles": [],
+    "media_items": []
+  },
+  "Hyperdimensional_computing": {
+    "summary": {
+      "type": "standard",
+      "title": "Hyperdimensional computing",
+      "displaytitle": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Hyperdimensional computing</span></span>",
+      "namespace": {
+        "id": 0,
+        "text": ""
+      },
+      "wikibase_item": "Q119039775",
+      "titles": {
+        "canonical": "Hyperdimensional_computing",
+        "normalized": "Hyperdimensional computing",
+        "display": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Hyperdimensional computing</span></span>"
+      },
+      "pageid": 73654860,
+      "lang": "en",
+      "dir": "ltr",
+      "revision": "1360057856",
+      "tid": "3717a1c5-6b70-11f1-a751-c7af6d131600",
+      "timestamp": "2026-06-18T23:48:33Z",
+      "description": "Computational approach",
+      "description_source": "local",
+      "content_urls": {
+        "desktop": {
+          "page": "https://en.wikipedia.org/wiki/Hyperdimensional_computing",
+          "revisions": "https://en.wikipedia.org/wiki/Hyperdimensional_computing?action=history",
+          "edit": "https://en.wikipedia.org/wiki/Hyperdimensional_computing?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Hyperdimensional_computing"
+        },
+        "mobile": {
+          "page": "https://en.wikipedia.org/wiki/Hyperdimensional_computing",
+          "revisions": "https://en.wikipedia.org/wiki/Special:History/Hyperdimensional_computing",
+          "edit": "https://en.wikipedia.org/wiki/Hyperdimensional_computing?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Hyperdimensional_computing"
+        }
+      },
+      "extract": "Hyperdimensional computing (HDC) is an approach to computation. HDC is motivated by the observation that the cerebellum operates on high-dimensional data representations. In HDC, information is thereby represented as a hyperdimensional (long) vector, which is called a hypervector. A hyperdimensional vector (hypervector) could include thousands of numbers that represent a point in a space of thousands of dimensions, as vector symbolic architectures is an older name for the same provided approach.",
+      "extract_html": "<p><b>Hyperdimensional computing</b> (<b>HDC</b>) is an approach to computation. HDC is motivated by the observation that the cerebellum operates on high-dimensional data representations. In HDC, information is thereby represented as a hyperdimensional (long) vector, which is called a hypervector. A hyperdimensional vector (hypervector) could include thousands of numbers that represent a point in a space of thousands of dimensions, as vector symbolic architectures is an older name for the same provided approach.</p>"
+    },
+    "media_count": 0,
+    "media_titles": [],
+    "media_items": []
+  },
+  "Hamming_distance": {
+    "summary": {
+      "type": "standard",
+      "title": "Hamming distance",
+      "displaytitle": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Hamming distance</span></span>",
+      "namespace": {
+        "id": 0,
+        "text": ""
+      },
+      "wikibase_item": "Q272172",
+      "titles": {
+        "canonical": "Hamming_distance",
+        "normalized": "Hamming distance",
+        "display": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Hamming distance</span></span>"
+      },
+      "pageid": 41227,
+      "thumbnail": {
+        "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Hamming_distance_4_bit_binary.svg/330px-Hamming_distance_4_bit_binary.svg.png?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+        "width": 330,
+        "height": 201
+      },
+      "originalimage": {
+        "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Hamming_distance_4_bit_binary.svg/500px-Hamming_distance_4_bit_binary.svg.png?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+        "width": 370,
+        "height": 225
+      },
+      "lang": "en",
+      "dir": "ltr",
+      "revision": "1320319980",
+      "tid": "22ee9cfa-b915-11f0-88d2-1aa333b09950",
+      "timestamp": "2025-11-04T00:28:08Z",
+      "description": "Number of bits that differ between two strings",
+      "description_source": "local",
+      "content_urls": {
+        "desktop": {
+          "page": "https://en.wikipedia.org/wiki/Hamming_distance",
+          "revisions": "https://en.wikipedia.org/wiki/Hamming_distance?action=history",
+          "edit": "https://en.wikipedia.org/wiki/Hamming_distance?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Hamming_distance"
+        },
+        "mobile": {
+          "page": "https://en.wikipedia.org/wiki/Hamming_distance",
+          "revisions": "https://en.wikipedia.org/wiki/Special:History/Hamming_distance",
+          "edit": "https://en.wikipedia.org/wiki/Hamming_distance?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Hamming_distance"
+        }
+      },
+      "extract": "In information theory, the Hamming distance between two strings or vectors of equal length is the number of positions at which the corresponding symbols are different. In other words, it measures the minimum number of substitutions required to change one string into the other, or equivalently, the minimum number of errors that could have transformed one string into the other. In a more general context, the Hamming distance is one of several string metrics for measuring the edit distance between two sequences. It is named after the American mathematician Richard Hamming.",
+      "extract_html": "<p>In information theory, the <b>Hamming distance</b> between two strings or vectors of equal length is the number of positions at which the corresponding symbols are different. In other words, it measures the minimum number of <i>substitutions</i> required to change one string into the other, or equivalently, the minimum number of <i>errors</i> that could have transformed one string into the other. In a more general context, the Hamming distance is one of several string metrics for measuring the edit distance between two sequences. It is named after the American mathematician Richard Hamming.</p>"
+    },
+    "media_count": 4,
+    "media_titles": [
+      "File:Hamming_distance_4_bit_binary.svg",
+      "File:Hamming_distance_4_bit_binary_example.svg",
+      "File:Hamming_distance_3_bit_binary.svg",
+      "File:Hamming_distance_3_bit_binary_example.svg"
+    ],
+    "media_items": [
+      {
+        "title": "File:Hamming_distance_4_bit_binary.svg",
+        "leadImage": true,
+        "section_id": 0,
+        "type": "image",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Hamming_distance_4_bit_binary.svg/330px-Hamming_distance_4_bit_binary.svg.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:Hamming_distance_4_bit_binary_example.svg",
+        "leadImage": false,
+        "section_id": 0,
+        "type": "image",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/b/b4/Hamming_distance_4_bit_binary_example.svg/330px-Hamming_distance_4_bit_binary_example.svg.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      },
+      {
+        "title": "File:Hamming_distance_3_bit_binary.svg",
+        "leadImage": false,
+        "section_id": 0,
+        "type": "image",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/b/b4/Hamming_distance_3_bit_binary.svg/250px-Hamming_distance_3_bit_binary.svg.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/b/b4/Hamming_distance_3_bit_binary.svg/330px-Hamming_distance_3_bit_binary.svg.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Hamming_distance_3_bit_binary_example.svg",
+        "leadImage": false,
+        "section_id": 0,
+        "type": "image",
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/6/6e/Hamming_distance_3_bit_binary_example.svg/250px-Hamming_distance_3_bit_binary_example.svg.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/6/6e/Hamming_distance_3_bit_binary_example.svg/330px-Hamming_distance_3_bit_binary_example.svg.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      }
+    ]
+  },
+  "Byte-pair_encoding": {
+    "summary": {
+      "type": "standard",
+      "title": "Byte-pair encoding",
+      "displaytitle": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Byte-pair encoding</span></span>",
+      "namespace": {
+        "id": 0,
+        "text": ""
+      },
+      "wikibase_item": "Q860962",
+      "titles": {
+        "canonical": "Byte-pair_encoding",
+        "normalized": "Byte-pair encoding",
+        "display": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Byte-pair encoding</span></span>"
+      },
+      "pageid": 5825526,
+      "lang": "en",
+      "dir": "ltr",
+      "revision": "1346605957",
+      "tid": "6ab41afb-2e08-11f1-a92e-095d278dc9d8",
+      "timestamp": "2026-04-01T20:21:51Z",
+      "description": "Adjacent characters (tokens) merge-based compression algorithm",
+      "description_source": "local",
+      "content_urls": {
+        "desktop": {
+          "page": "https://en.wikipedia.org/wiki/Byte-pair_encoding",
+          "revisions": "https://en.wikipedia.org/wiki/Byte-pair_encoding?action=history",
+          "edit": "https://en.wikipedia.org/wiki/Byte-pair_encoding?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Byte-pair_encoding"
+        },
+        "mobile": {
+          "page": "https://en.wikipedia.org/wiki/Byte-pair_encoding",
+          "revisions": "https://en.wikipedia.org/wiki/Special:History/Byte-pair_encoding",
+          "edit": "https://en.wikipedia.org/wiki/Byte-pair_encoding?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Byte-pair_encoding"
+        }
+      },
+      "extract": "In computing, byte-pair encoding (BPE), or digram coding, is an algorithm, first described in 1994 by Philip Gage, for encoding strings of text into smaller strings by creating and using a translation table. A slightly modified version of the algorithm is used in large language model tokenizers.",
+      "extract_html": "<p>In computing, <b>byte-pair encoding</b> (<b>BPE</b>), or <b>digram coding</b>, is an algorithm, first described in 1994 by Philip Gage, for encoding strings of text into smaller strings by creating and using a translation table. A slightly modified version of the algorithm is used in large language model tokenizers.</p>"
+    },
+    "media_count": 0,
+    "media_titles": [],
+    "media_items": []
+  },
+  "Attention_(machine_learning)": {
+    "summary": {
+      "type": "standard",
+      "title": "Attention (machine learning)",
+      "displaytitle": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Attention (machine learning)</span></span>",
+      "namespace": {
+        "id": 0,
+        "text": ""
+      },
+      "wikibase_item": "Q103701642",
+      "titles": {
+        "canonical": "Attention_(machine_learning)",
+        "normalized": "Attention (machine learning)",
+        "display": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Attention (machine learning)</span></span>"
+      },
+      "pageid": 66001552,
+      "thumbnail": {
+        "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/62/Attention_mechanism_overview.svg/330px-Attention_mechanism_overview.svg.png?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+        "width": 330,
+        "height": 246
+      },
+      "originalimage": {
+        "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/62/Attention_mechanism_overview.svg/330px-Attention_mechanism_overview.svg.png?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+        "width": 251,
+        "height": 187
+      },
+      "lang": "en",
+      "dir": "ltr",
+      "revision": "1385183236",
+      "tid": "57bafab7-de69-11f1-8998-7643f2d73029",
+      "timestamp": "2026-11-12T07:19:05Z",
+      "description": "Machine learning technique",
+      "description_source": "local",
+      "content_urls": {
+        "desktop": {
+          "page": "https://en.wikipedia.org/wiki/Attention_(machine_learning)",
+          "revisions": "https://en.wikipedia.org/wiki/Attention_(machine_learning)?action=history",
+          "edit": "https://en.wikipedia.org/wiki/Attention_(machine_learning)?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Attention_(machine_learning)"
+        },
+        "mobile": {
+          "page": "https://en.wikipedia.org/wiki/Attention_(machine_learning)",
+          "revisions": "https://en.wikipedia.org/wiki/Special:History/Attention_(machine_learning)",
+          "edit": "https://en.wikipedia.org/wiki/Attention_(machine_learning)?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Attention_(machine_learning)"
+        }
+      },
+      "extract": "In machine learning, attention is a method that determines the importance of, or \"attends to\", each component in a sequence relative to the other components in that sequence. In natural language processing, importance is represented by weights assigned to each word in a sentence. More generally, attention encodes vectors called token embeddings across a fixed-width sequence that can range from tens to millions of tokens in size.",
+      "extract_html": "<p>In machine learning, <b>attention</b> is a method that determines the importance of, or \"attends to\", each component in a sequence relative to the other components in that sequence. In natural language processing, importance is represented by weights assigned to each word in a sentence. More generally, attention encodes vectors called token embeddings across a fixed-width sequence that can range from tens to millions of tokens in size.</p>"
+    },
+    "media_count": 6,
+    "media_titles": [
+      "File:Attention_mechanism_overview.svg",
+      "File:Encoder_cross-attention.png",
+      "File:Encoder_self-attention,_block_diagram.png",
+      "File:Decoder_self-attention_with_causal_masking,_detailed_diagram.png",
+      "File:Encoder_cross-attention,_multiheaded_version.png",
+      "File:Self-attention_in_CNN,_RNN,_and_self-attention.svg"
+    ],
+    "media_items": [
+      {
+        "title": "File:Attention_mechanism_overview.svg",
+        "leadImage": true,
+        "section_id": 0,
+        "type": "image",
+        "caption": {
+          "html": "Attention mechanism, overview",
+          "text": "Attention mechanism, overview"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/6/62/Attention_mechanism_overview.svg/250px-Attention_mechanism_overview.svg.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/6/62/Attention_mechanism_overview.svg/500px-Attention_mechanism_overview.svg.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Encoder_cross-attention.png",
+        "leadImage": false,
+        "section_id": 5,
+        "type": "image",
+        "caption": {
+          "html": "Computing the attention weights by dot-product. This is the \"decoder cross-attention\".",
+          "text": "Computing the attention weights by dot-product. This is the \"decoder cross-attention\"."
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/3/3b/Encoder_cross-attention.png/500px-Encoder_cross-attention.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/3/3b/Encoder_cross-attention.png/1280px-Encoder_cross-attention.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Encoder_self-attention,_block_diagram.png",
+        "leadImage": false,
+        "section_id": 5,
+        "type": "image",
+        "caption": {
+          "html": "Encoder self-attention, block diagram.",
+          "text": "Encoder self-attention, block diagram."
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/5/58/Encoder_self-attention%2C_block_diagram.png/500px-Encoder_self-attention%2C_block_diagram.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/5/58/Encoder_self-attention%2C_block_diagram.png/1280px-Encoder_self-attention%2C_block_diagram.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Decoder_self-attention_with_causal_masking,_detailed_diagram.png",
+        "leadImage": false,
+        "section_id": 6,
+        "type": "image",
+        "caption": {
+          "html": "Decoder self-attention with causal masking, detailed diagram",
+          "text": "Decoder self-attention with causal masking, detailed diagram"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/7/72/Decoder_self-attention_with_causal_masking%2C_detailed_diagram.png/500px-Decoder_self-attention_with_causal_masking%2C_detailed_diagram.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/7/72/Decoder_self-attention_with_causal_masking%2C_detailed_diagram.png/1280px-Decoder_self-attention_with_causal_masking%2C_detailed_diagram.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Encoder_cross-attention,_multiheaded_version.png",
+        "leadImage": false,
+        "section_id": 7,
+        "type": "image",
+        "caption": {
+          "html": "Decoder multiheaded cross-attention",
+          "text": "Decoder multiheaded cross-attention"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/d/d5/Encoder_cross-attention%2C_multiheaded_version.png/500px-Encoder_cross-attention%2C_multiheaded_version.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          },
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/d/d5/Encoder_cross-attention%2C_multiheaded_version.png/1280px-Encoder_cross-attention%2C_multiheaded_version.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "2x"
+          }
+        ]
+      },
+      {
+        "title": "File:Self-attention_in_CNN,_RNN,_and_self-attention.svg",
+        "leadImage": false,
+        "section_id": 8,
+        "type": "image",
+        "caption": {
+          "html": "Comparison of the data flow in CNN, RNN, and self-attention",
+          "text": "Comparison of the data flow in CNN, RNN, and self-attention"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/d/d7/Self-attention_in_CNN%2C_RNN%2C_and_self-attention.svg/500px-Self-attention_in_CNN%2C_RNN%2C_and_self-attention.svg.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      }
+    ]
+  },
+  "Abstract_syntax_tree": {
+    "summary": {
+      "type": "standard",
+      "title": "Abstract syntax tree",
+      "displaytitle": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Abstract syntax tree</span></span>",
+      "namespace": {
+        "id": 0,
+        "text": ""
+      },
+      "wikibase_item": "Q127380",
+      "titles": {
+        "canonical": "Abstract_syntax_tree",
+        "normalized": "Abstract syntax tree",
+        "display": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Abstract syntax tree</span></span>"
+      },
+      "pageid": 75629,
+      "thumbnail": {
+        "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c7/Abstract_syntax_tree_for_Euclidean_algorithm.svg/330px-Abstract_syntax_tree_for_Euclidean_algorithm.svg.png?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+        "width": 330,
+        "height": 372
+      },
+      "originalimage": {
+        "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c7/Abstract_syntax_tree_for_Euclidean_algorithm.svg/1280px-Abstract_syntax_tree_for_Euclidean_algorithm.svg.png?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+        "width": 1147,
+        "height": 1294
+      },
+      "lang": "en",
+      "dir": "ltr",
+      "revision": "1380221583",
+      "tid": "47b3ebed-c7d9-11f1-889c-28e6cf6c22ec",
+      "timestamp": "2026-10-14T14:12:25Z",
+      "description": "Tree representation of the abstract syntactic structure of source code",
+      "description_source": "local",
+      "content_urls": {
+        "desktop": {
+          "page": "https://en.wikipedia.org/wiki/Abstract_syntax_tree",
+          "revisions": "https://en.wikipedia.org/wiki/Abstract_syntax_tree?action=history",
+          "edit": "https://en.wikipedia.org/wiki/Abstract_syntax_tree?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Abstract_syntax_tree"
+        },
+        "mobile": {
+          "page": "https://en.wikipedia.org/wiki/Abstract_syntax_tree",
+          "revisions": "https://en.wikipedia.org/wiki/Special:History/Abstract_syntax_tree",
+          "edit": "https://en.wikipedia.org/wiki/Abstract_syntax_tree?action=edit",
+          "talk": "https://en.wikipedia.org/wiki/Talk:Abstract_syntax_tree"
+        }
+      },
+      "extract": "An abstract syntax tree (AST) is a data structure used in computer science to represent the structure of a program or code snippet. It is a tree representation of the abstract syntactic structure of text written in a formal language. Each node of the tree denotes a construct occurring in the text. It is sometimes called just a syntax tree.",
+      "extract_html": "<p>An <b>abstract syntax tree</b> (<b>AST</b>) is a data structure used in computer science to represent the structure of a program or code snippet. It is a tree representation of the abstract syntactic structure of text written in a formal language. Each node of the tree denotes a construct occurring in the text. It is sometimes called just a <b>syntax tree</b>.</p>"
+    },
+    "media_count": 1,
+    "media_titles": [
+      "File:Abstract_syntax_tree_for_Euclidean_algorithm.svg"
+    ],
+    "media_items": [
+      {
+        "title": "File:Abstract_syntax_tree_for_Euclidean_algorithm.svg",
+        "leadImage": true,
+        "section_id": 0,
+        "type": "image",
+        "caption": {
+          "html": "An abstract syntax tree for the following code for the <a rel=\"mw:WikiLink\" href=\"./Euclidean_algorithm\" title=\"Euclidean algorithm\" id=\"mwCg\">Euclidean algorithm</a>:<div class=\"mw-highlight mw-highlight-lang-php mw-content-ltr\" dir=\"ltr\" typeof=\"mw:Extension/syntaxhighlight\" about=\"#mwt6\" id=\"mwCw\" data-mw=\"{&quot;name&quot;:&quot;syntaxhighlight&quot;,&quot;attrs&quot;:{&quot;lang&quot;:&quot;php&quot;},&quot;body&quot;:{&quot;extsrc&quot;:&quot;while b != 0:\\n    if a > b:\\n        a := a - b\\n    else:\\n        b := b - a\\nreturn a&quot;}}\"><pre id=\"mwDA\"><span id=\"mwDQ\"></span><span class=\"k\" id=\"mwDg\">while</span> <span class=\"nx\" id=\"mwDw\">b</span> <span class=\"o\" id=\"mwEA\">!=</span> <span class=\"mi\" id=\"mwEQ\">0</span><span class=\"o\" id=\"mwEg\">:</span>\n    <span class=\"k\" id=\"mwEw\">if</span> <span class=\"nx\" id=\"mwFA\">a</span> <span class=\"o\" id=\"mwFQ\">&gt;</span> <span class=\"nx\" id=\"mwFg\">b</span><span class=\"o\" id=\"mwFw\">:</span>\n        <span class=\"nx\" id=\"mwGA\">a</span> <span class=\"o\" id=\"mwGQ\">:=</span> <span class=\"nx\" id=\"mwGg\">a</span> <span class=\"o\" id=\"mwGw\">-</span> <span class=\"nx\" id=\"mwHA\">b</span>\n    <span class=\"k\" id=\"mwHQ\">else</span><span class=\"o\" id=\"mwHg\">:</span>\n        <span class=\"nx\" id=\"mwHw\">b</span> <span class=\"o\" id=\"mwIA\">:=</span> <span class=\"nx\" id=\"mwIQ\">b</span> <span class=\"o\" id=\"mwIg\">-</span> <span class=\"nx\" id=\"mwIw\">a</span>\n<span class=\"k\" id=\"mwJA\">return</span> <span class=\"nx\" id=\"mwJQ\">a</span>\n</pre></div>",
+          "text": "An abstract syntax tree for the following code for the Euclidean algorithm:while b != 0:\n    if a > b:\n        a := a - b\n    else:\n        b := b - a\nreturn a\n"
+        },
+        "showInGallery": true,
+        "srcset": [
+          {
+            "src": "//thumb.wikimedia.org/wikipedia/commons/thumb/c/c7/Abstract_syntax_tree_for_Euclidean_algorithm.svg/500px-Abstract_syntax_tree_for_Euclidean_algorithm.svg.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail",
+            "scale": "1x"
+          }
+        ]
+      }
+    ]
+  }
+}

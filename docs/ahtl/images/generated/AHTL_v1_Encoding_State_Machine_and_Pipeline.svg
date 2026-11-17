@@ -1,0 +1,227 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900">
+  
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070B14"/>
+      <stop offset="50%" stop-color="#0B1021"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="cyanBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#082F49" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#0C192C" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="violetBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2E1065" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#170B3B" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="emeraldBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#064E3B" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#052E24" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="amberBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#451A03" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#271004" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="crimsonBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4C0519" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#2A0410" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="slateBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.92"/>
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.96"/>
+    </linearGradient>
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#00E5FF"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#A855F7"/>
+    </marker>
+    <marker id="arrowEmerald" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#10B981"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#F59E0B"/>
+    </marker>
+    <marker id="arrowSlate" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="900" rx="18" fill="url(#bgGrad)" stroke="#1E293B" stroke-width="2"/>
+
+  <text x="800" y="46" text-anchor="middle" fill="#F8FAFC" font-family="DejaVu Sans, sans-serif" font-size="25" font-weight="bold">
+    AHTL v1.0 DETERMINISTIC ENCODER &amp; PARSER FINITE STATE MACHINE (FSM)
+  </text>
+  <text x="800" y="74" text-anchor="middle" fill="#94A3B8" font-family="DejaVu Sans, sans-serif" font-size="14.5">
+    Single-Pass O(N) Encoding Pipeline, LL(1) / Reverse-Split Wire Parser States &amp; Fail-Closed Error Recovery Transitions
+  </text>
+
+  <!-- Top Section: Deterministic Encoder Pipeline -->
+  <rect x="40" y="100" width="1520" height="320" rx="12" fill="url(#slateBox)" stroke="#00E5FF" stroke-width="2"/>
+  <text x="65" y="132" fill="#00E5FF" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="bold">
+    PART 1: DETERMINISTIC ENCODER DATAFLOW (`InfinityContextMmu::ingest_payload`)
+  </text>
+
+  <!-- 5 Encoder Boxes -->
+  <rect x="65" y="155" width="250" height="235" rx="10" fill="url(#crimsonBox)" stroke="#F43F5E" stroke-width="1.8"/>
+  <text x="190" y="182" text-anchor="middle" fill="#FDA4AF" font-family="DejaVu Sans, sans-serif" font-size="13.5" font-weight="bold">
+    E0: Sanitize &amp; Escape
+  </text>
+  <text x="80" y="210" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11">Input: (agent, subj, raw)</text>
+  <text x="80" y="234" fill="#CBD5E1" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="10.8">1. Escape ⟦ ⟧ ⟪ ⟫</text>
+  <text x="80" y="254" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">2. Strip PEM blocks</text>
+  <text x="80" y="274" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">3. Redact ENV &amp; API keys</text>
+  <text x="80" y="294" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">4. Shannon H(S) check</text>
+  <text x="80" y="325" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="10.8" font-weight="bold">Out: clean_utf8 (&amp;str)</text>
+  <text x="80" y="348" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">Complexity: O(|raw|)</text>
+
+  <line x1="315" y1="272" x2="355" y2="272" stroke="#00E5FF" stroke-width="2.5" marker-end="url(#arrowCyan)"/>
+
+  <rect x="355" y="155" width="265" height="235" rx="10" fill="url(#cyanBox)" stroke="#00E5FF" stroke-width="1.8"/>
+  <text x="487" y="182" text-anchor="middle" fill="#00E5FF" font-family="DejaVu Sans, sans-serif" font-size="13.5" font-weight="bold">
+    E1: FastCDC &amp; BLAKE3 CAS
+  </text>
+  <text x="370" y="210" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11">CasStore::put_bytes()</text>
+  <text x="370" y="234" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">1. Gear-hash split (2..64K)</text>
+  <text x="370" y="254" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">2. BLAKE3 hash each chunk</text>
+  <text x="370" y="274" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">3. Deduplicate in BTreeMap</text>
+  <text x="370" y="294" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">4. Top-level 256b digest</text>
+  <text x="370" y="325" fill="#7DD3FC" font-family="DejaVu Sans Mono, monospace" font-size="10.8" font-weight="bold">Out: ArtifactId (#icx:..)</text>
+  <text x="370" y="348" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">Throughput: &gt; 3.5 GB/s</text>
+
+  <line x1="620" y1="272" x2="660" y2="272" stroke="#A855F7" stroke-width="2.5" marker-end="url(#arrowViolet)"/>
+
+  <rect x="660" y="155" width="280" height="235" rx="10" fill="url(#violetBox)" stroke="#A855F7" stroke-width="1.8"/>
+  <text x="800" y="182" text-anchor="middle" fill="#C084FC" font-family="DejaVu Sans, sans-serif" font-size="13.5" font-weight="bold">
+    E2: HDC + IFS + Surprise
+  </text>
+  <text x="675" y="210" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11">HdcAssociativeIndex::observe</text>
+  <text x="675" y="234" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">1. BLAKE3 XOF -&gt; Q_10240 HV</text>
+  <text x="675" y="254" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">2. Bind subj ^ text, perm(1)</text>
+  <text x="675" y="274" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">3. Titans Gate -&gt; S_t, Tier</text>
+  <text x="675" y="294" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">4. IFS step z_t = 0.5z+0.5v</text>
+  <text x="675" y="325" fill="#D8B4FE" font-family="DejaVu Sans Mono, monospace" font-size="10.8" font-weight="bold">Out: fc:[i16;16], holo:[u8;8]</text>
+  <text x="675" y="348" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">Latency: &lt; 15 µs</text>
+
+  <line x1="940" y1="272" x2="980" y2="272" stroke="#10B981" stroke-width="2.5" marker-end="url(#arrowEmerald)"/>
+
+  <rect x="980" y="155" width="265" height="235" rx="10" fill="url(#emeraldBox)" stroke="#10B981" stroke-width="1.8"/>
+  <text x="1112" y="182" text-anchor="middle" fill="#34D399" font-family="DejaVu Sans, sans-serif" font-size="13.5" font-weight="bold">
+    E3: Domain Skeletonizer
+  </text>
+  <text x="995" y="210" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11">StructuralSkeletonizer</text>
+  <text x="995" y="234" fill="#CBD5E1" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="10.8">• Log? -&gt; ✓pass:N, !ERR@L</text>
+  <text x="995" y="254" fill="#CBD5E1" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="10.8">• Diff? -&gt; hunks, ⊕sym, ⊖sym</text>
+  <text x="995" y="274" fill="#CBD5E1" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="10.8">• Code? -&gt; ⊕L&lt;n&gt;:sig, ✓pin</text>
+  <text x="995" y="294" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">• Upsert BiTemporalGraph</text>
+  <text x="995" y="325" fill="#6EE7B7" font-family="DejaVu Sans Mono, monospace" font-size="10.8" font-weight="bold">Out: Vec&lt;AhtlClause&gt;</text>
+  <text x="995" y="348" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">Single-pass O(lines)</text>
+
+  <line x1="1245" y1="272" x2="1285" y2="272" stroke="#F59E0B" stroke-width="2.5" marker-end="url(#arrowAmber)"/>
+
+  <rect x="1285" y="155" width="250" height="235" rx="10" fill="url(#amberBox)" stroke="#F59E0B" stroke-width="1.8"/>
+  <text x="1410" y="182" text-anchor="middle" fill="#FBBF24" font-family="DejaVu Sans, sans-serif" font-size="13.5" font-weight="bold">
+    E4: Braille &amp; Wire Emit
+  </text>
+  <text x="1300" y="210" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11">AhtlPacket::render()</text>
+  <text x="1300" y="234" fill="#CBD5E1" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="10.8">1. Emit ⟦ + Kind / Header</text>
+  <text x="1300" y="254" fill="#CBD5E1" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="10.8">2. Emit #icx, fc, hv / ⊢</text>
+  <text x="1300" y="274" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">3. byte_to_braille(0x2800+b)</text>
+  <text x="1300" y="294" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="10.8">4. Seal DAG &amp; /dev/shm</text>
+  <text x="1300" y="325" fill="#FDE68A" font-family="DejaVu Sans Mono, monospace" font-size="10.8" font-weight="bold">Out: Canonical AHTL String</text>
+  <text x="1300" y="348" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">100% Round-Trip Exact</text>
+
+  <!-- Bottom Section: Deterministic Parser Finite State Machine -->
+  <rect x="40" y="445" width="1520" height="425" rx="12" fill="url(#slateBox)" stroke="#A855F7" stroke-width="2"/>
+  <text x="65" y="478" fill="#C084FC" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="bold">
+    PART 2: DETERMINISTIC PARSER STATE MACHINE (`AhtlPacket::parse` &amp; `CodecError` Fail-Closed Transitions)
+  </text>
+
+  <!-- Parser States S0 .. S5 -->
+  <rect x="65" y="505" width="215" height="175" rx="10" fill="#0F172A" stroke="#00E5FF" stroke-width="2"/>
+  <text x="172" y="532" text-anchor="middle" fill="#00E5FF" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    STATE S0: Outer Envelope
+  </text>
+  <text x="80" y="558" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="10.8">trim() -&gt; check</text>
+  <text x="80" y="578" fill="#38BDF8" font-family="DejaVu Sans, monospace" font-size="11">strip_prefix('⟦')</text>
+  <text x="80" y="598" fill="#38BDF8" font-family="DejaVu Sans, monospace" font-size="11">strip_suffix('⟧')</text>
+  <text x="80" y="625" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">U+27E6 .. U+27E7</text>
+  <text x="80" y="655" fill="#F87171" font-family="DejaVu Sans Mono, monospace" font-size="10.5">Else -&gt; MissingDelimiters</text>
+
+  <line x1="280" y1="592" x2="318" y2="592" stroke="#00E5FF" stroke-width="2.2" marker-end="url(#arrowCyan)"/>
+
+  <rect x="318" y="505" width="225" height="175" rx="10" fill="#0F172A" stroke="#F59E0B" stroke-width="2"/>
+  <text x="430" y="532" text-anchor="middle" fill="#FBBF24" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    STATE S1: Braille Sketch
+  </text>
+  <text x="333" y="558" fill="#E2E8F0" font-family="DejaVu Sans, monospace" font-size="10.8">rsplit_once("⋮Ψ:") or │</text>
+  <text x="333" y="578" fill="#FDE68A" font-family="DejaVu Sans Mono, monospace" font-size="10.8">Verify 8 or 64 chars in</text>
+  <text x="333" y="598" fill="#FDE68A" font-family="DejaVu Sans Mono, monospace" font-size="10.8">0x2800 &lt;= c &lt;= 0x28FF</text>
+  <text x="333" y="625" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">b = (c as u32 - 0x2800)</text>
+  <text x="333" y="655" fill="#F87171" font-family="DejaVu Sans Mono, monospace" font-size="10.5">Else -&gt; MalformedBraille</text>
+
+  <line x1="543" y1="592" x2="581" y2="592" stroke="#F59E0B" stroke-width="2.2" marker-end="url(#arrowAmber)"/>
+
+  <rect x="581" y="505" width="225" height="175" rx="10" fill="#0F172A" stroke="#10B981" stroke-width="2"/>
+  <text x="693" y="532" text-anchor="middle" fill="#34D399" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    STATE S2: Deref Handle
+  </text>
+  <text x="596" y="558" fill="#E2E8F0" font-family="DejaVu Sans, monospace" font-size="10.8">rsplit_once('↦') or │</text>
+  <text x="596" y="578" fill="#6EE7B7" font-family="DejaVu Sans Mono, monospace" font-size="10.8">Parse #icx:&lt;hex12|16&gt;</text>
+  <text x="596" y="598" fill="#6EE7B7" font-family="DejaVu Sans Mono, monospace" font-size="10.8">u64::from_str_radix(16)</text>
+  <text x="596" y="625" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">Optional fc:64 / hv:16</text>
+  <text x="596" y="655" fill="#F87171" font-family="DejaVu Sans Mono, monospace" font-size="10.5">Else -&gt; MalformedHandle</text>
+
+  <line x1="806" y1="592" x2="844" y2="592" stroke="#10B981" stroke-width="2.2" marker-end="url(#arrowEmerald)"/>
+
+  <rect x="844" y="505" width="225" height="175" rx="10" fill="#0F172A" stroke="#A855F7" stroke-width="2"/>
+  <text x="956" y="532" text-anchor="middle" fill="#C084FC" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    STATE S3: Kind &amp; Subject
+  </text>
+  <text x="859" y="558" fill="#E2E8F0" font-family="DejaVu Sans, monospace" font-size="10.8">split_once('⊢') header</text>
+  <text x="859" y="578" fill="#D8B4FE" font-family="DejaVu Sans, monospace" font-size="10.8">Glyph in {Δ, Ψ, Ω, Θ, Φ}</text>
+  <text x="859" y="598" fill="#D8B4FE" font-family="DejaVu Sans Mono, monospace" font-size="10.8">Expect ':' + Subject</text>
+  <text x="859" y="625" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">Parse optional #L&lt;s&gt;-&lt;e&gt;</text>
+  <text x="859" y="655" fill="#F87171" font-family="DejaVu Sans Mono, monospace" font-size="10.5">Else -&gt; UnknownPacketKind</text>
+
+  <line x1="1069" y1="592" x2="1107" y2="592" stroke="#A855F7" stroke-width="2.2" marker-end="url(#arrowViolet)"/>
+
+  <rect x="1107" y="505" width="215" height="175" rx="10" fill="#0F172A" stroke="#38BDF8" stroke-width="2"/>
+  <text x="1214" y="532" text-anchor="middle" fill="#38BDF8" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    STATE S4: Clause Lattice
+  </text>
+  <text x="1122" y="558" fill="#E2E8F0" font-family="DejaVu Sans, monospace" font-size="10.8">clauses.split('⋮')</text>
+  <text x="1122" y="578" fill="#7DD3FC" font-family="DejaVu Sans, monospace" font-size="10.8">Prefix in {⊕, ⊖, ¬, !, ✓}</text>
+  <text x="1122" y="598" fill="#7DD3FC" font-family="DejaVu Sans Mono, monospace" font-size="10.8">split_once(':') -&gt; (k,v)</text>
+  <text x="1122" y="625" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">Zero heap backtracking</text>
+  <text x="1122" y="655" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="10.5">Infallible ClauseOp::parse</text>
+
+  <line x1="1322" y1="592" x2="1355" y2="592" stroke="#10B981" stroke-width="2.2" marker-end="url(#arrowEmerald)"/>
+
+  <rect x="1355" y="505" width="180" height="175" rx="10" fill="url(#emeraldBox)" stroke="#10B981" stroke-width="2"/>
+  <text x="1445" y="535" text-anchor="middle" fill="#6EE7B7" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    STATE S5: Verified
+  </text>
+  <text x="1445" y="565" text-anchor="middle" fill="#F8FAFC" font-family="DejaVu Sans Mono, monospace" font-size="11.5" font-weight="bold">
+    Ok(AhtlPacket)
+  </text>
+  <text x="1368" y="595" fill="#D1FAE5" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• Bijective AST</text>
+  <text x="1368" y="615" fill="#D1FAE5" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• Render == Input</text>
+  <text x="1368" y="635" fill="#D1FAE5" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• CAS Link Ready</text>
+  <text x="1368" y="655" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="10.5" font-weight="bold">• Zero Panics</text>
+
+  <!-- Error Recovery & Security Bar -->
+  <rect x="65" y="705" width="1470" height="140" rx="10" fill="#180814" stroke="#F43F5E" stroke-width="1.8"/>
+  <text x="800" y="733" text-anchor="middle" fill="#FDA4AF" font-family="DejaVu Sans, sans-serif" font-size="14.5" font-weight="bold">
+    FAIL-CLOSED ERROR RECOVERY &amp; ANTI-INJECTION INVARIANTS (MODULE 60 SECURITY GATE)
+  </text>
+  <text x="85" y="762" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11.5">
+    1. No Unwrap on Untrusted Input: Every parser state returns typed `Result&lt;AhtlPacket, CodecError&gt;`; malformed frames degrade gracefully to raw text.
+  </text>
+  <text x="85" y="788" fill="#E2E8F0" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="11.5">
+    2. Anti-Forgery Delimiter Escaping: `SecretRedactor::escape_ahtl_delimiters` replaces `⟦ ⟧ ⟪ ⟫` with `[[ ]] &lt;&lt; &gt;&gt;` before encoding so user/tool text cannot forge `Ω` rules.
+  </text>
+  <text x="85" y="814" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11.5">
+    3. Cryptographic CAS Verification: Dereferencing `#icx:&lt;hex&gt;` recomputes `Blake3Digest::hash(bytes)` and aborts with `IntegrityViolation` on any 1-bit mismatch.
+  </text>
+</svg>

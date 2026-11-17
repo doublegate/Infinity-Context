@@ -1,0 +1,775 @@
+Unicode Technical Committee and X3L2 Joint Meeting
+UTC Meeting #67
+X3L2 Meeting #166
+
+Friday, December 8, 1995
+Cupertino, CA
+Hosted by Hewlett-Packard Company
+
+Chair: Joan Aliprand; Vice-Chair: Ed Hart; Scribe: Steve Greenfield
+
+Meeting called to order at 10:00 a.m.
+
+Attendance:
+
+Joan Aliprand, Research Libraries Group (UTC Chair; Unicode, Inc.
+Secretary), br.jma@rlg.stanford.edu
+Joseph D.  Becker, Xerox Corporation (Unicode Inc. Technical Vice-President)
+joe_becker@unicode.org
+Don Carroll, Hewlett-Packard Company (Alternate)
+Peter Edberg, Apple Computer (Alternate), edberg@applelink.apple.com
+Asmus Freytag, ASMUS, Inc. (Unicode, Inc. Vice President--Marketing),
+asmus_freytag@unicode.org
+Judith Gilbert, AT&T GIS (Alternate), judith.gilbert@sandiegoca.attgis.com
+Al Griffee, AFII, afii@ix.netcom.com
+Edwin Hart, SHARE (X3L2 Chair), ehart@share.org
+Lloyd Honomichl, Novell, lloyd_honomichl@novell.com
+John H. Jenkins, Taligent (Alternate), john_jenkins@taligent.com
+Mike Kernaghan, Microsoft (Unicode, Inc. Vice President)
+mike_kernaghan@unicode.org
+Tatsuo Kobayashi, Justsystem Corporation, tatsuo_kobayashi@justsystem.co.jp
+Mike Ksar, Hewlett-Packard Company, ksar@hpcea.ce.hp.com
+John McConnell, Apple Computer, jmcc@apple.com
+Rick McGowan, NeXT Software (Unicode Inc. Technical Director),
+rick_mcgowan@next.com
+Lisa Moore, IBM Corporation (Alternate), lisam@vnet.ibm.com
+Tom Naughten, Apple Computer (Alternate), naughtont@eworld.com
+Gary Roberts, AT&T GIS, gary.roberts@elsegundoca.attgis.com
+Murray Sargent, Microsoft Corporation, murrays@microsoft.com
+Michel Suignard, Microsoft Corporation (Alternate), (Unicode Inc. European
+Coordinator), michelsu@microsoft.com
+Tex Texin, Progress Software, texin@bedford.progress.com
+Ken Torri, Software AG, 75611.327@compuserve.com
+Ken Whistler, Sybase (Unicode Inc. Technical Director), kenw@sybase.com
+Arnold Winkler, Unisys (UTC Vice Chair), awinkler@po3.bb.unisys.com
+
+Full (Corporate) Member companies represented:
+AT&T GIS; Apple Computer; Ecological Linguisitcs (by proxy);
+Hewlett-Packard Company; IBM; Justsystem; Microsoft; NeXT Computer;
+Novell; Research Libraries Group; Sybase; Taligent; Unisys.
+
+Associate Member companies represented:
+ASMUS, Inc.; Progress Software; SHARE; Software AG.
+
+X3L2 Member companies represented:
+Apple Computer; Hewlett-Packard Company; IBM; Microsoft; Research
+Libraries Group; SHARE; Taligent; Unicode, Inc.; Unisys.
+
+Document Register:
+UTC67-95-053     Preliminary Agenda of Joint UTC/X3L2 Meeting
+UTC67-95-054     UTC #66 Draft Minutes
+UTC67-95-055a    Conclusive Proposal for Encoding of Ethiopic Syllabary,
+                 by Joe Becker
+UTC67-95-055b    Ethiopic Glyphs Variants (Appendix) by Joe Becker
+UTC67-95-056     Proposal for character to represent embedded object, memo
+                 from Murray Sargent
+UTC67-95-057     Unicode 2.0 Codespace Allocation [Current Character
+                 Content Table] by Joe Becker
+UTC67-95-058     Highlights of Tokyo WG2 Meeting
+UTC67-95-059     Math Operator Character Class, by Murray Sargent
+X3L2/95-125      A proposal for funding the programs of Braille Research
+                 and Literacy, by Peter Duran
+X3L2/95-129      Liaison report from SC22/WG20, from A. Winkler
+X3L2/95-130      Comments on pDAM #8
+X3L2/95-131      Liaison reports: ISO/IEC JTC/SC18 and AFII, from Alan
+                 Griffee
+
+UTC roll call had been taken during the preceding Closed Caucus so was
+waived.  X3L2 member roll call had been taken at the meeting on Thursday,
+December 7.
+
+Agenda
+------
+The following additional topics were added to the Agenda:
+Japanese proposal to WG2 on Braille; Precomposed letters for Livonian; Math
+Operator Character Class; Embedded Object proposal.
+
+Status of the Unicode Conferences was put under 2 (meetings).  Discussion
+on Book (Version 2.0) placed under new Business.  Discussion on Paper
+distribution to Associate members from X3L2.
+
+The Precomposed Yiddish Proposal was accepted at UTC #66.  X3L2 also
+accepted this proposal.
+
+
+Approval of Minutes
+-------------------
+The Chair requested approval of the Minutes of UTC #66.
+
+Texin asked for a clarification about an action item that was listed under
+his name.  He requested that the wording be changed to reflect an inquiry
+on his part, not an actual request to head up a committee concerning the
+listed action.  Hart supplied a number of amendments.  It was also
+recommended that the whole paragraph concerning the Japanese proposal be
+deleted.
+
+Action Item (Greenfield & Aliprand):
+The Minutes for this UTC (Draft Minutes to UTC #67) are to be sent out
+through e-mail on "minutes@unicode.org" by the end of the month.  This will
+facilitate better feedback and a timeliness of delivery.
+
+Standing Action Item (Greenfield):
+Regardless of what papers are distributed by e-mail prior to each UTC,
+printed Agendas are to be provided for each meeting.  The Minutes from the
+previous UTC are also to be provided in hard-copy for every UTC.  The
+Agenda will start t he document numbers for each UTC, with the minutes
+being the next in the series.  Closed Caucus Minutes will be provided only
+to Corporate Member representatives.  Closed Caucus Minutes will have the
+same number as the Minutes of the Op en Meeting, augmented with "A".
+
+Motion (moved by NeXT; seconded by Taligent):
+That the Minutes of UTC #66 as amended be approved.
+Vote:  8 yes, 0 no, 5 abstentions (those member representatives who were
+not at UTC #66)
+Motion passed.
+
+Action item (Aliprand):
+Incorporate requested amendments.  Distribute to "minutes" DL.
+
+
+Schedule of Future Meetings
+---------------------------
+The June and December meetings will be joint UTC/X3L2 meetings.
+
+IBM offered to host UTC #68 in March.  March 8 is the primary choice date,
+with March 1 as second choice.
+
+Microsoft offered to host the joint UTC/X3L2 meeting in June (UTC #69 &
+X3L2 #167) in Redmond, WA.  This will be a two-day meeting on June 6-7.
+
+UTC #70 will held on September 12 at a location (to be decided) in the Bay
+Area.
+
+AT&T GIS offered to host the joint UTC/X3L2 meeting in December (UTC #71 &
+X3L2 #168) in San Diego, CA.  This will be a two-day meeting on December 5-
+6, and will include the Annual Membership Meeting.
+
+Al Griffee suggested that this could also be a co-located meeting with
+X3V1.
+
+Action Item (Griffee):
+Check on whether V1 would be willing to have a joint meeting.  Also verify
+that AT&T GIS has the facilities available.  Report back by the March
+meeting on whether a co-located meeting with X3V1 is possible.
+
+Action Item (Greenfield):
+Arrange for a site for UTC #70.
+
+
+Script Development
+------------------
+
+Tibetan:
+The Tibetan proposal developed at UTC #65 is being balloted as pDAM #5.  No
+projected counts are available, but the US voted yes.
+
+Ethiopic:
+Joe Becker presented a proposal for encoding of Ethiopic script (as a
+syllabary).  To aid UTC discussion, the document was split into two parts:
+the proposal proper (covering the basic Ethiopic syllabary), and appendices
+(covering more esoteric material).
+
+This proposal is based on that in UTR #2 and a British proposal.  Experts
+have been involved in the project.  One of the most contentious issues was
+the name for the script: "Ethiopic" has no specific geographical
+connection, and was preferred to "Ge'ez" as being easier to pronounce.  No
+additional comments have been received from the experts, even after
+requesting feedback.  The next step is to send this proposal to WG2 and let
+the comments come in at that time.
+
+It was noted that, if the UTC accepted the proposal, the accompanying cover
+letter would need to be rewritten, as a submission to WG2 from the Unicode
+Consortium.  Becker would then be identified as Chair of group that worked
+on the proposal.
+
+Motion (moved by NeXT, seconded by RLG):
+That the UTC accepts the Ethiopic encoding in document number UTC67-
+95-055a and that this proposal with amendments as discussed should be
+submitted to WG2 for consideration as an addition to ISO 10646.
+Vote: 11 yes, 0 no, 1 abstention.
+Motion passed.
+
+At such time as this proposal is balloted by ISO, X3L2 is expected to vote
+positively on it.
+
+Ethiopic script will not be published as part of Version 2.0.  It was noted
+that there is a need for a mechanism for the management of additions to the
+Unicode Standard post-Version 2.0.
+
+Action Item (Becker):
+Becker is to modify the cover letter to be a submission from the Unicode
+Consortium or from X3L2 and the Consortium jointly.  The proposal should be
+submitted to WG2 in January for consideration at Copenhagen meeting.
+
+Action Item (Aliprand):
+Aliprand is to provide a letter stating that Joe Becker is empowered to
+submit this proposal on behalf of X3L2 and UTC.
+
+Standing Action Item (UTC Members):
+Provide phonetic information for characters in UTC documents.
+
+Yod with Hirik:
+This character was accepted by the UTC at Meeting #66.  There needs to be
+an action item attached to forward this on to X3L2.
+
+Action Item (Aliprand):
+On behalf of X2L2 and the Unicode Consortium, submit this character to WG2
+for consideration as an addition to ISO 10646.
+
+
+Distribution of X3L2 Documents
+------------------------------
+Texin asked whether Associate Members will receive X3L2 documents.
+
+Winkler said he had already considered this issue, and will send
+documentation only to those participants who will use it.  Due to the
+expense of copying and mailing, this must be a limited offer.  This is not
+an open invitation to anyone, and should not be seen as such.  If the
+participant is actively involved, they will continue to receive documents
+as they are mailed out.
+
+Freytag said that it was necessary to balance costs vs.  participation in
+UTC/X3L2 meetings.  We do not owe corporate members more than one automatic
+copy, and distribution otherwise should be limited to self-declared active
+members.
+
+Aliprand added a point of clarification.  Although these documents come
+from an American national standards subcommittee, they are made available
+to overseas members of the Unicode Consortium upon request because they are
+discussed at UTC meetings.
+
+Freytag recommended that determination of recipients should be at Winkler's
+discretion.
+
+Winkler circulated a list of those already receiving a set of X3L2
+documents.  He asked that all those wishing to receive documents in future
+mailing add their name and address.
+
+Hart requested that the Minutes record and the UTC recognize all the work
+that Arnold Winkler has done (and continues to do) for the UTC and X3L2.
+
+
+Version 2.0
+-----------
+Each Main Representative of Corporate and Associate Member companies has
+been mailed a copy of the text for Version 2.0.
+
+Steve Greenfield asked that anyone who has not received a copy contact him
+immediately.
+
+The Character Names List (prepared by Asmus Freytag and Joe Becker) is to
+be copied and sent to Main Representatives of Member companies.
+
+Feedback should be sent to Steve Greenfield at the Unicode Office.
+Deadline for comments is January 15, 1996.  If possible, please submit them
+before the deadline.  Only marked up pages should be sent, not the entire
+manuscript.  All comments should be made in red ink only.  Steve Greenfield
+will then make sure that the comments reach the right member of the
+Authors' Group.
+
+Action item (Book Editors):
+Send procedures on how to return comments to Members.
+
+Acceptance of Version 2.0 will be by letter ballot.  The letter should
+state: Do the members approve the Standard as it is to go forward with
+printing?  If there are showstoppers, a contingency vote will be
+acceptable, too, i.e., a "no" vote changed to "yes" provided this action is
+taken.
+
+Action Item (Greenfield):
+Send out letter ballot re publication of Version 2.0 on Monday, December 11
+by e-mail and fax.
+
+Symmetric swapping characters:
+Sargent thought that there were differences in the lists of symmetric
+swapping characters in Version 2.0 and ISO 10646.  Whistler said they are
+the same.  Sargent then asked about the implications for math of the
+symmetric swapping characters.
+
+Action Item (Sargent):
+By Jan. 12 (end of review period), submit an editorial comment to Lisa
+Moore on symmetric swapping characters and mathematics.  Verify lists in
+ISO 10646 and Unicode and see if and what are wrong.
+
+This would allow the review editors to take action at the UTC in March.
+
+Contingent Action Item (Freytag):
+If there are found to be discrepancies, Freytag is to submit a WG2 error
+report.
+
+Normative Parts of Chapter 3, "Conformance":
+IBM is concerned about the normative parts of Chapter 3.  Should
+"normative" be defined in terms of results?, that is, any means of
+producing identical results is acceptable.
+
+Motion (moved by IBM, seconded by NeXT):
+As far as normative algorithms are incorporated in the Unicode Standard,
+Version 2.0, any implementation which produces equal results is considered
+conformant.
+Vote: Approved unanimously.
+
+
+WG2 Report:
+----------------
+Freytag reported on the WG2 meeting in Tokyo.
+
+The issue of Korean names likely to be resolved in Copenhagen.  Suignard
+has been in touch with Korea.  Canada, US, Singapore comments were
+accepted, and WG2 approved immediate depreciation of the previous hangul.
+This means that Version 2.0 is in full agreement with pDAM #5.
+
+Freytag referred to the cooperative project to develop Tibetan script
+encoding as a possible model for the development of other script proposals.
+Mongolia ("Outer Mongolia") plans to meet with China twice to prepare a
+draft proposal fo r Mongolian script.  Freytag said that Unicode, Inc would
+not be sending people to these meetings.  However, he issued a formal
+invitation at the WG2 meeting in Tokyo to both interested parties to meet
+with the UTC to finalize the proposal.  The Unicode Consortium is an
+"interested party" for Mongolian script.
+
+Becker supported a UTC role as a broker for script development.  The best
+work on Mongolian has been done by Korf from Berlin; in Becker's opinion,
+this is the only work that you can base anything on.  Korf has been in
+touch with Mongolia and their delegate to WG2.  Chinese work on Mongolian
+is getting better and better.
+
+Becker also received a message from Lofting reporting that Korf is appalled
+that his work has been ignored in Ulan Bator.
+
+Freytag can do his best to hook us into the development process for a
+particular script at WG2 meetings, but needs backing from the UTC and the
+UTC needs to process comments on a script in a timely manner.  A script
+needs a Unicode point person; someone to turn these various proposals into
+a Unicode proposal.
+
+Becker volunteered to be UTC Project Editor for Mongolian script,
+circumstances permitting.  McGowan volunteered to be backup editor.
+
+Action Item (Becker):
+Project Editor (Becker) to supply status report to Unicode Liaison to WG2
+(Freytag) by March for Copenhagen meeting.
+
+
+IRG
+-----
+7K is high priority subset for HSB collection.
+
+The IRG Meeting scheduled for the week of February 5 is to be sponsored by
+the Unicode Consortium.  Apple is providing the facilities for the meeting.
+The UTC needs to formulate its position before the meeting.
+
+Action Item:
+Chair of EASC (John Jenkins) to arrange this meeting of ideographic
+experts on UTC before the IRG meeting.
+
+If proposals are made for ideographic structure symbols, this is a long
+term solution that we can support.  Chinese are starting to encode these
+unilaterally.  Becker advised that we should wait to see a Chinese demo of
+this approach.
+
+Jenkins said that the UTC is always interested in this topic.  The problems
+are (a) feasibility, and (b) politics.  Americans cannot take the lead.
+
+Freytag observed that China is in the position to not only make proposals,
+but to create standards.  A bit of proactivity (e.g., being quick with
+reviews) on our part might help.
+
+McGowan asked which codes are high priority for BMP.  Freytag said we
+should identify chars of highest priority to industry internationally.
+McGowan agreed, saying that the focus should be on current industry needs
+(including library automation).
+
+Kobayashi said that he could not can't say much with respect to Version
+2.0, but perhaps would provide input for Version 3.0 in the future.  The
+number of ideographs is estimated as 50K in Japan, and 60K in China
+(including historical and rare ones).  It is impossible to put them all in
+Unicode code space.  We need to think about practicality.  Names, for
+example, are one concern: many gaiji are used for these.  We might
+separate ideographs based on usage levels.  There is a limitation on how
+many characters you can include in Unicode space.  Even in JIS standards,
+although the meaning may be the same, variant forms are encoded, all in
+flat code.  Currently, work is proceeding on revision of JIS 0208.  Within
+this group, there is examination of the same meaning with different shapes.
+Also, same characters with different meanings makes the problem worse.  In
+the future, we need to look at various options.
+
+Freytag thanked Kobayashi for valuable input, and mentioned the need for
+specific proposals for the next IRG meeting.  He invited Kobayashi to work
+with Jenkins before the IRG meeting on Unicode Consortium input to the IRG.
+In March, Jenkins and other attendees at the IRG meeting would report back
+to the UTC, in preparation for the WG2 meeting in April.
+
+Sargent asked whether, with respect to the large number of ideographic
+characters, a UTF-16 approach would be of help.
+
+McGowan said to make sure that Justsystem Corporation has previous UTC
+documents related to this issue.
+
+Action Item (Jenkins):
+Jenkins undertook to supply these documents.
+
+
+Defect Reports
+--------------
+China filed a defect report for precomposed accented letters used in pinyin
+transcription.  The intent is to have a complete set of precomposed letters
+for pinyin.  WG2 has taken no action on the defect report.
+
+Freytag said that it is a question of which characters are missing.  He
+proposed that Microsoft submit paper on any that are missing for March
+meeting.  Becker offered his source information.
+
+Becker said that it is really a question of what constitutes a defect.
+Ksar said there were a couple of items that we forgot to include in ISO
+10646.  The intent was to cover pinyin.  Becker responded that the issue of
+defect could be finessed by simply proposing them as additional characters.
+
+There was discussion in the question of reporting a defect vs.  proposing
+additional character(s).  An additional question was that of an audit trail
+to document the intended number of pinyin characters.
+
+Becker asked: Does pinyin include these characters?  They should be
+evaluated as additions.  Jenkins added:  Particularly in this case where
+the entities can be created by composition.  Need a more convincing case.
+
+Motion (moved by Next, seconded by IBM):
+It is the sense of the Unicode Technical Committee that, unless there is an
+editing error supported by documentation, missing characters cannot be
+considered defects but must he handled by the standard procedures for
+repertoire addition.
+Vote: 12 yes, 0 no, 1 abstention (Reason: No linguistic expertise)
+Motion passed.
+
+Freytag said that there was information from China; they have compiled a
+standard that is a defacto industry standard.  This does contain these
+characters.  We have tried to include compatibility characters for widely
+used sets, but do not guarantee round trip compatibility for post-1991
+standards.
+
+Whistler said that the issue is coverage of new GBK standard.  Are we
+interconvertable?
+
+Kobayashi said that, in many cases, Japanese dictionaries have accent marks
+for the benefit of the reader.  He worked on an electronic version, with
+many non-standard combinations.  Since Unicode covers composition, there is
+a need to look at minute details.  Is this perhaps comparable?
+
+Jenkins said that GB12345-90 is not yet a stable standard.  He has seen
+complaints about Han Unification based on printed copies.  There are
+variant editions.
+
+It was agreed to continue further discussion of this topic off-line.
+
+Action Item (Suignard):
+Write a proposal on the precomposed characters needed for pinyin.  Submit
+it to the UTC for the March meeting.  He is also to verify the existence of
+these characters.
+
+Byzantine Music Characters
+--------------------------
+At the Tokyo WG2 meeting, Greece was very insistent on inclusion of these
+characters in the BMP.  Freytag recommended looking at this topic again,
+maybe for the March.  Freytag is not asking for reconsideration of the UTC
+decision, but for help in clarification of this item.
+
+McGowan volunteered to review this material for the UTC (as Chair of the
+Scripts and Symbols SC).
+
+Action Item (McGowan):
+Report on Byzantine music notation at the March UTC.
+
+Uniqueness of Character Names
+-----------------------------
+WG2 decided to create a new category for this.  WG2 adopted (asked Freytag
+for further clarification on this topic.) There were special notations that
+concern Unicode and 10646.
+
+Action item (Freytag):
+Draft a letter to WG2 that the UTC is heavily in favor of what they are
+trying to do with this special notation.
+
+Jenkins requested that this be formalized and noted in the Minutes as more
+that just an action item.
+
+Motion (moved by Taligent, seconded by Unisys):
+That the UTC formally endorses the notation developed by WG2.
+Vote: 11 yes, 0 no, 2 abstentions (Novell, Justsystem)
+Motion passed.
+
+Braille
+-------
+We originally maintained that braille is a font.  The Japanese proposal to
+WG2 said that different dot patterns represent different characters.
+
+The UTC needs to come up with a model that the braille device owns the
+rendering.  If this is so, you need language information in the document.
+
+McGowan said that, in our original consideration of Braille, we did not
+consider this problem.  If transcoding requires language information, then
+our position was wrong.
+
+Hart:  X3L2 was approached in 1990 about a similar topic.  There are 5
+different codings of Braille for English within the US.
+
+Action Item (Hart and McGowan):
+Take this topic and give Freytag further information, especially regarding
+the 1990 proposal so that he has something else to follow through on,
+rather than the incomplete set of information that has been given so far.
+This should be reported at the March UTC.
+
+McGowan said it appears as though we have many things being multiplexed
+onto the same symbols.  Hart said that it is also a reordering issue, and
+it needs investigation.  Jenkins said this is no longer a font issue, but a
+character issue.  This is why this item should be investigated.
+
+African Symbols
+---------------
+Action Item (Aliprand):
+Report on the African Symbols in WG2 N1143 at the UTC in March.
+
+Electro-Technical Symbols
+-------------------------
+Action item (Jenkins and Freytag):
+They are to work together on this item.
+
+ISO 10646 Repertoire Cut-Off
+----------------------------
+Members were asked to consider this issue:  whether it is better to keep in
+synch in physicality, or for one standard to always be up-to-date.
+
+Action Item (UTC Participants):
+Members are to consider this topic and have rebuttals available for the
+March Meeting.
+
+Uniqueness of Character Names
+-----------------------------
+Griffee asked: In light of unique identifiers, what is continued
+expectations/standing of names?  Freytag replied that they would continue
+to be unchangeable.  At the WG2 meeting, the vote on this resolution
+(uniqueness of names) was after the vote on identifiers.  A character name
+must be unique within a language edition of standard, but not necessarily
+globally unique.
+
+Ksar added that not every country needs to come up with names in own
+language; there is the option of using English.
+
+Freytag said that WG2 did not contemplate making names informative only.
+He would like the UTC to endorse this position, and ask WG2 to reflect it
+procedurally in N1252 for addition of characters.
+
+Motion (moved by Sybase, seconded by Microsoft):
+That the UTC endorses the WG2 position on uniqueness of names, and
+recommends that WG2 reflect this procedurally in Document N 1252.
+Vote:  12 yes, 0 no, 1 abstention (AT&T) [Reason:  Once you've decided
+that's your unique name, it's dangerous to use different names.]
+Motion passed.
+
+ISO Ballots
+-----------
+US Vote is yes concerning PDAM 6 Tibetan.
+PDAM 7 and PDAM 8:  PDAM 7 is going to be a NO vote unless the WG2 votes it
+in.  Then the PDAM would be voted yes.
+
+
+WG20 (Internationalization)
+---------------------------
+WG20 deals with Internationalization issues, and Winkler is the Convenor.
+There is no equivalent group (TAG) in the US.  Winkler would like to have
+input from the UTC on specific documents.  He does not wish to send them
+out to everyone, but just to those who would participate.
+
+Freytag proposed that Winkler select the WG20 documents that he considers
+of potential interest to the UTC for distribution.  A list of recipients
+will be maintained by Winkler.  Recipients must be willing to review the
+documents and contribute comments.  Whistler, McGowan, and Moore
+volunteered.
+
+McGowan said that selected documents accompanied by queries from Winkler
+would be helpful.  Winkler could then draft a consensus statement from the
+responses.  Winkler accepted this as a standing action item.
+
+Winkler cited an example where input would be helpful:  there are currently
+four sorting standards under development:  in WG20, CEN/TC304, TC37, and
+NISO (National Information Standards Organization, an ANSI affiliate).
+
+Whistler would like to go on the record as stating that standardization of
+sorting conventions is required.  He would also like to see the development
+of full specifications of what is expected behavior for specific languages
+and cultures.  It would be much more useful to have specifications like
+this to guide implementation.
+
+
+SC18:
+-----
+Griffee reported that the data entry standard developed by SC18/WG9 is at
+the CD level.
+
+Action Item (Griffee):
+Give review of what WG9 to Steve Greenfield and see who would want a copy.
+
+Livonian (10 additional letters) was not discussed.
+
+
+Embedded Objects:
+-----------------
+Sargent presented a proposal for an Embedded Objects character.  Would be
+nice to be able to flag embedded object in plain text and query it.
+
+Freytag pointed out that this proposal is not a stateful start/stop method.
+He disagreed with proposed code value.  The proposal relates a development
+that was not prevalent in 1988/89 when the Unicode Standard was first
+developed.  The proposal represents a non-intrusive solution.
+
+Jenkins supported the proposal, arguing that it is necessary for minimal
+legibility, i.e., I have a picture at this point, but I can't show it to
+you.  It is a variant of the replacement character.
+
+Texin asked where is the information about an embedded object in a plain
+text stream?  Griffee suggested that it may be necessary to identify the
+type of object.  Sargent responded that identification is done by parallel
+rich-text information.
+
+Whistler proposed that the character:
+* Should be placed under Special Characters (as per Freytag).
+* Should be placed at FFFC and named as Object Replacement Character.
+* Symbol should also be a dashed square with "OBJ" inside.
+
+Kernaghan asked whether we setting a precedent, and whether this is an area
+we want to get involved with.  Can this be used against us in any future
+areas?  Can we extrapolate problems if we allow this?
+
+Freytag was also concerned, but the proposal represents a good and solid
+solution to recent developments.  Putting the proposed character in the
+Specials block limits the likelihood of more.
+
+Whistler agreed with Freytag, and pointed out that three companies had
+independently devised similar solutions for embedded objects.  This is a
+good reason to add the character, as there is a demonstrated need.
+
+McGowan proposed that the UTC accepts the proposal and submit the character
+to WG2.
+
+Jenkins said that this character does not hide information.  There is a
+needs for an anchor character in plain text that indicates"here there be
+out-of-band information." The anchor character itself says **nothing**
+about the out-of-band information, and will not.
+
+Honomichl asked about the attributes related to this character.  Jenkins
+replied that it should say "out of band content" with no further semantics.
+
+Action Item (Sargent):
+Sargent is to produce a formal proposal (with the UTC's feedback
+incorporated from UTC 67) and submit it to McGowan so that we can submit it
+to WG2 as a formal document.
+
+Freytag pointed out that plain text is backbone for rich text edifices.
+Jenkins added that the goal for Unicode has been to provide the minimum for
+what is meaningful for exchange of text information.
+
+Motion (moved by Microsoft, seconded by Taligent):
+That the UTC accepts the Object Replacement character at location FFFC, and
+file form 1252 with WG2 with a strong recommendation to accept it as such.
+Vote: 12 yes, 0 no, 1 abstention (Apple).
+Motion passed.
+
+It was agreed that this new character will not go into Version 2.0.
+
+
+Mathematical Operator Property
+--------------------------------------
+Sargent said that this property is used to identify strongly mathematical
+characters (most of which are in the Mathematical Operators block).
+
+Freytag proposed an amendment to Sargent's proposal:  to exclude full-width
+compatibility forms.  Sargent accepted the amendment.
+
+In Properties, this would mean replacing "symbol -- other" with "symbol --
+math." In addition, the property should be included in the Mathematical
+Operators block description.
+
+Texin asked about text display, and commented that style information was
+needed.  Freytag said that we have an inherent property, and use it under
+full-fledged math display.
+
+Jenkins agreed in principle with the proposal, but considered the list too
+inclusive.
+
+Becker suggested a parallel with a "language marker," e.g.  why not a
+"Cyrillic Text" property?  Whistler said that characters have multiple
+properties.  The set proposed by Sargent is right.  It is useful to present
+an informative property.
+
+McGowan would like an algorithm for parsing of math, and would prefer that
+this be published as a Unicode Technical Report.
+
+Sargent suggested the concept of "weakly math" chars., e.g.  Greek letters,
+limited set of Latin 1.  He postulated further definition of the
+mathematical operator property.
+
+Freytag said that he had consulted with Mark Davis about Sargent's
+proposal.  Davis does not want to specify an algorithm, but he liked the
+informative property concept.
+
+Motion (moved by Microsoft, seconded by Taligent):
+The UTC accepts Sargent's proposal as amended, and that it be incorporated
+in Version 2.0 as an informative property.
+Vote: 10 yes, 1 nay, 2 abstentions (RLG, Ecological Linguistics)
+
+
+Reports
+-------
+
+Unicode Office:
+Because of time constraints, Greenfield did not report on Office activity.
+
+Action Item (Greenfield):
+Send out a report on office activity to the unicore, unicorps, and minutes
+distribution lists.
+
+Conferences:
+Lisa Moore reported on plans for future conferences.  The Eighth
+International Unicode/ISO 10646 Conference is to be held in Hong Kong in
+April (2 days during the week of 4/10-12).  The Ninth Conference will be
+held in San Jose (at the Red Lion Inn) on September 4-6 (3 days).
+
+Barbara Jarzyna is in Hong Kong seeing about facilities.  The primary role
+of the Consortium is to provide the Editorial Board for the conferences.
+There have been a couple of volunteers for the Hong Kong conference.  Also
+try and get people to sign up as exhibitors.  This will offer us another
+pull to people.
+
+
+X3L2 Liaison Report:
+Liaison report passed out by Griffee.  AFII has undergone a reorganization,
+and will be an information provider, not a standards organization.  Griffee
+would like to see a closer relationship between our two organizations.
+
+Action Item (Griffee):
+Find out the logistical support requirements for X3V1 and provide this
+information to Aliprand and Gilbert.  The question of co-located UTC/X3L2
+and X3V1 meetings can then be resolved at the March meeting.
+
+
+Comments on pDAM 8 (Informative Annex on CJK Unification)
+---------------------------------------------------------
+Aliprand had drafted comments to support the US "no" vote.  Edberg agreed
+to continue this work and incorporate additional comments made at the
+meeting.
+
+Action Item (Jenkins and Edberg):
+Text and provision within the next few days regarding this PDAM.  Jenkins
+will provide the text by the end of X3L2's meeting.
+
+Hart thanked the UTC for working together with X3L2.  Freytag was thanked
+for his work to bring the joint meetings about.  Hart is out-going Chair of
+X3L2, and Winkler is the in-coming Chair.
+
+It had been agreed at UTC #66 that Winkler should be appointed Vice-Chair
+of the UTC if he was willing to serve.  Winkler accepted the appointment as
+UTC Vice-Chair.
+
+The Chair thanked Mike Ksar for Hewlett-Packard's hospitality in hosting
+this UTC meeting.
+
+Meeting adjourned at 5:01 p.m.
+

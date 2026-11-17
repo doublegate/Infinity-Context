@@ -107,3 +107,172 @@ precedence = "override"
 SPDX-FileCopyrightText = "The respective arXiv paper authors cataloged in ref-docs/papers/INDEX.md"
 SPDX-License-Identifier = "CC-BY-4.0 OR LicenseRef-arXiv-NonExclusive"
 SPDX-FileComment = "Academic preprints downloaded from arXiv.org for the research corpus; see ref-docs/papers/INDEX.md for per-paper authors and arXiv IDs."
+
+# ---------------------------------------------------------------------------
+# 7. Retrieved Wikipedia Article Snapshots & Wikimedia Metadata JSONs (CC-BY-SA-4.0)
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "ref-docs/unicode-braille-patterns/wikipedia_*",
+  "ref-docs/unicode-braille-patterns/images/retrieved/wikimedia_image_metadata.json",
+  "ref-docs/blake3-cryptographic-hash/wikipedia_*",
+  "ref-docs/hypercube-and-hamming-geometry/wikipedia_*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/wikimedia_image_metadata.json",
+  "ref-docs/ahtl-foundations/wikipedia_*",
+  "ref-docs/ahtl-foundations/images/retrieved/wikimedia_image_metadata.json",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Wikimedia Foundation contributors"
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+SPDX-FileComment = "Archival snapshots of English Wikipedia articles and MediaWiki parse metadata licensed under CC-BY-SA-4.0."
+
+# ---------------------------------------------------------------------------
+# 7a. Retrieved Wikimedia Commons Diagrams — Public Domain / CC0-1.0
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "docs/ahtl/images/retrieved/Braille8dotCellNumbering.*",
+  "docs/ahtl/images/retrieved/BrailleValues.*",
+  "docs/ahtl/images/retrieved/Braille_N.*",
+  "docs/ahtl/images/retrieved/BLAKE3_Merkle_Tree_Bao.*",
+  "docs/ahtl/images/retrieved/8D_Octeract_Petrie_Projection.*",
+  "docs/ahtl/images/retrieved/Hypercubestar.*",
+  "ref-docs/unicode-braille-patterns/images/retrieved/Braille8dotCellNumbering.*",
+  "ref-docs/unicode-braille-patterns/images/retrieved/BrailleValues.*",
+  "ref-docs/unicode-braille-patterns/images/retrieved/Braille_N.*",
+  "ref-docs/unicode-braille-patterns/images/retrieved/Symbol_category_class.*",
+  "ref-docs/blake3-cryptographic-hash/images/retrieved/Hash_Tree.*",
+  "ref-docs/blake3-cryptographic-hash/images/retrieved/Symbol_category_class.*",
+  "ref-docs/blake3-cryptographic-hash/images/retrieved/Lock-*.*",
+  "ref-docs/blake3-cryptographic-hash/images/retrieved/Wikisource-logo.*",
+  "ref-docs/blake3-cryptographic-hash/images/retrieved/enwiki-25.*",
+  "ref-docs/blake3-cryptographic-hash/images/retrieved/wikimedia.*",
+  "ref-docs/blake3-cryptographic-hash/images/retrieved/mediawiki_compact.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/1-simplex_t0.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/3-cube_graph.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/4-cube_graph.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/5-cube_graph.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/6-cube_graph.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/7-cube_graph.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/8-cube.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/9-cube.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/10-cube.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/8-cell.gif",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/Tesseract.gif",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/Hypercubestar.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/Hypercubeconstruction.png",
+  "ref-docs/ahtl-foundations/images/retrieved/EU81043_1-r05_letters.png",
+  "ref-docs/ahtl-foundations/images/retrieved/Sierpinski1.png",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Respective Wikimedia Commons authors (public domain / CC0)"
+SPDX-License-Identifier = "CC0-1.0"
+SPDX-FileComment = "Wikimedia Commons diagrams released into the public domain or under CC0-1.0."
+
+# ---------------------------------------------------------------------------
+# 7b. Retrieved Wikimedia Commons Diagrams — CC-BY-SA-4.0
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "docs/ahtl/images/retrieved/ChaCha20_Quarter_Round.*",
+  "docs/ahtl/images/retrieved/Gray_code_tesseract_432.*",
+  "docs/ahtl/images/retrieved/Attention-qkv.png",
+  "docs/ahtl/images/retrieved/Attention_mechanism_overview.*",
+  "docs/ahtl/images/retrieved/Transformer_Scaled_Dot_Product_Attention.*",
+  "docs/ahtl/images/retrieved/Chaos_Game_square-EH-1.png",
+  "ref-docs/blake3-cryptographic-hash/images/retrieved/ChaCha_Cipher_Quarter_Round_Function.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/Gray_code_tesseract_432.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/Snakes_and_coils_in_the_box.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/2-generalized-*.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/3-generalized-*.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/4-generalized-*.*",
+  "ref-docs/ahtl-foundations/images/retrieved/Attention-qkv.png",
+  "ref-docs/ahtl-foundations/images/retrieved/Attention_mechanism_overview.*",
+  "ref-docs/ahtl-foundations/images/retrieved/Chaos_Game_square-EH-1.png",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Respective Wikimedia Commons authors"
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+SPDX-FileComment = "Wikimedia Commons technical diagrams licensed under CC-BY-SA-4.0."
+
+# ---------------------------------------------------------------------------
+# 7c. Retrieved Wikimedia Commons Diagrams — CC-BY-SA-3.0
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "docs/ahtl/images/retrieved/4D_Tesseract_Projection.*",
+  "docs/ahtl/images/retrieved/Dimension_levels.*",
+  "docs/ahtl/images/retrieved/Hamming_Distance_3D_Cube.*",
+  "docs/ahtl/images/retrieved/Hamming_distance_3_bit_binary_example.*",
+  "docs/ahtl/images/retrieved/Hamming_distance_4_bit_binary*",
+  "docs/ahtl/images/retrieved/Sierpinski_Chaos_Game.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/Dimension_levels.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/Hexahedron.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/Hypercube.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/2-cube.*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/From_Point_to_Tesseract_(Looped_Version).gif",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/Schlegel_wireframe_8-cell.png",
+  "ref-docs/ahtl-foundations/images/retrieved/Hamming_distance_3_bit_binary*",
+  "ref-docs/ahtl-foundations/images/retrieved/Hamming_distance_4_bit_binary*",
+  "ref-docs/ahtl-foundations/images/retrieved/Sierpinski_triangle.*",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Respective Wikimedia Commons authors"
+SPDX-License-Identifier = "CC-BY-SA-3.0"
+SPDX-FileComment = "Wikimedia Commons technical diagrams licensed under CC-BY-SA-3.0."
+
+# ---------------------------------------------------------------------------
+# 7d. Retrieved Wikimedia Commons Diagrams — CC-BY-4.0 & CC-BY-2.5
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "docs/ahtl/images/retrieved/Encoder_self-attention_block_diagram.png",
+  "ref-docs/ahtl-foundations/images/retrieved/Encoder_self-attention_block_diagram.png",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Wikimedia Commons author (Encoder self-attention, block diagram)"
+SPDX-License-Identifier = "CC-BY-4.0"
+SPDX-FileComment = "Wikimedia Commons diagram licensed under CC-BY-4.0."
+
+[[annotations]]
+path = [
+  "docs/ahtl/images/retrieved/Banach_Fixed_Point_Contraction.png",
+  "ref-docs/ahtl-foundations/images/retrieved/Ifs-construction.png",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Wikimedia Commons author (Ifs-construction)"
+SPDX-License-Identifier = "CC-BY-2.5"
+SPDX-FileComment = "Wikimedia Commons diagram licensed under CC-BY-2.5."
+
+# ---------------------------------------------------------------------------
+# 8. Unicode Consortium & ISO/IEC JTC1/SC2/WG2 Archival Documents
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "ref-docs/unicode-braille-patterns/Unicode_U2800_Braille_Patterns_Chart.pdf",
+  "ref-docs/unicode-braille-patterns/standards-and-wg2/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "1991-2026 Unicode, Inc. and ISO/IEC JTC1/SC2/WG2 contributors"
+SPDX-License-Identifier = "Unicode-3.0"
+SPDX-FileComment = "Unicode Standard code chart, UCD data files, UTC minutes, and ISO/IEC JTC1/SC2/WG2 archival proposals for the U+2800..U+28FF Braille Patterns block."
+
+# ---------------------------------------------------------------------------
+# 9. Official BLAKE3 Cryptographic Specification Preprint
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = "ref-docs/blake3-cryptographic-hash/BLAKE3_Official_Specification.pdf"
+precedence = "override"
+SPDX-FileCopyrightText = "2020 Jack O'Connor, Jean-Philippe Aumasson, Samuel Neves, and Zooko Wilcox-O'Hearn"
+SPDX-License-Identifier = "CC0-1.0"
+SPDX-FileComment = "Official BLAKE3 cryptographic hash function specification placed in the public domain (CC0-1.0) by the BLAKE3 team."
+
+# ---------------------------------------------------------------------------
+# 10. AHTL Diagram & PDF Volume Generator Scripts
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = "docs/ahtl/*.py"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 DoubleGate"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+SPDX-FileComment = "First-party deterministic SVG diagram and PDF specification volume builders under GPL-3.0-or-later."

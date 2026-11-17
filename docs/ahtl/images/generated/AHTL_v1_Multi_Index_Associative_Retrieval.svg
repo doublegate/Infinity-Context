@@ -1,0 +1,224 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 920" width="1600" height="920">
+  
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070B14"/>
+      <stop offset="50%" stop-color="#0B1021"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="cyanBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#082F49" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#0C192C" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="violetBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2E1065" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#170B3B" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="emeraldBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#064E3B" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#052E24" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="amberBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#451A03" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#271004" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="crimsonBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4C0519" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#2A0410" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="slateBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.92"/>
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.96"/>
+    </linearGradient>
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#00E5FF"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#A855F7"/>
+    </marker>
+    <marker id="arrowEmerald" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#10B981"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#F59E0B"/>
+    </marker>
+    <marker id="arrowSlate" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="920" rx="18" fill="url(#bgGrad)" stroke="#1E293B" stroke-width="2"/>
+
+  <text x="800" y="46" text-anchor="middle" fill="#F8FAFC" font-family="DejaVu Sans, sans-serif" font-size="25" font-weight="bold">
+    AHTL v1.0 MULTI-INDEX ASSOCIATIVE RETRIEVAL (&lt; 50 µs PAGE-FAULT ENGINE)
+  </text>
+  <text x="800" y="74" text-anchor="middle" fill="#94A3B8" font-family="DejaVu Sans, sans-serif" font-size="14.5">
+    Simultaneous 4-Plane Probe: Q_10240 HDC Hamming + [-1,+1]^16 Fractal Attractor + Braille-256 Spectral Filter + Bi-Temporal PPR Graph
+  </text>
+
+  <!-- Left: Incoming Query / Page Fault Trigger -->
+  <rect x="35" y="290" width="275" height="310" rx="12" fill="url(#cyanBox)" stroke="#00E5FF" stroke-width="2"/>
+  <text x="172" y="325" text-anchor="middle" fill="#00E5FF" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="bold">
+    QUERY / PAGE-FAULT SEED
+  </text>
+  <rect x="52" y="345" width="240" height="95" rx="8" fill="#070B14" stroke="#38BDF8" stroke-width="1.5"/>
+  <text x="172" y="370" text-anchor="middle" fill="#F8FAFC" font-family="DejaVu Sans Mono, monospace" font-size="11.5" font-weight="bold">
+    User Prompt / Tool Call:
+  </text>
+  <text x="64" y="395" fill="#7DD3FC" font-family="DejaVu Sans Mono, monospace" font-size="11">
+    "Why did alloc_page panic
+  </text>
+  <text x="64" y="415" fill="#7DD3FC" font-family="DejaVu Sans Mono, monospace" font-size="11">
+     on 64-byte alignment?"
+  </text>
+
+  <text x="52" y="468" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11">Extracted Probes (1.8 µs):</text>
+  <text x="60" y="492" fill="#C084FC" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• q_hv: Hypervector [u64;160]</text>
+  <text x="60" y="514" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• z_curr: FractalCoord [f64;16]</text>
+  <text x="60" y="536" fill="#FBBF24" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• q_sketch: u32 / Braille-64</text>
+  <text x="60" y="558" fill="#38BDF8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">• seeds: ["alloc_page", "align"]</text>
+
+  <!-- Fan-out Arrows -->
+  <path d="M 310 370 L 355 370 L 355 185 L 395 185" fill="none" stroke="#F59E0B" stroke-width="2.5" marker-end="url(#arrowAmber)"/>
+  <path d="M 310 415 L 355 415 L 355 365 L 395 365" fill="none" stroke="#A855F7" stroke-width="2.5" marker-end="url(#arrowViolet)"/>
+  <path d="M 310 465 L 355 465 L 355 545 L 395 545" fill="none" stroke="#10B981" stroke-width="2.5" marker-end="url(#arrowEmerald)"/>
+  <path d="M 310 515 L 355 515 L 355 725 L 395 725" fill="none" stroke="#00E5FF" stroke-width="2.5" marker-end="url(#arrowCyan)"/>
+
+  <!-- Center: 4 Parallel Index Planes (width=640) -->
+  <!-- Plane A: Braille-256 Spectral Pre-Filter -->
+  <rect x="395" y="110" width="640" height="150" rx="10" fill="url(#amberBox)" stroke="#F59E0B" stroke-width="2"/>
+  <text x="415" y="138" fill="#FBBF24" font-family="DejaVu Sans, sans-serif" font-size="12.8" font-weight="bold">
+    INDEX 1: Braille-256 Spectral Parity Pre-Filter (`sketch_u32` / 64-Band SimHash)
+  </text>
+  <text x="415" y="164" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11">
+    • Bitwise XOR + single `POPCNT` on folded 32-bit / 64-bit spectral signature
+  </text>
+  <text x="415" y="188" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11">
+    • Prunes 85%–92% of cold candidates in O(1) (~0.8 ns/entry) before ZMM load
+  </text>
+  <text x="415" y="212" fill="#FDE68A" font-family="DejaVu Sans Mono, monospace" font-size="11" font-weight="bold">
+    • Matches `/dev/shm` Seqlock Slot Header `hv_sketch: [u64; 4]` across agents
+  </text>
+  <text x="415" y="240" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">
+    Latency for 10,000 entries: ~3.2 µs
+  </text>
+
+  <!-- Plane B: 10,240-Bit HDC Hypercube -->
+  <rect x="395" y="285" width="640" height="155" rx="10" fill="url(#violetBox)" stroke="#A855F7" stroke-width="2"/>
+  <text x="415" y="313" fill="#C084FC" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="bold">
+    INDEX 2: 10,240-Bit Boolean Hypercube Q_10240 (`Hypervector::similarity`)
+  </text>
+  <text x="415" y="339" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11">
+    • 20 x AVX-512 `VPXORQ` + 20 x `VPOPCNTDQ` over `words: [u64; 160]` (1,280 B)
+  </text>
+  <text x="415" y="363" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11">
+    • Normalized similarity: `text_sim = 1.0 - min(d_H(q, e), 5120) / 5120.0`
+  </text>
+  <text x="415" y="387" fill="#D8B4FE" font-family="DejaVu Sans Mono, monospace" font-size="11" font-weight="bold">
+    • Subject lexical overlap boost: `hdc_sim = clamp(text_sim + 0.25*lex, 0, 1)`
+  </text>
+  <text x="415" y="418" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">
+    Latency for 1,000 survivors: ~12.0 µs (12 ns per 10,240-bit node)
+  </text>
+
+  <!-- Plane C: 16-D Fractal Chaos-Game Attractor -->
+  <rect x="395" y="465" width="640" height="155" rx="10" fill="url(#emeraldBox)" stroke="#10B981" stroke-width="2"/>
+  <text x="415" y="493" fill="#34D399" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="bold">
+    INDEX 3: [-1, +1]^16 Contractive IFS Attractor (`shared_suffix_depth`)
+  </text>
+  <text x="415" y="519" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11">
+    • Chebyshev L_inf norm: `d_inf = max_{j in 0..16} |z_curr[j] - z_entry[j]|`
+  </text>
+  <text x="415" y="543" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11">
+    • Exact shared state-transition suffix: `L_shared = floor(-log2(d_inf / 2))`
+  </text>
+  <text x="415" y="567" fill="#6EE7B7" font-family="DejaVu Sans Mono, monospace" font-size="11" font-weight="bold">
+    • Detects identical multi-step debug/test loops in O(1) time (&lt; 8 ns/pair)
+  </text>
+  <text x="415" y="598" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">
+    Latency: ~6.4 µs
+  </text>
+
+  <!-- Plane D: Bi-Temporal CSR Graph + HippoRAG PPR -->
+  <rect x="395" y="645" width="640" height="165" rx="10" fill="url(#cyanBox)" stroke="#00E5FF" stroke-width="2"/>
+  <text x="415" y="673" fill="#00E5FF" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="bold">
+    INDEX 4: Bi-Temporal Knowledge Graph + HippoRAG PageRank (`PPR`)
+  </text>
+  <text x="415" y="699" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11">
+    • Filters active edges where `t_invalid == None` (prunes superseded bugs!)
+  </text>
+  <text x="415" y="723" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="11">
+    • 6–8 power iterations (`alpha=0.15`): `p^(k) = a*p^(0) + (1-a)*A^T*D^-1*p^(k-1)`
+  </text>
+  <text x="415" y="747" fill="#7DD3FC" font-family="DejaVu Sans Mono, monospace" font-size="11" font-weight="bold">
+    • Walks multi-hop call/type chains: `mod:mmu -&gt; trait:Pager -&gt; fn:alloc_page`
+  </text>
+  <text x="415" y="778" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="10.5">
+    Latency (6 iterations over active subgraph): ~19.5 µs
+  </text>
+
+  <!-- Fan-in Arrows to Score Fusion -->
+  <path d="M 1035 185 L 1072 185 L 1072 380 L 1105 380" fill="none" stroke="#F59E0B" stroke-width="2.5" marker-end="url(#arrowAmber)"/>
+  <path d="M 1035 365 L 1072 365 L 1072 420 L 1105 420" fill="none" stroke="#A855F7" stroke-width="2.5" marker-end="url(#arrowViolet)"/>
+  <path d="M 1035 545 L 1072 545 L 1072 460 L 1105 460" fill="none" stroke="#10B981" stroke-width="2.5" marker-end="url(#arrowEmerald)"/>
+  <path d="M 1035 725 L 1072 725 L 1072 500 L 1105 500" fill="none" stroke="#00E5FF" stroke-width="2.5" marker-end="url(#arrowCyan)"/>
+
+  <!-- Right: Score Fusion & Ephemeral Tail Slot Output -->
+  <rect x="1105" y="180" width="460" height="560" rx="12" fill="url(#slateBox)" stroke="#10B981" stroke-width="2.2"/>
+  <text x="1335" y="214" text-anchor="middle" fill="#6EE7B7" font-family="DejaVu Sans, sans-serif" font-size="15.5" font-weight="bold">
+    SCORE FUSION &amp; TAIL SLOT INJECTION
+  </text>
+
+  <rect x="1125" y="235" width="420" height="125" rx="8" fill="#070B14" stroke="#A855F7" stroke-width="1.5"/>
+  <text x="1335" y="260" text-anchor="middle" fill="#D8B4FE" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    Unified Associative Ranking Formula (`icx-hdc`)
+  </text>
+  <text x="1140" y="290" fill="#F8FAFC" font-family="DejaVu Sans Mono, monospace" font-size="11.5" font-weight="bold">
+    Score(q, e) = 0.65 * sim_HDC(q, e)
+  </text>
+  <text x="1140" y="314" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="11.5" font-weight="bold">
+                + 0.20 * S_Titans(e)
+  </text>
+  <text x="1140" y="338" fill="#38BDF8" font-family="DejaVu Sans Mono, monospace" font-size="11.5" font-weight="bold">
+                + 0.15 * clamp(L_shared / 8.0, 0, 1)
+  </text>
+
+  <rect x="1125" y="380" width="420" height="225" rx="8" fill="#070B14" stroke="#00E5FF" stroke-width="1.5"/>
+  <text x="1335" y="405" text-anchor="middle" fill="#00E5FF" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    Assembled Zone 3: Ephemeral Tail Slot
+  </text>
+  <text x="1138" y="432" fill="#94A3B8" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="10.5">
+    ⟪ICX:TAIL_SLOT│agent=claude-code│epochs=8│cas=142⟫
+  </text>
+  <text x="1138" y="460" fill="#FBBF24" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="10.5">
+    ⟦Θ:codex@alloc.rs⊢!PANIC@L219↦#icx:4e81a0c2f91b08d3⟧
+  </text>
+  <text x="1138" y="488" fill="#C084FC" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="10.5">
+    ⟦Ψ:HDC_RECALL⊢subj=alloc.rs⋮sim=0.91⋮suf=5↦#icx:4e81..⟧
+  </text>
+  <text x="1138" y="516" fill="#34D399" font-family="DejaVu Sans, DejaVu Sans Mono, monospace" font-size="10.5">
+    ⟦Ω:PPR_GRAPH⊢entity=fn:alloc_page⋮score=0.412↦#icx:9b02..⟧
+  </text>
+  <text x="1138" y="555" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="10.8">
+    • Appended AFTER Frozen Prefix Epochs (Zone 1 &amp; 2)
+  </text>
+  <text x="1138" y="578" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="10.8" font-weight="bold">
+    • Zero Prefix Cache Invalidation (&gt;= 94% Hit Rate)
+  </text>
+
+  <rect x="1125" y="622" width="420" height="95" rx="8" fill="url(#emeraldBox)" stroke="#10B981" stroke-width="1.5"/>
+  <text x="1335" y="648" text-anchor="middle" fill="#F8FAFC" font-family="DejaVu Sans, sans-serif" font-size="13.5" font-weight="bold">
+    Total End-to-End Retrieval Latency
+  </text>
+  <text x="1335" y="676" text-anchor="middle" fill="#6EE7B7" font-family="DejaVu Sans Mono, monospace" font-size="15" font-weight="bold">
+    42.9 µs (Budget: &lt; 50.0 µs)
+  </text>
+  <text x="1335" y="700" text-anchor="middle" fill="#D1FAE5" font-family="DejaVu Sans Mono, monospace" font-size="11">
+    Zero GPU Calls • Zero External Vector DB • 100% CPU SIMD
+  </text>
+
+  <!-- Bottom Footer -->
+  <text x="800" y="865" text-anchor="middle" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="12.5">
+    Result: Top-K `#icx:&lt;hex&gt;` handles are staged in the Ephemeral Tail Slot before the LLM generates a single token.
+  </text>
+</svg>

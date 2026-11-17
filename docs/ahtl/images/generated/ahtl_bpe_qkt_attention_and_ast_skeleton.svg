@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420">
+  <rect width="1200" height="420" rx="14" fill="#0b0f19" stroke="#1e293b" stroke-width="2"/>
+  <text x="600" y="36" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="16.5" font-weight="700" fill="#818cf8">
+    SEGMENT 4: BPE ENTROPY CODING, SCALED DOT-PRODUCT ATTENTION &amp; AST SKELETONIZATION
+  </text>
+  <text x="600" y="58" text-anchor="middle" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" fill="#94a3b8">
+    Aligning Structural AST Skeletons ($fn:, $ty:, !err:) with Transformer Q*K^T / sqrt(d_k) Attention Heads
+  </text>
+
+  <!-- Panel 1: BPE Information Capacity -->
+  <rect x="28" y="80" width="360" height="312" rx="10" fill="#111827" stroke="#6366f1" stroke-width="1.5"/>
+  <text x="208" y="108" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="13" font-weight="700" fill="#818cf8">1. BPE Token Channel Capacity</text>
+  <rect x="46" y="124" width="324" height="46" rx="6" fill="#0f172a" stroke="#6366f1"/>
+  <text x="208" y="152" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="11.5" font-weight="700" fill="#22d3ee">H_max = log2(|V|) = 17.61 bits/tok</text>
+  <text x="46" y="196" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* English prose: ~4.8 bits/tok (73% wasted)</text>
+  <text x="46" y="218" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* JSON tool output: ~2.1 bits/tok (88% wasted)</text>
+  <text x="46" y="240" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#34d399">* AHTLv1 lattice: ~14.9 bits/tok (72.1x denser)</text>
+  <text x="46" y="270" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">Crucial BPE Invariant:</text>
+  <text x="46" y="290" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.5" fill="#94a3b8">Identifiers (verify_token, AuthErr, 401) are</text>
+  <text x="46" y="308" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.5" fill="#94a3b8">never mangled, preserving exact subword</text>
+  <text x="46" y="326" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.5" fill="#94a3b8">token IDs between user query and AHTL frame.</text>
+
+  <!-- Panel 2: Scaled Dot-Product Self-Attention -->
+  <rect x="412" y="80" width="376" height="312" rx="10" fill="#111827" stroke="#06b6d4" stroke-width="1.5"/>
+  <text x="600" y="108" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="13" font-weight="700" fill="#22d3ee">2. Q*K^T Attention Resonance</text>
+  <rect x="432" y="124" width="336" height="48" rx="6" fill="#0f172a" stroke="#06b6d4"/>
+  <text x="600" y="153" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="11.5" font-weight="700" fill="#22d3ee">Attn(Q,K,V) = softmax(Q K^T / sqrt(d_k)) V</text>
+  <text x="432" y="198" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Stripping prose eliminates attention sink</text>
+  <text x="432" y="218" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">  dilution across thousands of filler tokens</text>
+  <text x="432" y="244" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Role prefix ($fn:, $ty:, !err:) acts as a</text>
+  <text x="432" y="264" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">  syntactic key vector K_role in induction heads</text>
+  <text x="432" y="294" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.5" fill="#34d399">SNR_AHTL / SNR_raw ~ O(N_raw / N_AHTL) = 72.1x</text>
+  <text x="432" y="324" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.5" fill="#94a3b8">Ref: Vaswani et al. (2017), Gage (1994)</text>
+
+  <!-- Panel 3: AST Structural Skeletonizer -->
+  <rect x="812" y="80" width="360" height="312" rx="10" fill="#111827" stroke="#10b981" stroke-width="1.5"/>
+  <text x="992" y="108" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="13" font-weight="700" fill="#34d399">3. O(N) AST Skeleton Projection</text>
+  <text x="832" y="138" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="11" fill="#22d3ee">$fn:verify_token  -&gt; Function Signature</text>
+  <text x="832" y="162" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="11" fill="#818cf8">$ty:AuthErr       -&gt; Type / Enum / Trait</text>
+  <text x="832" y="186" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="11" fill="#34d399">$mod / $use       -&gt; Module &amp; Imports</text>
+  <text x="832" y="210" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="11" fill="#fb923c">!err:401          -&gt; High-Surprise Fault</text>
+  <text x="832" y="242" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Prunes low-entropy AST statement bodies</text>
+  <text x="832" y="262" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">  while keeping 100% of API boundary types</text>
+  <text x="832" y="284" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Collapses N passing tests to ✓pass:N</text>
+  <text x="832" y="306" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Elided bodies recoverable via #icx:7bf8...</text>
+</svg>

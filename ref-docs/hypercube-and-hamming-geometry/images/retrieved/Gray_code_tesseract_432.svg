@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100%" height="100%" viewBox="-47 -127 896 504">
+ <title>Gray code tesseract 432</title>
+ <desc>The Gray code in its Wikipedia article as a traversal of vertices of a tesseract by CMG Lee.</desc>
+ <defs>
+  <filter id="filter_blur"><feGaussianBlur stdDeviation="4"/></filter>
+  <radialGradient id="grad_sphere" cx="50%" cy="50%" r="50%" fx="50%" fy="90%">
+   <stop offset="0%"  stop-color="#000" stop-opacity="0"/>
+   <stop offset="99%" stop-color="#000" stop-opacity="0.3"/>
+  </radialGradient>
+  <linearGradient id="grad_highlight" x1="0%" y1="0%" x2="0%" y2="100%">
+   <stop offset="10%" stop-color="#fff" stop-opacity="0.9"/>
+   <stop offset="99%" stop-color="#fff" stop-opacity="0"/>
+  </linearGradient>
+  <g id="orb" stroke="none">
+   <circle  cx="0" cy="0" r="100"/>
+   <circle  cx="0" cy="0" r="100" fill="url(#grad_sphere)"/>
+   <ellipse cx="0" cy="-45" rx="70" ry="50" fill="url(#grad_highlight)" filter="url(#filter_blur)"/>
+  </g>
+  <g id="vertex"><use xlink:href="#orb" transform="scale(0.22)" fill="#eee"/></g>
+  <path id="top_cube" d="M 0,0 L 200,-100 L 350,50 L 150,150 Z"/>
+  <path id="edge_cube" d="M 0,0 V 200"/>
+  <g id="edge_tesseract">
+   <path stroke-dasharray="4,4" d="M 0,0 H 450"/>
+   <use xlink:href="#vertex" transform="translate(450,0)"/>
+   <use xlink:href="#vertex"/>
+  </g>
+  <g id="edges_tesseract">
+   <use xlink:href="#edge_tesseract"/>
+   <use xlink:href="#edge_tesseract" transform="translate(200,-100)"/>
+   <use xlink:href="#edge_tesseract" transform="translate(350,  50)"/>
+   <use xlink:href="#edge_tesseract" transform="translate(150, 150)"/>
+  </g>
+  <g id="cube">
+   <use xlink:href="#top_cube" transform="translate(0,200)"/>
+   <use xlink:href="#top_cube"/>
+   <use xlink:href="#edge_cube"/>
+   <use xlink:href="#edge_cube" transform="translate(200,-100)"/>
+   <use xlink:href="#edge_cube" transform="translate(350,  50)"/>
+   <use xlink:href="#edge_cube" transform="translate(150, 150)"/>
+  </g>
+  <g id="tesseract">
+   <use xlink:href="#cube"/>
+   <use xlink:href="#cube" transform="translate(450,0)"/>
+   <use xlink:href="#edges_tesseract" transform="translate(0,200)"/>
+   <use xlink:href="#edges_tesseract"/>
+  </g>
+  <mask id="mask_path">
+   <circle cx="0" cy="0" r="99999" fill="#fff"/>
+   <path d="M 208,114 l 8,-4
+            M 217,123 l 8,-4
+            M 658,114 l 8,-4
+            M 667,123 l 8,-4
+            M 196, -6 h 8
+            M 196,  6 h 8" stroke="#333" stroke-width="4"/>
+  </mask>
+  <marker id="marker_end" markerWidth="8" markerHeight="8" refX="4" refY="4" markerUnits="strokeWidth" orient="auto">
+   <path d="M 1,2 Q 3,4 4,4 Q 3,4 1,6" fill="none" stroke="#00f" stroke-linejoin="round" stroke-linecap="round"/>
+  </marker>
+ </defs>
+ <circle cx="0" cy="0" r="99999" fill="#fff"/>
+ <g font-family="Courier,Courier New,monospace" font-weight="bold" font-size="40" letter-spacing="-3" text-anchor="middle" fill="#000" stroke="none">
+  <use xlink:href="#tesseract" fill="none" stroke="#000" stroke-width="2"/>
+  <path d="M   -1,  -5 a 5,5 0 1 0 1,0
+           L    0, 200
+           L  150, 350
+           L  150, 150
+           L  350,  50
+           L  350, 250
+           L  200, 100
+           L  200,-100
+           L  650,-100
+           L  650, 100
+           L  800, 250
+           L  800,  50
+           L  600, 150
+           L  600, 350
+           L  450, 200
+           L  450,   0
+           L   50,   0
+           m 20,-10 l -20,10 l 20,10" fill="none" stroke="#f00" stroke-opacity="0.5" stroke-width="8" stroke-linejoin="round" stroke-linecap="round" mask="url(#mask_path)"/>
+  <use xlink:href="#labels" stroke="#fff" stroke-opacity="0.75" stroke-width="4"/>
+  <g id="labels">
+   <text transform="translate(  0,   0)" y="0.7ex">0000</text>
+   <text transform="translate(  0, 200)" y="0.7ex">0001</text>
+   <text transform="translate(150, 350)" y="0.7ex">0011</text>
+   <text transform="translate(150, 150)" y="0.7ex">0010</text>
+   <text transform="translate(350,  50)" y="0.7ex">0110</text>
+   <text transform="translate(350, 250)" y="0.7ex">0111</text>
+   <text transform="translate(200, 100)" y="0.7ex">0101</text>
+   <text transform="translate(200,-100)" y="0.7ex">0100</text>
+   <text transform="translate(650,-100)" y="0.7ex">1100</text>
+   <text transform="translate(650, 100)" y="0.7ex">1101</text>
+   <text transform="translate(800, 250)" y="0.7ex">1111</text>
+   <text transform="translate(800,  50)" y="0.7ex">1110</text>
+   <text transform="translate(600, 150)" y="0.7ex">1010</text>
+   <text transform="translate(600, 350)" y="0.7ex">1011</text>
+   <text transform="translate(450, 200)" y="0.7ex">1001</text>
+   <text transform="translate(450,   0)" y="0.7ex">1000</text>
+  </g>
+  <text y="-0.5ex" fill="#00f">''''<tspan x="0" dy="-1.5ex" letter-spacing="-2">abcd</tspan></text>
+  <g transform="translate(-10,300)" stroke="#00f" stroke-width="4" marker-end="url(#marker_end)">
+   <text fill="#00f" stroke="none"
+    ><tspan  x="55"  y="30">a</tspan
+    ><tspan  x="15" y="-20">b</tspan
+    ><tspan  x="25"  y="62">c</tspan
+    ><tspan x="-20"  y="40">d</tspan></text>
+   <path d="M 2,0 H 60" stroke-dasharray="5,5"/>
+   <path d="M 0,0 L 52,-26"/>
+   <path d="M 0,0 L 40, 40"/>
+   <path d="M 0,0 V 60"/>
+  </g>
+ </g>
+</svg>

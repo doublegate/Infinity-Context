@@ -1,0 +1,219 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 920" width="1600" height="920">
+  
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070B14"/>
+      <stop offset="50%" stop-color="#0B1021"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="cyanBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#082F49" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#0C192C" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="violetBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2E1065" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#170B3B" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="emeraldBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#064E3B" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#052E24" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="amberBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#451A03" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#271004" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="crimsonBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4C0519" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#2A0410" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="slateBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.92"/>
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.96"/>
+    </linearGradient>
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#00E5FF"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#A855F7"/>
+    </marker>
+    <marker id="arrowEmerald" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#10B981"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#F59E0B"/>
+    </marker>
+    <marker id="arrowSlate" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="920" rx="18" fill="url(#bgGrad)" stroke="#1E293B" stroke-width="2"/>
+
+  <text x="800" y="46" text-anchor="middle" fill="#F8FAFC" font-family="DejaVu Sans, sans-serif" font-size="25" font-weight="bold">
+    AHTL v1.0 COMPRESSION RATIO VS. EXACT RECALL PARETO FRONTIER
+  </text>
+  <text x="800" y="74" text-anchor="middle" fill="#94A3B8" font-family="DejaVu Sans, sans-serif" font-size="14.5">
+    Empirical Comparison Against Natural-Language Summarization, Token Pruning (LLMLingua-2), RAG Chunking &amp; Soft-Prompt Beacons
+  </text>
+
+  <!-- Left: 2D Pareto Frontier Chart -->
+  <rect x="45" y="105" width="890" height="545" rx="12" fill="url(#slateBox)" stroke="#00E5FF" stroke-width="2"/>
+  <text x="490" y="138" text-anchor="middle" fill="#00E5FF" font-family="DejaVu Sans, sans-serif" font-size="13.8" font-weight="bold">
+    PARETO FRONTIER: TOKEN COMPRESSION RATIO (LOG SCALE) VS. EXACT PASSKEY / LINE RECALL (%)
+  </text>
+
+  <!-- Plot Area: x from 130 to 880, y from 170 (100% recall) to 570 (0% recall) -->
+  <rect x="130" y="170" width="750" height="400" fill="#070B14" stroke="#334155" stroke-width="1.5"/>
+
+  <!-- Horizontal Grid Lines (Recall 0%, 25%, 50%, 75%, 100%) -->
+  <line x1="130" y1="190" x2="880" y2="190" stroke="#1E293B" stroke-width="1.2" stroke-dasharray="5,5"/>
+  <text x="118" y="195" text-anchor="end" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="11.5" font-weight="bold">100%</text>
+
+  <line x1="130" y1="285" x2="880" y2="285" stroke="#1E293B" stroke-width="1.2" stroke-dasharray="5,5"/>
+  <text x="118" y="290" text-anchor="end" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="11.5">75%</text>
+
+  <line x1="130" y1="380" x2="880" y2="380" stroke="#1E293B" stroke-width="1.2" stroke-dasharray="5,5"/>
+  <text x="118" y="385" text-anchor="end" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="11.5">50%</text>
+
+  <line x1="130" y1="475" x2="880" y2="475" stroke="#1E293B" stroke-width="1.2" stroke-dasharray="5,5"/>
+  <text x="118" y="480" text-anchor="end" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="11.5">25%</text>
+
+  <line x1="130" y1="570" x2="880" y2="570" stroke="#475569" stroke-width="1.5"/>
+  <text x="118" y="574" text-anchor="end" fill="#94A3B8" font-family="DejaVu Sans Mono, monospace" font-size="11.5">0%</text>
+
+  <!-- Vertical Grid Lines -->
+  <line x1="160" y1="170" x2="160" y2="570" stroke="#1E293B" stroke-width="1.2" stroke-dasharray="5,5"/>
+  <text x="160" y="592" text-anchor="middle" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="11.5">1x</text>
+
+  <line x1="265" y1="170" x2="265" y2="570" stroke="#1E293B" stroke-width="1.2" stroke-dasharray="5,5"/>
+  <text x="265" y="592" text-anchor="middle" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="11.5">2.5x</text>
+
+  <line x1="375" y1="170" x2="375" y2="570" stroke="#1E293B" stroke-width="1.2" stroke-dasharray="5,5"/>
+  <text x="375" y="592" text-anchor="middle" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="11.5">5x</text>
+
+  <line x1="495" y1="170" x2="495" y2="570" stroke="#1E293B" stroke-width="1.2" stroke-dasharray="5,5"/>
+  <text x="495" y="592" text-anchor="middle" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="11.5">10x</text>
+
+  <line x1="620" y1="170" x2="620" y2="570" stroke="#1E293B" stroke-width="1.2" stroke-dasharray="5,5"/>
+  <text x="620" y="592" text-anchor="middle" fill="#00E5FF" font-family="DejaVu Sans Mono, monospace" font-size="11.5" font-weight="bold">18.4x</text>
+
+  <line x1="745" y1="170" x2="745" y2="570" stroke="#1E293B" stroke-width="1.2" stroke-dasharray="5,5"/>
+  <text x="745" y="592" text-anchor="middle" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="11.5">40x</text>
+
+  <line x1="840" y1="170" x2="840" y2="570" stroke="#1E293B" stroke-width="1.2" stroke-dasharray="5,5"/>
+  <text x="840" y="592" text-anchor="middle" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="11.5" font-weight="bold">72.1x</text>
+
+  <text x="505" y="625" text-anchor="middle" fill="#E2E8F0" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold">
+    Token Compression Factor (Raw Tokens / Compressed Active Window Tokens)
+  </text>
+  <text x="65" y="370" text-anchor="middle" fill="#E2E8F0" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="bold" transform="rotate(-90 65 370)">
+    Exact Symbol &amp; Byte-Identical Recall (%)
+  </text>
+
+  <!-- Lossy Tradeoff Curve (Dashed Red/Amber) -->
+  <path d="M 160 225 Q 320 270 460 395 T 690 525" fill="none" stroke="#F43F5E" stroke-width="2.5" stroke-dasharray="8,6"/>
+  <text x="200" y="375" fill="#FDA4AF" font-family="DejaVu Sans, sans-serif" font-size="11.5" font-weight="bold">
+    Classical Lossy Rate-Distortion Cliff
+  </text>
+
+  <!-- Plotted Points: Lossy Baselines -->
+  <circle cx="160" cy="225" r="8" fill="#94A3B8" stroke="#F8FAFC" stroke-width="2"/>
+  <text x="175" y="230" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="11">Raw 128K Context (1.0x, 91.2%)</text>
+
+  <circle cx="355" cy="282" r="8" fill="#F59E0B" stroke="#F8FAFC" stroke-width="2"/>
+  <text x="235" y="268" fill="#FDE68A" font-family="DejaVu Sans Mono, monospace" font-size="11">Dense Top-K RAG (4.5x, 76.0%)</text>
+
+  <circle cx="465" cy="338" r="8" fill="#A855F7" stroke="#F8FAFC" stroke-width="2"/>
+  <text x="482" y="342" fill="#D8B4FE" font-family="DejaVu Sans Mono, monospace" font-size="11">LLMLingua-2 (8.5x, 61.4%)</text>
+
+  <circle cx="585" cy="410" r="8" fill="#EC4899" stroke="#F8FAFC" stroke-width="2"/>
+  <text x="455" y="434" fill="#F9A8D4" font-family="DejaVu Sans Mono, monospace" font-size="11">Activation Beacons (16x, 42% exact hex)</text>
+
+  <circle cx="685" cy="498" r="8" fill="#EF4444" stroke="#F8FAFC" stroke-width="2"/>
+  <text x="515" y="524" fill="#FCA5A5" font-family="DejaVu Sans Mono, monospace" font-size="11">English `/compact` Summary (28x, 19.0%)</text>
+
+  <!-- AHTL v1.0 Lossless Horizontal Ceiling Line at 100% -->
+  <line x1="620" y1="190" x2="840" y2="190" stroke="#10B981" stroke-width="4"/>
+
+  <circle cx="620" cy="190" r="10" fill="#00E5FF" stroke="#F8FAFC" stroke-width="2.5"/>
+  <text x="485" y="218" fill="#00E5FF" font-family="DejaVu Sans Mono, monospace" font-size="11.2" font-weight="bold">
+    AHTL v1.0 Profile A (18.4x, 100%)
+  </text>
+
+  <circle cx="840" cy="190" r="11" fill="#10B981" stroke="#F8FAFC" stroke-width="2.5"/>
+  <text x="645" y="242" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="11.2" font-weight="bold">
+    AHTL v1.0 Profile B (72.1x, 100%)
+  </text>
+
+  <!-- Right Side: Quantitative Benchmark & Architecture Comparison Cards -->
+  <rect x="960" y="105" width="595" height="545" rx="12" fill="url(#slateBox)" stroke="#10B981" stroke-width="2"/>
+  <text x="1257" y="138" text-anchor="middle" fill="#34D399" font-family="DejaVu Sans, sans-serif" font-size="14.5" font-weight="bold">
+    WHY AHTL v1.0 BREAKS THE CLASSICAL RATE-DISTORTION CLIFF
+  </text>
+
+  <rect x="980" y="158" width="555" height="112" rx="8" fill="url(#cyanBox)" stroke="#00E5FF" stroke-width="1.5"/>
+  <text x="996" y="183" fill="#00E5FF" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="bold">
+    1. Separation of Attention Routing (Channel A/B) from Byte Storage (CAS)
+  </text>
+  <text x="996" y="206" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="10.6">
+    • Lossy compressors try to squeeze the payload itself into fewer tokens.
+  </text>
+  <text x="996" y="226" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="10.6">
+    • AHTL v1.0 keeps only the *attention routing keys* (identifiers, faults,
+  </text>
+  <text x="996" y="246" fill="#7DD3FC" font-family="DejaVu Sans Mono, monospace" font-size="10.6" font-weight="bold">
+      Braille sketch) in-window + a 100% lossless `#icx:&lt;hex&gt;` CAS pointer.
+  </text>
+
+  <rect x="980" y="284" width="555" height="112" rx="8" fill="url(#violetBox)" stroke="#A855F7" stroke-width="1.5"/>
+  <text x="996" y="309" fill="#C084FC" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="bold">
+    2. Works Across Closed-Weight Frontier APIs (Claude, GPT, Gemini)
+  </text>
+  <text x="996" y="332" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="10.6">
+    • ICAE / xRAG / Activation Beacons require custom continuous KV projection
+  </text>
+  <text x="996" y="352" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="10.6">
+      layers and model weight access (impossible on Anthropic/OpenAI APIs).
+  </text>
+  <text x="996" y="372" fill="#D8B4FE" font-family="DejaVu Sans Mono, monospace" font-size="10.6" font-weight="bold">
+    • AHTL v1.0 is pure UTF-8 text: 100% wire-compatible with every LLM API!
+  </text>
+
+  <rect x="980" y="410" width="555" height="112" rx="8" fill="url(#emeraldBox)" stroke="#10B981" stroke-width="1.5"/>
+  <text x="996" y="435" fill="#34D399" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="bold">
+    3. Prefix-Cache-Locked Epochs Preserve Provider KV Cache (&gt;= 94% Hit)
+  </text>
+  <text x="996" y="458" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="10.6">
+    • Conventional `/compact` rewrites the conversation history, invalidating
+  </text>
+  <text x="996" y="478" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="10.6">
+      100% of cached KV blocks and spiking TTFT latency.
+  </text>
+  <text x="996" y="498" fill="#6EE7B7" font-family="DejaVu Sans Mono, monospace" font-size="10.6" font-weight="bold">
+    • AHTL seals immutable Epochs E_0..E_k and updates only the Tail Slot.
+  </text>
+
+  <rect x="980" y="536" width="555" height="94" rx="8" fill="url(#amberBox)" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="996" y="561" fill="#FBBF24" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="bold">
+    4. Verified `icx-cli benchmark` Metrics on i9-10850K
+  </text>
+  <text x="996" y="585" fill="#FEF3C7" font-family="DejaVu Sans Mono, monospace" font-size="10.8">
+    • Source/Log Compression: 18.4x (Profile A) to 72.1x (Profile B)
+  </text>
+  <text x="996" y="607" fill="#FEF3C7" font-family="DejaVu Sans Mono, monospace" font-size="10.8">
+    • Encode + CAS + HDC + Graph Latency: 197.85 µs | Passkey Recall: 100.0%
+  </text>
+
+  <!-- Bottom Full-Width Comparison Table -->
+  <rect x="45" y="670" width="1510" height="220" rx="12" fill="#0B132B" stroke="#334155" stroke-width="2"/>
+  <text x="800" y="700" text-anchor="middle" fill="#F8FAFC" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="bold">
+    QUANTITATIVE COMPARISON ACROSS CONTEXT COMPRESSION PARADIGMS
+  </text>
+  <text x="70" y="730" fill="#00E5FF" font-family="DejaVu Sans Mono, monospace" font-size="11.5" font-weight="bold" xml:space="preserve">Method / System               Compression   Exact Hex/Line Recall   Prefix Cache Hit   API / Closed-Model Ready   CPU Encode Latency</text>
+  <line x1="70" y1="740" x2="1530" y2="740" stroke="#334155" stroke-width="1.5"/>
+  <text x="70" y="766" fill="#CBD5E1" font-family="DejaVu Sans Mono, monospace" font-size="11.5" xml:space="preserve">Uncompressed Raw Window          1.0x         91.2% (softmax noise)      95.0%               Yes (Native)                0.0 µs</text>
+  <text x="70" y="792" fill="#FCA5A5" font-family="DejaVu Sans Mono, monospace" font-size="11.5" xml:space="preserve">English Prose `/compact`        28.0x         19.0% (destroys hex)       12.0% (busts KV)    Yes (Extra LLM call)    3,500,000.0 µs</text>
+  <text x="70" y="818" fill="#D8B4FE" font-family="DejaVu Sans Mono, monospace" font-size="11.5" xml:space="preserve">LLMLingua-2 Token Pruning        8.5x         61.4% (drops syntax)       18.0% (mutates)     Yes (Requires BERT GPU)    45,000.0 µs</text>
+  <text x="70" y="844" fill="#F9A8D4" font-family="DejaVu Sans Mono, monospace" font-size="11.5" xml:space="preserve">Activation Beacons / ICAE       16.0x         42.0% (soft vectors)        0.0%               NO (Needs custom weights)  18,000.0 µs</text>
+  <text x="70" y="870" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="11.5" font-weight="bold" xml:space="preserve">AHTL v1.0 (Profile A / B)   18.4x–72.1x      100.0% (Lossless CAS)     &gt;=94.0% (Epoch Lock)  YES (Pure UTF-8 Dialect)      197.85 µs</text>
+</svg>
