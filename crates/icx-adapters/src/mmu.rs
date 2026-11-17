@@ -113,6 +113,35 @@ impl InfinityContextMmu {
         self.ingest_payload_with_exit_code(agent, subject, raw_text, None, force_anomaly)
     }
 
+    #[inline]
+    pub(crate) fn clamp_utf8_boundary(text: &str, max_bytes: usize) -> usize {
+        if text.len() <= max_bytes {
+            return text.len();
+        }
+        let mut bound = max_bytes;
+        while !text.is_char_boundary(bound) {
+            bound -= 1;
+        }
+        bound
+    }
+
+    #[inline]
+    pub(crate) fn clamp_raw_ingest(raw_text: &str, max_bytes: usize) -> &str {
+        if raw_text.len() <= max_bytes {
+            return raw_text;
+        }
+        let mut bound = Self::clamp_utf8_boundary(raw_text, max_bytes);
+        // Prefer cutting at a newline near the cap so trailing secrets are not split mid-line.
+        let search_floor = bound.saturating_sub(4096);
+        if let Some(rel_nl) = raw_text.as_bytes()[search_floor..bound]
+            .iter()
+            .rposition(|&b| b == b'\n')
+        {
+            bound = search_floor + rel_nl + 1;
+        }
+        &raw_text[..bound]
+    }
+
     /// Ingests a tool output or turn with an optional process `exit_code` (`Some(code != 0)`
     /// triggers Titans anomaly boost and records a functional `exit_code` edge in `BiTemporalGraph`).
     pub fn ingest_payload_with_exit_code(
@@ -124,32 +153,11 @@ impl InfinityContextMmu {
         force_anomaly: bool,
     ) -> IngestResult {
         self.clock_ms += 10;
-        let bounded_raw = if raw_text.len() > icx_core::ICX_MAX_INGEST_BYTES {
-            let mut bound = icx_core::ICX_MAX_INGEST_BYTES;
-            while !raw_text.is_char_boundary(bound) {
-                bound -= 1;
-            }
-            // Prefer cutting at a newline near the cap so trailing secrets are not split mid-line.
-            let search_floor = bound.saturating_sub(4096);
-            if let Some(rel_nl) = raw_text.as_bytes()[search_floor..bound]
-                .iter()
-                .rposition(|&b| b == b'\n')
-            {
-                bound = search_floor + rel_nl + 1;
-            }
-            &raw_text[..bound]
-        } else {
-            raw_text
-        };
+        let bounded_raw = Self::clamp_raw_ingest(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
         let mut sanitized = SecretRedactor::sanitize(bounded_raw);
         let was_redacted = bounded_raw.lines().ne(sanitized.lines());
-        if sanitized.len() > icx_core::ICX_MAX_INGEST_BYTES {
-            let mut bound = icx_core::ICX_MAX_INGEST_BYTES;
-            while !sanitized.is_char_boundary(bound) {
-                bound -= 1;
-            }
-            sanitized.truncate(bound);
-        }
+        let san_bound = Self::clamp_utf8_boundary(&sanitized, icx_core::ICX_MAX_INGEST_BYTES);
+        sanitized.truncate(san_bound);
         let raw_bytes = sanitized.len();
         let (artifact_id, _) = self.cas.put_bytes(sanitized.as_bytes());
 
@@ -186,28 +194,27 @@ impl InfinityContextMmu {
 
         // Populate Bi-Temporal Graph with extracted clause relations
         let edge_weight = receipt.verdict.momentum_surprise.max(0.2);
-        for clause in &packet.clauses {
-            if let Some(val) = &clause.value {
-                if subject.trim().is_empty()
-                    || clause.key.trim().is_empty()
-                    || val.trim().is_empty()
-                {
-                    continue;
-                }
-                let is_functional = matches!(
-                    clause.key.as_str(),
-                    "status" | "test_status" | "return_type" | "fail" | "pass" | "exit_code"
-                );
-                self.graph.upsert_edge(
-                    subject,
-                    &clause.key,
-                    val,
-                    is_functional,
-                    self.clock_ms,
-                    artifact_id,
-                    edge_weight,
-                );
+        for (key, val) in packet
+            .clauses
+            .iter()
+            .filter_map(|c| c.value.as_deref().map(|v| (c.key.as_str(), v)))
+        {
+            if subject.trim().is_empty() || key.trim().is_empty() || val.trim().is_empty() {
+                continue;
             }
+            let is_functional = matches!(
+                key,
+                "status" | "test_status" | "return_type" | "fail" | "pass" | "exit_code"
+            );
+            self.graph.upsert_edge(
+                subject,
+                key,
+                val,
+                is_functional,
+                self.clock_ms,
+                artifact_id,
+                edge_weight,
+            );
         }
 
         let est_tokens = (raw_bytes / 4).max(1);
@@ -320,7 +327,7 @@ impl InfinityContextMmu {
                 .graph
                 .personalized_pagerank(&seeds, None, 0.15, 6, top_k);
             for node in ppr_nodes {
-                if let Some(&prov) = node.provenance_artifacts.first() {
+                for &prov in node.provenance_artifacts.iter().take(1) {
                     lines.push(format!(
                         "⟦Ω:PPR_GRAPH⊢entity={}⋮score={:.3}↦{}⟧",
                         node.entity, node.score, prov
@@ -344,14 +351,10 @@ impl InfinityContextMmu {
         let cas_res = self.cas.resolve_handle(handle_or_prefix);
         let dag_res = self.dag.resolve_handle(handle_or_prefix);
         match (cas_res, dag_res) {
-            (Ok(cid), Ok(did)) => {
-                if cid == did {
-                    Ok(cid)
-                } else {
-                    Err(IcxError::AmbiguousHandlePrefix(handle_or_prefix.to_owned()))
-                }
+            (Ok(cid), Ok(did)) if cid != did => {
+                Err(IcxError::AmbiguousHandlePrefix(handle_or_prefix.to_owned()))
             }
-            (Ok(cid), Err(IcxError::ArtifactNotFound(_))) => Ok(cid),
+            (Ok(cid), Ok(_) | Err(IcxError::ArtifactNotFound(_))) => Ok(cid),
             (Err(IcxError::ArtifactNotFound(_)), Ok(did)) => Ok(did),
             (Err(e), _) | (_, Err(e)) => Err(e),
         }

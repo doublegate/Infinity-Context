@@ -489,12 +489,47 @@ unprefixed_secret = {unpref_sec}
         )
         .unwrap();
 
-        // Verify MMU error paths for missing artifacts and malformed handles
+        let null_out = AntigravityAdapter::handle_hook(
+            "PostToolUse",
+            r#"{"toolCall":{"args":null},"toolResponse":null,"result":"ok_fallback"}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(null_out.contains("ok") || !null_out.contains("null"));
+
+        assert_eq!(InfinityContextMmu::clamp_utf8_boundary("hello", 10), 5);
+        assert_eq!(InfinityContextMmu::clamp_utf8_boundary("aé", 2), 1);
+        assert_eq!(
+            InfinityContextMmu::clamp_raw_ingest("hello\nworld", 20),
+            "hello\nworld"
+        );
+        assert_eq!(
+            InfinityContextMmu::clamp_raw_ingest("line1\nline2_overflow", 12),
+            "line1\n"
+        );
+        assert_eq!(
+            InfinityContextMmu::clamp_raw_ingest("no_newline_é_tail", 12),
+            "no_newline_"
+        );
+
+        let no_args_call = McpPagerServer::handle_jsonrpc(
+            r#"{"jsonrpc":"2.0","id":99,"method":"tools/call","params":{}}"#,
+            &mut mmu,
+        );
+        assert!(no_args_call.to_string().contains("ICX:STATUS"));
+        let bad_slice = McpPagerServer::execute_icx_op(
+            &serde_json::json!({"op": "slice", "id": exit_res.artifact_id.to_string(), "range": [0, 5]}),
+            &mut mmu,
+        );
+        assert!(bad_slice.starts_with("ERR:"));
+
+        // Verify MMU error paths for missing artifacts, malformed handles, and invalid line ranges
         assert!(mmu.resolve_handle("not_a_handle").is_err());
         assert!(mmu.deref_text(icx_core::ArtifactId(0xDEAD_BEEF)).is_err());
         assert!(
             mmu.deref_lines(icx_core::ArtifactId(0xDEAD_BEEF), 1, 2)
                 .is_err()
         );
+        assert!(mmu.deref_lines(exit_res.artifact_id, 0, 2).is_err());
     }
 }

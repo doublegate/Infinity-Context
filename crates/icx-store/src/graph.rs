@@ -515,6 +515,11 @@ impl BiTemporalGraph {
         });
         let mut seen_ids = BTreeSet::new();
         let mut functional_groups: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
+        if loaded.edges.iter().any(|e| e.edge_id == 0) {
+            for e in &mut loaded.edges {
+                e.edge_id = e.edge_id.saturating_add(1);
+            }
+        }
         let mut max_next_id = loaded.next_edge_id.max(1);
 
         for idx in 0..loaded.edges.len() {
@@ -595,34 +600,51 @@ impl BiTemporalGraph {
                 }
             }
             let winner_idx = active.last().copied();
+            if let Some(w_idx) = winner_idx {
+                let w_edge_id = loaded.edges[w_idx].edge_id;
+                for &ci in indices {
+                    if let Some(inv) = loaded.edges[ci]
+                        .t_invalid
+                        .filter(|&inv| inv > loaded.edges[ci].t_valid)
+                    {
+                        if loaded.edges[ci].edge_id < w_edge_id {
+                            loaded.edges[w_idx].t_valid = loaded.edges[w_idx].t_valid.max(inv);
+                            let tx_end = loaded.edges[ci].t_tx_end.unwrap_or(inv);
+                            loaded.edges[w_idx].t_tx_start =
+                                loaded.edges[w_idx].t_tx_start.max(tx_end);
+                        }
+                    }
+                }
+            }
             let mut ordered = indices.clone();
             ordered.sort_by_key(|&i| {
                 (
                     loaded.edges[i].t_valid,
+                    loaded.edges[i].t_invalid.unwrap_or(u64::MAX),
                     loaded.edges[i].t_tx_start,
                     loaded.edges[i].edge_id,
                 )
             });
             for (pos, &ci) in ordered.iter().enumerate() {
-                if Some(ci) == winner_idx {
+                let Some(mut inv) = loaded.edges[ci]
+                    .t_invalid
+                    .filter(|_| Some(ci) != winner_idx)
+                else {
                     continue;
+                };
+                let mut tx_end = loaded.edges[ci].t_tx_end.unwrap_or(inv);
+                if let Some(w_idx) = winner_idx {
+                    inv = inv.min(loaded.edges[w_idx].t_valid);
+                    tx_end = tx_end.min(loaded.edges[w_idx].t_tx_start);
                 }
-                if let Some(mut inv) = loaded.edges[ci].t_invalid {
-                    let mut tx_end = loaded.edges[ci].t_tx_end.unwrap_or(inv);
-                    if let Some(w_idx) = winner_idx {
-                        inv = inv.min(loaded.edges[w_idx].t_valid);
-                        tx_end = tx_end.min(loaded.edges[w_idx].t_tx_start);
-                    }
-                    let next_bound = ordered[pos + 1..]
-                        .iter()
-                        .copied()
-                        .find(|&ni| loaded.edges[ni].t_invalid != Some(loaded.edges[ni].t_valid));
-                    inv = inv.min(next_bound.map_or(inv, |ni| loaded.edges[ni].t_valid));
-                    tx_end =
-                        tx_end.min(next_bound.map_or(tx_end, |ni| loaded.edges[ni].t_tx_start));
-                    loaded.edges[ci].t_invalid = Some(inv.max(loaded.edges[ci].t_valid));
-                    loaded.edges[ci].t_tx_end = Some(tx_end.max(loaded.edges[ci].t_tx_start));
-                }
+                let next_bound = ordered[pos + 1..]
+                    .iter()
+                    .copied()
+                    .find(|&ni| loaded.edges[ni].t_invalid != Some(loaded.edges[ni].t_valid));
+                inv = inv.min(next_bound.map_or(inv, |ni| loaded.edges[ni].t_valid));
+                tx_end = tx_end.min(next_bound.map_or(tx_end, |ni| loaded.edges[ni].t_tx_start));
+                loaded.edges[ci].t_invalid = Some(inv.max(loaded.edges[ci].t_valid));
+                loaded.edges[ci].t_tx_end = Some(tx_end.max(loaded.edges[ci].t_tx_start));
             }
         }
 
@@ -807,10 +829,10 @@ mod tests {
             .find(|e| e.t_invalid.is_none())
             .unwrap();
         assert_eq!(active_edge.target_entity, "NEW");
-        assert_eq!(active_edge.edge_id, 2);
+        assert_eq!(active_edge.edge_id, 3);
         assert!(repaired.invalidate_edge(active_edge.edge_id, 50));
 
-        // Verify load_from_dir preserves an active winner whose t_valid (50) precedes an already-invalidated edge (100)
+        // Verify load_from_dir preserves an active winner whose t_valid (50) precedes an already-invalidated empty edge (100..100)
         // and clamps an earlier closed edge [10, 80) against its successor at 50
         fs::write(
             &json_path,
@@ -829,6 +851,24 @@ mod tests {
             winner_graph.query_edges_from("a", Some(100))[0].target_entity,
             "ACTIVE_WINNER"
         );
+
+        // Verify load_from_dir advances an out-of-order active winner past an earlier non-empty closed interval [100, 200)
+        // and preserves the longer interval when two closed edges share the same t_valid ([100, 200) and [100, 150))
+        fs::write(
+            &json_path,
+            r#"{"edges":[{"edge_id":1,"source_entity":"a","relation":"status","target_entity":"HIST_LONG","is_functional":true,"t_valid":100,"t_invalid":200,"t_tx_start":100,"t_tx_end":200,"provenance":1,"weight":1.0},{"edge_id":2,"source_entity":"a","relation":"status","target_entity":"HIST_SHORT","is_functional":true,"t_valid":100,"t_invalid":150,"t_tx_start":100,"t_tx_end":150,"provenance":1,"weight":1.0},{"edge_id":3,"source_entity":"a","relation":"status","target_entity":"ACTIVE_LATE","is_functional":true,"t_valid":50,"t_invalid":null,"t_tx_start":50,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":[],"next_edge_id":4}"#,
+        )
+        .unwrap();
+        let hist_graph = BiTemporalGraph::load_from_dir(&tmp_dir)
+            .expect("preserves non-empty historical closed interval");
+        assert_eq!(
+            hist_graph.query_edges_from("a", Some(175))[0].target_entity,
+            "HIST_LONG"
+        );
+        assert_eq!(
+            hist_graph.query_edges_from("a", Some(200))[0].target_entity,
+            "ACTIVE_LATE"
+        );
         assert_eq!(
             g.upsert_edge(" ", "status", "ok", true, 100, ArtifactId(1), 1.0),
             0
@@ -841,6 +881,9 @@ mod tests {
             g.upsert_edge("src", "status", "  ", true, 100, ArtifactId(1), 1.0),
             0
         );
+        let _ = fs::remove_file(&json_path);
+        fs::create_dir_all(&json_path).unwrap();
+        assert!(g.save_to_dir(&tmp_dir).is_err());
 
         let _ = fs::remove_dir_all(&tmp_dir);
     }

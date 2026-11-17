@@ -76,13 +76,12 @@ impl AntigravityAdapter {
                 let args_str = payload
                     .get("toolCall")
                     .and_then(|tc| tc.get("args"))
+                    .filter(|v| !v.is_null())
                     .map(Value::to_string)
                     .unwrap_or_default();
-                let resp_str = payload
-                    .get("toolResponse")
-                    .or_else(|| payload.get("tool_response"))
-                    .or_else(|| payload.get("toolResult"))
-                    .or_else(|| payload.get("result"))
+                let resp_str = ["toolResponse", "tool_response", "toolResult", "result"]
+                    .into_iter()
+                    .find_map(|k| payload.get(k).filter(|v| !v.is_null()))
                     .map(|v| match v {
                         Value::String(s) => s.clone(),
                         other => other.to_string(),

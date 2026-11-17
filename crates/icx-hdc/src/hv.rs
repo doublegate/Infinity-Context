@@ -577,6 +577,9 @@ impl HdcBundler {
     }
 
     /// Returns `true` if `hv`'s 128-bit fingerprint is recorded in `seen_fingerprints`.
+    /// Returns `true` if `hv`'s 128-bit fingerprint has already been added to this bundler
+    /// via `add`, `add_weighted`, or `add_weighted_unique` (internal stack-only `add_delta`
+    /// updates do not populate `seen_fingerprints`).
     #[inline]
     pub fn contains_fingerprint(&self, hv: &Hypervector) -> bool {
         self.seen_fingerprints
@@ -619,7 +622,7 @@ impl HdcBundler {
     /// receive zero delta weight (returning `false`), while novel/under-represented tokens
     /// reinforce the bundle (returning `true`).
     #[inline]
-    pub fn add_delta(&mut self, hv: &Hypervector) -> bool {
+    pub(crate) fn add_delta(&mut self, hv: &Hypervector) -> bool {
         let weight: i16 = if self.count == 0 {
             16
         } else {

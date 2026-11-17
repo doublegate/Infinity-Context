@@ -190,6 +190,19 @@ impl HdcAssociativeIndex {
                 mask |= Self::token_bloom_bits32(tok);
             }
         }
+        for tok in
+            subject_lower.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
+        {
+            if tok.len() >= 2
+                && tok.contains('/')
+                && tok.contains(':')
+                && tok
+                    .split(|c: char| !c.is_alphanumeric() && c != '_')
+                    .all(|sub| sub.len() < 2)
+            {
+                mask |= Self::token_bloom_bits32(tok);
+            }
+        }
         if !subject_lower.is_empty() {
             mask |= Self::token_bloom_bits32(subject_lower);
         }
@@ -279,8 +292,17 @@ impl HdcAssociativeIndex {
             return false;
         }
         let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
-        let tok_left_sep = tok.chars().next().is_some_and(|c| !is_word_char(c));
-        let tok_right_sep = tok.chars().next_back().is_some_and(|c| !is_word_char(c));
+        let left_seg_long = tok
+            .split(['/', ':'])
+            .next()
+            .is_some_and(|s| s.chars().count() >= 4);
+        let right_seg_long = tok
+            .rsplit(['/', ':'])
+            .next()
+            .is_some_and(|s| s.chars().count() >= 4);
+        let tok_left_sep = left_seg_long || tok.chars().next().is_some_and(|c| !is_word_char(c));
+        let tok_right_sep =
+            right_seg_long || tok.chars().next_back().is_some_and(|c| !is_word_char(c));
         let mut start = 0usize;
         while let Some(rel) = subject_lower[start..].find(tok) {
             let pos = start + rel;
@@ -533,9 +555,15 @@ mod tests {
             "myfoo/foo/foo",
             "foo/foo"
         ));
+        assert!(HdcAssociativeIndex::subject_matches_token(
+            "src/quantum_needle_v2.rs",
+            "src/quantum_needle"
+        ));
         assert!(!HdcAssociativeIndex::subject_matches_token("myfoo", ""));
         let _ = trait_ref.observe_event(ArtifactId(1000), "", "empty subject body", false);
-        let _ = trait_ref.observe_event(ArtifactId(1001), "a/b x:y", "short composite", false);
+        let _ =
+            trait_ref.observe_event(ArtifactId(1001), "a/b x:y a:b/c", "short composite", false);
+        let _ = trait_ref.query_associative("a:b/c", 5);
 
         // Verify requesting top_k > 64 returns all requested hits up to entries.len()
         let large_hits = trait_ref.query_associative("helper module", 100);
