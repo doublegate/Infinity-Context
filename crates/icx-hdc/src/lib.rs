@@ -6,9 +6,9 @@ pub mod fractal;
 pub mod hv;
 pub mod surprise;
 
-use crate::fractal::FractalCoord;
-use crate::hv::Hypervector;
-use crate::surprise::{SurpriseVerdict, TitansSurpriseGate};
+pub use crate::fractal::{FractalCoord, FractalTrajectoryArchive};
+pub use crate::hv::{HdcBundler, Hypervector};
+pub use crate::surprise::{RetentionTier, SurpriseVerdict, TitansSurpriseGate};
 use icx_core::ArtifactId;
 use serde::{Deserialize, Serialize};
 
@@ -50,6 +50,14 @@ pub struct IndexedEntry {
     pub surprise: f32,
 }
 
+impl IndexedEntry {
+    /// Returns the cached lowercase subject string.
+    #[inline]
+    pub fn subject_lower(&self) -> &str {
+        &self.subject_lower
+    }
+}
+
 /// Ranked associative retrieval hit combining HDC Hamming similarity and Fractal suffix depth.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AssociativeHit {
@@ -73,7 +81,7 @@ pub struct ObservationReceipt {
 pub struct HdcAssociativeIndex {
     entries: Vec<IndexedEntry>,
     summaries: Vec<EntrySummary>,
-    current_trajectory: FractalCoord,
+    trajectory_archive: FractalTrajectoryArchive,
     surprise_gate: TitansSurpriseGate,
 }
 
@@ -95,7 +103,22 @@ impl HdcAssociativeIndex {
 
     /// Returns the current 16-D Fractal Chaos-Game trajectory coordinate.
     pub const fn current_trajectory(&self) -> FractalCoord {
-        self.current_trajectory
+        self.trajectory_archive.current()
+    }
+
+    /// Returns a reference to the underlying `FractalTrajectoryArchive`.
+    pub const fn trajectory_archive(&self) -> &FractalTrajectoryArchive {
+        &self.trajectory_archive
+    }
+
+    /// Returns a reference to the underlying `TitansSurpriseGate`.
+    pub const fn surprise_gate(&self) -> &TitansSurpriseGate {
+        &self.surprise_gate
+    }
+
+    /// Applies `steps` intervals of idle exponential decay to the underlying `TitansSurpriseGate`.
+    pub fn apply_idle_decay(&mut self, steps: u32) {
+        self.surprise_gate.apply_idle_decay(steps);
     }
 
     /// Returns the most recently indexed entry, if any.
@@ -141,10 +164,12 @@ impl HdcAssociativeIndex {
         let verdict = self
             .surprise_gate
             .observe(&composite_hv, content, force_anomaly);
-        self.current_trajectory = self.current_trajectory.step(&composite_hv);
+        let current_trajectory = self
+            .trajectory_archive
+            .record_step(artifact_id, &composite_hv);
 
         let sketch = composite_hv.sketch_u32().to_be_bytes();
-        let quad_u16 = self.current_trajectory.quadrant_signature_u16();
+        let quad_u16 = current_trajectory.quadrant_signature_u16();
         let quad = quad_u16.to_be_bytes();
         let surp_byte = (verdict.momentum_surprise.clamp(0.0, 1.0) * 255.0) as u8;
         let tier_bits = verdict.tier as u8; // Bits 0..=1: 0 = PinHighResolution, 1 = FoldAhtlStub, 2 = ColdBeacon
@@ -171,13 +196,13 @@ impl HdcAssociativeIndex {
             subject: subject.to_owned(),
             subject_lower,
             hv: composite_hv,
-            fractal_coord: self.current_trajectory,
+            fractal_coord: current_trajectory,
             surprise: verdict.momentum_surprise,
         });
 
         ObservationReceipt {
             verdict,
-            fractal_coord: self.current_trajectory,
+            fractal_coord: current_trajectory,
             hologram_bytes,
         }
     }
@@ -196,7 +221,7 @@ impl HdcAssociativeIndex {
             .count() as f32;
         let hdc_sim = (text_sim + 0.25 * lexical_overlap).clamp(0.0, 1.0);
         let suffix = self
-            .current_trajectory
+            .current_trajectory()
             .shared_suffix_depth(&e.fractal_coord);
         let combined =
             0.65 * hdc_sim + 0.20 * e.surprise + 0.15 * ((suffix as f32) / 8.0).clamp(0.0, 1.0);
@@ -247,7 +272,7 @@ impl HdcAssociativeIndex {
                         }
                     }
                 }
-                let cur_quad = self.current_trajectory.quadrant_signature_u16();
+                let cur_quad = self.current_trajectory().quadrant_signature_u16();
                 let mut candidates: Vec<(u32, usize)> = Vec::with_capacity(candidate_cap);
                 let mut min_score = 0u32;
                 let mut min_pos = 0usize;
@@ -335,6 +360,13 @@ mod tests {
         );
         assert!(!idx.is_empty());
         assert_eq!(idx.len(), 1);
+        assert_eq!(idx.trajectory_archive().len(), 1);
+        assert_eq!(idx.surprise_gate().events_seen(), 1);
+        idx.apply_idle_decay(2);
+        assert_eq!(
+            idx.latest_entry().map(IndexedEntry::subject_lower),
+            Some("src/mmu.rs")
+        );
         assert_ne!(idx.current_trajectory(), init_traj);
         assert_eq!(receipt.fractal_coord, idx.current_trajectory());
         let hits = idx.query_associative("allocate_page mmu", 3);
