@@ -300,30 +300,29 @@ impl Hypervector {
                 computed
             };
 
+            let mut bundled_any = false;
             if let Some((idx, new_entry)) = u_slot
                 && bundler.add_delta(&hv)
             {
                 u_slots[idx] = new_entry;
-                tokens_seen += 1;
+                bundled_any = true;
             }
 
             if let Some((b_idx, b_entry)) = b_slot {
-                let resolved_prev = prev_hv.or_else(|| {
-                    prev_committed_raw.map(|pr| {
-                        let p_lower = lower_into(pr, &mut prev_stack_lower, &mut prev_heap_lower);
-                        Self::from_seed("tok", p_lower)
-                    })
+                let prev = prev_hv.unwrap_or_else(|| {
+                    let pr = prev_committed_raw.unwrap_or(tok);
+                    let p_lower = lower_into(pr, &mut prev_stack_lower, &mut prev_heap_lower);
+                    Self::from_seed("tok", p_lower)
                 });
-                if let Some(prev) = resolved_prev {
-                    let bigram = prev.permute(1).bind(&hv);
-                    if bundler.add_delta(&bigram) {
-                        b_slots[b_idx] = b_entry;
-                    }
-                }
+                let bigram = prev.permute(1).bind(&hv);
+                let _ = bundler.add_delta(&bigram);
+                b_slots[b_idx] = b_entry;
+                bundled_any = true;
             }
             prev_hv = Some(hv);
             prev_key = Some(u_key);
             prev_committed_raw = Some(tok);
+            tokens_seen += usize::from(bundled_any);
             if tokens_seen >= MAX_TEXT_TOKENS {
                 break;
             }
@@ -524,6 +523,10 @@ impl Hypervector {
     }
 }
 
+/// Minimum similarity threshold (`0.15`) for a bundled fingerprint to remain considered active
+/// in `HdcBundler` and `TitansSurpriseGate`.
+pub const ACTIVE_BUNDLE_SIM_THRESHOLD: f32 = 0.15;
+
 /// Infini-attention Delta-Rule (`arXiv:2404.07143`) majority-vote hypervector bundler.
 /// Prevents repetitive boilerplate from saturating associative memory.
 #[derive(Clone, Debug)]
@@ -582,7 +585,9 @@ impl HdcBundler {
     /// representation in `readout` remains active (`similarity >= 0.15`).
     #[inline]
     pub fn is_actively_bundled(&self, hv: &Hypervector) -> bool {
-        self.count > 0 && self.contains_fingerprint(hv) && self.readout.similarity(hv) >= 0.15
+        self.count > 0
+            && self.contains_fingerprint(hv)
+            && self.readout.similarity(hv) >= ACTIVE_BUNDLE_SIM_THRESHOLD
     }
 
     /// Adds a hypervector using the Infini-attention Delta Rule: vectors already strongly present
@@ -595,7 +600,9 @@ impl HdcBundler {
             16
         } else {
             let sim = self.readout.similarity(hv);
-            if sim >= 0.85 || (sim >= 0.15 && self.seen_fingerprints.contains(&fp)) {
+            if sim >= 0.85
+                || (sim >= ACTIVE_BUNDLE_SIM_THRESHOLD && self.seen_fingerprints.contains(&fp))
+            {
                 return;
             }
             let novelty = (1.0 - sim).clamp(0.0, 1.0);
@@ -846,6 +853,16 @@ mod tests {
             prefix_hv, full_hv,
             "novel tokens past 256 must not be dropped"
         );
+
+        // Verify Default, >128-byte mixed-case token, >1,024 distinct tokens, and >16,384 raw scans
+        assert_eq!(Hypervector::default(), Hypervector::zero());
+        let long_mixed = format!("Upper_{} {}", "A".repeat(140), "ok ".repeat(16_400));
+        let _ = Hypervector::encode_text(&long_mixed);
+        let mut over_1024 = String::new();
+        for i in 0..1030usize {
+            over_1024.push_str(&format!("distinct_tok_{i} "));
+        }
+        let _ = Hypervector::encode_text(&over_1024);
     }
 
     #[test]

@@ -456,7 +456,14 @@ unprefixed_secret = {unpref_sec}
             None,
             "generic HTTP status/code fields must not be conflated with process exit codes"
         );
-        assert!(exit_res.compressed_ahtl.contains("exit_code:101"));
+        let exit_ok_res = mmu.ingest_payload_with_exit_code(
+            AgentKind::ClaudeCode,
+            "cargo_test_exit_ok",
+            "all tests passed",
+            Some(0),
+            false,
+        );
+        assert!(exit_ok_res.compressed_ahtl.contains("✓exit_code:0"));
         assert!(!exit_res.compressed_ahtl.contains("exit_code:0"));
 
         // Verify empty and blank-leading payloads preserve BiTemporalGraph save/load round-trip

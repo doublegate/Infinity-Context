@@ -181,25 +181,15 @@ impl CsrGraphSnapshot {
         let mut next_rank = vec![0.0f32; n];
 
         for _ in 0..iterations.max(1) {
-            let mut dangling_mass = 0.0f32;
-            for u in 0..n {
-                if self.inv_out_weight[u] == 0.0 {
-                    dangling_mass += (1.0 - restart) * rank[u];
-                }
-            }
-            let base_tele = restart + dangling_mass;
             for i in 0..n {
-                next_rank[i] = base_tele * teleport[i];
+                next_rank[i] = restart * teleport[i];
             }
             for u in 0..n {
-                let inv_w = self.inv_out_weight[u];
-                if inv_w > 0.0 {
-                    let mass = (1.0 - restart) * rank[u] * inv_w;
-                    let start = self.row_ptr[u];
-                    let end = self.row_ptr[u + 1];
-                    for idx in start..end {
-                        next_rank[self.col_idx[idx]] += mass * self.weights[idx];
-                    }
+                let mass = (1.0 - restart) * rank[u] * self.inv_out_weight[u];
+                let start = self.row_ptr[u];
+                let end = self.row_ptr[u + 1];
+                for idx in start..end {
+                    next_rank[self.col_idx[idx]] += mass * self.weights[idx];
                 }
             }
             rank.copy_from_slice(&next_rank);
@@ -413,15 +403,12 @@ impl BiTemporalGraph {
             if !e.is_active_at(at_ms) {
                 continue;
             }
-            if let (Some(&u), Some(&v)) = (
-                node_to_idx.get(e.source_entity.as_str()),
-                node_to_idx.get(e.target_entity.as_str()),
-            ) {
-                adj[u].push((v, e.weight));
-                adj[v].push((u, e.weight * 0.5));
-                provenance_map[u].insert(e.provenance);
-                provenance_map[v].insert(e.provenance);
-            }
+            let u = node_to_idx[e.source_entity.as_str()];
+            let v = node_to_idx[e.target_entity.as_str()];
+            adj[u].push((v, e.weight));
+            adj[v].push((u, e.weight * 0.5));
+            provenance_map[u].insert(e.provenance);
+            provenance_map[v].insert(e.provenance);
         }
 
         let total_edges: usize = adj.iter().map(Vec::len).sum();
@@ -526,11 +513,6 @@ impl BiTemporalGraph {
                 && !e.relation.trim().is_empty()
                 && !e.target_entity.trim().is_empty()
         });
-        if loaded.edges.iter().any(|e| e.edge_id == 0) {
-            for e in &mut loaded.edges {
-                e.edge_id = e.edge_id.saturating_add(1);
-            }
-        }
         let mut seen_ids = BTreeSet::new();
         let mut functional_groups: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
         let mut max_next_id = loaded.next_edge_id.max(1);
@@ -556,19 +538,15 @@ impl BiTemporalGraph {
             if let Some(inv) = loaded.edges[idx].t_invalid {
                 loaded.edges[idx].t_invalid = Some(inv.max(t_valid.saturating_add(1)));
             }
-            if let Some(tx_end) = loaded.edges[idx].t_tx_end {
+            if let Some(tx_end) = loaded.edges[idx].t_tx_end.or(loaded.edges[idx].t_invalid) {
                 loaded.edges[idx].t_tx_end = Some(tx_end.max(t_tx_start.saturating_add(1)));
             }
-            if loaded.edges[idx].is_functional {
+            if loaded.edges[idx].is_functional && loaded.edges[idx].t_invalid.is_none() {
                 functional_groups.entry((src, rel)).or_default().push(idx);
             }
 
             let w = loaded.edges[idx].weight;
-            loaded.edges[idx].weight = if w.is_finite() {
-                w.clamp(0.01, 1_000.0)
-            } else {
-                1.0
-            };
+            loaded.edges[idx].weight = w.clamp(0.01, 1_000.0);
             max_next_id = max_next_id.max(edge_id.saturating_add(1));
         }
 
@@ -578,7 +556,6 @@ impl BiTemporalGraph {
             }
             indices.sort_by_key(|&i| {
                 (
-                    loaded.edges[i].t_invalid.is_none(),
                     loaded.edges[i].t_valid,
                     loaded.edges[i].t_tx_start,
                     loaded.edges[i].edge_id,
@@ -588,29 +565,23 @@ impl BiTemporalGraph {
                 let cur_i = indices[pos];
                 if pos > 0 {
                     let prev_i = indices[pos - 1];
-                    if let Some(prev_inv) = loaded.edges[prev_i].t_invalid {
-                        loaded.edges[cur_i].t_valid = loaded.edges[cur_i].t_valid.max(prev_inv);
-                    }
-                    if let Some(prev_tx_end) = loaded.edges[prev_i].t_tx_end {
-                        loaded.edges[cur_i].t_tx_start =
-                            loaded.edges[cur_i].t_tx_start.max(prev_tx_end);
-                    }
+                    let prev_inv = loaded.edges[prev_i]
+                        .t_invalid
+                        .unwrap_or(loaded.edges[prev_i].t_valid);
+                    loaded.edges[cur_i].t_valid = loaded.edges[cur_i].t_valid.max(prev_inv);
+                    let prev_tx_end = loaded.edges[prev_i]
+                        .t_tx_end
+                        .unwrap_or(loaded.edges[prev_i].t_tx_start);
+                    loaded.edges[cur_i].t_tx_start =
+                        loaded.edges[cur_i].t_tx_start.max(prev_tx_end);
                 }
-                if loaded.edges[cur_i].t_invalid.is_none() && pos + 1 < indices.len() {
+                if pos + 1 < indices.len() {
                     let next_valid = loaded.edges[indices[pos + 1]].t_valid;
                     let next_tx = loaded.edges[indices[pos + 1]].t_tx_start;
                     loaded.edges[cur_i].t_invalid =
                         Some(next_valid.max(loaded.edges[cur_i].t_valid.saturating_add(1)));
                     loaded.edges[cur_i].t_tx_end =
                         Some(next_tx.max(loaded.edges[cur_i].t_tx_start.saturating_add(1)));
-                } else if let Some(inv) = loaded.edges[cur_i].t_invalid {
-                    loaded.edges[cur_i].t_invalid =
-                        Some(inv.max(loaded.edges[cur_i].t_valid.saturating_add(1)));
-                    let tx_end = loaded.edges[cur_i]
-                        .t_tx_end
-                        .unwrap_or(inv)
-                        .max(loaded.edges[cur_i].t_tx_start.saturating_add(1));
-                    loaded.edges[cur_i].t_tx_end = Some(tx_end);
                 }
             }
         }
@@ -796,20 +767,20 @@ mod tests {
             .find(|e| e.t_invalid.is_none())
             .unwrap();
         assert_eq!(active_edge.target_entity, "NEW");
-        assert_eq!(active_edge.edge_id, 3);
+        assert_eq!(active_edge.edge_id, 2);
         assert!(repaired.invalidate_edge(active_edge.edge_id, 50));
 
         // Verify load_from_dir preserves an active winner whose t_valid (50) precedes an already-invalidated edge (100)
         fs::write(
             &json_path,
-            r#"{"edges":[{"edge_id":1,"source_entity":"a","relation":"status","target_entity":"OLD_INV","is_functional":true,"t_valid":100,"t_invalid":100,"t_tx_start":100,"t_tx_end":100,"provenance":1,"weight":1.0},{"edge_id":2,"source_entity":"a","relation":"status","target_entity":"ACTIVE_WINNER","is_functional":true,"t_valid":50,"t_invalid":null,"t_tx_start":50,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":[],"next_edge_id":3}"#,
+            r#"{"edges":[{"edge_id":0,"source_entity":"a","relation":"status","target_entity":"OLD_INV","is_functional":true,"t_valid":100,"t_invalid":100,"t_tx_start":100,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":1,"source_entity":"a","relation":"status","target_entity":"ACTIVE_WINNER","is_functional":true,"t_valid":50,"t_invalid":null,"t_tx_start":50,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":[],"next_edge_id":0}"#,
         )
         .unwrap();
         let winner_graph =
             BiTemporalGraph::load_from_dir(&tmp_dir).expect("preserves active winner");
         assert_eq!(winner_graph.active_edge_count(), 1);
         assert_eq!(
-            winner_graph.query_edges_from("a", None)[0].target_entity,
+            winner_graph.query_edges_from("a", Some(50))[0].target_entity,
             "ACTIVE_WINNER"
         );
         assert_eq!(

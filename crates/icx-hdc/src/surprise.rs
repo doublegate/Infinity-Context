@@ -3,7 +3,7 @@
 //! Combines HDC associative novelty, Shannon byte entropy, diagnostic anomaly detection, and
 //! exponential momentum smoothing to classify events into virtual memory retention tiers.
 
-use crate::hv::{HdcBundler, Hypervector};
+use crate::hv::{ACTIVE_BUNDLE_SIM_THRESHOLD, HdcBundler, Hypervector};
 use serde::{Deserialize, Serialize};
 
 /// Virtual memory retention tier assigned by the `TitansSurpriseGate`.
@@ -186,7 +186,7 @@ impl TitansSurpriseGate {
         } else {
             let sim = self.bundler.finalize().similarity(hv);
             if !is_anomaly
-                && sim >= 0.15
+                && sim >= ACTIVE_BUNDLE_SIM_THRESHOLD
                 && self.bundler.count() > 0
                 && self.bundler.contains_fingerprint(hv)
             {
@@ -241,6 +241,11 @@ mod tests {
         assert!((gate.alpha() - 0.05).abs() < 1e-6);
         assert_eq!(gate.events_seen(), 0);
         assert_eq!(TitansSurpriseGate::shannon_entropy_norm(b""), 0.0);
+        assert_eq!(
+            TitansSurpriseGate::shannon_entropy_norm(&vec![b'x'; 5000]),
+            0.0
+        );
+        gate.apply_idle_decay(0);
 
         let routine_hv = Hypervector::from_seed("log", "routine_build_ok");
 
@@ -257,6 +262,10 @@ mod tests {
         );
         assert_eq!(v_panic.tier, RetentionTier::PinVerbatim);
         assert!(v_panic.instantaneous_surprise >= 0.85);
+        // Immediate repeat of the exact panic while it dominates the bundle exercises `is_anomaly && novelty < 0.05`
+        let mut single_panic_gate = TitansSurpriseGate::default();
+        let _ = single_panic_gate.observe(&panic_hv, "panicked at line 1", true);
+        let _ = single_panic_gate.observe(&panic_hv, "panicked at line 1", true);
 
         // Immediately following turn (fixing the bug) inherits elevated momentum
         let fix_hv = Hypervector::from_seed("edit", "fix_bounds_check_412");

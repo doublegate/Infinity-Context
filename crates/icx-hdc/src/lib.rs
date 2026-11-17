@@ -258,16 +258,20 @@ impl HdcAssociativeIndex {
             return subject_lower.contains(tok);
         }
         let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
+        let tok_left_sep = tok.chars().next().is_some_and(|c| !is_word_char(c));
+        let tok_right_sep = tok.chars().next_back().is_some_and(|c| !is_word_char(c));
         for (pos, _) in subject_lower.match_indices(tok) {
             let end = pos + tok.len();
-            let left_ok = subject_lower[..pos]
-                .chars()
-                .next_back()
-                .is_none_or(|c| !is_word_char(c));
-            let right_ok = subject_lower[end..]
-                .chars()
-                .next()
-                .is_none_or(|c| !is_word_char(c));
+            let left_ok = tok_left_sep
+                || subject_lower[..pos]
+                    .chars()
+                    .next_back()
+                    .is_none_or(|c| !is_word_char(c));
+            let right_ok = tok_right_sep
+                || subject_lower[end..]
+                    .chars()
+                    .next()
+                    .is_none_or(|c| !is_word_char(c));
             if left_ok && right_ok {
                 return true;
             }
@@ -334,10 +338,15 @@ impl HdcAssociativeIndex {
                 let mut q_bloom32 = 0u32;
                 for tok in &q_tokens {
                     if tok.contains(':') || tok.contains('/') {
+                        let mut any_sub = false;
                         for sub in tok.split(|c: char| !c.is_alphanumeric() && c != '_') {
                             if sub.len() >= 2 {
                                 q_bloom32 |= Self::token_bloom_bits32(sub);
+                                any_sub = true;
                             }
+                        }
+                        if !any_sub {
+                            q_bloom32 |= Self::token_bloom_bits32(tok);
                         }
                     } else {
                         q_bloom32 |= Self::token_bloom_bits32(tok);
@@ -492,6 +501,7 @@ mod tests {
             "src/é/mod.rs",
             "é"
         ));
+        let _ = trait_ref.observe_event(ArtifactId(1000), "", "empty subject body", false);
 
         // Verify requesting top_k > 64 returns all requested hits up to entries.len()
         let large_hits = trait_ref.query_associative("helper module", 100);
