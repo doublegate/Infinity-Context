@@ -120,6 +120,52 @@ mod tests {
         );
         assert!(grep_out.contains("PASSKEY_HEX_0xDEADBEEF42"));
 
+        // 4b. Verify MCP branch open (`begin:<label>`), fold, and DAG-handle `deref`/`slice`
+        let open_out = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "fold",
+                "q": "begin:subtask_loop"
+            }),
+            &mut mmu,
+        );
+        assert!(open_out.contains("⟪ICX:BRANCH_OPENED│subtask_loop⟫"));
+        mmu.ingest_payload(
+            AgentKind::Codex,
+            "cargo_check",
+            "checking subtask step 1\n",
+            false,
+        );
+        let fold_out = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "fold",
+                "q": "subtask_done"
+            }),
+            &mut mmu,
+        );
+        assert!(fold_out.contains("⟪ICX:BRANCH_FOLDED│#icx:"));
+        let branch_handle = fold_out
+            .strip_prefix("⟪ICX:BRANCH_FOLDED│")
+            .unwrap()
+            .strip_suffix('⟫')
+            .unwrap();
+        let branch_deref = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "deref",
+                "id": branch_handle
+            }),
+            &mut mmu,
+        );
+        assert!(branch_deref.contains("subtask_done"));
+        let branch_slice = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "slice",
+                "id": &branch_handle[..17],
+                "range": [1, 1]
+            }),
+            &mut mmu,
+        );
+        assert!(branch_slice.contains("subtask_loop"));
+
         // 5. Verify Antigravity `Stop` hook continues on `MAX_TOKEN_BUDGET_EXCEEDED`
         let stop_stdin = serde_json::json!({
             "terminationReason": "MAX_TOKEN_BUDGET_EXCEEDED",

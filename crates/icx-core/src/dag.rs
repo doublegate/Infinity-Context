@@ -73,7 +73,7 @@ impl ToolArtifactNode {
         }
         hasher.update(&(self.ahtl_stub.len() as u64).to_be_bytes());
         hasher.update(self.ahtl_stub.as_bytes());
-        let surprise_bits = if self.surprise_score == 0.0 {
+        let surprise_bits = if !self.surprise_score.is_finite() || self.surprise_score == 0.0 {
             0u32
         } else {
             self.surprise_score.to_bits()
@@ -264,13 +264,14 @@ impl MerkleContextDag {
             DagNode::Turn { ahtl_repr, .. } => Ok(ahtl_repr.clone()),
             DagNode::ToolArtifact(tool) => Ok(tool.ahtl_stub.clone()),
             DagNode::SubTrajectoryBranch {
-                folded_ahtl_commit, ..
+                folded_ahtl_commit,
+                child_turns,
+                ..
             } => {
-                let leaves = self.expand_branch_with_depth(id, depth + 1)?;
-                let mut lines = Vec::with_capacity(1 + leaves.len());
+                let mut lines = Vec::with_capacity(1 + child_turns.len());
                 lines.push(folded_ahtl_commit.clone());
-                for leaf in leaves {
-                    lines.push(leaf.ahtl_representation().to_owned());
+                for &cid in child_turns {
+                    lines.push(self.deref_node_text_with_depth(cid, depth + 1)?);
                 }
                 Ok(lines.join("\n"))
             }
@@ -343,7 +344,7 @@ impl MerkleContextDag {
         hasher.update(&raw_artifact.0.to_be_bytes());
         hasher.update(&(ahtl_repr.len() as u64).to_be_bytes());
         hasher.update(ahtl_repr.as_bytes());
-        let surprise_bits = if surprise == 0.0 {
+        let surprise_bits = if !surprise.is_finite() || surprise == 0.0 {
             0u32
         } else {
             surprise.to_bits()
@@ -1044,7 +1045,10 @@ mod tests {
         assert!(dag.verify_merkle_integrity(folded_l4.id()).unwrap());
         assert!(folded_l4.ahtl_representation().contains("folded=2"));
 
-        // Verify DAG-aware handle resolution and dereferencing on L3 and L4 epoch handles
+        // Verify DAG-aware handle resolution and dereferencing on L2, L3, and L4 handles
+        let outer_deref = dag.deref_node_text(outer_branch_id).unwrap();
+        assert!(outer_deref.contains("borrow_resolved"));
+        assert!(outer_deref.contains(&inner_branch_id.to_string()));
         assert_eq!(
             dag.resolve_handle(&ep0.id().to_short_handle()).unwrap(),
             ep0.id()

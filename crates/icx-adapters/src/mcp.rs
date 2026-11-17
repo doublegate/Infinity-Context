@@ -28,7 +28,10 @@ impl McpPagerServer {
                                 "enum": ["deref", "slice", "grep", "recall", "fold", "xagent", "status"]
                             },
                             "id": { "type": "string" },
-                            "q": { "type": "string" },
+                            "q": {
+                                "type": "string",
+                                "description": "Search pattern for grep/recall, or 'begin:<label>' / '<outcome_summary>' for fold."
+                            },
                             "range": {
                                 "type": "array",
                                 "items": { "type": "integer" }
