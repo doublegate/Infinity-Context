@@ -9,8 +9,8 @@
 
 ```rust
 pub trait ContentAddressedStore: Send + Sync {
-    /// Ingests raw bytes (after secret redaction), chunks via FastCDC, compresses, and returns the ArtifactId.
-    fn put_bytes(&mut self, raw: &[u8]) -> Result<(ArtifactId, Blake3Digest), IcxError>;
+    /// Ingests raw bytes (after secret redaction), chunks via FastCDC, and returns `(ArtifactId, Blake3Digest)`.
+    fn put_bytes_checked(&mut self, raw: &[u8]) -> Result<(ArtifactId, Blake3Digest), IcxError>;
 
     /// Reconstructs the exact uncompressed byte stream for `id` and verifies its BLAKE3 digest.
     fn deref_bytes(&self, id: ArtifactId) -> Result<Vec<u8>, IcxError>;

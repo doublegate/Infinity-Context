@@ -98,7 +98,29 @@ mod tests {
         let deref_text = mcp_resp["result"]["content"][0]["text"].as_str().unwrap();
         assert_eq!(deref_text, bulky_output.trim_end_matches('\n'));
 
-        // 4. Verify Antigravity `Stop` hook continues on `MAX_TOKEN_BUDGET_EXCEEDED`
+        // 4. Verify MCP `slice` and `grep` work with both 16-hex and 12-hex Profile A handles
+        let short_handle = &handle_str[..17]; // `#icx:<12-hex>`
+        let slice_out = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "slice",
+                "id": short_handle,
+                "range": [1, 2]
+            }),
+            &mut mmu,
+        );
+        assert!(slice_out.contains("running 120 tests"));
+
+        let grep_out = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "grep",
+                "id": short_handle,
+                "q": "PASSKEY_HEX_0xDEADBEEF42"
+            }),
+            &mut mmu,
+        );
+        assert!(grep_out.contains("PASSKEY_HEX_0xDEADBEEF42"));
+
+        // 5. Verify Antigravity `Stop` hook continues on `MAX_TOKEN_BUDGET_EXCEEDED`
         let stop_stdin = serde_json::json!({
             "terminationReason": "MAX_TOKEN_BUDGET_EXCEEDED",
             "continuationActive": false

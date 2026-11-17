@@ -45,13 +45,13 @@ z_2 &= (z_1 \oplus (z_1 \gg 27)) \cdot \text{0x94D0\_49BB\_1331\_11EB} \bmod 2^{
 
 ### 2.2 Rolling Gear Fingerprint & Cut-Point Condition
 
-Given `ChunkerConfig { min_size: 2048, avg_size: 8192, max_size: 65536 }`, let $k = \lfloor \log_2(\text{avg\_size}) \rfloor = 13$ and $\text{mask} = 2^k - 1 = \text{0x1FFF}$. Starting from chunk start offset $p_0$, the scanner skips the minimum window $[p_0, p_0 + \text{min\_size})$ and then updates the 64-bit rolling fingerprint `fp` at each byte $B[p]$ in $[p_0 + \text{min\_size}, \min(N, p_0 + \text{max\_size}))$:
+Given `ChunkerConfig { min_size: 2048, avg_size: 8192, max_size: 65536 }`, let $k = \lfloor \log_2(\text{avg\_size}) \rfloor = 13$, with Normalized FastCDC stricter mask $\text{mask}_S = 2^{k+1} - 1 = \text{0x3FFF}$ before `avg_size` and relaxed mask $\text{mask}_L = 2^{k-1} - 1 = \text{0x0FFF}$ from `avg_size` to `max_size`. Starting from chunk start offset $p_0$, the scanner skips the minimum window $[p_0, p_0 + \text{min\_size})$ and then updates the 64-bit rolling fingerprint `fp` at each byte $B[p]$ in $[p_0 + \text{min\_size}, \min(N, p_0 + \text{max\_size}))$:
 
 $$\text{fp}_p = \big((\text{fp}_{p-1} \ll 1) + \text{GEAR\_TABLE}[B[p]]\big) \bmod 2^{64}$$
 
 A chunk boundary is declared immediately after index $p$ when:
 
-$$(\text{fp}_p \mathbin{\&} \text{mask}) == 0 \quad \lor \quad (p - p_0 + 1) == \text{max\_size}$$
+$$\big(p < p_0 + \text{avg\_size} \land (\text{fp}_p \mathbin{\&} \text{mask}_S) == 0\big) \quad \lor \quad \big(p \ge p_0 + \text{avg\_size} \land (\text{fp}_p \mathbin{\&} \text{mask}_L) == 0\big) \quad \lor \quad (p - p_0 + 1) == \text{max\_size}$$
 
 Because the 1-bit left shift $\text{fp} \ll 1$ ages out bytes older than 64 positions ($2^{64} \equiv 0 \pmod{2^{64}}$), any insertion or edit in a file perturbs at most 1–2 local chunks, after which `FastCDC` re-synchronizes to the exact same cut points!
 
@@ -103,9 +103,9 @@ In addition to BLAKE3's internal hardware flags (`CHUNK_START = 0x01`, `CHUNK_EN
 
 ### 4.1 Handle Formats & Prefix Resolution
 
-An `ArtifactId` (`crates/icx-core/src/lib.rs:18-61`) extracts the leading big-endian bits of a 256-bit `Blake3Digest`:
+An `ArtifactId` (`crates/icx-core/src/lib.rs`) extracts the leading big-endian bits of a 256-bit `Blake3Digest`:
 - **Profile B & Active Interoperable `u64` Key (`#icx:<16-hex>`, 64 bits):** `u64::from_be_bytes(digest[0..8])`, formatted as `#icx:{:016x}` (21 ASCII characters). This is the active handle format implemented in `v0.1.0` across `crates/icx-core/src/lib.rs` and `crates/icx-adapters/src/mcp.rs`.
-- **Profile A Compact Handle (`#icx:<12-hex>`, 48 bits — Not Implemented in `v0.1.0`; Phase 1 Sprint 1.1 Target Extension):** The top 48 bits (`digest[0..6]`, formatted as `#icx:{:012x}`, 17 ASCII characters; currently rejected by `v0.1.0` `ArtifactId::from_str` and `McpPagerServer`), designed to resolve in $O(\log N)$ time via `CasStore::resolve_handle` using `BTreeMap::range(prefix_min..=prefix_max)` over `CasStore::artifacts`.
+- **Profile A Compact Handle (`#icx:<12-hex>`, 48 bits — Implemented via `CasStore::resolve_handle`):** The top 48 bits (`digest[0..6]`, formatted as `#icx:{:012x}`, 17 ASCII characters), parsed via `ArtifactId::parse_prefix_range` and resolved in $O(\log N)$ time by `CasStore::resolve_handle` (and `McpPagerServer`) using `BTreeMap::range(prefix_min..=prefix_max)` over `CasStore::artifacts`.
 - **Normative Prefix-Collision & Ambiguity Rule:** When resolving a 48-bit `#icx:<12-hex>` prefix over `BTreeMap::range(prefix_min..=prefix_max)`, if more than one stored `ArtifactId` falls within `[prefix_min, prefix_max]`, lookup **must fail closed with `Err(IcxError::AmbiguousHandlePrefix)`** rather than selecting an arbitrary match, requiring the caller to disambiguate with the full 64-bit `#icx:<16-hex>` handle.
 
 ### 4.2 Birthday-Bound Collision Analysis & Full-256-Bit Verification Gate
@@ -121,7 +121,7 @@ $$P_{\text{coll}}(N, B) \le \frac{N(N - 1)}{2^{B+1}}$$
 | **$B = 128\text{ bits}$** | `IcxHandle` (Cluster Wire) | $1.47 \times 10^{-31}$ | $1.47 \times 10^{-29}$ | $1.47 \times 10^{-27}$ | **Full 256-bit `Blake3Digest` verification** |
 | **$B = 256\text{ bits}$** | `Blake3Digest([u8; 32])` | $< 10^{-69}$ | $< 10^{-67}$ | $< 10^{-65}$ | Cryptographic root of trust (`IcxError::IntegrityViolation`) |
 
-Crucially, `CasStore::deref_bytes` (`crates/icx-core/src/cas.rs:119-142`) **never trusts the short handle alone**—it verifies the full 256-bit `Blake3Digest` on every single `FastCDC` chunk and on the reassembled top-level artifact before returning a single byte:
+Crucially, `CasStore::deref_bytes` (`crates/icx-core/src/cas.rs`) **never trusts the short handle alone**—it verifies the full 256-bit `Blake3Digest` on every single `FastCDC` chunk and on the reassembled top-level artifact before returning a single byte:
 
 ```rust
 pub fn deref_bytes(&self, id: ArtifactId) -> Result<Vec<u8>, IcxError> {

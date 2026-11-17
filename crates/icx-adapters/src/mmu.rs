@@ -80,7 +80,31 @@ impl InfinityContextMmu {
         force_anomaly: bool,
     ) -> IngestResult {
         self.clock_ms += 10;
-        let sanitized = SecretRedactor::sanitize(raw_text);
+        let bounded_raw = if raw_text.len() > icx_core::ICX_MAX_INGEST_BYTES {
+            let mut bound = icx_core::ICX_MAX_INGEST_BYTES;
+            while !raw_text.is_char_boundary(bound) {
+                bound -= 1;
+            }
+            // Prefer cutting at a newline near the cap so trailing secrets are not split mid-line.
+            let search_floor = bound.saturating_sub(4096);
+            if let Some(rel_nl) = raw_text.as_bytes()[search_floor..bound]
+                .iter()
+                .rposition(|&b| b == b'\n')
+            {
+                bound = search_floor + rel_nl + 1;
+            }
+            &raw_text[..bound]
+        } else {
+            raw_text
+        };
+        let mut sanitized = SecretRedactor::sanitize(bounded_raw);
+        if sanitized.len() > icx_core::ICX_MAX_INGEST_BYTES {
+            let mut bound = icx_core::ICX_MAX_INGEST_BYTES;
+            while !sanitized.is_char_boundary(bound) {
+                bound -= 1;
+            }
+            sanitized.truncate(bound);
+        }
         let raw_bytes = sanitized.len();
         let (artifact_id, _) = self.cas.put_bytes(sanitized.as_bytes());
 

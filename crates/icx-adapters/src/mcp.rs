@@ -4,7 +4,7 @@
 //! `fold`, `xagent`, `status`) behind a single `< 180 token` MCP tool named `icx`.
 
 use crate::mmu::InfinityContextMmu;
-use icx_core::{AgentKind, ArtifactId};
+use icx_core::AgentKind;
 use serde_json::{json, Value};
 
 /// Single-tool polymorphic Model Context Protocol (`MCP`) server.
@@ -109,9 +109,9 @@ impl McpPagerServer {
         match op {
             "deref" => {
                 let Some(id_str) = args.get("id").and_then(Value::as_str) else {
-                    return "ERR: missing `id` (#icx:<16-hex>)".into();
+                    return "ERR: missing `id` (#icx:<16-hex> or #icx:<12-hex>)".into();
                 };
-                match id_str.parse::<ArtifactId>() {
+                match mmu.cas.resolve_handle(id_str) {
                     Ok(aid) => mmu
                         .deref_text(aid)
                         .unwrap_or_else(|e| format!("ERR: {e}")),
@@ -120,7 +120,7 @@ impl McpPagerServer {
             }
             "slice" => {
                 let Some(id_str) = args.get("id").and_then(Value::as_str) else {
-                    return "ERR: missing `id` (#icx:<16-hex>)".into();
+                    return "ERR: missing `id` (#icx:<16-hex> or #icx:<12-hex>)".into();
                 };
                 let range = args
                     .get("range")
@@ -132,7 +132,7 @@ impl McpPagerServer {
                     })
                     .unwrap_or((1, 50));
 
-                match id_str.parse::<ArtifactId>() {
+                match mmu.cas.resolve_handle(id_str) {
                     Ok(aid) => mmu
                         .deref_lines(aid, range.0, range.1)
                         .unwrap_or_else(|e| format!("ERR: {e}")),
@@ -141,10 +141,17 @@ impl McpPagerServer {
             }
             "grep" => {
                 let pattern = args.get("q").and_then(Value::as_str).unwrap_or("");
-                let target_id = args
+                let target_id = match args
                     .get("id")
                     .and_then(Value::as_str)
-                    .and_then(|s| s.parse::<ArtifactId>().ok());
+                    .filter(|s| !s.trim().is_empty())
+                {
+                    Some(s) => match mmu.cas.resolve_handle(s) {
+                        Ok(aid) => Some(aid),
+                        Err(e) => return format!("ERR: {e}"),
+                    },
+                    None => None,
+                };
                 match mmu.grep_cold(target_id, pattern, 25) {
                     Ok(matches) => matches
                         .iter()
