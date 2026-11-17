@@ -141,7 +141,11 @@ impl McpPagerServer {
             }
             "grep" => {
                 let pattern = args.get("q").and_then(Value::as_str).unwrap_or("");
-                let target_id = match args.get("id").and_then(Value::as_str) {
+                let target_id = match args
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.trim().is_empty())
+                {
                     Some(s) => match mmu.cas.resolve_handle(s) {
                         Ok(aid) => Some(aid),
                         Err(e) => return format!("ERR: {e}"),

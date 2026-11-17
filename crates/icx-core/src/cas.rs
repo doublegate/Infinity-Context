@@ -109,22 +109,35 @@ impl CasStore {
         Ok(first)
     }
 
+    /// Validates that a payload byte length does not exceed the 64 MiB STRIDE DoS bound.
+    #[inline]
+    pub const fn check_ingest_size(size: usize) -> Result<(), IcxError> {
+        if size > ICX_MAX_INGEST_BYTES {
+            return Err(IcxError::PayloadTooLarge {
+                size,
+                max: ICX_MAX_INGEST_BYTES,
+            });
+        }
+        Ok(())
+    }
+
     /// Ingests raw bytes with the 64 MiB STRIDE DoS bound check.
     pub fn put_bytes_checked(
         &mut self,
         raw: &[u8],
     ) -> Result<(ArtifactId, Blake3Digest), IcxError> {
-        if raw.len() > ICX_MAX_INGEST_BYTES {
-            return Err(IcxError::PayloadTooLarge {
-                size: raw.len(),
-                max: ICX_MAX_INGEST_BYTES,
-            });
-        }
+        Self::check_ingest_size(raw.len())?;
         Ok(self.put_bytes(raw))
     }
 
     /// Ingests raw bytes into the Content-Addressed Store, returning `(ArtifactId, Blake3Digest)`.
+    /// Inputs larger than `ICX_MAX_INGEST_BYTES` (`64 MiB`) are bounded to `ICX_MAX_INGEST_BYTES`.
     pub fn put_bytes(&mut self, raw: &[u8]) -> (ArtifactId, Blake3Digest) {
+        let raw = if raw.len() > ICX_MAX_INGEST_BYTES {
+            &raw[..ICX_MAX_INGEST_BYTES]
+        } else {
+            raw
+        };
         let (artifact_id, full_digest) = ArtifactId::hash_bytes(raw);
         if self.artifacts.contains_key(&artifact_id) {
             return (artifact_id, full_digest);
@@ -232,29 +245,21 @@ impl CasStore {
         let req_start = start_line as u32;
         let req_end = end_line as u32;
 
-        // Identify the contiguous sub-slice of chunks overlapping [req_start, req_end],
-        // stepping out to exact newline chunk boundaries when a line spans across two chunks.
-        let mut first_idx = meta
+        // Identify the exact contiguous sub-slice of chunks overlapping [req_start, req_end].
+        // Because `chunk_bytes_with_lines` assigns the same line number to both halves of a split
+        // line (`prev.end_line == next.start_line == split_line`), `position(end_line >= req_start)`
+        // and `rposition(start_line <= req_end)` automatically include the complete boundary lines
+        // without expanding into unrelated chunks.
+        let first_idx = meta
             .line_index
             .iter()
             .position(|entry| entry.end_line >= req_start)
             .unwrap_or(0);
-        while first_idx > 0
-            && meta.line_index[first_idx - 1].end_line == meta.line_index[first_idx].start_line
-        {
-            first_idx -= 1;
-        }
-
-        let mut last_idx = meta
+        let last_idx = meta
             .line_index
             .iter()
             .rposition(|entry| entry.start_line <= req_end)
             .unwrap_or(meta.line_index.len().saturating_sub(1));
-        while last_idx + 1 < meta.line_index.len()
-            && meta.line_index[last_idx].end_line == meta.line_index[last_idx + 1].start_line
-        {
-            last_idx += 1;
-        }
 
         let base_line = meta
             .line_index
@@ -274,12 +279,16 @@ impl CasStore {
         }
 
         let text = String::from_utf8_lossy(&window_bytes);
-        let lines: Vec<&str> = text.lines().collect();
         let rel_start = start_line.saturating_sub(base_line);
         let count = end_line - start_line + 1;
-        let rel_end = (rel_start + count).min(lines.len());
+        let out_lines: Vec<&str> = text
+            .split('\n')
+            .map(|l| l.strip_suffix('\r').unwrap_or(l))
+            .skip(rel_start)
+            .take(count)
+            .collect();
 
-        Ok(lines[rel_start..rel_end].join("\n"))
+        Ok(out_lines.join("\n"))
     }
 
     /// Searches cold storage for `pattern` (either within `target_id` or across all stored artifacts).
@@ -348,7 +357,7 @@ impl CasStore {
             artifacts: self.artifacts.values().cloned().collect(),
         };
         let encoded = serde_json::to_vec(&snapshot).map_err(|e| IcxError::Io(e.to_string()))?;
-        let tmp_path = dir_path.join("cas_store.json.tmp");
+        let tmp_path = dir_path.join(format!("cas_store.json.{}.tmp", std::process::id()));
         let final_path = dir_path.join("cas_store.json");
         fs::write(&tmp_path, encoded).map_err(|e| IcxError::Io(e.to_string()))?;
         fs::rename(&tmp_path, &final_path).map_err(|e| IcxError::Io(e.to_string()))?;
@@ -362,26 +371,32 @@ impl CasStore {
         let snapshot: CasSnapshot =
             serde_json::from_slice(&raw).map_err(|e| IcxError::Io(e.to_string()))?;
 
-        let mut store = Self::with_config(snapshot.chunk_config);
+        let mut verified_chunks = BTreeMap::new();
         for (cid, cdigest, bytes) in snapshot.chunks {
             let (computed_id, computed_digest) = ArtifactId::hash_bytes(&bytes);
             if computed_id != cid || computed_digest != cdigest {
                 return Err(IcxError::IntegrityViolation(cid));
             }
-            store.chunks.insert(cid, (cdigest, bytes));
+            verified_chunks.insert(cid, (cdigest, bytes));
         }
+
+        let mut store = Self::with_config(snapshot.chunk_config);
         for art in snapshot.artifacts {
             let id = art.id;
             if ArtifactId::from_digest(&art.full_digest) != id {
                 return Err(IcxError::IntegrityViolation(id));
             }
-            let reconstructed_check = {
-                store.artifacts.insert(id, art);
-                store.deref_bytes(id)?
-            };
-            // Re-ingest through put_bytes so line_index and total_lines are guaranteed consistent
-            store.artifacts.remove(&id);
-            let (re_id, _) = store.put_bytes(&reconstructed_check);
+            let mut out = Vec::with_capacity(art.total_bytes);
+            for &cid in &art.chunk_ids {
+                let (_, bytes) = verified_chunks
+                    .get(&cid)
+                    .ok_or(IcxError::ArtifactNotFound(id))?;
+                out.extend_from_slice(bytes);
+            }
+            if Blake3Digest::hash(&out) != art.full_digest {
+                return Err(IcxError::IntegrityViolation(id));
+            }
+            let (re_id, _) = store.put_bytes(&out);
             if re_id != id {
                 return Err(IcxError::IntegrityViolation(id));
             }
@@ -492,5 +507,68 @@ mod tests {
         let loaded = CasStore::load_from_dir(&tmp_dir).expect("load_from_dir succeeds");
         assert_eq!(loaded.deref_lines(id, 175, 225).unwrap(), expected);
         let _ = fs::remove_dir_all(&tmp_dir);
+
+        // Corrupt chunk 0 and verify that deref_lines on lines at the tail (chunk >= 2)
+        // does not read chunk 0, while deref_lines on line 1 fails closed with IntegrityViolation!
+        cas.corrupt_chunk_for_test(id);
+        assert!(matches!(
+            cas.deref_lines(id, 1, 2),
+            Err(IcxError::IntegrityViolation(_))
+        ));
+        let tail_slice = cas
+            .deref_lines(id, 380, 395)
+            .expect("tail slice skips chunk 0");
+        assert_eq!(tail_slice, lines_vec[379..395].join("\n"));
+    }
+
+    #[test]
+    fn cas_trait_context_grep_and_ambiguity_guards() {
+        let mut cas = CasStore::new();
+        let text = "line 1\nline 2 target_hit\nline 3\nline 4\n";
+        let (id, _) = ContentAddressedStore::put_bytes_checked(&mut cas, text.as_bytes()).unwrap();
+        assert_eq!(
+            ContentAddressedStore::deref_bytes(&cas, id).unwrap(),
+            text.as_bytes()
+        );
+        assert_eq!(
+            ContentAddressedStore::deref_lines(&cas, id, 1, 2).unwrap(),
+            "line 1\nline 2 target_hit"
+        );
+        let trait_hits = ContentAddressedStore::grep_cold(&cas, None, "target_hit", 5).unwrap();
+        assert_eq!(trait_hits.len(), 1);
+
+        let ctx_hits = cas
+            .grep_cold_with_context(Some(id), "target_hit", 1, 5)
+            .unwrap();
+        assert_eq!(ctx_hits.len(), 1);
+        assert_eq!(ctx_hits[0].line_text, "line 1\nline 2 target_hit\nline 3");
+
+        // Verify invalid line ranges, oversize payload checks, and missing handles fail closed
+        assert!(matches!(
+            CasStore::check_ingest_size(ICX_MAX_INGEST_BYTES + 1),
+            Err(IcxError::PayloadTooLarge { .. })
+        ));
+        assert!(matches!(
+            cas.deref_lines(id, 0, 2),
+            Err(IcxError::InvalidLineRange { .. })
+        ));
+        assert!(matches!(
+            cas.resolve_handle("#icx:ffffffffffffffff"),
+            Err(IcxError::ArtifactNotFound(_))
+        ));
+        assert!(matches!(
+            cas.resolve_handle("#icx:ffffffffffff"),
+            Err(IcxError::ArtifactNotFound(_))
+        ));
+
+        // Inject synthetic colliding 48-bit prefix entry to verify AmbiguousHandlePrefix
+        let colliding_id = ArtifactId(id.0 ^ 1);
+        let mut colliding_meta = cas.get_meta(id).unwrap().clone();
+        colliding_meta.id = colliding_id;
+        cas.artifacts.insert(colliding_id, colliding_meta);
+        assert!(matches!(
+            cas.resolve_handle(&id.to_short_handle()),
+            Err(IcxError::AmbiguousHandlePrefix(_))
+        ));
     }
 }
