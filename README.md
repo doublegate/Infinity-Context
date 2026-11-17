@@ -16,7 +16,7 @@
   <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/reuse.yml"><img src="https://img.shields.io/badge/REUSE-3.3%20compliant-brightgreen.svg" alt="REUSE 3.3 Compliant"></a>
   <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/cla.yml"><img src="https://img.shields.io/badge/CLA-enforced-success.svg" alt="CLA Enforced"></a>
   <a href="https://codecov.io/gh/doublegate/Infinity-Context"><img src="https://img.shields.io/badge/coverage-Codecov-f01f7a.svg?logo=codecov" alt="Codecov Coverage"></a>
-  <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/agy-review.yml"><img src="https://img.shields.io/badge/PR%20review-Antigravity%20(agy)-4285F4.svg" alt="Antigravity PR Review"></a>
+  <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/antigravity-review.yml"><img src="https://img.shields.io/badge/PR%20review-Antigravity%20(agy)-4285F4.svg" alt="Antigravity PR Review"></a>
   <a href="SECURITY.md"><img src="https://img.shields.io/badge/gitleaks-verified-0ea5e9.svg" alt="Gitleaks Secret Scan"></a><br/>
   <a href="LICENSING.md"><img src="https://img.shields.io/badge/code-GPL--3.0--or--later%20%7C%20AGPL--3.0--or--later-blue.svg" alt="Code License: GPL-3.0-or-later | AGPL-3.0-or-later"></a>
   <a href="LICENSING.md"><img src="https://img.shields.io/badge/specs-CC--BY--NC--ND--4.0-blueviolet.svg" alt="Specs: CC-BY-NC-ND-4.0"></a>
@@ -25,10 +25,10 @@
   <a href="#alien-holographic-token-lattice-ahtl"><img src="https://img.shields.io/badge/AHTL%20compression-72.1x%20(197%20%C2%B5s)-7c3aed.svg" alt="AHTL Compression: 72.1x"></a>
   <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/lossless%20recovery-100%25%20(BLAKE3%20CAS)-16a34a.svg" alt="Lossless Recovery: 100%"></a>
   <a href="#prefix-cache-locked-epoch-controller"><img src="https://img.shields.io/badge/prefix--cache%20hit-94.38%25-059669.svg" alt="Prefix-Cache Hit: 94.38%"></a>
-  <a href="#plane-3-10240-bit-hdc-fractal-ifs--bi-temporal-ppr-index"><img src="https://img.shields.io/badge/10%2C240--bit%20HDC%20scan-1.31%20%C2%B5s%2Fnode-0284c7.svg" alt="HDC Scan: 1.31 us/node"></a><br/>
+  <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/10%2C240--bit%20HDC%20scan-1.31%20%C2%B5s%2Fnode-0284c7.svg" alt="HDC Scan: 1.31 us/node"></a><br/>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.80%2B%20(8%20crates)-f97316.svg?logo=rust" alt="Rust: 1.80+ (8 crates)"></a>
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v0.1.0-2563eb.svg" alt="Release: v0.1.0"></a>
-  <a href="#plane-5-lock-free-devshm-seqlock-telepathy-bus--polymorphic-mcp-pager"><img src="https://img.shields.io/badge/shm%20seqlock-%3C300%20ns-0d9488.svg" alt="SHM Seqlock: <300 ns"></a>
+  <a href="#five-plane-architecture"><img src="https://img.shields.io/badge/shm%20seqlock-%3C300%20ns-0d9488.svg" alt="SHM Seqlock: <300 ns"></a>
   <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20MCP-475569.svg" alt="Supported Agents"></a>
 </p>
 
@@ -337,6 +337,7 @@ Infinity-Context/
 ### Prerequisites
 
 - **Rust 1.80+** (`stable` toolchain via [rustup](https://rustup.rs))
+- **`jq` 1.6+** (required when running the local CI/CLA/reviewer self-test suites in `scripts/` and `.github/scripts/`)
 
 ### Build, Test & Verify
 
@@ -438,7 +439,7 @@ Development is organized into 5 phases and 14 sprints tracked in [`to-dos/ROADMA
 
 ## Contributing
 
-Contributions are welcome and are accepted under the [Contributor License Agreement (`CLA.md`)](CLA.md). Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before opening a pull request. All changes must pass:
+Contributions are welcome and are accepted under the [Contributor License Agreement (`CLA.md`)](CLA.md). Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before opening a pull request. Ensure **Rust 1.80+** and **`jq`** are installed, as all changes must pass:
 
 ```bash
 cargo fmt --all -- --check

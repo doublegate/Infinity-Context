@@ -14,9 +14,12 @@ version = 1
 path = [
   "*",
   ".ai-memory.toml",
+  ".coderabbit.yaml",
   ".editorconfig",
   ".gitignore",
+  ".gitleaks.toml",
   ".markdownlint.json",
+  "codecov.yml",
   ".github/**",
   "crates/icx-core/**",
   "crates/icx-hdc/**",

@@ -8,8 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **Automated Antigravity CLI (`agy`) Pull Request Review & CI/CD Hardening (`.github/`, `scripts/`):**
-  - Self-hosted Antigravity PR review workflow ([`.github/workflows/agy-review.yml`](.github/workflows/agy-review.yml)), review rubric ([`.github/agy-review.md`](.github/agy-review.md)), deterministic parser and deduplicating GitHub comment publisher ([`scripts/agy-pr-review.sh`](scripts/agy-pr-review.sh)), and 16-case offline regression harness ([`scripts/agy-review-selftest.sh`](scripts/agy-review-selftest.sh)).
-  - Automated Contributor License Agreement (`CLA.md`) verification workflow ([`.github/workflows/cla.yml`](.github/workflows/cla.yml)) and commit-message / PR-comment signature checker with offline selftest suite ([`.github/scripts/cla-check.sh`](.github/scripts/cla-check.sh)).
+  - Self-hosted Antigravity PR review workflow ([`.github/workflows/antigravity-review.yml`](.github/workflows/antigravity-review.yml)), review rubric ([`.github/agy-review.md`](.github/agy-review.md)), deterministic parser and deduplicating GitHub comment publisher ([`scripts/agy-review.sh`](scripts/agy-review.sh)), and 16-case offline regression harness ([`scripts/agy-review-selftest.sh`](scripts/agy-review-selftest.sh)).
+  - Automated Contributor License Agreement (`CLA.md`) verification workflow ([`.github/workflows/cla.yml`](.github/workflows/cla.yml)) and commit-author / co-author, PR-description, and PR-comment signature verifier with offline selftest suite ([`.github/scripts/cla-check.sh`](.github/scripts/cla-check.sh)).
   - Expanded CI pipeline ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) adding `cargo-llvm-cov` LCOV workspace coverage reporting with `codecov/codecov-action@v5` and checksum-pinned `gitleaks` `v8.30.1` secret scanning alongside `check` and `agy` self-tests.
   - Repository code ownership ([`.github/CODEOWNERS`](.github/CODEOWNERS)) and automated Cargo + GitHub Actions dependency updates ([`.github/dependabot.yml`](.github/dependabot.yml)).
 

@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 DoubleGate
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Codecov configuration for Infinity-Context (icx):
+# 1. Project coverage status checks: https://docs.codecov.com/docs/common-recipe-list#set-project-coverage-checks-on-a-pull-request
+# 2. Pull Request coverage diff comments: https://docs.codecov.com/docs/common-recipe-list#show-project-coverage-changes-on-the-pull-request-comment
+
+codecov:
+  require_ci_to_pass: true
+  notify:
+    wait_for_ci: true
+
+coverage:
+  precision: 2
+  round: down
+  range: "65...95"
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 2%
+        informational: false
+    patch:
+      default:
+        target: 70%
+        threshold: 5%
+        informational: false
+
+comment:
+  layout: "header, diff, flags, components, files"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+  show_carryforward_flags: true
+
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+        threshold: 2%
+  individual_components:
+    - component_id: icx-core
+      name: "icx-core (FastCDC, BLAKE3 CAS, Merkle-DAG & Epoch Controller)"
+      paths:
+        - "crates/icx-core/**"
+    - component_id: icx-hdc
+      name: "icx-hdc (10,240-Bit HDC, Delta Bundler, Fractal IFS & Titans Gate)"
+      paths:
+        - "crates/icx-hdc/**"
+    - component_id: icx-codec
+      name: "icx-codec (AHTLv1 Codec, Braille-256, AST Skeletonizer & SecretRedactor)"
+      paths:
+        - "crates/icx-codec/**"
+    - component_id: icx-store
+      name: "icx-store (Bi-Temporal Graph & HippoRAG Personalized PageRank)"
+      paths:
+        - "crates/icx-store/**"
+    - component_id: icx-bus
+      name: "icx-bus (Lock-Free POSIX /dev/shm Seqlock Ring Bus)"
+      paths:
+        - "crates/icx-bus/**"
+    - component_id: icx-adapters
+      name: "icx-adapters (Virtual Context MMU, Multi-Harness Adapters & MCP Pager)"
+      paths:
+        - "crates/icx-adapters/**"
+    - component_id: icx-proxy
+      name: "icx-proxy (Anthropic & OpenAI Prefix-Cache Wire Transformer)"
+      paths:
+        - "crates/icx-proxy/**"
+    - component_id: icx-cli
+      name: "icx-cli (Unified icx CLI Binary)"
+      paths:
+        - "crates/icx-cli/**"

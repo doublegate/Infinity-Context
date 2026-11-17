@@ -7,9 +7,9 @@ name: CLA
 
 on:
   issue_comment:
-    types: [created]
+    types: [created, edited]
   pull_request_target:
-    types: [opened, reopened, synchronize]
+    types: [opened, edited, reopened, synchronize]
 
 permissions:
   contents: write
@@ -17,17 +17,14 @@ permissions:
   issues: write
   statuses: write
 
-concurrency:
-  group: cla-check
-  cancel-in-progress: false
-
 jobs:
   cla:
     if: >-
       github.event_name == 'pull_request_target' ||
       (github.event.issue.pull_request && github.event.issue.state == 'open' &&
        (contains(github.event.comment.body, 'recheck') ||
-        contains(github.event.comment.body, 'I hereby sign the CLA')))
+        contains(github.event.comment.body, 'I hereby sign the CLA') ||
+        contains(github.event.comment.body, 'I hereby sign and agree to the CLA')))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

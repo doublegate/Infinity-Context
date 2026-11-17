@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 DoubleGate
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Gitleaks configuration for Infinity-Context (icx).
+# Extends the default Gitleaks ruleset while allowlisting the synthetic
+# credential and PEM redaction test vectors inside crates/icx-codec/src/redact.rs.
+
+title = "Infinity-Context (icx) Gitleaks Configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Synthetic unit-test fixtures for Pre-Hash SecretRedactor"
+paths = [
+  '''^crates/icx-codec/src/redact\.rs$''',
+]
