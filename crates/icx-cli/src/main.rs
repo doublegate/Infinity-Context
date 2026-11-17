@@ -492,6 +492,7 @@ fn run_decode_ahtl(args: &[String]) -> Result<(), String> {
         WirePacket::ProfileA(pkt) => {
             println!("Profile:    A (Canonical AHTL v1 6-Section Wire)");
             println!("CAS Handle: {}", pkt.cas_handle_string());
+            println!("Slice Hint: {:?}", pkt.slice_hint);
             println!("Fractal FC: fc:{}", pkt.fractal_coord_hex);
             println!("HDC Digest: hv:{}", pkt.hdc_digest_hex);
             println!("Spectrum:   64 Braille bands (512 bits)");

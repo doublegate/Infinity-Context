@@ -7,13 +7,14 @@
 use crate::ahtl::{AhtlClause, AhtlPacket, ClauseOp, PacketKind};
 use crate::redact::SecretRedactor;
 use icx_core::ArtifactId;
+use std::collections::BTreeSet;
 
 /// Compresses raw source code, diffs, and build/test logs into structured `AhtlPacket` frames.
 #[derive(Clone, Debug, Default)]
 pub struct StructuralSkeletonizer;
 
 impl StructuralSkeletonizer {
-    /// Automatically detects payload domain (test/build log, unified diff, or source/text)
+    /// Automatically detects payload domain (unified diff, test/build log, or source/text)
     /// and compiles a high-density `AhtlPacket`.
     pub fn compress_to_packet(
         subject: &str,
@@ -24,10 +25,10 @@ impl StructuralSkeletonizer {
         let clean = SecretRedactor::sanitize(raw_text);
         let total_lines = clean.lines().count().max(1) as u32;
 
-        if Self::looks_like_test_or_build_log(&clean) {
-            Self::skeletonize_log(subject, &clean, total_lines, deref_id, hologram_bytes)
-        } else if Self::looks_like_diff(&clean) {
+        if Self::looks_like_diff(&clean) {
             Self::skeletonize_diff(subject, &clean, total_lines, deref_id, hologram_bytes)
+        } else if Self::looks_like_test_or_build_log(&clean) {
+            Self::skeletonize_log(subject, &clean, total_lines, deref_id, hologram_bytes)
         } else {
             Self::skeletonize_source_or_text(subject, &clean, total_lines, deref_id, hologram_bytes)
         }
@@ -43,7 +44,6 @@ impl StructuralSkeletonizer {
             || text.contains("Traceback (most recent call last):")
             || text.contains("error TS")
             || text.contains("Test Files ")
-            || text.contains("AssertionError")
             || text.contains("=== RUN ")
             || text.contains("--- PASS:")
             || text.contains("--- FAIL:")
@@ -63,6 +63,8 @@ impl StructuralSkeletonizer {
         let mut clauses = Vec::new();
         let mut pass_count = 0usize;
         let mut fail_count = 0usize;
+        let mut diag_clauses = 0usize;
+        let mut seen_failed_tests: BTreeSet<String> = BTreeSet::new();
 
         for (idx, line) in text.lines().enumerate() {
             let trimmed = line.trim();
@@ -85,65 +87,40 @@ impl StructuralSkeletonizer {
             }
 
             // 2. Failing test lines across cargo test, pytest, vitest/jest, and go test
-            if trimmed.starts_with("test ") && trimmed.ends_with(" ... FAILED") {
-                fail_count += 1;
-                let test_name = trimmed
-                    .strip_prefix("test ")
-                    .and_then(|s| s.strip_suffix(" ... FAILED"))
-                    .unwrap_or(trimmed);
-                if clauses.len() < 16 {
-                    clauses.push(AhtlClause::new(
-                        ClauseOp::Anomaly,
-                        format!("FAIL@L{line_no}"),
-                        Some(Self::compact_token(test_name)),
-                    ));
-                }
+            // Failing test identities are preserved unconditionally and deduplicated across
+            // progress vs. summary lines (`Codex 4601196666` & `4601196691`).
+            let extracted_fail = if trimmed.starts_with("test ") && trimmed.ends_with(" ... FAILED")
+            {
+                Some(
+                    trimmed
+                        .strip_prefix("test ")
+                        .and_then(|s| s.strip_suffix(" ... FAILED"))
+                        .unwrap_or(trimmed),
+                )
             } else if let Some(rest) = trimmed.strip_prefix("FAILED ") {
-                fail_count += 1;
-                let node_id = rest.split(" - ").next().unwrap_or(rest);
-                if clauses.len() < 16 {
-                    clauses.push(AhtlClause::new(
-                        ClauseOp::Anomaly,
-                        format!("FAIL@L{line_no}"),
-                        Some(Self::compact_token(node_id)),
-                    ));
-                }
+                Some(rest.split(" - ").next().unwrap_or(rest))
             } else if trimmed.contains("::")
                 && (trimmed.ends_with(" FAILED") || trimmed.contains(" FAILED ["))
             {
-                fail_count += 1;
-                let node_id = trimmed.split_whitespace().next().unwrap_or(trimmed);
-                if clauses.len() < 16 {
-                    clauses.push(AhtlClause::new(
-                        ClauseOp::Anomaly,
-                        format!("FAIL@L{line_no}"),
-                        Some(Self::compact_token(node_id)),
-                    ));
-                }
+                Some(trimmed.split_whitespace().next().unwrap_or(trimmed))
             } else if let Some(rest) = trimmed.strip_prefix("--- FAIL:") {
-                fail_count += 1;
-                let test_name = rest.split_whitespace().next().unwrap_or(rest.trim());
-                if clauses.len() < 16 {
+                Some(rest.split_whitespace().next().unwrap_or(rest.trim()))
+            } else {
+                trimmed
+                    .strip_prefix("FAIL ")
+                    .or_else(|| trimmed.strip_prefix("❯ "))
+                    .or_else(|| trimmed.strip_prefix("✕ "))
+            };
+
+            if let Some(raw_test_name) = extracted_fail {
+                let norm_name = Self::compact_token(raw_test_name);
+                if seen_failed_tests.insert(norm_name.clone()) {
+                    fail_count += 1;
                     clauses.push(AhtlClause::new(
                         ClauseOp::Anomaly,
                         format!("FAIL@L{line_no}"),
-                        Some(Self::compact_token(test_name)),
+                        Some(norm_name),
                     ));
-                }
-            } else if let Some(rest) = trimmed
-                .strip_prefix("FAIL ")
-                .or_else(|| trimmed.strip_prefix("❯ "))
-                .or_else(|| trimmed.strip_prefix("✕ "))
-            {
-                if !trimmed.starts_with("FAIL\t") {
-                    fail_count += 1;
-                    if clauses.len() < 16 {
-                        clauses.push(AhtlClause::new(
-                            ClauseOp::Anomaly,
-                            format!("FAIL@L{line_no}"),
-                            Some(Self::compact_token(rest)),
-                        ));
-                    }
                 }
             } else if (trimmed.contains("panicked at")
                 || trimmed.starts_with("error[E")
@@ -157,8 +134,9 @@ impl StructuralSkeletonizer {
                         || trimmed.contains("error")
                         || trimmed.contains("got ")
                         || trimmed.contains("panic"))))
-                && clauses.len() < 16
+                && diag_clauses < 16
             {
+                diag_clauses += 1;
                 clauses.push(AhtlClause::new(
                     ClauseOp::Anomaly,
                     format!("ERR@L{line_no}"),
@@ -205,22 +183,33 @@ impl StructuralSkeletonizer {
         let mut clauses = Vec::new();
         let mut added = 0usize;
         let mut removed = 0usize;
-        let mut file_count = 0usize;
+        let mut seen_files: BTreeSet<String> = BTreeSet::new();
         let mut hunk_count = 0usize;
 
         for line in text.lines() {
-            if let Some(path) = line.strip_prefix("+++ b/") {
-                if file_count < 4 {
-                    file_count += 1;
-                    clauses.push(AhtlClause::new(
-                        ClauseOp::Neutral,
-                        "file",
-                        Some(Self::compact_token(path.trim())),
-                    ));
+            if line.starts_with("diff --git ") {
+                continue;
+            }
+            if let Some(after_minus) = line.strip_prefix("--- ") {
+                let raw_path = after_minus.trim();
+                if raw_path != "/dev/null" {
+                    let clean_path = raw_path.strip_prefix("a/").unwrap_or(raw_path);
+                    let tok = Self::compact_token(clean_path);
+                    if seen_files.len() < 4 && seen_files.insert(tok.clone()) {
+                        clauses.push(AhtlClause::new(ClauseOp::Neutral, "file", Some(tok)));
+                    }
                 }
                 continue;
             }
-            if line.starts_with("--- a/") || line.starts_with("diff --git ") {
+            if let Some(after_plus) = line.strip_prefix("+++ ") {
+                let raw_path = after_plus.trim();
+                if raw_path != "/dev/null" {
+                    let clean_path = raw_path.strip_prefix("b/").unwrap_or(raw_path);
+                    let tok = Self::compact_token(clean_path);
+                    if seen_files.len() < 4 && seen_files.insert(tok.clone()) {
+                        clauses.push(AhtlClause::new(ClauseOp::Neutral, "file", Some(tok)));
+                    }
+                }
                 continue;
             }
             if let Some(after_at) = line.strip_prefix("@@ ") {
@@ -295,21 +284,25 @@ impl StructuralSkeletonizer {
         let mut import_first_line: Option<usize> = None;
         let mut import_last_line = 0usize;
         let mut import_count = 0usize;
+        let mut still_in_header_imports = true;
 
         for (idx, &line) in lines.iter().enumerate() {
             let trimmed = line.trim();
             let line_no = idx + 1;
 
             if Self::is_import_line(trimmed) {
-                if import_first_line.is_none() {
-                    import_first_line = Some(line_no);
+                if still_in_header_imports {
+                    if import_first_line.is_none() {
+                        import_first_line = Some(line_no);
+                    }
+                    import_last_line = line_no;
+                    import_count += 1;
                 }
-                import_last_line = line_no;
-                import_count += 1;
                 continue;
             }
 
             if let Some(mod_name) = Self::extract_module_header(trimmed) {
+                still_in_header_imports = false;
                 if clauses.len() < 18 {
                     clauses.push(AhtlClause::new(
                         ClauseOp::Added,
@@ -321,6 +314,7 @@ impl StructuralSkeletonizer {
             }
 
             if let Some(sig) = Self::extract_symbol_signature(trimmed) {
+                still_in_header_imports = false;
                 if clauses.len() < 18 {
                     let end_line = Self::resolve_block_end_line(&lines, idx);
                     let span_key = if end_line > line_no {
@@ -418,7 +412,6 @@ impl StructuralSkeletonizer {
             "pub(crate) fn ",
             "pub async fn ",
             "pub const fn ",
-            "pub unsafe fn ",
             "pub fn ",
             "async fn ",
             "const fn ",
@@ -435,6 +428,7 @@ impl StructuralSkeletonizer {
             "impl<",
             "impl ",
             "pub type ",
+            "type ",
             "macro_rules! ",
             "async def ",
             "def ",
@@ -459,26 +453,63 @@ impl StructuralSkeletonizer {
         ];
         for p in prefixes {
             if let Some(rest) = trimmed.strip_prefix(p) {
-                let sig_end = rest.find('{').unwrap_or(rest.len()).min(56);
+                let raw_end = rest.find('{').unwrap_or(rest.len()).min(56);
+                let sig_end = rest.floor_char_boundary(raw_end);
                 let clean = Self::compact_token(&rest[..sig_end]);
                 if !clean.is_empty() {
                     return Some(clean);
                 }
             }
         }
-        if let Some(rest) = trimmed.strip_prefix("type ") {
-            let sig_end = rest.find('{').unwrap_or(rest.len()).min(56);
-            let clean = Self::compact_token(&rest[..sig_end]);
-            if !clean.is_empty() {
-                return Some(clean);
-            }
-        }
         None
     }
 
+    /// Scans a single source line for unquoted, uncommented `{` and `}` braces, returning
+    /// `(net_brace_delta, saw_opening_brace)`.
+    fn scan_code_braces(line: &str) -> (i32, bool) {
+        let mut delta = 0i32;
+        let mut saw_open = false;
+        let mut in_double = false;
+        let mut in_single = false;
+        let mut chars = line.chars().peekable();
+
+        while let Some(ch) = chars.next() {
+            if in_double {
+                if ch == '\\' {
+                    let _ = chars.next();
+                } else if ch == '"' {
+                    in_double = false;
+                }
+                continue;
+            }
+            if in_single {
+                if ch == '\\' {
+                    let _ = chars.next();
+                } else if ch == '\'' {
+                    in_single = false;
+                }
+                continue;
+            }
+            if ch == '/' && chars.peek() == Some(&'/') {
+                break;
+            }
+            if ch == '"' {
+                in_double = true;
+            } else if ch == '\'' {
+                in_single = true;
+            } else if ch == '{' {
+                delta += 1;
+                saw_open = true;
+            } else if ch == '}' {
+                delta -= 1;
+            }
+        }
+        (delta, saw_open)
+    }
+
     /// Resolves the 1-based ending line number of a function, struct, class, or impl block starting
-    /// at 0-based `start_idx` using indentation tracking (Python) or brace depth tracking
-    /// (Rust, TypeScript/JS, Go, C/C++).
+    /// at 0-based `start_idx` using indentation tracking (Python) or quote/comment-aware brace depth
+    /// tracking (Rust, TypeScript/JS, Go, C/C++).
     fn resolve_block_end_line(lines: &[&str], start_idx: usize) -> usize {
         let first_line = lines[start_idx];
         let trimmed = first_line.trim();
@@ -515,14 +546,10 @@ impl StructuralSkeletonizer {
         let mut depth = 0i32;
         let mut saw_open = false;
         for (offset, &line) in lines[start_idx..].iter().enumerate().take(500) {
-            let code_part = line.split("//").next().unwrap_or(line);
-            for ch in code_part.chars() {
-                if ch == '{' {
-                    depth += 1;
-                    saw_open = true;
-                } else if ch == '}' {
-                    depth -= 1;
-                }
+            let (line_delta, line_opened) = Self::scan_code_braces(line);
+            depth += line_delta;
+            if line_opened {
+                saw_open = true;
             }
             if saw_open && depth <= 0 {
                 return start_idx + offset + 1;
@@ -563,7 +590,7 @@ mod tests {
     use std::fmt::Write;
 
     #[test]
-    fn compresses_large_cargo_test_log_by_over_25x_while_preserving_panic() {
+    fn compresses_large_cargo_test_log_by_over_25x_while_preserving_panic_and_all_failures() {
         let mut log = String::from("running 300 tests\n");
         for i in 0..299 {
             let _ = writeln!(log, "test module::sub::test_case_number_{i:04} ... ok");
@@ -588,11 +615,28 @@ mod tests {
         assert!(rendered.contains("!fail:1"));
         assert!(rendered.contains("src/alloc.rs:412:9"));
         assert!(rendered.contains(&id.to_string()));
+
+        // Verify >16 failing tests are all preserved without truncation
+        let mut many_fail_log = String::from("running 22 tests\n");
+        for i in 0..22 {
+            let _ = writeln!(many_fail_log, "error[E0425]: unresolved symbol_{i}");
+            let _ = writeln!(many_fail_log, "test suite::fail_case_{i:02} ... FAILED");
+        }
+        many_fail_log.push_str("test result: FAILED. 0 passed; 22 failed;\n");
+        let many_pkt = StructuralSkeletonizer::compress_to_packet(
+            "cargo_many_fail",
+            &many_fail_log,
+            None,
+            [0xBB; 8],
+        );
+        let many_str = many_pkt.render();
+        assert!(many_str.contains("!fail:22"));
+        assert!(many_str.contains("suite::fail_case_21"));
     }
 
     #[test]
     fn compresses_pytest_tsc_vitest_and_go_test_logs_with_100_percent_failure_recall() {
-        // 1. Python pytest log
+        // 1. Python pytest log (verify progress + summary line deduplicates to !fail:1)
         let mut pytest_log = String::from(
             "============================= test session starts =============================\n",
         );
@@ -618,6 +662,7 @@ mod tests {
             "pytest log should compress >= 15x"
         );
         assert!(py_str.contains("✓pass:120"));
+        assert!(py_str.contains("!fail:1"));
         assert!(py_str.contains("tests/test_mmu.py::test_page_fault"));
         assert!(py_str.contains("AssertionError"));
 
@@ -638,6 +683,7 @@ mod tests {
         let ts_pkt = StructuralSkeletonizer::compress_to_packet("vitest", &ts_log, None, [0x22; 8]);
         let ts_str = ts_pkt.render();
         assert!(ts_str.contains("✓pass:80"));
+        assert!(ts_str.contains("!fail:1"));
         assert!(ts_str.contains("src/router/auth.test.ts"));
         assert!(ts_str.contains("TS2345"));
 
@@ -656,17 +702,18 @@ mod tests {
             StructuralSkeletonizer::compress_to_packet("go_test", &go_log, None, [0x33; 8]);
         let go_str = go_pkt.render();
         assert!(go_str.contains("✓pass:80"));
+        assert!(go_str.contains("!fail:1"));
         assert!(go_str.contains("TestRaftQuorumSplit"));
         assert!(go_str.contains("raft_test.go:214"));
     }
 
     #[test]
-    fn skeletonizes_unified_diffs_multi_language_source_code_and_plain_text() {
+    fn skeletonizes_unified_diffs_multi_language_source_code_quoted_braces_and_utf8() {
         let diff = "\
 diff --git a/src/lib.rs b/src/lib.rs
---- a/src/lib.rs
+--- /dev/null
 +++ b/src/lib.rs
-@@ -1,3 +1,5 @@
+@@ -0,0 +1,4 @@
 -fn old_helper() {}
 +pub fn new_helper() {}
 +pub struct Config { pub x: u32 }
@@ -677,12 +724,12 @@ diff --git a/src/lib.rs b/src/lib.rs
         let diff_str = diff_pkt.render();
         assert!(diff_str.contains("hunks:+3/-1"));
         assert!(diff_str.contains("file:src/lib.rs"));
-        assert!(diff_str.contains("hunk:-1,3_+1,5"));
+        assert!(diff_str.contains("hunk:-0,0_+1,4"));
         assert!(diff_str.contains("⊕sym:new_helper()"));
         assert!(diff_str.contains("⊖sym:old_helper()"));
         assert!(diff_str.contains("✓pin:"));
 
-        // Multi-line Rust + Python + TS + Go source with imports, modules, and block spans
+        // Multi-line Rust + Python + TS + Go source with imports, modules, quoted braces, and UTF-8 near byte 56
         let src = "\
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -691,22 +738,32 @@ pub mod scheduler;
 
 pub async fn serve() {}
 pub fn multi_line_worker(limit: usize) -> usize {
-    let mut sum = 0;
-    for i in 0..limit {
-        sum += i;
-    }
-    sum
+    let url = \"http://example.com/}\";
+    let ch = '}';
+    let esc_ch = '\\'';
+    let escaped = \"\\\"}\";
+    limit + url.len() + (ch as usize) + (esc_ch as usize) + escaped.len() // trailing comment }
 }
 pub enum Mode { Fast }
 pub trait Handler {
     fn on_event(&self);
 }
 type RequestId = u64;
-def compute_trajectory(steps: int) -> float:
-    acc = 0.0
-    for s in range(steps):
-        acc += 0.5
-    return acc
+def validate_assertion(steps: int) -> float:
+    # comment inside python block
+    if steps < 0:
+        raise AssertionError(\"bad steps\")
+
+    return 1.0
+pub fn unclosed_signature(
+    a: u32,
+    b: u32,
+    c: u32,
+    d: u32,
+    e: u32,
+)
+pub fn unicode_boundary_signature_with_multibyte_glyphs_αβγδεζηθ() -> u32 { 1 }
+use super::*;
 // INVARIANT: lock-free ring
 // PASSKEY_ALPHA_123
 ";
@@ -717,7 +774,7 @@ def compute_trajectory(steps: int) -> float:
         assert!(src_str.contains("⊕L6:serve()"));
         assert!(src_str.contains("⊕L7-13:multi_line_worker(limit:_usize)_->_usize"));
         assert!(src_str.contains("⊕L18:RequestId_=_u64;"));
-        assert!(src_str.contains("⊕L19-23:compute_trajectory(steps:_int)_->_float:"));
+        assert!(src_str.contains("⊕L19-24:validate_assertion(steps:_int)_->_float:"));
         assert!(src_str.contains("PASSKEY_ALPHA_123"));
 
         let plain = "just a plain note without any symbol declarations\nsecond line\n";

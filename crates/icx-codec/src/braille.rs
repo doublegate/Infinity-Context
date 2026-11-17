@@ -3,26 +3,22 @@
 //!
 //! Reference: `docs/ahtl/02-braille-256-spectral-bijection.md`.
 
-/// Mask for bits `0..=1` (`0b0000_0011`) of `ChannelBHologram::structural_flags` encoding the
-/// `RetentionTier` (`0 = PinHighResolution`, `1 = FoldAhtlStub`, `2 = ColdBeacon`) written by
-/// `HdcAssociativeIndex::observe_event`.
-pub const TIER_MASK: u8 = 0b0000_0011;
-/// Structural flag bit 2 (`0x04`): Packet contains a compiler/runtime error diagnostic.
-pub const FLAG_HAS_ERROR: u8 = 1 << 2;
-/// Structural flag bit 3 (`0x08`): Packet contains a panic / assertion / crash event.
-pub const FLAG_HAS_PANIC: u8 = 1 << 3;
-/// Structural flag bit 4 (`0x10`): Packet encodes a unified `git diff` or file mutation.
-pub const FLAG_HAS_DIFF: u8 = 1 << 4;
-/// Structural flag bit 5 (`0x20`): Packet represents a folded sub-trajectory branch (`Φ`) or sealed epoch.
-pub const FLAG_IS_FOLDED: u8 = 1 << 5;
-/// Alias for bit 5 (`0x20`) when used on epoch-level summaries.
-pub const FLAG_IS_EPOCH: u8 = 1 << 5;
-/// Structural flag bit 6 (`0x40`): Packet contains causal implication chains (`⇒`).
-pub const FLAG_HAS_CAUSAL: u8 = 1 << 6;
-/// Structural flag bit 7 (`0x80`): Pre-ingestion `SecretRedactor` scrubbed one or more secrets.
-pub const FLAG_IS_REDACTED: u8 = 1 << 7;
-/// Convenience constant (`0x00`) for `RetentionTier::PinHighResolution` in bits `0..=1`.
-pub const FLAG_IS_PINNED: u8 = 0x00;
+/// Structural flag bit 0 (`0x01`): Packet contains a compiler/runtime error diagnostic.
+pub const FLAG_HAS_ERROR: u8 = 1 << 0;
+/// Structural flag bit 1 (`0x02`): Packet contains a panic / assertion / crash event.
+pub const FLAG_HAS_PANIC: u8 = 1 << 1;
+/// Structural flag bit 2 (`0x04`): Packet encodes a unified `git diff` or file mutation.
+pub const FLAG_HAS_DIFF: u8 = 1 << 2;
+/// Structural flag bit 3 (`0x08`): Packet represents a folded sub-trajectory branch (`Φ`) or stub.
+pub const FLAG_IS_FOLDED: u8 = 1 << 3;
+/// Structural flag bit 4 (`0x10`): Packet is sealed inside an immutable `CacheEpoch` or cold beacon.
+pub const FLAG_IS_EPOCH: u8 = 1 << 4;
+/// Structural flag bit 5 (`0x20`): Packet contains causal implication chains (`⇒`).
+pub const FLAG_HAS_CAUSAL: u8 = 1 << 5;
+/// Structural flag bit 6 (`0x40`): Pre-ingestion `SecretRedactor` scrubbed one or more secrets.
+pub const FLAG_IS_REDACTED: u8 = 1 << 6;
+/// Structural flag bit 7 (`0x80`): Packet is pinned in high-resolution active memory (`S_eff >= 0.70`).
+pub const FLAG_IS_PINNED: u8 = 1 << 7;
 
 /// Structured 64-bit (`8-byte`) Channel B hologram payload (`B[0..7]`) for `AHTL` Profile B
 /// (`docs/ahtl/02-braille-256-spectral-bijection.md` §4.2).
@@ -34,17 +30,15 @@ pub struct ChannelBHologram {
     pub fractal_quadrant_u16: u16,
     /// `B[6]`: 8-bit quantized Titans effective surprise (`round(255 * S_eff)`).
     pub surprise_q8: u8,
-    /// `B[7]`: 8-bit composite byte: bits `0..=1` encode `RetentionTier` (`0..=2`), bits `2..=7`
-    /// encode `FLAG_*` structural flags.
+    /// `B[7]`: 8-bit structural flag bitfield (`FLAG_*` constants).
     pub structural_flags: u8,
 }
 
 impl ChannelBHologram {
-    /// Extracts the 2-bit `RetentionTier` code (`0 = PinHighResolution`, `1 = FoldAhtlStub`, `2 = ColdBeacon`)
-    /// from bits `0..=1` of `B[7]`.
+    /// Returns `true` if all bits in `flag` are set in `self.structural_flags`.
     #[inline]
-    pub const fn retention_tier_code(self) -> u8 {
-        self.structural_flags & TIER_MASK
+    pub const fn has_flag(self, flag: u8) -> bool {
+        (self.structural_flags & flag) == flag
     }
     /// Packs the structured fields into a canonical big-endian 8-byte array `B[0..7]`.
     #[inline]
@@ -262,11 +256,13 @@ mod tests {
             hdc_sketch_u32: 0xDEAD_BEEF,
             fractal_quadrant_u16: 0xCAFE,
             surprise_q8: 214,
-            structural_flags: 1 | FLAG_HAS_ERROR | FLAG_HAS_PANIC,
+            structural_flags: FLAG_HAS_ERROR | FLAG_HAS_PANIC | FLAG_IS_PINNED,
         };
         let raw = holo.to_bytes();
         let unpacked = ChannelBHologram::from_bytes(raw);
         assert_eq!(unpacked, holo);
-        assert_eq!(unpacked.retention_tier_code(), 1);
+        assert!(unpacked.has_flag(FLAG_IS_PINNED));
+        assert!(unpacked.has_flag(FLAG_HAS_ERROR));
+        assert!(!unpacked.has_flag(FLAG_IS_REDACTED));
     }
 }

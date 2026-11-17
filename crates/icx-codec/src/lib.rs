@@ -13,7 +13,7 @@ pub use ahtl::{
 };
 pub use braille::{
     ChannelBHologram, FLAG_HAS_CAUSAL, FLAG_HAS_DIFF, FLAG_HAS_ERROR, FLAG_HAS_PANIC,
-    FLAG_IS_EPOCH, FLAG_IS_FOLDED, FLAG_IS_PINNED, FLAG_IS_REDACTED, TIER_MASK, braille_to_byte,
+    FLAG_IS_EPOCH, FLAG_IS_FOLDED, FLAG_IS_PINNED, FLAG_IS_REDACTED, braille_to_byte,
     braille_utf8_to_byte, byte_to_braille, byte_to_braille_utf8, decode_braille_64,
     decode_braille_sketch, encode_braille_64, encode_braille_sketch, sketch_hamming_distance,
     spectral_hamming_distance_64,
