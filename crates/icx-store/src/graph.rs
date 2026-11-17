@@ -5,8 +5,12 @@
 use icx_core::{ArtifactId, IcxError};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static GRAPH_TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// A directed edge in the `BiTemporalGraph` carrying valid-time and transaction-time intervals.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -79,9 +83,12 @@ impl CsrGraphSnapshot {
     /// Returns the provenance `ArtifactId` slice associated with node index `node_idx`.
     #[inline]
     pub fn node_provenance(&self, node_idx: usize) -> &[ArtifactId] {
+        if node_idx + 1 >= self.prov_row_ptr.len() {
+            return &[];
+        }
         let start = self.prov_row_ptr[node_idx];
         let end = self.prov_row_ptr[node_idx + 1];
-        &self.prov_ids[start..end]
+        self.prov_ids.get(start..end).unwrap_or(&[])
     }
 
     /// Executes HippoRAG Personalized PageRank (`arXiv:2405.14831`) power iteration over the
@@ -100,13 +107,17 @@ impl CsrGraphSnapshot {
 
         let mut teleport = vec![0.0f32; n];
         let mut active_seeds = 0usize;
-        for &seed in seed_entities {
+        for &raw_seed in seed_entities {
+            let seed = raw_seed.trim();
             if seed.is_empty() {
                 continue;
             }
             for (idx, entity_str) in self.nodes.iter().enumerate() {
-                if entity_str == seed || entity_str.contains(seed) {
+                if entity_str == seed {
                     teleport[idx] += 1.0;
+                    active_seeds += 1;
+                } else if entity_str.contains(seed) {
+                    teleport[idx] += 0.25;
                     active_seeds += 1;
                 }
             }
@@ -240,10 +251,10 @@ impl BiTemporalGraph {
         let edge_id = self.next_edge_id;
         self.next_edge_id += 1;
 
-        let clean_weight = if weight.is_nan() {
-            0.01
+        let clean_weight = if weight.is_finite() {
+            weight.clamp(0.01, 1_000.0)
         } else {
-            weight.max(0.01)
+            1.0
         };
 
         self.edges.push(BiTemporalEdge {
@@ -282,25 +293,28 @@ impl BiTemporalGraph {
         source_entity: &str,
         at_ms: Option<u64>,
     ) -> Vec<&BiTemporalEdge> {
+        let src = source_entity.trim();
         self.edges
             .iter()
-            .filter(|e| e.source_entity == source_entity && e.is_active_at(at_ms))
+            .filter(|e| e.source_entity == src && e.is_active_at(at_ms))
             .collect()
     }
 
     /// Queries edges entering `target_entity` valid at `at_ms` (`None` = current active edges).
     pub fn query_edges_to(&self, target_entity: &str, at_ms: Option<u64>) -> Vec<&BiTemporalEdge> {
+        let dst = target_entity.trim();
         self.edges
             .iter()
-            .filter(|e| e.target_entity == target_entity && e.is_active_at(at_ms))
+            .filter(|e| e.target_entity == dst && e.is_active_at(at_ms))
             .collect()
     }
 
     /// Queries all edges with a given `relation` valid at `at_ms` (`None` = current active edges).
     pub fn query_relation(&self, relation: &str, at_ms: Option<u64>) -> Vec<&BiTemporalEdge> {
+        let rel = relation.trim();
         self.edges
             .iter()
-            .filter(|e| e.relation == relation && e.is_active_at(at_ms))
+            .filter(|e| e.relation == rel && e.is_active_at(at_ms))
             .collect()
     }
 
@@ -393,19 +407,54 @@ impl BiTemporalGraph {
     /// Atomically persists the `BiTemporalGraph` to `<dir>/bitemporal_graph.json`.
     pub fn save_to_dir(&self, dir: &Path) -> Result<(), IcxError> {
         fs::create_dir_all(dir).map_err(|e| IcxError::Io(e.to_string()))?;
-        let final_path = dir.join("bitemporal_graph.json");
-        let tmp_path = dir.join(format!("bitemporal_graph.json.tmp.{}", std::process::id()));
         let bytes = serde_json::to_vec_pretty(self).map_err(|e| IcxError::Io(e.to_string()))?;
-        fs::write(&tmp_path, bytes).map_err(|e| IcxError::Io(e.to_string()))?;
-        fs::rename(&tmp_path, &final_path).map_err(|e| IcxError::Io(e.to_string()))?;
+        let seq = GRAPH_TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp_path = dir.join(format!(
+            "bitemporal_graph.json.{}.{}.tmp",
+            std::process::id(),
+            seq
+        ));
+        let final_path = dir.join("bitemporal_graph.json");
+        let write_res = (|| -> std::io::Result<()> {
+            let mut opts = OpenOptions::new();
+            opts.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                opts.mode(0o600);
+            }
+            let mut f = opts.open(&tmp_path)?;
+            f.write_all(&bytes)?;
+            f.sync_all()?;
+            drop(f);
+            fs::rename(&tmp_path, &final_path)
+        })();
+        if let Err(e) = write_res {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(IcxError::Io(e.to_string()));
+        }
         Ok(())
     }
 
-    /// Loads a persisted `BiTemporalGraph` from `<dir>/bitemporal_graph.json`.
+    /// Loads and validates a persisted `BiTemporalGraph` from `<dir>/bitemporal_graph.json`.
     pub fn load_from_dir(dir: &Path) -> Result<Self, IcxError> {
         let path = dir.join("bitemporal_graph.json");
         let bytes = fs::read(&path).map_err(|e| IcxError::Io(e.to_string()))?;
-        serde_json::from_slice(&bytes).map_err(|e| IcxError::Io(e.to_string()))
+        let mut loaded: Self =
+            serde_json::from_slice(&bytes).map_err(|e| IcxError::Io(e.to_string()))?;
+        let mut max_next_id = loaded.next_edge_id;
+        for e in &mut loaded.edges {
+            loaded.entities.insert(e.source_entity.clone());
+            loaded.entities.insert(e.target_entity.clone());
+            if e.weight.is_finite() {
+                e.weight = e.weight.clamp(0.01, 1_000.0);
+            } else {
+                e.weight = 1.0;
+            }
+            max_next_id = max_next_id.max(e.edge_id.saturating_add(1));
+        }
+        loaded.next_edge_id = max_next_id;
+        Ok(loaded)
     }
 }
 
@@ -506,6 +555,7 @@ mod tests {
         let csr = g.build_csr(None);
         assert_eq!(csr.node_count(), 5);
         assert_eq!(csr.directed_edge_count(), 6);
+        assert_eq!(csr.node_provenance(999).len(), 0);
         let ppr_nan = csr.run_ppr(&["", "FAIL_ALIGN"], f32::NAN, 4, 5);
         assert_eq!(ppr_nan.len(), 1);
         assert_eq!(ppr_nan[0].entity, "FAIL_ALIGN");

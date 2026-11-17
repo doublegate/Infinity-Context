@@ -256,7 +256,7 @@ impl HdcAssociativeIndex {
 
     /// Queries the associative index using a two-stage pipeline:
     /// 1. Stage 1 L2-cache spectral/Bloom pre-screening over 16-byte `EntrySummary` records.
-    /// 2. Stage 2 exact 10,240-bit `hamming_distance_simd` and $O(1)$ Chebyshev `shared_suffix_depth` refinement.
+    /// 2. Stage 2 exact 10,240-bit `hamming_distance_simd` and boundary-aware inverse-IFS `verified_suffix_depth` refinement.
     pub fn query_associative(&self, query_text: &str, top_k: usize) -> Vec<AssociativeHit> {
         if top_k == 0 || self.entries.is_empty() {
             return Vec::new();
