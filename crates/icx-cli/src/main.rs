@@ -76,7 +76,7 @@ impl Drop for WorkspaceLockGuard {
 fn acquire_workspace_lock(icx_dir: &Path) -> Result<WorkspaceLockGuard, String> {
     fs::create_dir_all(icx_dir).map_err(|e| e.to_string())?;
     let lock_path = icx_dir.join("cas_store.lock");
-    for attempt in 0..2_000u32 {
+    for _attempt in 0..5_000u32 {
         match fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -84,17 +84,6 @@ fn acquire_workspace_lock(icx_dir: &Path) -> Result<WorkspaceLockGuard, String> 
         {
             Ok(_) => return Ok(WorkspaceLockGuard { lock_path }),
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-                // If an abandoned lockfile is older than 10 seconds, remove it and retry
-                if attempt > 0
-                    && attempt % 200 == 0
-                    && fs::metadata(&lock_path)
-                        .and_then(|m| m.modified())
-                        .ok()
-                        .and_then(|t| t.elapsed().ok())
-                        .is_some_and(|age| age.as_secs() >= 10)
-                {
-                    let _ = fs::remove_file(&lock_path);
-                }
                 std::thread::sleep(std::time::Duration::from_millis(1));
             }
             Err(e) => return Err(format!("failed to acquire workspace lock: {e}")),
