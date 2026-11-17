@@ -105,11 +105,23 @@ impl Hypervector {
         Self { words }
     }
 
-    /// Binds a semantic role (`"role"`) to a filler token (`"tok"`) via XOR (`R \oplus F`).
+    /// Binds a semantic role (`"role"`) to a filler token (`"tok"`) via XOR (`R \oplus F`)
+    /// using `Self::from_seed`. To unbind with a role vector, generate the role key with
+    /// `Hypervector::from_seed("role", &role.to_ascii_lowercase())` (or use
+    /// `Self::bind_role_filler_framed` when working in the length-framed seed namespace).
     #[inline]
     pub fn bind_role_filler(role: &str, filler: &str) -> Self {
         let r = Self::from_seed("role", &role.to_ascii_lowercase());
         let f = Self::from_seed("tok", &filler.to_ascii_lowercase());
+        r.bind(&f)
+    }
+
+    /// Binds a semantic role (`"role"`) to a filler token (`"tok"`) via XOR (`R \oplus F`)
+    /// using length-framed `Self::from_seed_framed` keys.
+    #[inline]
+    pub fn bind_role_filler_framed(role: &str, filler: &str) -> Self {
+        let r = Self::from_seed_framed("role", &role.to_ascii_lowercase());
+        let f = Self::from_seed_framed("tok", &filler.to_ascii_lowercase());
         r.bind(&f)
     }
 
@@ -148,27 +160,182 @@ impl Hypervector {
     }
 
     /// Encodes a text string into a composite hypervector by binding token unigrams and
-    /// permutation-shifted bigrams.
+    /// permutation-shifted bigrams using stack Delta-Rule bundling with bounded per-term
+    /// reinforcement and a `1,024`-token scan cap.
     pub fn encode_text(text: &str) -> Self {
+        const MAX_TEXT_TOKENS: usize = 1024;
+        const MAX_ENCODE_BYTES: usize = 65_536;
+        const MAX_UNIGRAM_REINFORCEMENTS: u64 = 2;
+        const MAX_BIGRAM_REINFORCEMENTS: u64 = 1;
+        const SLOT_COUNT: usize = 2048;
+        const SLOT_MASK: usize = SLOT_COUNT - 1;
+        const COUNT_MASK: u64 = 0b11;
+
+        #[inline]
+        fn lower_into<'a>(
+            tok: &'a str,
+            stack_buf: &'a mut [u8; 128],
+            heap_slot: &'a mut String,
+        ) -> &'a str {
+            if !tok.bytes().any(|b| b.is_ascii_uppercase()) {
+                tok
+            } else if tok.len() <= stack_buf.len() {
+                for (dst, &src) in stack_buf[..tok.len()].iter_mut().zip(tok.as_bytes()) {
+                    *dst = src.to_ascii_lowercase();
+                }
+                core::str::from_utf8(&stack_buf[..tok.len()]).unwrap_or(tok)
+            } else {
+                *heap_slot = tok.to_ascii_lowercase();
+                heap_slot.as_str()
+            }
+        }
+
+        #[inline]
+        fn token_key_u64(s: &str) -> u64 {
+            let mut h = 0xCBF2_9CE4_8422_2325u64;
+            for &b in s.as_bytes() {
+                h = (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01B3);
+            }
+            let mut z = (h ^ (h >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            ((z ^ (z >> 31)) & !COUNT_MASK) | 4
+        }
+
+        #[inline]
+        fn bigram_key_u64(prev_key: u64, cur_key: u64) -> u64 {
+            let mixed = prev_key.rotate_left(17).wrapping_add(0x9E37_79B9_7F4A_7C15) ^ cur_key;
+            (mixed & !COUNT_MASK) | 4
+        }
+
+        #[inline]
+        fn find_reinforce_slot(
+            slots: &[u64; SLOT_COUNT],
+            key: u64,
+            cap: u64,
+        ) -> Option<(usize, u64)> {
+            let base = ((key >> 2) as usize) & SLOT_MASK;
+            for probe in 0..8usize {
+                let idx = (base + probe) & SLOT_MASK;
+                let entry = slots[idx];
+                let slot_key = entry & !COUNT_MASK;
+                if slot_key == key {
+                    let slot_count = entry & COUNT_MASK;
+                    if slot_count >= cap {
+                        return None;
+                    }
+                    return Some((idx, key | (slot_count + 1)));
+                }
+                if entry == 0 {
+                    return Some((idx, key | 1));
+                }
+            }
+            let tail_idx = (base + 7) & SLOT_MASK;
+            let tail_count = slots[tail_idx] & COUNT_MASK;
+            if tail_count >= cap {
+                None
+            } else {
+                Some((tail_idx, key | (tail_count + 1)))
+            }
+        }
+
+        let bounded_text = if text.len() > MAX_ENCODE_BYTES {
+            let mut cap = MAX_ENCODE_BYTES;
+            while !text.is_char_boundary(cap) {
+                cap -= 1;
+            }
+            &text[..cap]
+        } else {
+            text
+        };
+
         let mut bundler = HdcBundler::new();
+        let mut u_slots = [0u64; SLOT_COUNT];
+        let mut b_slots = [0u64; SLOT_COUNT];
+        let mut hv_cache = [(0u64, Self::zero()); 4];
+        let mut stack_lower = [0u8; 128];
+        let mut prev_stack_lower = [0u8; 128];
+        let mut heap_lower = String::new();
+        let mut prev_heap_lower = String::new();
         let mut prev_hv: Option<Self> = None;
+        let mut prev_key: Option<u64> = None;
+        let mut prev_committed_raw: Option<&str> = None;
+        let mut prev_raw: Option<&str> = None;
+        let mut consecutive_repeats = 0usize;
+        let mut tokens_seen = 0usize;
 
         for raw_tok in
-            text.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
+            bounded_text.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
         {
             let tok = raw_tok.trim();
             if tok.len() < 2 {
                 continue;
             }
-            let lower = tok.to_ascii_lowercase();
-            let hv = Self::from_seed("tok", &lower);
-            bundler.add(&hv);
+            if prev_raw.is_some_and(|p| p.eq_ignore_ascii_case(tok)) {
+                consecutive_repeats += 1;
+                if consecutive_repeats > MAX_UNIGRAM_REINFORCEMENTS as usize {
+                    continue;
+                }
+            } else {
+                prev_raw = Some(tok);
+                consecutive_repeats = 1;
+            }
 
-            if let Some(prev) = prev_hv {
+            let lower = lower_into(tok, &mut stack_lower, &mut heap_lower);
+            let u_key = token_key_u64(lower);
+            let u_slot = find_reinforce_slot(&u_slots, u_key, MAX_UNIGRAM_REINFORCEMENTS);
+            let b_slot = prev_key.and_then(|pk| {
+                find_reinforce_slot(
+                    &b_slots,
+                    bigram_key_u64(pk, u_key),
+                    MAX_BIGRAM_REINFORCEMENTS,
+                )
+            });
+            let cache_idx = ((u_key >> 2) as usize) & 3;
+
+            if u_slot.is_none() && b_slot.is_none() {
+                prev_hv = if hv_cache[cache_idx].0 == u_key {
+                    Some(hv_cache[cache_idx].1)
+                } else {
+                    None
+                };
+                prev_key = Some(u_key);
+                prev_committed_raw = Some(tok);
+                continue;
+            }
+
+            let hv = if hv_cache[cache_idx].0 == u_key {
+                hv_cache[cache_idx].1
+            } else {
+                let computed = Self::from_seed("tok", lower);
+                hv_cache[cache_idx] = (u_key, computed);
+                computed
+            };
+
+            let mut bundled_any = false;
+            if let Some((idx, new_entry)) = u_slot {
+                let accepted = bundler.add_delta(&hv);
+                u_slots[idx] = if accepted { new_entry } else { u_slots[idx] };
+                bundled_any |= accepted;
+            }
+
+            if let Some((b_idx, b_entry)) = b_slot {
+                let prev = prev_hv.unwrap_or_else(|| {
+                    let pr = prev_committed_raw.unwrap_or(tok);
+                    let p_lower = lower_into(pr, &mut prev_stack_lower, &mut prev_heap_lower);
+                    Self::from_seed("tok", p_lower)
+                });
                 let bigram = prev.permute(1).bind(&hv);
-                bundler.add(&bigram);
+                let accepted = bundler.add_delta(&bigram);
+                b_slots[b_idx] = if accepted { b_entry } else { b_slots[b_idx] };
+                bundled_any |= accepted;
             }
             prev_hv = Some(hv);
+            prev_key = Some(u_key);
+            prev_committed_raw = Some(tok);
+            tokens_seen += usize::from(bundled_any);
+            if tokens_seen >= MAX_TEXT_TOKENS {
+                break;
+            }
         }
 
         bundler.finalize()
@@ -366,6 +533,10 @@ impl Hypervector {
     }
 }
 
+/// Minimum similarity threshold (`0.15`) for a bundled fingerprint to remain considered active
+/// in `HdcBundler` and `TitansSurpriseGate`.
+pub const ACTIVE_BUNDLE_SIM_THRESHOLD: f32 = 0.15;
+
 /// Infini-attention Delta-Rule (`arXiv:2404.07143`) majority-vote hypervector bundler.
 /// Prevents repetitive boilerplate from saturating associative memory.
 #[derive(Clone, Debug)]
@@ -413,20 +584,37 @@ impl HdcBundler {
         self.readout.unbind(role)
     }
 
+    /// Returns `true` if `hv`'s 128-bit fingerprint has already been added to this bundler
+    /// via `add`, `add_weighted`, or `add_weighted_unique` (internal stack-only `add_delta`
+    /// updates do not populate `seen_fingerprints`).
+    #[inline]
+    pub fn contains_fingerprint(&self, hv: &Hypervector) -> bool {
+        self.seen_fingerprints
+            .contains(&hv.dedup_fingerprint_u128())
+    }
+
+    /// Returns `true` if `hv`'s 128-bit fingerprint has already been bundled and its
+    /// representation in `readout` remains active (`similarity >= 0.15`).
+    #[inline]
+    pub fn is_actively_bundled(&self, hv: &Hypervector) -> bool {
+        self.count > 0
+            && self.contains_fingerprint(hv)
+            && self.readout.similarity(hv) >= ACTIVE_BUNDLE_SIM_THRESHOLD
+    }
+
     /// Adds a hypervector using the Infini-attention Delta Rule: vectors already strongly present
-    /// in the bundle (`similarity >= 0.85` or matching a previously accepted 128-bit fingerprint)
-    /// receive zero delta weight so repetitive boilerplate never saturates the accumulator, while
-    /// novel/orthogonal vectors receive full weight.
+    /// in the bundle (`similarity >= 0.85` or matching a non-diluted 128-bit fingerprint with
+    /// `similarity >= 0.15`) receive zero delta weight so repetitive boilerplate never saturates
+    /// the accumulator, while novel/orthogonal vectors receive full weight.
     pub fn add(&mut self, hv: &Hypervector) {
         let fp = hv.dedup_fingerprint_u128();
-        if self.seen_fingerprints.contains(&fp) {
-            return;
-        }
         let weight: i16 = if self.count == 0 {
             16
         } else {
             let sim = self.readout.similarity(hv);
-            if sim >= 0.85 {
+            if sim >= 0.85
+                || (sim >= ACTIVE_BUNDLE_SIM_THRESHOLD && self.seen_fingerprints.contains(&fp))
+            {
                 return;
             }
             let novelty = (1.0 - sim).clamp(0.0, 1.0);
@@ -434,6 +622,26 @@ impl HdcBundler {
         };
         self.seen_fingerprints.insert(fp);
         self.accumulate_raw(hv, weight);
+    }
+
+    /// Adds a hypervector using the stack-only Infini-attention Delta Rule without allocating
+    /// in `seen_fingerprints`: vectors already strongly present in the bundle (`similarity >= 0.85`)
+    /// receive zero delta weight (returning `false`), while novel/under-represented tokens
+    /// reinforce the bundle (returning `true`).
+    #[inline]
+    pub(crate) fn add_delta(&mut self, hv: &Hypervector) -> bool {
+        let weight: i16 = if self.count == 0 {
+            16
+        } else {
+            let sim = self.readout.similarity(hv);
+            if sim >= 0.85 {
+                return false;
+            }
+            let novelty = (1.0 - sim).clamp(0.0, 1.0);
+            ((novelty * 16.0).round() as i16).max(1)
+        };
+        self.accumulate_raw(hv, weight);
+        true
     }
 
     /// Adds a hypervector with an explicit integer weight (`1..=64`), breaking exact `0` ties
@@ -444,12 +652,14 @@ impl HdcBundler {
         self.accumulate_raw(hv, weight);
     }
 
-    /// Adds a hypervector with an explicit integer weight (`1..=64`) only if its 128-bit
-    /// fingerprint has not already been bundled, returning `true` when accumulated.
+    /// Adds a hypervector with an explicit integer weight (`1..=64`) if its 128-bit fingerprint
+    /// has not already been bundled or if its representation in `readout` has been diluted below
+    /// `similarity < 0.15` by subsequent novel updates, returning `true` when accumulated.
     pub fn add_weighted_unique(&mut self, hv: &Hypervector, weight: i16) -> bool {
-        if !self.seen_fingerprints.insert(hv.dedup_fingerprint_u128()) {
+        if self.is_actively_bundled(hv) {
             return false;
         }
+        self.seen_fingerprints.insert(hv.dedup_fingerprint_u128());
         self.accumulate_raw(hv, weight);
         true
     }
@@ -526,6 +736,11 @@ mod tests {
         let tok_alloc = Hypervector::from_seed("tok", "alloc_page");
         assert_eq!(rf.unbind(&role_fn), tok_alloc);
 
+        let rf_framed = Hypervector::bind_role_filler_framed("fn", "alloc_page");
+        let role_framed = Hypervector::from_seed_framed("role", "fn");
+        let tok_framed = Hypervector::from_seed_framed("tok", "alloc_page");
+        assert_eq!(rf_framed.unbind(&role_framed), tok_framed);
+
         assert_eq!(Hypervector::encode_sequence(&[]), Hypervector::zero());
         let seq_ab = Hypervector::encode_sequence(&[a, b]);
         let seq_ba = Hypervector::encode_sequence(&[b, a]);
@@ -599,6 +814,7 @@ mod tests {
         bundler.add(&base);
         assert_eq!(bundler.count(), 1);
         bundler.add(&near_base);
+        bundler.add_delta(&near_base);
         assert_eq!(
             bundler.count(),
             1,
@@ -614,6 +830,57 @@ mod tests {
             3,
             "near_base must be accepted once bundle shifts away"
         );
+
+        // Verify `encode_text` bounds reinforcement and token scanning on repetitive mixtures
+        let rep_single = format!("{}panic_412", "ok ".repeat(2000));
+        let hv_rep_single = Hypervector::encode_text(&rep_single);
+        assert!(hv_rep_single.similarity(&Hypervector::from_seed("tok", "ok")) > 0.25);
+        assert!(hv_rep_single.similarity(&Hypervector::from_seed("tok", "panic_412")) > 0.25);
+        let rep_alt = format!("{}panic_412", "ok err ".repeat(600));
+        let hv_rep_alt = Hypervector::encode_text(&rep_alt);
+        assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "ok")) > 0.20);
+        assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "err")) > 0.20);
+        assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "panic_412")) > 0.15);
+
+        // Verify 6-token periodic cycle (evicting 4-entry hv_cache) preserves exact predecessor bigram
+        let cycle6 = format!(
+            "{}zeta omega",
+            "alpha beta gamma delta epsi zeta ".repeat(6)
+        );
+        let hv_cycle6 = Hypervector::encode_text(&cycle6);
+        let expected_bigram = Hypervector::from_seed("tok", "zeta")
+            .permute(1)
+            .bind(&Hypervector::from_seed("tok", "omega"));
+        assert!(hv_cycle6.similarity(&expected_bigram) > 0.10);
+
+        // Verify > 256 distinct tokens do not drop subsequent novel tokens within the 1,024-token horizon
+        let mut many_distinct = String::new();
+        for i in 0..300usize {
+            many_distinct.push_str(&format!("UniqueTok_{i:03} "));
+        }
+        let prefix_hv = Hypervector::encode_text(&many_distinct);
+        many_distinct.push_str("TailDiagnostic_999 TailDiagnostic_999");
+        let full_hv = Hypervector::encode_text(&many_distinct);
+        assert_ne!(
+            prefix_hv, full_hv,
+            "novel tokens past 256 must not be dropped"
+        );
+
+        // Verify Default, >128-byte mixed-case token, >1,024 distinct tokens, and >65,536 byte UTF-8 boundary cap
+        assert_eq!(Hypervector::default(), Hypervector::zero());
+        let mut long_mixed = format!("Upper_{} ", "A".repeat(140));
+        while long_mixed.len() < 65_535 {
+            long_mixed.push_str("ok err ");
+        }
+        long_mixed.truncate(65_535);
+        long_mixed.push('é'); // 2-byte UTF-8 char straddling index 65_536
+        long_mixed.push_str(" tail");
+        let _ = Hypervector::encode_text(&long_mixed);
+        let mut over_1024 = String::new();
+        for i in 0..1030usize {
+            over_1024.push_str(&format!("distinct_tok_{i} "));
+        }
+        let _ = Hypervector::encode_text(&over_1024);
     }
 
     #[test]

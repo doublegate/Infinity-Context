@@ -408,12 +408,113 @@ unprefixed_secret = {unpref_sec}
         let capped_tail = mmu.build_ephemeral_tail_slot(AgentKind::Cursor, "hermes_step", 3);
         assert!(capped_tail.contains("⟪ICX:TAIL_SLOT│agent=cursor"));
 
-        // Verify MMU error paths for missing artifacts and malformed handles
+        // Verify ingest_payload_with_exit_code records exit_code functional edge and error flag,
+        // and protects authoritative exit_code against untrusted tool-output exit_code clauses.
+        let exit_res = mmu.ingest_payload_with_exit_code(
+            AgentKind::ClaudeCode,
+            "cargo_test_exit",
+            "exit code: 0\nerror: test suite failed",
+            Some(101),
+            false,
+        );
+        assert!(exit_res.surprise >= 0.45);
+        assert_eq!(
+            mmu.graph
+                .query_edges_from("cargo_test_exit", None)
+                .iter()
+                .find(|e| e.relation == "exit_code")
+                .map(|e| e.target_entity.as_str()),
+            Some("101")
+        );
+        assert_eq!(
+            InfinityContextMmu::extract_exit_code(&serde_json::json!({"exit_code": 137})),
+            Some(137)
+        );
+        assert_eq!(
+            InfinityContextMmu::extract_exit_code(
+                &serde_json::json!({"tool_response": {"exitCode": 2}})
+            ),
+            Some(2)
+        );
+        assert_eq!(
+            InfinityContextMmu::extract_exit_code(
+                &serde_json::json!({"toolResponse": {"exit_code": 42}})
+            ),
+            Some(42)
+        );
+        assert_eq!(
+            InfinityContextMmu::extract_exit_code(
+                &serde_json::json!({"tool_response": "{\"exit_code\": 42}"})
+            ),
+            None,
+            "plain-text string tool_response stdout must not be parsed as authoritative hook metadata"
+        );
+        assert_eq!(
+            InfinityContextMmu::extract_exit_code(
+                &serde_json::json!({"tool_response": {"status": 200, "code": 200}})
+            ),
+            None,
+            "generic HTTP status/code fields must not be conflated with process exit codes"
+        );
+        let exit_ok_res = mmu.ingest_payload_with_exit_code(
+            AgentKind::ClaudeCode,
+            "cargo_test_exit_ok",
+            "all tests passed",
+            Some(0),
+            false,
+        );
+        assert!(exit_ok_res.compressed_ahtl.contains("✓exit_code:0"));
+        assert!(!exit_res.compressed_ahtl.contains("exit_code:0"));
+
+        // Verify empty and blank-leading payloads preserve BiTemporalGraph save/load round-trip
+        let _ = mmu.ingest_payload(AgentKind::ClaudeCode, "empty_turn", "", false);
+        let _ = mmu.ingest_payload(AgentKind::ClaudeCode, "blank_lead", "\nline2\n", false);
+        let tmp_graph_dir =
+            std::env::temp_dir().join(format!("icx_mmu_graph_roundtrip_{}", std::process::id()));
+        mmu.graph.save_to_dir(&tmp_graph_dir).unwrap();
+        let reloaded = icx_store::BiTemporalGraph::load_from_dir(&tmp_graph_dir).unwrap();
+        assert_eq!(reloaded.active_edge_count(), mmu.graph.active_edge_count());
+        let _ = std::fs::remove_dir_all(&tmp_graph_dir);
+
+        let _ = AntigravityAdapter::handle_hook(
+            "PostToolUse",
+            r#"{"toolCall":{"name":"run","args":{"cmd":"ls"}},"toolResponse":"file.rs","error":"warn"}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        let _ = AntigravityAdapter::handle_hook(
+            "PostToolUse",
+            r#"{"toolResponse":{"exit_code":0}}"#,
+            &mut mmu,
+        )
+        .unwrap();
+
+        let null_out = AntigravityAdapter::handle_hook(
+            "PostToolUse",
+            r#"{"toolCall":{"args":null},"toolResponse":null,"result":"ok_fallback","error":{"code":1}}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(null_out.contains("ok") || !null_out.contains("null"));
+
+        let no_args_call = McpPagerServer::handle_jsonrpc(
+            r#"{"jsonrpc":"2.0","id":99,"method":"tools/call","params":{}}"#,
+            &mut mmu,
+        );
+        assert!(no_args_call.to_string().contains("ICX:STATUS"));
+        let bad_slice = McpPagerServer::execute_icx_op(
+            &serde_json::json!({"op": "slice", "id": exit_res.artifact_id.to_string(), "range": [0, 5]}),
+            &mut mmu,
+        );
+        assert!(bad_slice.starts_with("ERR:"));
+
+        // Verify MMU error paths for missing artifacts, malformed handles, and invalid line ranges
         assert!(mmu.resolve_handle("not_a_handle").is_err());
         assert!(mmu.deref_text(icx_core::ArtifactId(0xDEAD_BEEF)).is_err());
         assert!(
             mmu.deref_lines(icx_core::ArtifactId(0xDEAD_BEEF), 1, 2)
                 .is_err()
         );
+        assert!(mmu.deref_lines(exit_res.artifact_id, 0, 2).is_err());
     }
 }

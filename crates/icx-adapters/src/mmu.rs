@@ -69,6 +69,37 @@ impl InfinityContextMmu {
         }
     }
 
+    /// Extracts an optional process `exit_code` from a structured hook JSON payload
+    /// (checking top-level and object-typed nested `"tool_response"`, `"toolResponse"`,
+    /// `"toolResult"`, or `"result"` containers for `"exit_code"` and `"exitCode"`).
+    pub fn extract_exit_code(payload: &serde_json::Value) -> Option<i32> {
+        let parse_code = |v: &serde_json::Value| -> Option<i32> {
+            v.as_i64().and_then(|n| i32::try_from(n).ok())
+        };
+        let extract_from_obj = |obj: &serde_json::Value| -> Option<i32> {
+            if !obj.is_object() {
+                return None;
+            }
+            for key in ["exit_code", "exitCode"] {
+                if let Some(code) = obj.get(key).and_then(parse_code) {
+                    return Some(code);
+                }
+            }
+            None
+        };
+        if let Some(code) = extract_from_obj(payload) {
+            return Some(code);
+        }
+        for container in ["tool_response", "toolResponse", "toolResult", "result"] {
+            if let Some(resp) = payload.get(container)
+                && let Some(code) = extract_from_obj(resp)
+            {
+                return Some(code);
+            }
+        }
+        None
+    }
+
     /// Ingests a tool output or turn, redacting secrets, storing lossless bytes in `CasStore`,
     /// indexing in 10,240-bit HDC + Fractal + Bi-Temporal Graph, recording in the Merkle-DAG,
     /// and broadcasting high-surprise events onto the `/dev/shm` Seqlock Telepathy Bus.
@@ -77,6 +108,19 @@ impl InfinityContextMmu {
         agent: AgentKind,
         subject: &str,
         raw_text: &str,
+        force_anomaly: bool,
+    ) -> IngestResult {
+        self.ingest_payload_with_exit_code(agent, subject, raw_text, None, force_anomaly)
+    }
+
+    /// Ingests a tool output or turn with an optional process `exit_code` (`Some(code != 0)`
+    /// triggers Titans anomaly boost and records a functional `exit_code` edge in `BiTemporalGraph`).
+    pub fn ingest_payload_with_exit_code(
+        &mut self,
+        agent: AgentKind,
+        subject: &str,
+        raw_text: &str,
+        exit_code: Option<i32>,
         force_anomaly: bool,
     ) -> IngestResult {
         self.clock_ms += 10;
@@ -109,39 +153,60 @@ impl InfinityContextMmu {
         let raw_bytes = sanitized.len();
         let (artifact_id, _) = self.cas.put_bytes(sanitized.as_bytes());
 
-        let mut receipt =
-            self.hdc_index
-                .observe_event(artifact_id, subject, &sanitized, force_anomaly);
+        let mut receipt = self.hdc_index.observe_event_with_exit_code(
+            artifact_id,
+            subject,
+            &sanitized,
+            exit_code,
+            force_anomaly,
+        );
         if was_redacted {
             receipt.hologram_bytes[7] |= icx_codec::FLAG_IS_REDACTED;
         }
 
-        let packet = StructuralSkeletonizer::compress_sanitized_to_packet(
+        let mut packet = StructuralSkeletonizer::compress_sanitized_to_packet(
             subject,
             &sanitized,
             Some(artifact_id),
             receipt.hologram_bytes,
         );
+        packet.clauses.retain(|c| c.key != "exit_code");
+        if let Some(code) = exit_code {
+            packet.clauses.push(icx_codec::AhtlClause::new(
+                if code == 0 {
+                    icx_codec::ClauseOp::Verified
+                } else {
+                    icx_codec::ClauseOp::Anomaly
+                },
+                "exit_code",
+                Some(code.to_string()),
+            ));
+        }
         let ahtl_rendered = packet.render();
 
         // Populate Bi-Temporal Graph with extracted clause relations
         let edge_weight = receipt.verdict.momentum_surprise.max(0.2);
-        for clause in &packet.clauses {
-            if let Some(val) = &clause.value {
-                let is_functional = matches!(
-                    clause.key.as_str(),
-                    "status" | "test_status" | "return_type" | "fail" | "pass" | "exit_code"
-                );
-                self.graph.upsert_edge(
-                    subject,
-                    &clause.key,
-                    val,
-                    is_functional,
-                    self.clock_ms,
-                    artifact_id,
-                    edge_weight,
-                );
+        for (key, val) in packet
+            .clauses
+            .iter()
+            .filter_map(|c| c.value.as_deref().map(|v| (c.key.as_str(), v)))
+        {
+            if subject.trim().is_empty() || key.trim().is_empty() || val.trim().is_empty() {
+                continue;
             }
+            let is_functional = matches!(
+                key,
+                "status" | "test_status" | "return_type" | "fail" | "pass" | "exit_code"
+            );
+            self.graph.upsert_edge(
+                subject,
+                key,
+                val,
+                is_functional,
+                self.clock_ms,
+                artifact_id,
+                edge_weight,
+            );
         }
 
         let est_tokens = (raw_bytes / 4).max(1);

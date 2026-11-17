@@ -43,7 +43,7 @@ struct EntrySummary {
 #[derive(Clone, Debug)]
 pub struct IndexedEntry {
     pub artifact_id: ArtifactId,
-    pub subject: String,
+    subject: String,
     subject_lower: String,
     pub hv: Hypervector,
     pub fractal_coord: FractalCoord,
@@ -51,6 +51,32 @@ pub struct IndexedEntry {
 }
 
 impl IndexedEntry {
+    /// Creates a new `IndexedEntry` with precomputed lowercase subject invariant.
+    pub fn new(
+        artifact_id: ArtifactId,
+        subject: impl Into<String>,
+        hv: Hypervector,
+        fractal_coord: FractalCoord,
+        surprise: f32,
+    ) -> Self {
+        let subject = subject.into();
+        let subject_lower = subject.to_ascii_lowercase();
+        Self {
+            artifact_id,
+            subject,
+            subject_lower,
+            hv,
+            fractal_coord,
+            surprise,
+        }
+    }
+
+    /// Returns the original subject string.
+    #[inline]
+    pub fn subject(&self) -> &str {
+        &self.subject
+    }
+
     /// Returns the cached lowercase subject string.
     #[inline]
     pub fn subject_lower(&self) -> &str {
@@ -137,12 +163,43 @@ impl HdcAssociativeIndex {
     }
 
     #[inline]
+    fn composite_token_bloom32(comp: &str) -> u32 {
+        let mut mask = 0u32;
+        if comp.len() >= 2 {
+            mask |= Self::token_bloom_bits32(comp);
+        }
+        let mut seg_starts = [0usize; 8];
+        let mut seg_count = 0usize;
+        let mut byte_idx = 0usize;
+        for seg in comp.split(['/', ':']) {
+            let start = byte_idx;
+            let end = start + seg.len();
+            byte_idx = end + 1;
+            if seg.len() >= 2 {
+                mask |= Self::token_bloom_bits32(seg);
+            }
+            if !seg.is_empty() {
+                for &prev_start in &seg_starts[..seg_count] {
+                    mask |= Self::token_bloom_bits32(&comp[prev_start..end]);
+                }
+                if seg_count == seg_starts.len() {
+                    seg_starts.copy_within(1.., 0);
+                    seg_count -= 1;
+                }
+                seg_starts[seg_count] = start;
+                seg_count += 1;
+            }
+        }
+        mask
+    }
+
+    #[inline]
     fn compute_subject_bloom32(subject_lower: &str) -> u32 {
         let mut mask = 0u32;
-        for tok in subject_lower.split(|c: char| !c.is_alphanumeric() && c != '_') {
-            if tok.len() >= 2 {
-                mask |= Self::token_bloom_bits32(tok);
-            }
+        for comp in
+            subject_lower.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
+        {
+            mask |= Self::composite_token_bloom32(comp);
         }
         if !subject_lower.is_empty() {
             mask |= Self::token_bloom_bits32(subject_lower);
@@ -171,7 +228,6 @@ impl HdcAssociativeIndex {
         exit_code: Option<i32>,
         force_anomaly: bool,
     ) -> ObservationReceipt {
-        let subject_lower = subject.to_ascii_lowercase();
         let composite_hv = Hypervector::encode_text(&format!("{subject} {content}"));
 
         let verdict = self.surprise_gate.observe_with_exit_code(
@@ -202,28 +258,73 @@ impl HdcAssociativeIndex {
             sketch[0], sketch[1], sketch[2], sketch[3], quad[0], quad[1], surp_byte, flags_byte,
         ];
 
+        let entry = IndexedEntry::new(
+            artifact_id,
+            subject,
+            composite_hv,
+            current_trajectory,
+            verdict.momentum_surprise,
+        );
         self.summaries.push(EntrySummary {
             hv_sub64: composite_hv.sub_hypervector_64(),
-            subj_bloom32: Self::compute_subject_bloom32(&subject_lower),
+            subj_bloom32: Self::compute_subject_bloom32(entry.subject_lower()),
             quadrant_u16: quad_u16,
             surprise_q8: surp_byte,
             flags: flags_byte,
         });
-
-        self.entries.push(IndexedEntry {
-            artifact_id,
-            subject: subject.to_owned(),
-            subject_lower,
-            hv: composite_hv,
-            fractal_coord: current_trajectory,
-            surprise: verdict.momentum_surprise,
-        });
+        self.entries.push(entry);
 
         ObservationReceipt {
             verdict,
             fractal_coord: current_trajectory,
             hologram_bytes,
         }
+    }
+
+    #[inline]
+    fn subject_matches_token(subject_lower: &str, tok: &str) -> bool {
+        if !tok.contains('/') && !tok.contains(':') && tok.chars().count() >= 4 {
+            return subject_lower.contains(tok);
+        }
+        if tok.is_empty() {
+            return false;
+        }
+        let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
+        let left_seg_long = tok
+            .split(['/', ':'])
+            .next()
+            .is_some_and(|s| s.chars().count() >= 4);
+        let right_seg_long = tok
+            .rsplit(['/', ':'])
+            .next()
+            .is_some_and(|s| s.chars().count() >= 4);
+        let tok_left_sep = left_seg_long || tok.chars().next().is_some_and(|c| !is_word_char(c));
+        let tok_right_sep =
+            right_seg_long || tok.chars().next_back().is_some_and(|c| !is_word_char(c));
+        let mut start = 0usize;
+        while let Some(rel) = subject_lower[start..].find(tok) {
+            let pos = start + rel;
+            let end = pos + tok.len();
+            let left_ok = tok_left_sep
+                || subject_lower[..pos]
+                    .chars()
+                    .next_back()
+                    .is_none_or(|c| !is_word_char(c));
+            let right_ok = tok_right_sep
+                || subject_lower[end..]
+                    .chars()
+                    .next()
+                    .is_none_or(|c| !is_word_char(c));
+            if left_ok && right_ok {
+                return true;
+            }
+            start = pos
+                + subject_lower[pos..]
+                    .chars()
+                    .next()
+                    .map_or(1, char::len_utf8);
+        }
+        false
     }
 
     #[inline]
@@ -236,7 +337,7 @@ impl HdcAssociativeIndex {
         let text_sim = q_hv.similarity(&e.hv);
         let lexical_overlap = q_tokens
             .iter()
-            .filter(|t| e.subject_lower.contains(t.as_str()))
+            .filter(|t| Self::subject_matches_token(&e.subject_lower, t.as_str()))
             .count() as f32;
         let hdc_sim = (text_sim + 0.25 * lexical_overlap).clamp(0.0, 1.0);
         let suffix = self
@@ -284,13 +385,9 @@ impl HdcAssociativeIndex {
                 let q_sub64 = q_hv.sub_hypervector_64();
                 let mut q_bloom32 = 0u32;
                 for tok in &q_tokens {
-                    q_bloom32 |= Self::token_bloom_bits32(tok);
-                    for sub in tok.split(|c: char| !c.is_alphanumeric() && c != '_') {
-                        if sub.len() >= 2 {
-                            q_bloom32 |= Self::token_bloom_bits32(sub);
-                        }
-                    }
+                    q_bloom32 |= Self::composite_token_bloom32(tok);
                 }
+                let q_bloom_bits = q_bloom32.count_ones().max(1);
                 let cur_quad = self.current_trajectory().quadrant_signature_u16();
                 let mut candidates: Vec<(u32, usize)> = Vec::with_capacity(candidate_cap);
                 let mut min_score = 0u32;
@@ -298,10 +395,12 @@ impl HdcAssociativeIndex {
 
                 for (idx, s) in self.summaries.iter().enumerate() {
                     let sim64 = 64u32.saturating_sub((q_sub64 ^ s.hv_sub64).count_ones());
-                    let bloom_hits = (q_bloom32 & s.subj_bloom32).count_ones();
+                    let raw_bloom_hits = (q_bloom32 & s.subj_bloom32).count_ones();
+                    let subj_density = s.subj_bloom32.count_ones().max(2);
+                    let norm_bloom = (raw_bloom_hits * 64) / subj_density.max(q_bloom_bits);
                     let quad_sim = 16u32.saturating_sub((cur_quad ^ s.quadrant_u16).count_ones());
-                    let coarse = sim64 * 8
-                        + bloom_hits * 64
+                    let coarse = sim64 * 10
+                        + norm_bloom * 4
                         + (u32::from(s.surprise_q8) >> 1)
                         + quad_sim * 4
                         + u32::from(s.flags & 0x04) * 4;
@@ -386,6 +485,15 @@ mod tests {
             idx.latest_entry().map(IndexedEntry::subject_lower),
             Some("src/mmu.rs")
         );
+        let manual_entry = IndexedEntry::new(
+            ArtifactId(7),
+            "src/Manual.rs",
+            Hypervector::zero(),
+            FractalCoord::default(),
+            0.5,
+        );
+        assert_eq!(manual_entry.subject(), "src/Manual.rs");
+        assert_eq!(manual_entry.subject_lower(), "src/manual.rs");
         assert_ne!(idx.current_trajectory(), init_traj);
         assert_eq!(receipt.fractal_coord, idx.current_trajectory());
         let hits = idx.query_associative("allocate_page mmu", 3);
@@ -408,9 +516,43 @@ mod tests {
             "pub fn locate_quantum_passkey() { panic!(\"E0502 quantum fault\"); }",
             true,
         );
-        let staged_hits = trait_ref.query_associative("quantum_needle locate_quantum_passkey", 5);
+        let staged_hits = trait_ref.query_associative(
+            "crates/icx-core/src/quantum_needle locate_quantum_passkey a/b",
+            5,
+        );
         assert_eq!(staged_hits.len(), 5);
         assert_eq!(staged_hits[0].artifact_id, ArtifactId(999));
+        assert!(HdcAssociativeIndex::subject_matches_token(
+            "pkg:a/b:item",
+            "a/b"
+        ));
+        assert!(!HdcAssociativeIndex::subject_matches_token(
+            "pkg:alpha/beta:item",
+            "a/b"
+        ));
+        assert!(!HdcAssociativeIndex::subject_matches_token("café", "é"));
+        assert!(!HdcAssociativeIndex::subject_matches_token("α1", "α"));
+        assert!(HdcAssociativeIndex::subject_matches_token(
+            "src/é/mod.rs",
+            "é"
+        ));
+        assert!(HdcAssociativeIndex::subject_matches_token(
+            "myfoo/foo/foo",
+            "foo/foo"
+        ));
+        assert!(HdcAssociativeIndex::subject_matches_token(
+            "src/quantum_needle_v2.rs",
+            "src/quantum_needle"
+        ));
+        assert!(!HdcAssociativeIndex::subject_matches_token("myfoo", ""));
+        let _ = trait_ref.observe_event(ArtifactId(1000), "", "empty subject body", false);
+        let _ = trait_ref.observe_event(
+            ArtifactId(1001),
+            "dir/a/b x:y a:b/c a/b/c/d/e/f/g/h/i/j",
+            "short composite",
+            false,
+        );
+        let _ = trait_ref.query_associative("a:b/c a/b", 5);
 
         // Verify requesting top_k > 64 returns all requested hits up to entries.len()
         let large_hits = trait_ref.query_associative("helper module", 100);

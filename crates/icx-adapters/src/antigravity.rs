@@ -76,18 +76,41 @@ impl AntigravityAdapter {
                 let args_str = payload
                     .get("toolCall")
                     .and_then(|tc| tc.get("args"))
+                    .filter(|v| !v.is_null())
                     .map(Value::to_string)
                     .unwrap_or_default();
-                let err_str = payload.get("error").and_then(Value::as_str).unwrap_or("");
-                let combined = if err_str.is_empty() {
-                    args_str
+                let resp_str = ["toolResponse", "tool_response", "toolResult", "result"]
+                    .into_iter()
+                    .find_map(|k| payload.get(k).filter(|v| !v.is_null()))
+                    .map(|v| match v {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    })
+                    .unwrap_or_default();
+                let err_str = payload
+                    .get("error")
+                    .filter(|v| !v.is_null())
+                    .map(|v| match v {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    })
+                    .unwrap_or_default();
+                let err_line = if err_str.is_empty() {
+                    String::new()
                 } else {
-                    format!("{args_str}\nerror: {err_str}")
+                    format!("error: {err_str}")
                 };
-                let _ = mmu.ingest_payload(
+                let combined = [args_str, resp_str, err_line]
+                    .into_iter()
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let exit_code = InfinityContextMmu::extract_exit_code(&payload);
+                let _ = mmu.ingest_payload_with_exit_code(
                     AgentKind::AntigravityCli,
                     tool_name,
                     &combined,
+                    exit_code,
                     !err_str.is_empty(),
                 );
                 json!({})

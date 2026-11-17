@@ -53,13 +53,20 @@ impl ClaudeCodeAdapter {
                     .get("tool_name")
                     .and_then(Value::as_str)
                     .unwrap_or("Tool");
-                let raw_output = match payload.get("tool_response") {
+                let raw_output = match payload.get("tool_response").filter(|v| !v.is_null()) {
                     Some(Value::String(s)) => s.clone(),
                     Some(other) => other.to_string(),
                     None => String::new(),
                 };
 
-                let res = mmu.ingest_payload(AgentKind::ClaudeCode, tool_name, &raw_output, false);
+                let exit_code = InfinityContextMmu::extract_exit_code(&payload);
+                let res = mmu.ingest_payload_with_exit_code(
+                    AgentKind::ClaudeCode,
+                    tool_name,
+                    &raw_output,
+                    exit_code,
+                    false,
+                );
                 if res.was_virtualized {
                     let stub = format!(
                         "⟪ICX:STUB│{}│raw={}B→{}B⟫\n{}",
