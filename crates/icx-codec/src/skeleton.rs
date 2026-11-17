@@ -96,14 +96,14 @@ impl StructuralSkeletonizer {
             Some(text.len().to_string()),
         ));
 
-        AhtlPacket {
-            kind: PacketKind::ToolStub,
-            subject: Self::compact_token(subject),
-            line_range: Some((1, total_lines)),
+        AhtlPacket::new(
+            PacketKind::ToolStub,
+            Self::compact_token(subject),
+            Some((1, total_lines)),
             clauses,
             deref_id,
             hologram_bytes,
-        }
+        )
     }
 
     fn skeletonize_diff(
@@ -147,14 +147,14 @@ impl StructuralSkeletonizer {
             ),
         );
 
-        AhtlPacket {
-            kind: PacketKind::CodeDelta,
-            subject: Self::compact_token(subject),
-            line_range: Some((1, total_lines)),
+        AhtlPacket::new(
+            PacketKind::CodeDelta,
+            Self::compact_token(subject),
+            Some((1, total_lines)),
             clauses,
             deref_id,
             hologram_bytes,
-        }
+        )
     }
 
     fn skeletonize_source_or_text(
@@ -204,14 +204,14 @@ impl StructuralSkeletonizer {
             Some(text.len().to_string()),
         ));
 
-        AhtlPacket {
-            kind: PacketKind::CodeDelta,
-            subject: Self::compact_token(subject),
-            line_range: Some((1, total_lines)),
+        AhtlPacket::new(
+            PacketKind::CodeDelta,
+            Self::compact_token(subject),
+            Some((1, total_lines)),
             clauses,
             deref_id,
             hologram_bytes,
-        }
+        )
     }
 
     fn extract_symbol_signature(trimmed: &str) -> Option<String> {
@@ -245,7 +245,10 @@ impl StructuralSkeletonizer {
     fn compact_token(s: &str) -> String {
         let mut out = String::with_capacity(s.len().min(128));
         for ch in s.chars() {
-            if matches!(ch, '⟦' | '⟧' | '⟪' | '⟫' | '⊢' | '⋮' | '↦' | '\n' | '\r') {
+            if matches!(
+                ch,
+                '⟦' | '⟧' | '⟪' | '⟫' | '⊢' | '⋮' | '↦' | '⇒' | '│' | '\n' | '\r'
+            ) {
                 out.push('_');
             } else if ch.is_whitespace() {
                 if !out.ends_with('_') {

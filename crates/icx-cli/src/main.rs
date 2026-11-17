@@ -3,7 +3,7 @@
 use icx_adapters::{
     AntigravityAdapter, ClaudeCodeAdapter, CodexAdapter, InfinityContextMmu, McpPagerServer,
 };
-use icx_codec::{AhtlPacket, StructuralSkeletonizer};
+use icx_codec::{AhtlPacket, StructuralSkeletonizer, WirePacket};
 use icx_core::epoch::{CacheEpochController, EpochControllerConfig};
 use icx_core::{AgentKind, ArtifactId};
 use icx_hdc::hv::Hypervector;
@@ -359,15 +359,40 @@ fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, S
     Ok(out)
 }
 
-fn encode_payload_into_workspace(
+fn render_ingested_profile(
+    mmu: &InfinityContextMmu,
+    compressed_ahtl: String,
+    profile_a: bool,
+) -> Result<String, String> {
+    if !profile_a {
+        return Ok(compressed_ahtl);
+    }
+    let pkt_b = AhtlPacket::parse(&compressed_ahtl).map_err(|e| e.to_string())?;
+    let entry = mmu
+        .hdc_index
+        .latest_entry()
+        .ok_or_else(|| "missing indexed HDC entry after ingest".to_owned())?;
+    let fc_hex = entry.fractal_coord.encode_fc_hex64();
+    let pkt_a = pkt_b
+        .to_profile_a(
+            &fc_hex,
+            &entry.hv.encode_hv_hex16(),
+            entry.hv.spectral_bands_64(),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(pkt_a.render())
+}
+
+fn encode_payload_into_workspace_profile(
     subject: &str,
     content: &str,
     icx_dir: &Path,
+    profile_a: bool,
 ) -> Result<String, String> {
     if !icx_dir.exists() {
         let mut mmu = InfinityContextMmu::default();
         let res = mmu.ingest_payload(AgentKind::GenericMcp, subject, content, false);
-        return Ok(res.compressed_ahtl);
+        return render_ingested_profile(&mmu, res.compressed_ahtl, profile_a);
     }
 
     let _guard = acquire_workspace_lock(icx_dir)?;
@@ -385,28 +410,52 @@ fn encode_payload_into_workspace(
     }
     let res = mmu.ingest_payload(AgentKind::GenericMcp, subject, content, false);
     mmu.cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
-    Ok(res.compressed_ahtl)
+    render_ingested_profile(&mmu, res.compressed_ahtl, profile_a)
+}
+
+#[cfg(test)]
+fn encode_payload_into_workspace(
+    subject: &str,
+    content: &str,
+    icx_dir: &Path,
+) -> Result<String, String> {
+    encode_payload_into_workspace_profile(subject, content, icx_dir, false)
 }
 
 fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
     let Some(path_str) = args.first() else {
-        return Err("Usage: icx encode-ahtl <FILE> [--dir <PATH>]".into());
+        return Err("Usage: icx encode-ahtl <FILE> [--dir <PATH>] [--profile <a|b>]".into());
     };
     let mut dir_str = ".icx";
+    let mut profile_a = false;
     let mut i = 1;
     while i < args.len() {
-        if args[i] == "--dir" && i + 1 < args.len() {
-            dir_str = &args[i + 1];
-            i += 2;
-        } else {
-            i += 1;
+        match args[i].as_str() {
+            "--dir" if i + 1 < args.len() => {
+                dir_str = &args[i + 1];
+                i += 2;
+            }
+            "--profile" if i + 1 < args.len() => {
+                match args[i + 1].to_ascii_lowercase().as_str() {
+                    "a" => profile_a = true,
+                    "b" => profile_a = false,
+                    other => {
+                        return Err(format!(
+                            "icx encode-ahtl error: invalid --profile `{other}` (expected `a` or `b`)"
+                        ));
+                    }
+                }
+                i += 2;
+            }
+            _ => i += 1,
         }
     }
     let content =
         fs::read_to_string(path_str).map_err(|e| format!("Failed to read `{path_str}`: {e}"))?;
 
-    let compressed_ahtl = encode_payload_into_workspace(path_str, &content, Path::new(dir_str))
-        .map_err(|e| format!("icx encode-ahtl error: {e}"))?;
+    let compressed_ahtl =
+        encode_payload_into_workspace_profile(path_str, &content, Path::new(dir_str), profile_a)
+            .map_err(|e| format!("icx encode-ahtl error: {e}"))?;
     println!("{compressed_ahtl}");
     Ok(())
 }
@@ -415,16 +464,30 @@ fn run_decode_ahtl(args: &[String]) -> Result<(), String> {
     let Some(encoded) = args.first() else {
         return Err("Usage: icx decode-ahtl '<AHTL_PACKET>'".into());
     };
-    let pkt =
-        AhtlPacket::parse(encoded).map_err(|e| format!("Failed to parse AHTL packet: {e}"))?;
-    println!("Kind:       {:?} ({})", pkt.kind, pkt.kind.glyph());
-    println!("Subject:    {}", pkt.subject);
-    println!("Line Range: {:?}", pkt.line_range);
-    println!("Deref ID:   {:?}", pkt.deref_id.map(|id| id.to_string()));
-    println!("Hologram:   {:02x?}", pkt.hologram_bytes);
-    println!("Clauses ({}):", pkt.clauses.len());
-    for c in &pkt.clauses {
-        println!("  - {}", c.render());
+    match WirePacket::parse_auto(encoded)
+        .map_err(|e| format!("Failed to parse AHTL packet: {e}"))?
+    {
+        WirePacket::ProfileB(pkt) => {
+            println!("Profile:    B (Interoperable Dual-Channel)");
+            println!("Kind:       {:?} ({})", pkt.kind, pkt.kind.glyph());
+            println!("Subject:    {}", pkt.subject);
+            println!("Line Range: {:?}", pkt.line_range);
+            println!("Deref ID:   {:?}", pkt.deref_handle_string());
+            println!("Slice Hint: {:?}", pkt.slice_hint);
+            println!("Hologram:   {:02x?}", pkt.hologram_bytes);
+            println!("Clauses ({}):", pkt.clauses.len());
+            for c in &pkt.clauses {
+                println!("  - {}", c.render());
+            }
+        }
+        WirePacket::ProfileA(pkt) => {
+            println!("Profile:    A (Canonical AHTL v1 6-Section Wire)");
+            println!("CAS Handle: {}", pkt.cas_handle_string());
+            println!("Fractal FC: fc:{}", pkt.fractal_coord_hex);
+            println!("HDC Digest: hv:{}", pkt.hdc_digest_hex);
+            println!("Spectrum:   64 Braille bands (512 bits)");
+            println!("Skeleton:   {}", pkt.skeleton_body);
+        }
     }
     Ok(())
 }
@@ -783,7 +846,7 @@ mod tests {
                 "--provider".into(),
                 "anthropic".into(),
                 "--dir".into(),
-                dir_arg,
+                dir_arg.clone(),
             ],
             io::Cursor::new(
                 r#"{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hi"}]}"#,
@@ -838,6 +901,51 @@ mod tests {
         let lock_dir_ws = tmp_dir.join("bad_lock_ws");
         fs::create_dir_all(lock_dir_ws.join("cas_store.lock")).unwrap();
         assert!(acquire_workspace_lock(&lock_dir_ws).is_err());
+
+        // Test Profile A encode-ahtl and decode-ahtl
+        let sample_file = tmp_dir.join("profile_a_sample.rs");
+        fs::write(&sample_file, "pub fn compute_spectrum() -> u64 { 42 }\n").unwrap();
+        let wire_a = encode_payload_into_workspace_profile(
+            "profile_a_sample.rs",
+            "pub fn compute_spectrum() -> u64 { 42 }\n",
+            &tmp_dir,
+            true,
+        )
+        .unwrap();
+        let wire_a_ephemeral = encode_payload_into_workspace_profile(
+            "profile_a_sample.rs",
+            "pub fn compute_spectrum() -> u64 { 42 }\n",
+            &tmp_dir.join("nonexistent_ws"),
+            true,
+        )
+        .unwrap();
+        assert!(wire_a.starts_with("⟦AHTL v1│"));
+        assert!(wire_a_ephemeral.starts_with("⟦AHTL v1│"));
+        run_encode_ahtl(&[
+            sample_file.to_string_lossy().into_owned(),
+            "--dir".into(),
+            dir_arg.clone(),
+            "--profile".into(),
+            "a".into(),
+        ])
+        .unwrap();
+        run_encode_ahtl(&[
+            sample_file.to_string_lossy().into_owned(),
+            "--dir".into(),
+            dir_arg,
+            "--profile".into(),
+            "b".into(),
+        ])
+        .unwrap();
+        assert!(
+            run_encode_ahtl(&[
+                sample_file.to_string_lossy().into_owned(),
+                "--profile".into(),
+                "invalid_profile".into(),
+            ])
+            .is_err()
+        );
+        run_decode_ahtl(&[wire_a]).unwrap();
 
         let _ = fs::remove_dir_all(&tmp_dir);
     }
