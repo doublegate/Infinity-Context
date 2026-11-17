@@ -30,34 +30,39 @@ Offset 0x0001_0000 .. 0x00FF_FFFF (~16 MiB): SeqlockSlotRing (4,080 Slots x 4,09
 
 ```rust
 pub const ICX_SHM_MAGIC: u64 = 0x4943_585F_4641_4231; // "ICX_FAB1"
-pub const ICX_RING_SLOTS: usize = 4080;
+pub const ICX_RING_SLOTS: usize = 256;
 
 #[repr(C, align(64))]
 pub struct FabricHeader {
-    pub magic: u64,
+    pub magic: std::sync::atomic::AtomicU64,
     pub version: u32,
-    pub flags: u32,
+    pub root_seqlock: std::sync::atomic::AtomicU32,
     /// Monotonically increasing global sequence counter (AtomicU64)
     pub write_seq: std::sync::atomic::AtomicU64,
-    /// Latest sealed global Merkle-DAG root hash
-    pub global_dag_root: [u8; 32],
+    /// Bitmask of active AgentKind variants attached to the fabric
+    pub active_agents_mask: std::sync::atomic::AtomicU64,
+    /// Latest sealed global Merkle-DAG root hash (seqlock-versioned via `root_seqlock`)
+    pub global_dag_root: [std::sync::atomic::AtomicU64; 4],
 }
 
 #[repr(C, align(64))]
 pub struct SeqlockSlot {
-    /// Odd while writer is mutating; even (= seq * 2) when committed
+    /// Odd while writer is mutating; even (= (seq + 1) * 2) when committed
     pub seqlock: std::sync::atomic::AtomicU64,
-    pub timestamp_ns: u64,
+    pub timestamp_ms: u64,
     pub artifact_id: u64,
+    pub workspace_hash: u64,
     pub agent_kind: u8,
     pub packet_kind: u8,
     pub surprise_q8: u8,
+    pub _reserved_u8: u8,
     pub payload_len: u16,
-    pub workspace_hash: u64,
+    pub _reserved_u16: u16,
     /// Compact 256-bit sketch of the 10,240-bit HDC hypervector
     pub hdc_sketch: [u64; 4],
     /// Quantized 16-D Fractal Chaos-Game coordinate (i16 fixed-point in [-32767, 32767])
     pub fractal_q15: [i16; 16],
+    pub _pad: [u8; 24],
     /// Inline UTF-8 AHTL Holographic Packet (up to 3,968 bytes)
     pub ahtl_bytes: [u8; 3968],
 }

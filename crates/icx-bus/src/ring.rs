@@ -1,7 +1,8 @@
 //! Lock-Free Seqlock Ring Buffer (`SeqlockTelemetryBus`) over POSIX shared memory (`/dev/shm`)
 //! or in-process aligned memory for `< 100 µs` cross-agent telepathy.
 
-use core::sync::atomic::{fence, AtomicU64, Ordering};
+use core::cell::UnsafeCell;
+use core::sync::atomic::{fence, AtomicU32, AtomicU64, Ordering};
 use icx_core::{AgentKind, ArtifactId};
 use memmap2::{MmapMut, MmapOptions};
 use serde::{Deserialize, Serialize};
@@ -14,6 +15,9 @@ pub const ICX_SHM_MAGIC: u64 = 0x4943_585F_4641_4231; // "ICX_FAB1"
 pub const ICX_SHM_VERSION: u32 = 1;
 pub const ICX_RING_SLOTS: usize = 256;
 pub const ICX_AHTL_INLINE_CAP: usize = 3968;
+
+/// Maximum spin-loop iterations before a writer recovers a slot or root lock abandoned by a crashed process.
+const MAX_WRITER_SPIN_ITERS: u32 = 4096;
 
 /// Error returned by `SeqlockTelemetryBus` operations.
 #[derive(Debug, Error)]
@@ -32,9 +36,9 @@ pub enum BusError {
 #[repr(C, align(64))]
 #[derive(Debug)]
 pub struct FabricHeader {
-    pub magic: u64,
+    pub magic: AtomicU64,
     pub version: u32,
-    pub flags: u32,
+    pub root_seqlock: AtomicU32,
     pub write_seq: AtomicU64,
     pub active_agents_mask: AtomicU64,
     pub global_dag_root: [AtomicU64; 4],
@@ -73,6 +77,15 @@ pub struct FabricMemoryLayout {
     pub slots: [SeqlockSlot; ICX_RING_SLOTS],
 }
 
+/// Thread-safe wrapper around `UnsafeCell<FabricMemoryLayout>` for in-process shared memory.
+struct SharedLayoutCell(UnsafeCell<FabricMemoryLayout>);
+
+// SAFETY: All concurrent accesses to `FabricMemoryLayout` are synchronized via atomic seqlock
+// operations (`AtomicU64` / `AtomicU32` with `Acquire`/`Release` fences).
+unsafe impl Send for SharedLayoutCell {}
+// SAFETY: See above.
+unsafe impl Sync for SharedLayoutCell {}
+
 /// Decoded cross-agent telepathy packet read from the `SeqlockTelemetryBus`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TelepathyEvent {
@@ -90,7 +103,7 @@ pub struct TelepathyEvent {
 
 #[derive(Clone)]
 enum BackingStore {
-    InProcess(Arc<FabricMemoryLayout>),
+    InProcess(Arc<SharedLayoutCell>),
     SharedMmap(Arc<MmapMut>),
 }
 
@@ -161,26 +174,37 @@ impl SeqlockTelemetryBus {
         // seqlock protocol primitives.
         let mut mmap = unsafe { MmapOptions::new().len(required_len).map_mut(&file)? };
 
+        let layout_ptr = mmap.as_mut_ptr().cast::<FabricMemoryLayout>();
         // SAFETY: `mmap` is page-aligned (>= 64-byte alignment) and has length `required_len`.
-        let layout_ref = unsafe { &mut *(mmap.as_mut_ptr().cast::<FabricMemoryLayout>()) };
-        if is_new || layout_ref.header.magic == 0 {
-            layout_ref.header.magic = ICX_SHM_MAGIC;
-            layout_ref.header.version = ICX_SHM_VERSION;
-            layout_ref.header.flags = 0;
-            layout_ref.header.write_seq.store(0, Ordering::Release);
-            layout_ref
-                .header
-                .active_agents_mask
-                .store(0, Ordering::Release);
-            for word in &layout_ref.header.global_dag_root {
-                word.store(0, Ordering::Release);
-            }
-        } else {
-            if layout_ref.header.magic != ICX_SHM_MAGIC {
-                return Err(BusError::InvalidMagic);
-            }
-            if layout_ref.header.version != ICX_SHM_VERSION {
-                return Err(BusError::UnsupportedVersion(layout_ref.header.version));
+        unsafe {
+            let current_magic = (*layout_ptr).header.magic.load(Ordering::Acquire);
+            if is_new || current_magic == 0 {
+                core::ptr::write_volatile(&raw mut (*layout_ptr).header.version, ICX_SHM_VERSION);
+                (*layout_ptr)
+                    .header
+                    .root_seqlock
+                    .store(0, Ordering::Release);
+                (*layout_ptr).header.write_seq.store(0, Ordering::Release);
+                (*layout_ptr)
+                    .header
+                    .active_agents_mask
+                    .store(0, Ordering::Release);
+                for word in &(*layout_ptr).header.global_dag_root {
+                    word.store(0, Ordering::Release);
+                }
+                fence(Ordering::Release);
+                (*layout_ptr)
+                    .header
+                    .magic
+                    .store(ICX_SHM_MAGIC, Ordering::Release);
+            } else {
+                if current_magic != ICX_SHM_MAGIC {
+                    return Err(BusError::InvalidMagic);
+                }
+                let ver = core::ptr::read_volatile(&raw const (*layout_ptr).header.version);
+                if ver != ICX_SHM_VERSION {
+                    return Err(BusError::UnsupportedVersion(ver));
+                }
             }
         }
 
@@ -189,46 +213,51 @@ impl SeqlockTelemetryBus {
         })
     }
 
-    fn heap_zeroed_layout() -> Arc<FabricMemoryLayout> {
-        let alloc_layout = std::alloc::Layout::new::<FabricMemoryLayout>();
-        // SAFETY: `FabricMemoryLayout` has non-zero size and consists exclusively of integer
-        // primitives and `AtomicU64` where all-zero bytes are a valid representation.
+    fn heap_zeroed_layout() -> Arc<SharedLayoutCell> {
+        let alloc_layout = std::alloc::Layout::new::<SharedLayoutCell>();
+        // SAFETY: `SharedLayoutCell` has non-zero size and consists exclusively of integer
+        // primitives and atomics where all-zero bytes are a valid representation.
         unsafe {
-            let ptr = std::alloc::alloc_zeroed(alloc_layout).cast::<FabricMemoryLayout>();
+            let ptr = std::alloc::alloc_zeroed(alloc_layout).cast::<SharedLayoutCell>();
             if ptr.is_null() {
                 std::alloc::handle_alloc_error(alloc_layout);
             }
-            (*ptr).header.magic = ICX_SHM_MAGIC;
-            (*ptr).header.version = ICX_SHM_VERSION;
+            let inner = (*ptr).0.get();
+            (*inner).header.version = ICX_SHM_VERSION;
+            (*inner)
+                .header
+                .magic
+                .store(ICX_SHM_MAGIC, Ordering::Release);
             let boxed = Box::from_raw(ptr);
             Arc::from(boxed)
         }
     }
 
     #[inline]
-    fn layout(&self) -> &FabricMemoryLayout {
+    fn layout_ptr(&self) -> *mut FabricMemoryLayout {
         match &self.backing {
-            BackingStore::InProcess(arc) => arc.as_ref(),
-            BackingStore::SharedMmap(mmap) => {
-                // SAFETY: `mmap` is validated at creation to have length `size_of::<FabricMemoryLayout>()`
-                // and page alignment >= 64 bytes.
-                unsafe { &*(mmap.as_ptr().cast::<FabricMemoryLayout>()) }
-            }
+            BackingStore::InProcess(arc) => arc.0.get(),
+            BackingStore::SharedMmap(mmap) => mmap.as_ptr().cast::<FabricMemoryLayout>().cast_mut(),
         }
+    }
+
+    #[inline]
+    fn header(&self) -> &FabricHeader {
+        // SAFETY: `FabricHeader` fields accessed via `&FabricHeader` are atomic or immutable after init.
+        unsafe { &(*self.layout_ptr()).header }
     }
 
     /// Returns the total number of telepathy events published so far.
     #[inline]
     pub fn write_sequence(&self) -> u64 {
-        self.layout().header.write_seq.load(Ordering::Acquire)
+        self.header().write_seq.load(Ordering::Acquire)
     }
 
     /// Registers `agent` in the shared `active_agents_mask` bitmask.
     #[inline]
     pub fn register_agent(&self, agent: AgentKind) {
         let bit = (agent as u8) & 63;
-        self.layout()
-            .header
+        self.header()
             .active_agents_mask
             .fetch_or(1u64 << bit, Ordering::AcqRel);
     }
@@ -236,32 +265,83 @@ impl SeqlockTelemetryBus {
     /// Returns the bitmask of active agents attached to the shared fabric.
     #[inline]
     pub fn active_agents_mask(&self) -> u64 {
-        self.layout()
-            .header
-            .active_agents_mask
-            .load(Ordering::Acquire)
+        self.header().active_agents_mask.load(Ordering::Acquire)
     }
 
-    /// Updates the global 256-bit Merkle-DAG root in `FabricHeader`.
+    /// Updates the global 256-bit Merkle-DAG root in `FabricHeader` as a coherent seqlock-versioned snapshot.
     pub fn set_global_dag_root(&self, root: [u8; 32]) {
-        let header = &self.layout().header;
+        let header = self.header();
+        let mut spins = 0u32;
+        let mut stalled_odd = 0u32;
+        let odd_ver = loop {
+            let cur = header.root_seqlock.load(Ordering::Acquire);
+            if (cur & 1) == 0 {
+                let next_odd = cur.wrapping_add(1);
+                if header
+                    .root_seqlock
+                    .compare_exchange_weak(cur, next_odd, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+                {
+                    break next_odd;
+                }
+            } else if cur == stalled_odd {
+                spins += 1;
+                if spins >= MAX_WRITER_SPIN_ITERS {
+                    let next_odd = cur.wrapping_add(2);
+                    if header
+                        .root_seqlock
+                        .compare_exchange(cur, next_odd, Ordering::AcqRel, Ordering::Acquire)
+                        .is_ok()
+                    {
+                        break next_odd;
+                    }
+                    spins = 0;
+                }
+            } else {
+                stalled_odd = cur;
+                spins = 0;
+            }
+            core::hint::spin_loop();
+        };
+
+        fence(Ordering::AcqRel);
         for (i, chunk) in root.chunks_exact(8).enumerate() {
             let val = u64::from_be_bytes([
                 chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
             ]);
-            header.global_dag_root[i].store(val, Ordering::Release);
+            header.global_dag_root[i].store(val, Ordering::Relaxed);
         }
+        fence(Ordering::AcqRel);
+        header
+            .root_seqlock
+            .store(odd_ver.wrapping_add(1), Ordering::Release);
     }
 
-    /// Reads the global 256-bit Merkle-DAG root from `FabricHeader`.
+    /// Reads a coherent 256-bit Merkle-DAG root snapshot from `FabricHeader`.
     pub fn global_dag_root(&self) -> [u8; 32] {
-        let header = &self.layout().header;
-        let mut out = [0u8; 32];
-        for (i, atom) in header.global_dag_root.iter().enumerate() {
-            let bytes = atom.load(Ordering::Acquire).to_be_bytes();
-            out[i * 8..(i + 1) * 8].copy_from_slice(&bytes);
+        let header = self.header();
+        for _attempt in 0..64 {
+            let s1 = header.root_seqlock.load(Ordering::Acquire);
+            if (s1 & 1) != 0 {
+                core::hint::spin_loop();
+                continue;
+            }
+            let mut words = [0u64; 4];
+            for (i, atom) in header.global_dag_root.iter().enumerate() {
+                words[i] = atom.load(Ordering::Relaxed);
+            }
+            fence(Ordering::Acquire);
+            let s2 = header.root_seqlock.load(Ordering::Acquire);
+            if s1 == s2 {
+                let mut out = [0u8; 32];
+                for (i, w) in words.iter().enumerate() {
+                    out[i * 8..(i + 1) * 8].copy_from_slice(&w.to_be_bytes());
+                }
+                return out;
+            }
+            core::hint::spin_loop();
         }
-        out
+        [0u8; 32]
     }
 
     /// Publishes a cross-agent telepathy event into the ring buffer using the lock-free Seqlock protocol.
@@ -278,27 +358,52 @@ impl SeqlockTelemetryBus {
         timestamp_ms: u64,
     ) -> u64 {
         self.register_agent(agent);
-        let layout = self.layout();
-        let seq = layout.header.write_seq.fetch_add(1, Ordering::AcqRel);
+        let base_ptr = self.layout_ptr();
+        // SAFETY: `base_ptr` points to a valid `FabricMemoryLayout`.
+        let seq = unsafe { (*base_ptr).header.write_seq.fetch_add(1, Ordering::AcqRel) };
         let slot_idx = (seq as usize) % ICX_RING_SLOTS;
         let odd_version = (seq << 1) | 1;
         let even_version = (seq + 1) << 1;
 
-        let slot = &layout.slots[slot_idx];
+        // SAFETY: `slot_idx < ICX_RING_SLOTS` is in-bounds of `(*base_ptr).slots`, and `seqlock` is an `AtomicU64`.
+        let (slot_ptr, seqlock_ref) = unsafe {
+            let ptr = &raw mut (*base_ptr).slots[slot_idx];
+            (ptr, &(*ptr).seqlock)
+        };
+
         // Acquire exclusive per-slot write ownership via CAS from an even seqlock state.
-        // If a newer wrap-around writer has already committed `s >= even_version`, skip mutating the slot.
+        // If a newer wrap-around writer has already committed `s >= even_version`, skip mutating.
+        // If a prior writer crashed (`SIGKILL`) leaving `cur` stuck on a stale odd value across
+        // `MAX_WRITER_SPIN_ITERS`, atomically recover the slot (`cur -> odd_version`).
+        let mut spins = 0u32;
+        let mut stalled_odd = 0u64;
         loop {
-            let cur = slot.seqlock.load(Ordering::Acquire);
+            let cur = seqlock_ref.load(Ordering::Acquire);
             if cur >= even_version {
                 return seq + 1;
             }
-            if (cur & 1) == 0
-                && slot
-                    .seqlock
+            if (cur & 1) == 0 {
+                if seqlock_ref
                     .compare_exchange_weak(cur, odd_version, Ordering::AcqRel, Ordering::Acquire)
                     .is_ok()
-            {
-                break;
+                {
+                    break;
+                }
+            } else if cur == stalled_odd {
+                spins += 1;
+                if spins >= MAX_WRITER_SPIN_ITERS {
+                    if cur == odd_version
+                        || seqlock_ref
+                            .compare_exchange(cur, odd_version, Ordering::AcqRel, Ordering::Acquire)
+                            .is_ok()
+                    {
+                        break;
+                    }
+                    spins = 0;
+                }
+            } else {
+                stalled_odd = cur;
+                spins = 0;
             }
             core::hint::spin_loop();
         }
@@ -308,22 +413,20 @@ impl SeqlockTelemetryBus {
             copy_len -= 1;
         }
         let raw_bytes = &ahtl_packet.as_bytes()[..copy_len];
-        let pkt_kind = if ahtl_packet.contains("⟦Θ:") {
-            b'T'
-        } else if ahtl_packet.contains("⟦Δ:") {
+        let pkt_kind = if ahtl_packet.contains("⟦Δ:") || ahtl_packet.contains("⊢Δ:") {
             b'D'
-        } else if ahtl_packet.contains("⟦Ω:") {
+        } else if ahtl_packet.contains("⟦Ω:") || ahtl_packet.contains("⊢Ω:") {
             b'O'
-        } else if ahtl_packet.contains("⟦Φ:") {
+        } else if ahtl_packet.contains("⟦Φ:") || ahtl_packet.contains("⊢Φ:") {
             b'F'
-        } else {
+        } else if ahtl_packet.contains("⟦Ψ:") || ahtl_packet.contains("⊢Ψ:") {
             b'P'
+        } else {
+            b'T'
         };
 
-        let slot_ptr = (&raw const *slot).cast_mut();
-        // SAFETY: This thread holds exclusive write access to `slot_ptr` because `slot.seqlock` was
-        // transitioned from even to `odd_version` via `compare_exchange_weak`. Volatile writes and
-        // `AcqRel` fences ensure all payload stores complete before `even_version` is published.
+        // SAFETY: This thread holds exclusive write access to `slot_ptr` (`slot.seqlock == odd_version`)
+        // derived directly from the mutable backing pointer (`UnsafeCell` or `MmapMut`).
         unsafe {
             fence(Ordering::AcqRel);
 
@@ -349,8 +452,8 @@ impl SeqlockTelemetryBus {
 
     /// Wait-free optimistic poll of all committed telepathy events with sequence number `> since_seq`.
     pub fn poll_since(&self, since_seq: u64) -> Vec<TelepathyEvent> {
-        let layout = self.layout();
-        let current_head = layout.header.write_seq.load(Ordering::Acquire);
+        let base_ptr = self.layout_ptr().cast_const();
+        let current_head = self.header().write_seq.load(Ordering::Acquire);
         if current_head <= since_seq {
             return Vec::new();
         }
@@ -362,12 +465,15 @@ impl SeqlockTelemetryBus {
         for offset in 0..slot_count {
             let seq = start_seq + (offset as u64);
             let slot_idx = (seq as usize) % ICX_RING_SLOTS;
-            let slot = &layout.slots[slot_idx];
-            let slot_ptr = &raw const *slot;
+            // SAFETY: `slot_idx < ICX_RING_SLOTS` is in-bounds of `(*base_ptr).slots`, and `seqlock` is an `AtomicU64`.
+            let (slot_ptr, seqlock_ref) = unsafe {
+                let ptr = &raw const (*base_ptr).slots[slot_idx];
+                (ptr, &(*ptr).seqlock)
+            };
 
             // Try up to 64 optimistic read attempts in case a writer is actively updating this slot.
             for _attempt in 0..64 {
-                let s1 = slot.seqlock.load(Ordering::Acquire);
+                let s1 = seqlock_ref.load(Ordering::Acquire);
                 if (s1 & 1) != 0 || s1 == 0 {
                     core::hint::spin_loop();
                     continue;
@@ -400,7 +506,7 @@ impl SeqlockTelemetryBus {
                 };
 
                 fence(Ordering::Acquire);
-                let s2 = slot.seqlock.load(Ordering::Acquire);
+                let s2 = seqlock_ref.load(Ordering::Acquire);
                 if s1 != s2 {
                     core::hint::spin_loop();
                     continue;
@@ -598,5 +704,30 @@ mod tests {
         assert_eq!(from_b[0].agent, AgentKind::AntigravityCli);
         assert_eq!(from_b[0].artifact_id, id);
         let _ = std::fs::remove_file(&shm_path);
+
+        // Simulate a crashed writer leaving slot[0].seqlock and header.root_seqlock stuck on odd (1)
+        let recovery_bus = SeqlockTelemetryBus::new_in_memory();
+        // SAFETY: `recovery_bus` owns a valid `FabricMemoryLayout` and we only mutate atomic fields.
+        unsafe {
+            let ptr = recovery_bus.layout_ptr();
+            (*ptr).slots[0].seqlock.store(1, Ordering::Release);
+            (*ptr).header.root_seqlock.store(1, Ordering::Release);
+        }
+        recovery_bus.set_global_dag_root([0x55; 32]);
+        assert_eq!(recovery_bus.global_dag_root(), [0x55; 32]);
+        // Publish 257 events so the ring wraps around to slot[0] and recovers the stalled odd slot
+        for i in 0..=ICX_RING_SLOTS as u64 {
+            recovery_bus.publish(
+                AgentKind::Hermes,
+                ArtifactId(i + 1),
+                0x9999,
+                100,
+                [1; 4],
+                [0; 16],
+                "⟦Θ:hermes@recover⊢✓ok⟧",
+                i,
+            );
+        }
+        assert_eq!(recovery_bus.write_sequence(), (ICX_RING_SLOTS as u64) + 1);
     }
 }

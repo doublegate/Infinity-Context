@@ -63,10 +63,56 @@ Subcommands:
     );
 }
 
-fn init_workspace_dir(icx_dir: &Path) -> Result<(), String> {
+struct WorkspaceLockGuard {
+    lock_path: std::path::PathBuf,
+}
+
+impl Drop for WorkspaceLockGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.lock_path);
+    }
+}
+
+fn acquire_workspace_lock(icx_dir: &Path) -> Result<WorkspaceLockGuard, String> {
     fs::create_dir_all(icx_dir).map_err(|e| e.to_string())?;
+    let lock_path = icx_dir.join("cas_store.lock");
+    for attempt in 0..2_000u32 {
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+        {
+            Ok(_) => return Ok(WorkspaceLockGuard { lock_path }),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                // If an abandoned lockfile is older than 10 seconds, remove it and retry
+                if attempt > 0
+                    && attempt % 200 == 0
+                    && fs::metadata(&lock_path)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok())
+                        .is_some_and(|age| age.as_secs() >= 10)
+                {
+                    let _ = fs::remove_file(&lock_path);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            Err(e) => return Err(format!("failed to acquire workspace lock: {e}")),
+        }
+    }
+    Err(format!(
+        "timed out acquiring workspace lock `{}`",
+        lock_path.display()
+    ))
+}
+
+fn init_workspace_dir(icx_dir: &Path) -> Result<(), String> {
+    let _guard = acquire_workspace_lock(icx_dir)?;
     let cas_path = icx_dir.join("cas_store.json");
-    if !cas_path.exists() {
+    if cas_path.exists() {
+        // Verify existing store integrity before succeeding
+        icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;
+    } else {
         let cas = icx_core::cas::CasStore::new();
         cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
     }
@@ -94,6 +140,26 @@ fn run_init(args: &[String]) {
             std::process::exit(1);
         }
     }
+}
+
+fn parse_line_range_arg(spec: &str) -> Result<(usize, usize), String> {
+    let Some((s, e)) = spec.split_once(':') else {
+        return Err(format!(
+            "invalid --lines `{spec}` (expected START:END, e.g. 1:50)"
+        ));
+    };
+    let start = s
+        .parse::<usize>()
+        .map_err(|_| format!("invalid start line in `{spec}`"))?;
+    let end = e
+        .parse::<usize>()
+        .map_err(|_| format!("invalid end line in `{spec}`"))?;
+    if start == 0 || start > end {
+        return Err(format!(
+            "invalid line range {start}:{end} (expected 1 <= START <= END)"
+        ));
+    }
+    Ok((start, end))
 }
 
 fn deref_from_workspace_dir(
@@ -126,10 +192,11 @@ fn run_deref(args: &[String]) {
                 i += 2;
             }
             "--lines" if i + 1 < args.len() => {
-                let spec = &args[i + 1];
-                if let Some((s, e)) = spec.split_once(':') {
-                    if let (Ok(start), Ok(end)) = (s.parse::<usize>(), e.parse::<usize>()) {
-                        line_range = Some((start, end));
+                match parse_line_range_arg(&args[i + 1]) {
+                    Ok(range) => line_range = Some(range),
+                    Err(e) => {
+                        eprintln!("icx deref error: {e}");
+                        std::process::exit(1);
                     }
                 }
                 i += 2;
@@ -212,6 +279,35 @@ fn run_proxy_transform() {
     }
 }
 
+fn encode_payload_into_workspace(
+    subject: &str,
+    content: &str,
+    icx_dir: &Path,
+) -> Result<String, String> {
+    if !icx_dir.exists() {
+        let mut mmu = InfinityContextMmu::default();
+        let res = mmu.ingest_payload(AgentKind::GenericMcp, subject, content, false);
+        return Ok(res.compressed_ahtl);
+    }
+
+    let _guard = acquire_workspace_lock(icx_dir)?;
+    let mut mmu = InfinityContextMmu::default();
+    let shm_path = icx_dir.join("icx-fabric-v1.shm");
+    if shm_path.exists() {
+        mmu.bus =
+            icx_bus::SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(|e| e.to_string())?;
+    }
+    let cas_path = icx_dir.join("cas_store.json");
+    if cas_path.exists() {
+        // Abort if an existing cas_store.json fails to parse or fails BLAKE3 verification,
+        // rather than overwriting it with an empty store.
+        mmu.cas = icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;
+    }
+    let res = mmu.ingest_payload(AgentKind::GenericMcp, subject, content, false);
+    mmu.cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
+    Ok(res.compressed_ahtl)
+}
+
 fn run_encode_ahtl(args: &[String]) {
     let Some(path_str) = args.first() else {
         eprintln!("Usage: icx encode-ahtl <FILE> [--dir <PATH>]");
@@ -232,16 +328,13 @@ fn run_encode_ahtl(args: &[String]) {
         std::process::exit(1);
     });
 
-    let mut mmu = InfinityContextMmu::default();
-    let icx_dir = Path::new(dir_str);
-    if let Ok(loaded) = icx_core::cas::CasStore::load_from_dir(icx_dir) {
-        mmu.cas = loaded;
+    match encode_payload_into_workspace(path_str, &content, Path::new(dir_str)) {
+        Ok(compressed_ahtl) => println!("{compressed_ahtl}"),
+        Err(e) => {
+            eprintln!("icx encode-ahtl error: {e}");
+            std::process::exit(1);
+        }
     }
-    let res = mmu.ingest_payload(AgentKind::GenericMcp, path_str, &content, false);
-    if icx_dir.exists() {
-        let _ = mmu.cas.save_to_dir(icx_dir);
-    }
-    println!("{}", res.compressed_ahtl);
 }
 
 fn run_decode_ahtl(args: &[String]) {
@@ -431,6 +524,40 @@ mod tests {
         let sliced =
             deref_from_workspace_dir(&tmp_dir, &id.to_short_handle(), Some((2, 3))).unwrap();
         assert_eq!(sliced, "beta line 2\ngamma line 3");
+        assert_eq!(parse_line_range_arg("2:3").unwrap(), (2, 3));
+        assert!(parse_line_range_arg("invalid").is_err());
+        assert!(parse_line_range_arg("0:2").is_err());
+        assert!(parse_line_range_arg("5:2").is_err());
+
+        // Verify concurrent `encode_payload_into_workspace` transactions serialize cleanly
+        // without clobbering each other's CAS artifacts
+        let mut threads = Vec::new();
+        for t in 0..4u32 {
+            let dir_c = tmp_dir.clone();
+            threads.push(std::thread::spawn(move || {
+                let text = format!("pub fn concurrent_fn_{t}() -> u32 {{ {t} }}\n");
+                let pkt_str =
+                    encode_payload_into_workspace(&format!("src/f_{t}.rs"), &text, &dir_c)
+                        .expect("encode succeeds");
+                let pkt = AhtlPacket::parse(&pkt_str).expect("parse packet");
+                (pkt.deref_id.unwrap(), text)
+            }));
+        }
+        let mut expected_artifacts = Vec::new();
+        for h in threads {
+            expected_artifacts.push(h.join().unwrap());
+        }
+        for (aid, expected_text) in expected_artifacts {
+            let recovered = deref_from_workspace_dir(&tmp_dir, &aid.to_string(), None).unwrap();
+            assert_eq!(recovered, expected_text.trim_end_matches('\n'));
+        }
+
+        // Verify that corrupting `cas_store.json` causes `encode_payload_into_workspace` to abort
+        // without overwriting the corrupted file
+        let cas_json_path = tmp_dir.join("cas_store.json");
+        fs::write(&cas_json_path, b"{corrupted_json").unwrap();
+        assert!(encode_payload_into_workspace("src/new.rs", "fn x() {}\n", &tmp_dir).is_err());
+        assert_eq!(fs::read(&cas_json_path).unwrap(), b"{corrupted_json");
 
         let _ = fs::remove_dir_all(&tmp_dir);
     }

@@ -209,16 +209,22 @@ impl InfinityContextMmu {
             .unwrap_or(0);
         let telepathy: Vec<TelepathyEvent> =
             self.bus.poll_workspace_since(cursor, self.workspace_hash);
-        if let Some(last) = telepathy.last() {
-            self.agent_read_cursors
-                .insert(requesting_agent as u8, last.seq);
+        let mut new_cursor = cursor;
+        let mut sibling_taken = 0usize;
+        for ev in telepathy {
+            if ev.agent == requesting_agent {
+                new_cursor = new_cursor.max(ev.seq);
+            } else if sibling_taken < 4 {
+                new_cursor = new_cursor.max(ev.seq);
+                sibling_taken += 1;
+                lines.push(ev.ahtl_packet);
+            } else {
+                break;
+            }
         }
-        for ev in telepathy
-            .into_iter()
-            .filter(|e| e.agent != requesting_agent)
-            .take(4)
-        {
-            lines.push(ev.ahtl_packet);
+        if new_cursor > cursor {
+            self.agent_read_cursors
+                .insert(requesting_agent as u8, new_cursor);
         }
 
         // 2. HDC + Fractal associative hits
