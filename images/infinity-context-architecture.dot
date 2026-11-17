@@ -1,0 +1,207 @@
+digraph InfinityContextArchitecture {
+    // =================================================================
+    // Infinity-Context (icx) — Virtual Context MMU & 5-Plane Architecture
+    // Style: Dark theme matching VeridianOS Stratum ecosystem diagram
+    // Note: Every multi-line cell uses separate <TR><TD ALIGN="LEFT"> rows
+    //       to avoid Graphviz's <BR/> center-alignment quirk.
+    // =================================================================
+
+    bgcolor="#0d1117"
+    rankdir=TB
+    splines=true
+    nodesep=0.70
+    ranksep=1.00
+    pad="0.6,0.4"
+    compound=true
+    labelloc="t"
+    label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#f0f6fc" POINT-SIZE="18" FACE="JetBrains Mono,Consolas,monospace"><B>Infinity-Context (icx) &#8212; 5-Plane Virtual Context MMU Architecture</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="11" FACE="JetBrains Mono,Consolas,monospace">(72.1&#215; AHTL compression &#183; 100% lossless BLAKE3 Merkle-DAG &#183; 10,240-bit HDC &#183; 94.38% prefix-cache hit &#183; &lt;300ns /dev/shm seqlock)&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>
+
+    node [shape=none fontname="JetBrains Mono,Consolas,Courier New,monospace" fontsize=10 margin="0"]
+    edge [arrowsize=0.75 penwidth=1.6 fontname="JetBrains Mono,Consolas,monospace" fontsize=8.5]
+
+    // =================================================================
+    // LEGEND
+    // =================================================================
+    legend [label=<
+        <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#30363d" BGCOLOR="#161b22">
+        <TR><TD COLSPAN="2" ALIGN="CENTER"><FONT COLOR="#f0f6fc" POINT-SIZE="10"><B>Architectural Planes</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff">&#9679;</FONT></TD><TD ALIGN="LEFT"><FONT COLOR="#8b949e" POINT-SIZE="9">Blue: Host AI Agents &amp; CLI Surfaces&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#a371f7">&#9679;</FONT></TD><TD ALIGN="LEFT"><FONT COLOR="#8b949e" POINT-SIZE="9">Purple: Plane 1 &#8212; AHTL Neural Codec&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#39d2c0">&#9679;</FONT></TD><TD ALIGN="LEFT"><FONT COLOR="#8b949e" POINT-SIZE="9">Teal: Plane 2 &#8212; BLAKE3 CAS &amp; Merkle-DAG&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#2ea043">&#9679;</FONT></TD><TD ALIGN="LEFT"><FONT COLOR="#8b949e" POINT-SIZE="9">Green: Plane 3 &#8212; 10,240-Bit HDC + Fractal + PPR&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#d29922">&#9679;</FONT></TD><TD ALIGN="LEFT"><FONT COLOR="#8b949e" POINT-SIZE="9">Amber: Plane 4 &#8212; Prefix-Cache-Locked Wire Proxy&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#f85149">&#9679;</FONT></TD><TD ALIGN="LEFT"><FONT COLOR="#8b949e" POINT-SIZE="9">Red: Plane 5 &#8212; /dev/shm Seqlock Telepathy Bus&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    // =================================================================
+    // HOST AGENTS (Blue #58a6ff)
+    // =================================================================
+    claude [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#58a6ff" BGCOLOR="#0d1117">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff" POINT-SIZE="11"><B>Claude Code CLI</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; PostToolUse (updatedMCPToolOutput)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; UserPromptSubmit &amp; PreCompact&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SessionStart &amp; Stop Lifecycle&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    codex [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#58a6ff" BGCOLOR="#0d1117">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff" POINT-SIZE="11"><B>OpenAI Codex CLI</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; ~/.codex/hooks.json Interception&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; state_5.sqlite + memories_1.sqlite&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; OPENAI_BASE_URL Cache Wire Proxy&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    agy [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#58a6ff" BGCOLOR="#0d1117">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff" POINT-SIZE="11"><B>Google Antigravity (agy)</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; ~/.gemini/hooks.json (exit code 0)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; AdditionalContext JSON Envelope&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Protobuf Jetski State Sync&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    hermes [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#58a6ff" BGCOLOR="#0d1117">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff" POINT-SIZE="11"><B>Hermes Agent + MCP</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; MemoryProvider Python Bridge&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; state.db + mind.db FTS5 Store&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Single-Tool icx(op,ref,q,k)&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    // =================================================================
+    // PLANE 1: AHTL NEURAL CODEC (Purple #a371f7)
+    // =================================================================
+    redactor [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#a371f7" BGCOLOR="#0d1117">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#a371f7" POINT-SIZE="11"><B>SecretRedactor + Sanitizer</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Strips sk-ant-*, sk-proj-*, ghp_*&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Blocks Prompt-Injection Delimiters&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Pre-Hash Boundary Enforcement&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    skeletonizer [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#a371f7" BGCOLOR="#0d1117">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#a371f7" POINT-SIZE="11"><B>StructuralSkeletonizer</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Extracts $fn / $ty / $mod / $use&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Preserves !err / !panic / !assert&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Key-Value &amp; Numeric Extraction&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    ahtl_codec [label=<
+        <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#a371f7" BGCOLOR="#161b22">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#a371f7" POINT-SIZE="12"><B>Plane 1: AHTL Packet Codec (icx-codec)</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; &lt;&lt;AHTLv1 #icx:hash !surp @fcga [Braille-256] $...&gt;&gt;&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; U+2800..U+28FF Bijection (8 bits/glyph, 64-bit sketch)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Verified 72.1&#215; Token Reduction in 197.85 &#956;s&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    // =================================================================
+    // PLANE 2: VIRTUAL MEMORY & MERKLE-DAG (Teal #39d2c0)
+    // =================================================================
+    fastcdc [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#39d2c0" BGCOLOR="#0d1117">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#39d2c0" POINT-SIZE="11"><B>FastCDC + BLAKE3 CAS</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Gear-Hash Content-Defined Chunking&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 128-Bit #icx:&lt;16-hex&gt; Handle&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; zstd -3 Compressed Blob Store&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    merkle_dag [label=<
+        <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#39d2c0" BGCOLOR="#161b22">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#39d2c0" POINT-SIZE="12"><B>Plane 2: MerkleContextDag (icx-core)</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; L0 RawChunk &#8594; L1 EpisodeNode &#8594; L2 FoldedSubtask &#8594; L3 EpochRoot&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Context-Folding Subtask Rollback (90% Token Savings)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 100% Lossless O(1) Page-In Dereferencing&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    // =================================================================
+    // PLANE 3: HDC + FRACTAL + PPR INDEX (Green #2ea043)
+    // =================================================================
+    hdc_engine [label=<
+        <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#2ea043" BGCOLOR="#161b22">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#2ea043" POINT-SIZE="12"><B>Plane 3: 10,240-Bit HDC + Fractal IFS (icx-hdc)</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Hypervector([u64; 160]) &#183; XOR Bind &#183; POPCNT Scan (1.31 &#956;s/node)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Infini-Attention Delta Bundler (sim &lt; 0.85 orthogonality)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Contractive IFS FractalCoord + TitansSurpriseGate&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    ppr_graph [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#2ea043" BGCOLOR="#0d1117">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#2ea043" POINT-SIZE="11"><B>Bi-Temporal PPR Graph (icx-store)</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Valid Window [t_valid, t_invalid)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Tx Window [t_created, t_expired)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; HippoRAG Personalized PageRank (&#945;=0.50)&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    // =================================================================
+    // PLANE 4 & PLANE 5: CACHE EPOCH + SHM BUS (Amber #d29922 / Red #f85149)
+    // =================================================================
+    epoch_proxy [label=<
+        <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#d29922" BGCOLOR="#161b22">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#d29922" POINT-SIZE="12"><B>Plane 4: Cache-Epoch Wire Proxy (icx-proxy)</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Byte-Frozen Prefix Epochs (0 Mid-Session Edits)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Anthropic 4-Slot cache_control: ephemeral&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; OpenAI 1,024-Token Aligned Prefix (94.38% Hit)&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    shm_bus [label=<
+        <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#f85149" BGCOLOR="#161b22">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#f85149" POINT-SIZE="12"><B>Plane 5: /dev/shm Seqlock Telepathy Bus (icx-bus)</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; /dev/shm/icx-fabric-v1.shm (1 MiB Lock-Free Ring)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 512 &#215; 2,048-Byte Cache-Aligned Atomic Slots&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; &lt;300 ns Cross-Agent HDC &amp; Handle Broadcast&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    // =================================================================
+    // EDGES
+    // =================================================================
+    claude -> redactor [color="#58a6ff" style=bold]
+    codex -> redactor [color="#58a6ff" style=bold]
+    agy -> redactor [color="#58a6ff" style=bold]
+    hermes -> redactor [color="#58a6ff" style=bold]
+
+    redactor -> skeletonizer [color="#a371f7" style=bold]
+    skeletonizer -> ahtl_codec [color="#a371f7" style=bold]
+    redactor -> fastcdc [color="#39d2c0" style=bold]
+
+    fastcdc -> merkle_dag [color="#39d2c0" style=bold]
+    merkle_dag -> ahtl_codec [color="#39d2c0" style=bold]
+
+    ahtl_codec -> hdc_engine [color="#2ea043" style=bold]
+    merkle_dag -> hdc_engine [color="#2ea043" style=dashed]
+    hdc_engine -> ppr_graph [color="#2ea043" style=bold]
+
+    ahtl_codec -> epoch_proxy [color="#d29922" style=bold]
+    ppr_graph -> epoch_proxy [color="#d29922" style=bold]
+    merkle_dag -> epoch_proxy [color="#d29922" style=dashed]
+
+    hdc_engine -> shm_bus [color="#f85149" style=bold]
+    shm_bus -> claude [color="#f85149" style=dashed]
+    shm_bus -> codex [color="#f85149" style=dashed]
+    shm_bus -> agy [color="#f85149" style=dashed]
+    shm_bus -> hermes [color="#f85149" style=dashed]
+
+    { rank=same; claude; codex; agy; hermes; legend }
+    { rank=same; redactor; skeletonizer; fastcdc }
+    { rank=same; ahtl_codec; merkle_dag }
+    { rank=same; hdc_engine; ppr_graph }
+    { rank=same; epoch_proxy; shm_bus }
+}

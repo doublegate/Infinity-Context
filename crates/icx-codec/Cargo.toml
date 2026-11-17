@@ -1,0 +1,15 @@
+[package]
+name = "icx-codec"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Alien Holographic Token Lattice (AHTL) non-human machine dialect, Braille-256 sketch codec, structural skeletonizers, and secret redactor."
+
+[lints]
+workspace = true
+
+[dependencies]
+icx-core.workspace = true
+serde.workspace = true
+thiserror.workspace = true

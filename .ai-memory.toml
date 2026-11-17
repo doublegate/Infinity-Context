@@ -1,0 +1,3 @@
+# ai-memory routing for Infinity-Context (icx)
+workspace = "default"
+project = "doublegate-infinity-context"

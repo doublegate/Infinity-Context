@@ -1,0 +1,25 @@
+# Infinity-Context (icx) — SPDX-License-Identifier: GPL-3.0-or-later
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Runtime / test artifacts
+*.shm
+*.sock
+*.profraw
+lcov.info
+.icx-data/

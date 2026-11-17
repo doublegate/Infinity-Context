@@ -1,0 +1,9 @@
+stateDiagram-v2
+  [*] --> Epoch0_Genesis: SessionStart / Initial System + Frozen Epoch 0
+  Epoch0_Genesis --> ActiveEpoch_Accumulating: Append Turn Delta & AHTL Page Table
+  ActiveEpoch_Accumulating --> ActiveEpoch_Accumulating: Pending Tokens < epoch_token_threshold (16,384)
+  ActiveEpoch_Accumulating --> EpochBoundary_Seal: Pending Tokens >= 16,384 OR Subtask Fold
+  EpochBoundary_Seal -->MerkleL3_Committed: Seal L3 EpochRoot (#icx:epoch_hash) + Pin cache_control
+  MerkleL3_Committed --> ActiveEpoch_Accumulating: Open Epoch N+1 (Prefix 0..N 100% Byte-Frozen)
+  ActiveEpoch_Accumulating --> PreCompact_Intercept: Host Agent Fires PreCompact Hook
+  PreCompact_Intercept --> MerkleL3_Committed: Emit Lossless AHTL Epoch Manifest (Zero Summary Loss)

@@ -1,0 +1,62 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/icx-core",
+    "crates/icx-hdc",
+    "crates/icx-codec",
+    "crates/icx-store",
+    "crates/icx-bus",
+    "crates/icx-adapters",
+    "crates/icx-proxy",
+    "crates/icx-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "GPL-3.0-or-later"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+cast_lossless = "allow"
+similar_names = "allow"
+too_many_lines = "allow"
+too_many_arguments = "allow"
+naive_bytecount = "allow"
+needless_range_loop = "allow"
+return_self_not_must_use = "allow"
+format_push_string = "allow"
+collapsible_if = "allow"
+large_stack_arrays = "allow"
+uninlined_format_args = "allow"
+manual_let_else = "allow"
+map_unwrap_or = "allow"
+redundant_else = "allow"
+doc_markdown = "allow"
+
+[workspace.dependencies]
+blake3 = "1.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+memmap2 = "0.9"
+icx-core = { path = "crates/icx-core" }
+icx-hdc = { path = "crates/icx-hdc" }
+icx-codec = { path = "crates/icx-codec" }
+icx-store = { path = "crates/icx-store" }
+icx-bus = { path = "crates/icx-bus" }
+icx-adapters = { path = "crates/icx-adapters" }
+icx-proxy = { path = "crates/icx-proxy" }

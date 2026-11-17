@@ -1,0 +1,20 @@
+{
+  "name": "Infinity-Context (icx)",
+  "short_name": "icx",
+  "description": "Cross-Agent Virtual Context MMU & Alien Holographic Token Lattice",
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#0d1117",
+  "background_color": "#0d1117",
+  "display": "standalone"
+}

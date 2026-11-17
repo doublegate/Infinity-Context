@@ -1,0 +1,20 @@
+[package]
+name = "icx-adapters"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Cross-agent lifecycle hook, ContextEngine, and Single-Tool Polymorphic MCP Pager adapters for Claude Code, Codex, Antigravity CLI (agy), and Hermes."
+
+[lints]
+workspace = true
+
+[dependencies]
+icx-bus.workspace = true
+icx-codec.workspace = true
+icx-core.workspace = true
+icx-hdc.workspace = true
+icx-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

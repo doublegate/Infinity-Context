@@ -1,0 +1,26 @@
+Infinity-Context Commercial & Patent License Notice
+(LicenseRef-InfinityContext-Commercial)
+
+Copyright (C) 2026 DoubleGate (https://github.com/doublegate). All rights reserved.
+
+1. Scope of Notice
+The architectures, symbolic codecs (AHTL — Alien Holographic Token Lattice),
+10,240-bit Hyperdimensional Computing (HDC) + Contractive IFS Fractal Chaos-Game
+Archive (FCGA) engines, Prefix-Cache-Locked Epoch Controllers, and POSIX /dev/shm
+Seqlock Telepathy Bus protocols in Infinity-Context (icx) are protected by
+copyright and pending patent claims (see PATENTS.md and LICENSING.md).
+
+2. Open-Source Copyleft Grant vs. Commercial Reservation
+Open-source use, modification, and distribution are permitted strictly under
+the terms of the GNU General Public License v3.0 or later (GPL-3.0-or-later)
+and, for networked/hosted/SaaS deployments, the GNU Affero General Public
+License v3.0 or later (AGPL-3.0-or-later), with technical specifications and
+diagrams governed by Creative Commons Attribution-NonCommercial-NoDerivatives
+4.0 International (CC-BY-NC-ND-4.0).
+
+No copyright license and no patent license (express, implied, or by estoppel)
+is granted for any proprietary, closed-source, commercial SaaS/cloud hosting,
+or commercial clean-room re-implementation of Infinity-Context (icx) outside
+full compliance with GPL-3.0-or-later / AGPL-3.0-or-later without a separate
+written Commercial & Patent License Agreement executed with DoubleGate
+(see COMMERCIAL.md).

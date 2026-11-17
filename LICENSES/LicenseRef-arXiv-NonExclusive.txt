@@ -1,0 +1,11 @@
+arXiv.org Perpetual, Non-Exclusive License to Distribute
+(LicenseRef-arXiv-NonExclusive)
+
+Canonical URL: https://arxiv.org/licenses/nonexclusive-distrib/1.0/
+
+The academic preprints stored in ref-docs/papers/ are distributed by their
+respective authors through arXiv.org under the arXiv.org perpetual,
+non-exclusive license to distribute (or under Creative Commons licenses such as
+CC-BY-4.0 as marked on each individual paper's cover page). Copyright in each
+referenced academic paper remains with its respective authors as cataloged in
+ref-docs/papers/INDEX.md.

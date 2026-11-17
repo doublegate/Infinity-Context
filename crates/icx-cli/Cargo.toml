@@ -1,0 +1,25 @@
+[package]
+name = "icx-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Infinity-Context (icx) CLI for cross-agent hooks, MCP virtual paging, AHTL encoding/decoding, doctor diagnostics, and SLO benchmarking."
+
+[[bin]]
+name = "icx"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+icx-adapters.workspace = true
+icx-bus.workspace = true
+icx-codec.workspace = true
+icx-core.workspace = true
+icx-hdc.workspace = true
+icx-proxy.workspace = true
+icx-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true

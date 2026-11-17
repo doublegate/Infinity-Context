@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Infinity-Context (icx)
+GenericName=Virtual Context MMU for AI Agents
+Comment=Alien Holographic Token Lattice, BLAKE3 Merkle-DAG, and /dev/shm Seqlock Telepathy Bus
+Exec=icx status
+Icon=icx
+Terminal=true
+Categories=Development;Utility;ArtificialIntelligence;
+Keywords=llm;context;claude;codex;antigravity;hermes;mcp;hdc;

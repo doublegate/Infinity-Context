@@ -1,0 +1,139 @@
+digraph InfinityContextCrateGraph {
+    // =================================================================
+    // Infinity-Context (icx) — 8-Crate Workspace & Cross-Agent Dependency DAG
+    // Style: Dark theme matching VeridianOS relationship diagrams
+    // Note: Every bullet uses its own <TR><TD ALIGN="LEFT"> row for exact left alignment.
+    // =================================================================
+
+    bgcolor="#0d1117"
+    rankdir=LR
+    splines=true
+    nodesep=0.55
+    ranksep=1.10
+    pad="0.6,0.4"
+    labelloc="t"
+    label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#f0f6fc" POINT-SIZE="17" FACE="JetBrains Mono,Consolas,monospace"><B>Infinity-Context (icx) &#8212; 8-Crate Workspace &amp; Subsystem Dependency DAG</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="10" FACE="JetBrains Mono,Consolas,monospace">(Strict acyclic crate hierarchy &#183; unsafe_code = forbid except isolated POSIX /dev/shm seqlock in icx-bus)&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>
+
+    node [shape=none fontname="JetBrains Mono,Consolas,Courier New,monospace" fontsize=10 margin="0"]
+    edge [arrowsize=0.75 penwidth=1.6]
+
+    icx_cli [label=<
+        <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#f0f6fc" BGCOLOR="#161b22">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#f0f6fc" POINT-SIZE="12"><B>icx-cli</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[Binary Entry Point]&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; icx hook &lt;agent&gt; &lt;event&gt;&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; icx mcp-serve (JSON-RPC)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; icx proxy-transform&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; icx encode-ahtl / decode-ahtl&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; icx doctor / benchmark / status&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    icx_adapters [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#58a6ff" BGCOLOR="#0d1117">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff" POINT-SIZE="11"><B>icx-adapters</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[Agent &amp; MCP Orchestration]&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; InfinityContextMmu&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; ClaudeCodeAdapter&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; CodexAdapter&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; AntigravityAdapter (exit 0)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; HermesAdapter + McpPagerServer&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    icx_proxy [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#d29922" BGCOLOR="#0d1117">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#d29922" POINT-SIZE="11"><B>icx-proxy</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[Cache-Epoch Wire Proxy]&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; WireProxyTransformer&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Anthropic 4-Breakpoint Cache&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; OpenAI 1024-Tok Prefix Align&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    icx_codec [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#a371f7" BGCOLOR="#0d1117">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#a371f7" POINT-SIZE="11"><B>icx-codec</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[AHTL Symbolic Codec]&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; AhtlPacket (encode/parse)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Braille-256 Bijection&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; StructuralSkeletonizer&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SecretRedactor&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    icx_store [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#2ea043" BGCOLOR="#0d1117">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#2ea043" POINT-SIZE="11"><B>icx-store</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[Bi-Temporal Graph &amp; PPR]&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; BiTemporalGraph&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; TemporalEdge (Valid/Tx)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; PersonalizedPageRank&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    icx_bus [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#f85149" BGCOLOR="#0d1117">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#f85149" POINT-SIZE="11"><B>icx-bus</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[POSIX /dev/shm Seqlock]&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SeqlockTelemetryBus&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SeqlockSlot (2,048 B)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Only crate permitting unsafe&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    icx_hdc [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#39d2c0" BGCOLOR="#0d1117">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#39d2c0" POINT-SIZE="11"><B>icx-hdc</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[10,240-Bit VSA &amp; Fractal IFS]&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Hypervector ([u64; 160])&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; HdcBundler (Delta Rule)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; FractalCoord (16-D IFS)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; TitansSurpriseGate&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    icx_core [label=<
+        <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#58a6ff" BGCOLOR="#161b22">
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff" POINT-SIZE="12"><B>icx-core</B>&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[Foundational Types &amp; CAS DAG]&#160;&#160;&#160;</FONT></TD></TR>
+        <HR/>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; IcxHandle (#icx:&lt;16-hex&gt;)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; FastCdcChunker + CasStore&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; MerkleContextDag (L0..L3)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; CacheEpochController&#160;&#160;&#160;</FONT></TD></TR>
+        </TABLE>>]
+
+    // Strict Acyclic Crate Dependency Edges
+    icx_cli -> icx_adapters [color="#f0f6fc" style=bold]
+    icx_cli -> icx_proxy [color="#d29922" style=bold]
+    icx_cli -> icx_codec [color="#a371f7"]
+    icx_cli -> icx_bus [color="#f85149"]
+    icx_cli -> icx_store [color="#2ea043"]
+    icx_cli -> icx_hdc [color="#39d2c0"]
+    icx_cli -> icx_core [color="#58a6ff"]
+
+    icx_adapters -> icx_codec [color="#a371f7" style=bold]
+    icx_adapters -> icx_store [color="#2ea043" style=bold]
+    icx_adapters -> icx_bus [color="#f85149" style=bold]
+    icx_adapters -> icx_hdc [color="#39d2c0" style=bold]
+    icx_adapters -> icx_core [color="#58a6ff" style=bold]
+
+    icx_proxy -> icx_codec [color="#a371f7" style=bold]
+    icx_proxy -> icx_core [color="#d29922" style=bold]
+
+    icx_codec -> icx_hdc [color="#a371f7" style=bold]
+    icx_codec -> icx_core [color="#a371f7" style=bold]
+
+    icx_store -> icx_hdc [color="#2ea043" style=bold]
+    icx_store -> icx_core [color="#2ea043" style=bold]
+
+    icx_bus -> icx_hdc [color="#f85149" style=bold]
+    icx_bus -> icx_core [color="#f85149" style=bold]
+
+    icx_hdc -> icx_core [color="#39d2c0" style=bold penwidth=2.2]
+}

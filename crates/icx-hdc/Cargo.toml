@@ -1,0 +1,15 @@
+[package]
+name = "icx-hdc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "10,240-bit Hyperdimensional Computing (HDC/HRR), Infini-attention Delta bundler, Fractal Chaos-Game Archive (FCGA), and Titans Surprise Gate."
+
+[lints]
+workspace = true
+
+[dependencies]
+blake3.workspace = true
+icx-core.workspace = true
+serde.workspace = true

@@ -1,0 +1,29 @@
+%%{init: {"theme": "dark", "flowchart": {"curve": "basis"}}}%%
+flowchart LR
+  subgraph CLI_LAYER["Binary & Wire Entry Points"]
+    CLI["icx-cli<br/>(icx binary)"]
+  end
+
+  subgraph ORCH_LAYER["Adapter & Proxy Orchestration"]
+    ADAPT["icx-adapters<br/>InfinityContextMmu<br/>Claude / Codex / agy / Hermes<br/>McpPagerServer"]
+    PROXY["icx-proxy<br/>WireProxyTransformer<br/>Anthropic &amp; OpenAI Cache-Epoch"]
+  end
+
+  subgraph ENGINE_LAYER["Codec, Graph & IPC Engines"]
+    CODEC["icx-codec<br/>AhtlPacket + Braille-256<br/>StructuralSkeletonizer<br/>SecretRedactor"]
+    STORE["icx-store<br/>BiTemporalGraph<br/>PersonalizedPageRank"]
+    BUS["icx-bus<br/>SeqlockTelemetryBus<br/>/dev/shm mmap Ring"]
+  end
+
+  subgraph CORE_LAYER["Mathematical & Cryptographic Foundation"]
+    HDC["icx-hdc<br/>Hypervector ([u64; 160])<br/>HdcBundler + FractalCoord<br/>TitansSurpriseGate"]
+    CORE["icx-core<br/>IcxHandle + FastCdcChunker<br/>CasStore + MerkleContextDag<br/>CacheEpochController"]
+  end
+
+  CLI --> ADAPT & PROXY & CODEC & STORE & BUS & HDC & CORE
+  ADAPT --> CODEC & STORE & BUS & HDC & CORE
+  PROXY --> CODEC & CORE
+  CODEC --> HDC & CORE
+  STORE --> HDC & CORE
+  BUS --> HDC & CORE
+  HDC --> CORE

@@ -1,0 +1,58 @@
+%%{init: {
+  "theme": "dark",
+  "themeVariables": {
+    "fontFamily": "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    "fontSize": "13px",
+    "primaryColor": "#0f172a",
+    "primaryTextColor": "#f8fafc",
+    "primaryBorderColor": "#38bdf8",
+    "lineColor": "#64748b",
+    "secondaryColor": "#1e1b4b",
+    "tertiaryColor": "#064e3b"
+  },
+  "flowchart": { "curve": "basis", "nodeSpacing": 45, "rankSpacing": 60 }
+}}%%
+
+flowchart TB
+  subgraph AGENTS["Host AI Coding & Research Agents"]
+    direction LR
+    CC["Claude Code CLI<br/>PostToolUse / UserPromptSubmit<br/>PreCompact / SessionStart / Stop"]
+    CX["OpenAI Codex CLI<br/>~/.codex/hooks.json<br/>state_5.sqlite + Wire Proxy"]
+    AG["Google Antigravity (agy)<br/>~/.gemini/hooks.json (exit 0)<br/>AdditionalContext Envelope"]
+    HM["Hermes Agent + MCP<br/>MemoryProvider Bridge<br/>state.db + mind.db"]
+  end
+
+  subgraph P1["Plane 1: Alien Holographic Token Lattice (icx-codec)"]
+    direction LR
+    RED["SecretRedactor<br/>Sanitizes API Keys &amp;<br/>Prompt-Injection Guards"]
+    SKEL["StructuralSkeletonizer<br/>Extracts §fn / §ty / §mod<br/>Preserves !err / !panic"]
+    AHTL["AhtlPacket Codec<br/>«AHTLv1 #icx:hash !surp @fcga<br/>⟦Braille-256⟧ §...» (72.1x)"]
+  end
+
+  subgraph P2["Plane 2: Virtual Context Memory & Merkle-DAG (icx-core)"]
+    direction LR
+    CDC["FastCdcChunker + CasStore<br/>Gear-Hash Rolling CDC<br/>BLAKE3 128-Bit #icx:handle"]
+    DAG["MerkleContextDag (LCM)<br/>L0 Raw -> L1 Episode -> L2 Folded -> L3 Epoch<br/>100% Lossless O(1) Page-In"]
+  end
+
+  subgraph P3["Plane 3: Associative Recall & Temporal Graph (icx-hdc + icx-store)"]
+    direction LR
+    HDC["10,240-Bit Hypervector VSA<br/>Infini-Attention Delta Bundler<br/>POPCNT Scan (< 50 us / 1K nodes)"]
+    FCGA["Contractive IFS FractalCoord<br/>+ TitansSurpriseGate<br/>Momentum S_t = eta*S_{t-1} + (1-eta)*surp"]
+    PPR["Bi-Temporal Graph + HippoRAG PPR<br/>Valid [t_valid, t_invalid)<br/>Tx [t_created, t_expired)"]
+  end
+
+  subgraph P45["Plane 4 & Plane 5: Cache-Epoch Wire Proxy & /dev/shm Seqlock Fabric"]
+    direction LR
+    EPOCH["CacheEpochController + WireProxyTransformer<br/>Byte-Frozen Prefix Epochs (>= 94% Cache Hit)<br/>Anthropic 4-Slot &amp; OpenAI 1024-Tok Prefix"]
+    SHM["SeqlockTelemetryBus (icx-bus)<br/>/dev/shm/icx-fabric-v1.shm (1 MiB Ring)<br/>< 300 ns Cross-Agent Telepathy"]
+  end
+
+  CC & CX & AG & HM --> RED
+  RED --> SKEL --> AHTL
+  RED --> CDC --> DAG
+  DAG --> AHTL
+  AHTL --> HDC --> FCGA --> PPR
+  AHTL & PPR & DAG --> EPOCH
+  HDC <--> SHM
+  SHM -.-> CC & CX & AG & HM

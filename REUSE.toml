@@ -1,0 +1,109 @@
+# SPDX-FileCopyrightText: 2026 DoubleGate
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# REUSE 3.3 licensing map for Infinity-Context (icx) (https://reuse.software/spec-3.3/).
+# Checked locally via `uvx reuse lint` and in CI via `.github/workflows/reuse.yml`.
+# See LICENSING.md, PATENTS.md, COMMERCIAL.md, and CLA.md for full details.
+
+version = 1
+
+# ---------------------------------------------------------------------------
+# 1. Default First-Party Code & Project Files: GPL-3.0-or-later
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "*",
+  ".ai-memory.toml",
+  ".editorconfig",
+  ".gitignore",
+  ".markdownlint.json",
+  ".github/**",
+  "crates/icx-core/**",
+  "crates/icx-hdc/**",
+  "crates/icx-codec/**",
+  "crates/icx-store/**",
+  "crates/icx-bus/**",
+  "crates/icx-cli/**",
+  "scripts/**",
+  "to-dos/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 DoubleGate"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+SPDX-FileComment = "First-party Infinity-Context (icx) workspace code, scripts, and project configuration under GPL-3.0-or-later."
+
+# ---------------------------------------------------------------------------
+# 2. Networked Proxy, MCP Server & Agent Interception Crates:
+#    Dual Copyleft (GPL-3.0-or-later AND AGPL-3.0-or-later)
+#    Enforces Section 13 Remote Network Interaction copyleft on hosted/SaaS
+#    proxy or MCP server deployments unless a Commercial License is obtained.
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "crates/icx-proxy/**",
+  "crates/icx-adapters/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 DoubleGate"
+SPDX-License-Identifier = "GPL-3.0-or-later AND AGPL-3.0-or-later"
+SPDX-FileComment = "Network-facing wire proxy, MCP server, and agent adapter crates governed by GPL-3.0-or-later and AGPL-3.0-or-later (Section 13 remote network interaction)."
+
+# ---------------------------------------------------------------------------
+# 3. Architectural Specifications, Research Synthesis, Diagrams & Branding:
+#    CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commercial
+#    Permits non-commercial viewing/sharing with attribution while prohibiting
+#    commercial re-implementation or derivative commercial specs without a license.
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "docs/**",
+  "images/**",
+  "assets/**",
+  "ref-docs/*.md",
+  "ref-docs/agent-internals/**",
+  "ref-docs/prior-art/**",
+  "ref-docs/novel-methods/**",
+  "ref-docs/papers/INDEX.md",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 DoubleGate"
+SPDX-License-Identifier = "CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commercial"
+SPDX-FileComment = "Original Infinity-Context technical specifications, mathematical derivations, forensic reports, and artwork; non-commercial no-derivatives with commercial & patent reservation."
+
+# ---------------------------------------------------------------------------
+# 4. Commercial, Patent & Licensing Governance Documents
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "PATENTS.md",
+  "COMMERCIAL.md",
+  "LICENSING.md",
+  "CLA.md",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 DoubleGate"
+SPDX-License-Identifier = "GPL-3.0-or-later AND LicenseRef-InfinityContext-Commercial"
+SPDX-FileComment = "Patent reservation, commercial licensing, and contributor license agreement documents."
+
+# ---------------------------------------------------------------------------
+# 5. Contributor Covenant Code of Conduct (CC-BY-4.0)
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = "CODE_OF_CONDUCT.md"
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "2014 Coraline Ada Ehmke and the Contributor Covenant contributors",
+  "2026 DoubleGate",
+]
+SPDX-License-Identifier = "CC-BY-4.0"
+SPDX-FileComment = "Adapted from the Contributor Covenant Code of Conduct v2.1 (CC-BY-4.0)."
+
+# ---------------------------------------------------------------------------
+# 6. Reference Academic Preprints (ref-docs/papers/*.pdf)
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = "ref-docs/papers/*.pdf"
+precedence = "override"
+SPDX-FileCopyrightText = "The respective arXiv paper authors cataloged in ref-docs/papers/INDEX.md"
+SPDX-License-Identifier = "CC-BY-4.0 OR LicenseRef-arXiv-NonExclusive"
+SPDX-FileComment = "Academic preprints downloaded from arXiv.org for the research corpus; see ref-docs/papers/INDEX.md for per-paper authors and arXiv IDs."

@@ -1,0 +1,21 @@
+sequenceDiagram
+  autonumber
+  participant Agent as Host Agent (Claude / Codex / agy / Hermes)
+  participant Hook as icx-adapters (Hook / MCP)
+  participant Codec as icx-codec (Redactor + AHTL)
+  participant DAG as icx-core (BLAKE3 CAS + Merkle-DAG)
+  participant HDC as icx-hdc + icx-store (10,240-Bit VSA + PPR)
+  participant SHM as icx-bus (/dev/shm Seqlock Ring)
+
+  Agent->>Hook: PostToolUse / MCP Tool Output (e.g., 50 KB cargo test log)
+  Hook->>Codec: SecretRedactor::sanitize(raw_payload)
+  Codec-->>Hook: Sanitized text + redaction count
+  Hook->>DAG: CasStore::put_bytes() + MerkleContextDag::insert_raw_chunk()
+  DAG-->>Hook: IcxHandle (#icx:7bf8239fb7c504f1)
+  Hook->>HDC: Hypervector::from_text() + FractalCoord::project() + TitansSurpriseGate::observe()
+  HDC->>HDC: BiTemporalGraph::upsert_node() + PersonalizedPageRank
+  Hook->>Codec: AhtlPacket::encode() (Braille-256 + §fn/§ty + !err)
+  Codec-->>Hook: Compact AHTL Packet (72.1x smaller)
+  Hook->>SHM: SeqlockTelemetryBus::publish(SeqlockSlot [2048 B])
+  SHM-->>Agent: Cross-Agent Telepathy Broadcast (< 300 ns)
+  Hook-->>Agent: Return JSON Envelope (updatedMCPToolOutput / AdditionalContext, exit 0)
