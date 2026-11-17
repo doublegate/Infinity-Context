@@ -78,12 +78,27 @@ impl AntigravityAdapter {
                     .and_then(|tc| tc.get("args"))
                     .map(Value::to_string)
                     .unwrap_or_default();
+                let resp_str = payload
+                    .get("toolResponse")
+                    .or_else(|| payload.get("tool_response"))
+                    .or_else(|| payload.get("toolResult"))
+                    .or_else(|| payload.get("result"))
+                    .map(|v| match v {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    })
+                    .unwrap_or_default();
                 let err_str = payload.get("error").and_then(Value::as_str).unwrap_or("");
-                let combined = if err_str.is_empty() {
-                    args_str
+                let err_line = if err_str.is_empty() {
+                    String::new()
                 } else {
-                    format!("{args_str}\nerror: {err_str}")
+                    format!("error: {err_str}")
                 };
+                let combined = [args_str, resp_str, err_line]
+                    .into_iter()
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+                    .join("\n");
                 let exit_code = InfinityContextMmu::extract_exit_code(&payload);
                 let _ = mmu.ingest_payload_with_exit_code(
                     AgentKind::AntigravityCli,

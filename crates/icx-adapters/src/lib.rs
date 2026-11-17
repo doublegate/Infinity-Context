@@ -476,6 +476,19 @@ unprefixed_secret = {unpref_sec}
         assert_eq!(reloaded.active_edge_count(), mmu.graph.active_edge_count());
         let _ = std::fs::remove_dir_all(&tmp_graph_dir);
 
+        let _ = AntigravityAdapter::handle_hook(
+            "PostToolUse",
+            r#"{"toolCall":{"name":"run","args":{"cmd":"ls"}},"toolResponse":"file.rs","error":"warn"}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        let _ = AntigravityAdapter::handle_hook(
+            "PostToolUse",
+            r#"{"toolResponse":{"exit_code":0}}"#,
+            &mut mmu,
+        )
+        .unwrap();
+
         // Verify MMU error paths for missing artifacts and malformed handles
         assert!(mmu.resolve_handle("not_a_handle").is_err());
         assert!(mmu.deref_text(icx_core::ArtifactId(0xDEAD_BEEF)).is_err());

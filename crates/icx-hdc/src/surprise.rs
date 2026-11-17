@@ -3,7 +3,7 @@
 //! Combines HDC associative novelty, Shannon byte entropy, diagnostic anomaly detection, and
 //! exponential momentum smoothing to classify events into virtual memory retention tiers.
 
-use crate::hv::{ACTIVE_BUNDLE_SIM_THRESHOLD, HdcBundler, Hypervector};
+use crate::hv::{HdcBundler, Hypervector};
 use serde::{Deserialize, Serialize};
 
 /// Virtual memory retention tier assigned by the `TitansSurpriseGate`.
@@ -183,17 +183,10 @@ impl TitansSurpriseGate {
 
         let novelty = if self.events_seen == 0 {
             1.0
+        } else if !is_anomaly && self.bundler.is_actively_bundled(hv) {
+            0.0
         } else {
-            let sim = self.bundler.finalize().similarity(hv);
-            if !is_anomaly
-                && sim >= ACTIVE_BUNDLE_SIM_THRESHOLD
-                && self.bundler.count() > 0
-                && self.bundler.contains_fingerprint(hv)
-            {
-                0.0
-            } else {
-                (1.0 - sim).clamp(0.0, 1.0)
-            }
+            (1.0 - self.bundler.finalize().similarity(hv)).clamp(0.0, 1.0)
         };
 
         let instantaneous = (0.65 * novelty + 0.35 * entropy + anomaly_boost).clamp(0.0, 1.0);

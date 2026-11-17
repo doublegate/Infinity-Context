@@ -170,6 +170,16 @@ impl HdcAssociativeIndex {
                 mask |= Self::token_bloom_bits32(tok);
             }
         }
+        for tok in subject_lower.split(|c: char| !c.is_alphanumeric() && c != '_' && c != '/') {
+            if tok.len() >= 2 && tok.contains('/') {
+                mask |= Self::token_bloom_bits32(tok);
+            }
+        }
+        for tok in subject_lower.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':') {
+            if tok.len() >= 2 && tok.contains(':') {
+                mask |= Self::token_bloom_bits32(tok);
+            }
+        }
         if !subject_lower.is_empty() {
             mask |= Self::token_bloom_bits32(subject_lower);
         }
@@ -502,6 +512,7 @@ mod tests {
             "é"
         ));
         let _ = trait_ref.observe_event(ArtifactId(1000), "", "empty subject body", false);
+        let _ = trait_ref.observe_event(ArtifactId(1001), "pkg:mod:fn", "colon subject", false);
 
         // Verify requesting top_k > 64 returns all requested hits up to entries.len()
         let large_hits = trait_ref.query_associative("helper module", 100);

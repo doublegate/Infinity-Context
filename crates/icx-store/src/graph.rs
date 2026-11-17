@@ -104,7 +104,7 @@ impl CsrGraphSnapshot {
         &self.weights
     }
 
-    /// Read-only per-vertex inverse outgoing weight array (`0.0` for dangling vertices).
+    /// Read-only per-vertex inverse outgoing weight array (`len == node_count()`).
     #[inline]
     pub fn inv_out_weight(&self) -> &[f32] {
         &self.inv_out_weight
@@ -536,12 +536,17 @@ impl BiTemporalGraph {
             let t_valid = loaded.edges[idx].t_valid;
             let t_tx_start = loaded.edges[idx].t_tx_start;
             if let Some(inv) = loaded.edges[idx].t_invalid {
-                loaded.edges[idx].t_invalid = Some(inv.max(t_valid.saturating_add(1)));
+                let clamped_inv = inv.max(t_valid);
+                loaded.edges[idx].t_invalid = Some(clamped_inv);
+                let tx_end = loaded.edges[idx]
+                    .t_tx_end
+                    .unwrap_or(clamped_inv)
+                    .max(t_tx_start);
+                loaded.edges[idx].t_tx_end = Some(tx_end);
+            } else {
+                loaded.edges[idx].t_tx_end = None;
             }
-            if let Some(tx_end) = loaded.edges[idx].t_tx_end.or(loaded.edges[idx].t_invalid) {
-                loaded.edges[idx].t_tx_end = Some(tx_end.max(t_tx_start.saturating_add(1)));
-            }
-            if loaded.edges[idx].is_functional && loaded.edges[idx].t_invalid.is_none() {
+            if loaded.edges[idx].is_functional {
                 functional_groups.entry((src, rel)).or_default().push(idx);
             }
 
@@ -550,21 +555,26 @@ impl BiTemporalGraph {
             max_next_id = max_next_id.max(edge_id.saturating_add(1));
         }
 
-        for indices in functional_groups.values_mut() {
+        for indices in functional_groups.values() {
             if indices.len() <= 1 {
                 continue;
             }
-            indices.sort_by_key(|&i| {
+            let mut active: Vec<usize> = indices
+                .iter()
+                .copied()
+                .filter(|&i| loaded.edges[i].t_invalid.is_none())
+                .collect();
+            active.sort_by_key(|&i| {
                 (
                     loaded.edges[i].t_valid,
                     loaded.edges[i].t_tx_start,
                     loaded.edges[i].edge_id,
                 )
             });
-            for pos in 0..indices.len() {
-                let cur_i = indices[pos];
+            for pos in 0..active.len() {
+                let cur_i = active[pos];
                 if pos > 0 {
-                    let prev_i = indices[pos - 1];
+                    let prev_i = active[pos - 1];
                     let prev_inv = loaded.edges[prev_i]
                         .t_invalid
                         .unwrap_or(loaded.edges[prev_i].t_valid);
@@ -575,13 +585,25 @@ impl BiTemporalGraph {
                     loaded.edges[cur_i].t_tx_start =
                         loaded.edges[cur_i].t_tx_start.max(prev_tx_end);
                 }
-                if pos + 1 < indices.len() {
-                    let next_valid = loaded.edges[indices[pos + 1]].t_valid;
-                    let next_tx = loaded.edges[indices[pos + 1]].t_tx_start;
+                if pos + 1 < active.len() {
+                    let next_valid = loaded.edges[active[pos + 1]].t_valid;
+                    let next_tx = loaded.edges[active[pos + 1]].t_tx_start;
                     loaded.edges[cur_i].t_invalid =
                         Some(next_valid.max(loaded.edges[cur_i].t_valid.saturating_add(1)));
                     loaded.edges[cur_i].t_tx_end =
                         Some(next_tx.max(loaded.edges[cur_i].t_tx_start.saturating_add(1)));
+                }
+            }
+            if let Some(&winner_idx) = active.last() {
+                let winner_valid = loaded.edges[winner_idx].t_valid;
+                for &ci in indices {
+                    if ci != winner_idx
+                        && let Some(inv) = loaded.edges[ci].t_invalid
+                        && inv > winner_valid
+                    {
+                        loaded.edges[ci].t_invalid =
+                            Some(inv.min(winner_valid).max(loaded.edges[ci].t_valid));
+                    }
                 }
             }
         }
@@ -781,6 +803,11 @@ mod tests {
         assert_eq!(winner_graph.active_edge_count(), 1);
         assert_eq!(
             winner_graph.query_edges_from("a", Some(50))[0].target_entity,
+            "ACTIVE_WINNER"
+        );
+        assert_eq!(winner_graph.query_edges_from("a", Some(100)).len(), 1);
+        assert_eq!(
+            winner_graph.query_edges_from("a", Some(100))[0].target_entity,
             "ACTIVE_WINNER"
         );
         assert_eq!(

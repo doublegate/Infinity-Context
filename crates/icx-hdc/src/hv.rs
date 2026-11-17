@@ -255,10 +255,6 @@ impl Hypervector {
             if tok.len() < 2 {
                 continue;
             }
-            raw_scans += 1;
-            if raw_scans > MAX_RAW_SCANS {
-                break;
-            }
             if prev_raw.is_some_and(|p| p.eq_ignore_ascii_case(tok)) {
                 consecutive_repeats += 1;
                 if consecutive_repeats > MAX_UNIGRAM_REINFORCEMENTS as usize {
@@ -267,6 +263,10 @@ impl Hypervector {
             } else {
                 prev_raw = Some(tok);
                 consecutive_repeats = 1;
+            }
+            raw_scans += 1;
+            if raw_scans > MAX_RAW_SCANS {
+                break;
             }
 
             let lower = lower_into(tok, &mut stack_lower, &mut heap_lower);
@@ -301,10 +301,9 @@ impl Hypervector {
             };
 
             let mut bundled_any = false;
-            if let Some((idx, new_entry)) = u_slot
-                && bundler.add_delta(&hv)
-            {
+            if let Some((idx, new_entry)) = u_slot {
                 u_slots[idx] = new_entry;
+                let _ = bundler.add_delta(&hv);
                 bundled_any = true;
             }
 
@@ -315,8 +314,8 @@ impl Hypervector {
                     Self::from_seed("tok", p_lower)
                 });
                 let bigram = prev.permute(1).bind(&hv);
-                let _ = bundler.add_delta(&bigram);
                 b_slots[b_idx] = b_entry;
+                let _ = bundler.add_delta(&bigram);
                 bundled_any = true;
             }
             prev_hv = Some(hv);
@@ -856,7 +855,7 @@ mod tests {
 
         // Verify Default, >128-byte mixed-case token, >1,024 distinct tokens, and >16,384 raw scans
         assert_eq!(Hypervector::default(), Hypervector::zero());
-        let long_mixed = format!("Upper_{} {}", "A".repeat(140), "ok ".repeat(16_400));
+        let long_mixed = format!("Upper_{} {}", "A".repeat(140), "ok err ".repeat(8_205));
         let _ = Hypervector::encode_text(&long_mixed);
         let mut over_1024 = String::new();
         for i in 0..1030usize {
