@@ -6,9 +6,9 @@ pub mod fractal;
 pub mod hv;
 pub mod surprise;
 
-use crate::fractal::FractalCoord;
-use crate::hv::Hypervector;
-use crate::surprise::{SurpriseVerdict, TitansSurpriseGate};
+pub use crate::fractal::{FractalCoord, FractalTrajectoryArchive};
+pub use crate::hv::{HdcBundler, Hypervector};
+pub use crate::surprise::{RetentionTier, SurpriseVerdict, TitansSurpriseGate};
 use icx_core::ArtifactId;
 use serde::{Deserialize, Serialize};
 
@@ -44,7 +44,7 @@ struct EntrySummary {
 pub struct IndexedEntry {
     pub artifact_id: ArtifactId,
     pub subject: String,
-    subject_lower: String,
+    pub subject_lower: String,
     pub hv: Hypervector,
     pub fractal_coord: FractalCoord,
     pub surprise: f32,

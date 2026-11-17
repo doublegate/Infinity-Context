@@ -124,11 +124,7 @@ impl Hypervector {
         let mut acc = Self::zero();
         for (i, item) in items.iter().enumerate() {
             let shift = k - 1 - i;
-            let term = if shift == 0 {
-                *item
-            } else {
-                item.permute(shift)
-            };
+            let term = item.permute(shift);
             acc ^= &term;
         }
         acc
@@ -422,8 +418,7 @@ impl HdcBundler {
     /// receive zero delta weight so repetitive boilerplate never saturates the accumulator, while
     /// novel/orthogonal vectors receive full weight.
     pub fn add(&mut self, hv: &Hypervector) {
-        let fp = hv.dedup_fingerprint_u128();
-        if self.seen_fingerprints.contains(&fp) {
+        if !self.seen_fingerprints.insert(hv.dedup_fingerprint_u128()) {
             return;
         }
         let weight: i16 = if self.count == 0 {
@@ -436,8 +431,7 @@ impl HdcBundler {
             let novelty = (1.0 - sim).clamp(0.0, 1.0);
             ((novelty * 16.0).round() as i16).max(1)
         };
-        self.seen_fingerprints.insert(fp);
-        self.add_weighted(hv, weight);
+        self.accumulate_raw(hv, weight);
     }
 
     /// Adds a hypervector with an explicit integer weight (`1..=64`), breaking exact `0` ties
@@ -445,6 +439,10 @@ impl HdcBundler {
     /// readout stays balanced around Hamming weight `5,120`.
     pub fn add_weighted(&mut self, hv: &Hypervector, weight: i16) {
         self.seen_fingerprints.insert(hv.dedup_fingerprint_u128());
+        self.accumulate_raw(hv, weight);
+    }
+
+    fn accumulate_raw(&mut self, hv: &Hypervector, weight: i16) {
         let w = weight.clamp(1, 64);
         for word_idx in 0..HV_WORDS {
             let word = hv.words[word_idx];
