@@ -4,7 +4,7 @@
 //! 100% byte-identical across consecutive turns while dynamically updating Zone 3 (Ephemeral Tail Slot).
 
 use crate::dag::{DagNode, MerkleContextDag};
-use crate::{AgentKind, ArtifactId};
+use crate::{AgentKind, ArtifactId, IcxError};
 use serde::{Deserialize, Serialize};
 
 /// Configuration for the `CacheEpochController`.
@@ -130,10 +130,48 @@ impl CacheEpochController {
             .fold(0usize, usize::saturating_add)
     }
 
+    /// Opens a sub-trajectory branch on `dag` (`Context-Folding`, `arXiv:2510.11967`).
+    pub fn begin_branch(&mut self, dag: &mut MerkleContextDag, label: impl Into<String>) {
+        dag.begin_branch(label);
+    }
+
+    /// Folds the active sub-trajectory branch on `dag` into an `L2` `SubTrajectoryBranch` commit node,
+    /// replacing its constituent child turns in the active unsealed window (`Zone 2`) with the single
+    /// `L2` branch commit node.
+    pub fn fold_branch(
+        &mut self,
+        dag: &mut MerkleContextDag,
+        outcome_summary: &str,
+    ) -> Result<ArtifactId, IcxError> {
+        let branch_id = dag.fold_branch(outcome_summary)?;
+        self.record_node(dag, branch_id);
+        Ok(branch_id)
+    }
+
     /// Records an existing `L1` (`Turn`, `ToolArtifact`) or `L2` (`SubTrajectoryBranch`) node into
     /// the active window and triggers an amortized Epoch Rollover if thresholds are exceeded.
     pub fn record_node(&mut self, dag: &mut MerkleContextDag, node_id: ArtifactId) {
-        self.unsealed_turn_ids.push(node_id);
+        if let Some(DagNode::SubTrajectoryBranch { child_turns, .. }) = dag.get_node(node_id) {
+            let mut to_remove = child_turns.clone();
+            if let Ok(expanded) = dag.expand_branch(node_id) {
+                for leaf in expanded {
+                    to_remove.push(leaf.id());
+                }
+            }
+            if let Some(first_pos) = self
+                .unsealed_turn_ids
+                .iter()
+                .position(|id| to_remove.contains(id))
+            {
+                self.unsealed_turn_ids.retain(|id| !to_remove.contains(id));
+                let insert_pos = first_pos.min(self.unsealed_turn_ids.len());
+                self.unsealed_turn_ids.insert(insert_pos, node_id);
+            } else if !self.unsealed_turn_ids.contains(&node_id) {
+                self.unsealed_turn_ids.push(node_id);
+            }
+        } else if !self.unsealed_turn_ids.contains(&node_id) {
+            self.unsealed_turn_ids.push(node_id);
+        }
         self.maybe_rollover(dag);
     }
 
@@ -162,7 +200,11 @@ impl CacheEpochController {
     }
 
     /// Forces sealing the eligible unsealed window into a new `CacheEpochNode` if thresholds are met.
+    /// Does not seal mid-branch while a sub-trajectory branch is open on `dag`.
     pub fn maybe_rollover(&mut self, dag: &mut MerkleContextDag) -> Option<ArtifactId> {
+        if dag.active_branch_depth() > 0 {
+            return None;
+        }
         let unsealed_tokens: usize = self
             .unsealed_turn_ids
             .iter()
@@ -179,7 +221,7 @@ impl CacheEpochController {
         let to_seal: Vec<ArtifactId> = self.unsealed_turn_ids.drain(0..seal_count).collect();
         let raw_tokens: usize = to_seal
             .iter()
-            .filter_map(|&id| dag.get_node(id).map(DagNode::token_estimate))
+            .filter_map(|&id| dag.get_node(id).map(DagNode::raw_token_count))
             .fold(0usize, usize::saturating_add);
 
         let epoch_idx = self.sealed_epochs.len() as u32;
@@ -199,8 +241,13 @@ impl CacheEpochController {
     ) -> usize {
         let mut folds = 0usize;
         let mut pair_idx = 0usize;
+        let mut unproductive_checks = 0usize;
 
         while self.zone1_compressed_tokens() > max_zone1_tokens && self.sealed_epochs.len() >= 2 {
+            let max_pairs = self.sealed_epochs.len() - 1;
+            if unproductive_checks >= max_pairs {
+                break;
+            }
             if pair_idx + 1 >= self.sealed_epochs.len() {
                 pair_idx = 0;
             }
@@ -210,16 +257,22 @@ impl CacheEpochController {
             let id0 = self.sealed_epochs[pair_idx].id();
             let id1 = self.sealed_epochs[pair_idx + 1].id();
 
-            let Ok(folded) = dag.fold_epochs(&[id0, id1]) else {
-                break;
+            let Ok(folded) = dag.build_folded_epoch(&[id0, id1]) else {
+                pair_idx += 1;
+                unproductive_checks += 1;
+                continue;
             };
             if folded.token_estimate() >= before_pair_tokens {
-                break;
+                pair_idx += 1;
+                unproductive_checks += 1;
+                continue;
             }
 
+            dag.insert_node(folded.clone());
             self.sealed_epochs.splice(pair_idx..=pair_idx + 1, [folded]);
             folds += 1;
             pair_idx += 1;
+            unproductive_checks = 0;
         }
 
         folds
@@ -383,5 +436,78 @@ mod tests {
         for ep in ctrl.sealed_epochs() {
             assert!(dag.verify_merkle_integrity(ep.id()).unwrap());
         }
+    }
+
+    #[test]
+    fn branch_folding_synchronizes_active_window_and_retarget_skips_non_shrinking_pairs() {
+        let mut dag = MerkleContextDag::new();
+        let cfg = EpochControllerConfig {
+            epoch_rollover_tokens: 100,
+            protect_last_n_turns: 0,
+            tail_slot_max_tokens: 128,
+        };
+        let mut ctrl = CacheEpochController::new("⟪ICX:PINNED_HEAD⟫", cfg);
+
+        // Two tiny 1-turn epochs whose L4 folded summary would not be smaller than their L3 frames
+        for i in 0..2u32 {
+            let (raw_id, _) = ArtifactId::hash_bytes(&i.to_le_bytes());
+            ctrl.record_turn(
+                &mut dag,
+                AgentKind::ClaudeCode,
+                "u",
+                raw_id,
+                "⟦Δ:x⟧".into(),
+                0.1,
+                120,
+            );
+        }
+        assert_eq!(ctrl.sealed_epoch_count(), 2);
+
+        // Followed by two large multi-turn epochs that DO shrink significantly when folded
+        ctrl.begin_branch(&mut dag, "multi_step_branch");
+        for i in 10..20u32 {
+            let (raw_id, _) = ArtifactId::hash_bytes(&i.to_le_bytes());
+            ctrl.record_turn(
+                &mut dag,
+                AgentKind::ClaudeCode,
+                "assistant",
+                raw_id,
+                format!(
+                    "⟦Δ:crates/icx-core/src/long_module_{i}.rs#L1-200⊢⊕fn:heavy_work_{i}↦{raw_id}⟧"
+                ),
+                0.9,
+                50,
+            );
+        }
+        // While branch is open, maybe_rollover defers sealing
+        assert_eq!(ctrl.sealed_epoch_count(), 2);
+        // Folding branch replaces the 10 child turns in active_window with 1 L2 commit node
+        // and triggers rollover
+        let branch_id = ctrl.fold_branch(&mut dag, "resolved_10_steps").unwrap();
+        assert!(dag.verify_merkle_integrity(branch_id).unwrap());
+
+        for i in 20..32u32 {
+            let (raw_id, _) = ArtifactId::hash_bytes(&i.to_le_bytes());
+            ctrl.record_turn(
+                &mut dag,
+                AgentKind::ClaudeCode,
+                "assistant",
+                raw_id,
+                format!(
+                    "⟦Δ:crates/icx-core/src/extra_module_{i}.rs#L1-200⊢⊕fn:extra_{i}↦{raw_id}⟧"
+                ),
+                0.9,
+                25,
+            );
+        }
+        assert!(ctrl.sealed_epoch_count() >= 4);
+
+        let before_tokens = ctrl.zone1_compressed_tokens();
+        let folds = ctrl.retarget_budget(&mut dag, before_tokens - 10);
+        assert!(
+            folds >= 1,
+            "retarget_budget must skip non-shrinking head pair and fold later pairs"
+        );
+        assert!(ctrl.zone1_compressed_tokens() < before_tokens);
     }
 }
