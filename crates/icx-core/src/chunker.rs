@@ -1,7 +1,10 @@
-//! Gear-hash Content-Defined Chunking (`FastCDC`) for deduplicating shared byte spans.
+//! Normalized Two-Threshold Gear-Hash Content-Defined Chunking (`FastCDC`) for deduplicating
+//! shared byte spans and computing streaming 1-based line-offset spans.
+
+use serde::{Deserialize, Serialize};
 
 /// Configuration for Content-Defined Chunking.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChunkerConfig {
     pub min_size: usize,
     pub avg_size: usize,
@@ -16,6 +19,15 @@ impl Default for ChunkerConfig {
             max_size: 65536,
         }
     }
+}
+
+/// A content-defined chunk span paired with its 1-based inclusive line numbers `[start_line, end_line]`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChunkLineSpan {
+    pub offset: usize,
+    pub len: usize,
+    pub start_line: u32,
+    pub end_line: u32,
 }
 
 /// Deterministic 256-entry gear table generated via SplitMix64 from a fixed seed.
@@ -36,15 +48,18 @@ const fn build_gear_table() -> [u64; 256] {
 
 const GEAR_TABLE: [u64; 256] = build_gear_table();
 
-/// Splits `data` into content-defined byte range slices `(offset, length)`.
+/// Splits `data` into content-defined byte range slices `(offset, length)` using Normalized FastCDC
+/// (stricter mask `mask_s` before `avg_size`, relaxed mask `mask_l` from `avg_size` to `max_size`).
 pub fn chunk_bytes(data: &[u8], cfg: ChunkerConfig) -> Vec<(usize, usize)> {
     if data.is_empty() {
         return Vec::new();
     }
     let min_size = cfg.min_size.max(64);
     let max_size = cfg.max_size.max(min_size + 64);
-    let bits = cfg.avg_size.max(128).ilog2();
-    let mask: u64 = (1u64 << bits) - 1;
+    let avg_size = cfg.avg_size.clamp(min_size, max_size);
+    let bits = avg_size.max(128).ilog2();
+    let mask_s: u64 = (1u64 << (bits + 1).min(62)) - 1;
+    let mask_l: u64 = (1u64 << bits.saturating_sub(1).max(1)) - 1;
 
     let mut chunks = Vec::new();
     let mut offset = 0usize;
@@ -58,16 +73,32 @@ pub fn chunk_bytes(data: &[u8], cfg: ChunkerConfig) -> Vec<(usize, usize)> {
         }
 
         let limit = offset + remaining.min(max_size);
+        let normal_pivot = (offset + avg_size).min(limit);
         let mut pos = offset + min_size;
         let mut fp: u64 = 0;
+        let mut cut_found = false;
 
-        while pos < limit {
+        // Phase 1: [min_size .. avg_size) with stricter mask_s (bits + 1 ones)
+        while pos < normal_pivot {
             fp = (fp << 1).wrapping_add(GEAR_TABLE[data[pos] as usize]);
-            if (fp & mask) == 0 {
+            if (fp & mask_s) == 0 {
                 pos += 1;
+                cut_found = true;
                 break;
             }
             pos += 1;
+        }
+
+        // Phase 2: [avg_size .. max_size) with relaxed mask_l (bits - 1 ones)
+        if !cut_found {
+            while pos < limit {
+                fp = (fp << 1).wrapping_add(GEAR_TABLE[data[pos] as usize]);
+                if (fp & mask_l) == 0 {
+                    pos += 1;
+                    break;
+                }
+                pos += 1;
+            }
         }
 
         let len = pos - offset;
@@ -76,6 +107,34 @@ pub fn chunk_bytes(data: &[u8], cfg: ChunkerConfig) -> Vec<(usize, usize)> {
     }
 
     chunks
+}
+
+/// Splits `data` using Normalized FastCDC and computes exact 1-based `[start_line, end_line]`
+/// boundaries for each chunk in a single streaming pass.
+pub fn chunk_bytes_with_lines(data: &[u8], cfg: ChunkerConfig) -> Vec<ChunkLineSpan> {
+    let spans = chunk_bytes(data, cfg);
+    let mut out = Vec::with_capacity(spans.len());
+    let mut current_line: u32 = 1;
+
+    for (offset, len) in spans {
+        let slice = &data[offset..offset + len];
+        let start_line = current_line;
+        let newlines = slice.iter().filter(|&&b| b == b'\n').count() as u32;
+        let end_line = if slice.last() == Some(&b'\n') {
+            (current_line + newlines).saturating_sub(1).max(start_line)
+        } else {
+            current_line + newlines
+        };
+        current_line += newlines;
+        out.push(ChunkLineSpan {
+            offset,
+            len,
+            start_line,
+            end_line,
+        });
+    }
+
+    out
 }
 
 #[cfg(test)]
@@ -116,5 +175,24 @@ mod tests {
             &payload[orig_last.0..orig_last.0 + orig_last.1],
             &modified[mod_last.0..mod_last.0 + mod_last.1]
         );
+    }
+
+    #[test]
+    fn chunk_bytes_with_lines_tracks_exact_line_boundaries() {
+        let mut text = String::new();
+        for i in 1..=500 {
+            text.push_str(&format!(
+                "line_{i:04}: content payload for testing fastcdc\n"
+            ));
+        }
+        let cfg = ChunkerConfig {
+            min_size: 256,
+            avg_size: 1024,
+            max_size: 4096,
+        };
+        let line_spans = chunk_bytes_with_lines(text.as_bytes(), cfg);
+        assert!(line_spans.len() > 4);
+        assert_eq!(line_spans.first().unwrap().start_line, 1);
+        assert_eq!(line_spans.last().unwrap().end_line, 500);
     }
 }
