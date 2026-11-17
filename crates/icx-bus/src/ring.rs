@@ -297,10 +297,8 @@ impl SeqlockTelemetryBus {
         };
 
         fence(Ordering::AcqRel);
-        for (i, chunk) in root.chunks_exact(8).enumerate() {
-            let val = u64::from_be_bytes([
-                chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
-            ]);
+        for (i, chunk) in root.as_chunks::<8>().0.iter().enumerate() {
+            let val = u64::from_be_bytes(*chunk);
             header.global_dag_root[i].store(val, Ordering::Relaxed);
         }
         fence(Ordering::AcqRel);

@@ -64,29 +64,42 @@ Subcommands:
 }
 
 struct WorkspaceLockGuard {
-    lock_path: std::path::PathBuf,
+    file: fs::File,
 }
 
 impl Drop for WorkspaceLockGuard {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.lock_path);
+        let _ = self.file.unlock();
     }
 }
 
 fn acquire_workspace_lock(icx_dir: &Path) -> Result<WorkspaceLockGuard, String> {
     fs::create_dir_all(icx_dir).map_err(|e| e.to_string())?;
     let lock_path = icx_dir.join("cas_store.lock");
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+        .map_err(|e| {
+            format!(
+                "failed to open workspace lock `{}`: {e}",
+                lock_path.display()
+            )
+        })?;
     for _attempt in 0..5_000u32 {
-        match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&lock_path)
-        {
-            Ok(_) => return Ok(WorkspaceLockGuard { lock_path }),
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+        match file.try_lock() {
+            Ok(()) => return Ok(WorkspaceLockGuard { file }),
+            Err(fs::TryLockError::WouldBlock) => {
                 std::thread::sleep(std::time::Duration::from_millis(1));
             }
-            Err(e) => return Err(format!("failed to acquire workspace lock: {e}")),
+            Err(fs::TryLockError::Error(e)) => {
+                return Err(format!(
+                    "failed to acquire workspace lock `{}`: {e}",
+                    lock_path.display()
+                ));
+            }
         }
     }
     Err(format!(
@@ -539,6 +552,14 @@ mod tests {
         for (aid, expected_text) in expected_artifacts {
             let recovered = deref_from_workspace_dir(&tmp_dir, &aid.to_string(), None).unwrap();
             assert_eq!(recovered, expected_text.trim_end_matches('\n'));
+        }
+
+        // Verify that a lingering `cas_store.lock` file on disk (e.g. after a crashed process
+        // exits and the OS releases its file descriptor lock) does not block subsequent locks.
+        let lock_file_path = tmp_dir.join("cas_store.lock");
+        fs::write(&lock_file_path, b"stale").unwrap();
+        {
+            let _guard = acquire_workspace_lock(&tmp_dir).expect("OS advisory lock succeeds");
         }
 
         // Verify that corrupting `cas_store.json` causes `encode_payload_into_workspace` to abort
