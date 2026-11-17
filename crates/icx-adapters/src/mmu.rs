@@ -69,6 +69,28 @@ impl InfinityContextMmu {
         }
     }
 
+    /// Extracts an optional process `exit_code` from a structured hook JSON payload
+    /// (checking top-level `"exit_code"`, `"exitCode"`, `"code"`, and nested `"tool_response"`
+    /// object fields `"exit_code"`, `"exitCode"`, `"code"`, `"status"`).
+    pub fn extract_exit_code(payload: &serde_json::Value) -> Option<i32> {
+        let parse_code = |v: &serde_json::Value| -> Option<i32> {
+            v.as_i64().and_then(|n| i32::try_from(n).ok())
+        };
+        for key in ["exit_code", "exitCode", "code"] {
+            if let Some(code) = payload.get(key).and_then(parse_code) {
+                return Some(code);
+            }
+        }
+        if let Some(resp) = payload.get("tool_response") {
+            for key in ["exit_code", "exitCode", "code", "status"] {
+                if let Some(code) = resp.get(key).and_then(parse_code) {
+                    return Some(code);
+                }
+            }
+        }
+        None
+    }
+
     /// Ingests a tool output or turn, redacting secrets, storing lossless bytes in `CasStore`,
     /// indexing in 10,240-bit HDC + Fractal + Bi-Temporal Graph, recording in the Merkle-DAG,
     /// and broadcasting high-surprise events onto the `/dev/shm` Seqlock Telepathy Bus.
@@ -143,19 +165,17 @@ impl InfinityContextMmu {
 
         // Populate Bi-Temporal Graph with extracted clause relations
         let edge_weight = receipt.verdict.momentum_surprise.max(0.2);
-        if let Some(code) = exit_code {
-            self.graph.upsert_edge(
-                subject,
-                "exit_code",
-                &code.to_string(),
-                true,
-                self.clock_ms,
-                artifact_id,
-                edge_weight,
-            );
-        }
         for clause in &packet.clauses {
+            if exit_code.is_some() && clause.key == "exit_code" {
+                continue;
+            }
             if let Some(val) = &clause.value {
+                if subject.trim().is_empty()
+                    || clause.key.trim().is_empty()
+                    || val.trim().is_empty()
+                {
+                    continue;
+                }
                 let is_functional = matches!(
                     clause.key.as_str(),
                     "status" | "test_status" | "return_type" | "fail" | "pass" | "exit_code"
@@ -170,6 +190,17 @@ impl InfinityContextMmu {
                     edge_weight,
                 );
             }
+        }
+        if let Some(code) = exit_code {
+            self.graph.upsert_edge(
+                subject,
+                "exit_code",
+                &code.to_string(),
+                true,
+                self.clock_ms,
+                artifact_id,
+                edge_weight,
+            );
         }
 
         let est_tokens = (raw_bytes / 4).max(1);

@@ -160,10 +160,41 @@ impl Hypervector {
     }
 
     /// Encodes a text string into a composite hypervector by binding token unigrams and
-    /// permutation-shifted bigrams using allocation-free stack Delta-Rule bundling.
+    /// permutation-shifted bigrams using allocation-free stack Delta-Rule bundling with
+    /// bounded per-term reinforcement and a `1,024`-token scan cap.
     pub fn encode_text(text: &str) -> Self {
+        const MAX_TEXT_TOKENS: usize = 1024;
+        const MAX_UNIGRAM_REINFORCEMENTS: u8 = 2;
+        const MAX_BIGRAM_REINFORCEMENTS: u8 = 1;
+
+        #[inline]
+        fn try_reinforce_slot(slots: &mut [(u64, u8); 256], hv: &Hypervector, cap: u8) -> bool {
+            let key = (hv.words[0] ^ hv.words[1].rotate_left(13)) | 1;
+            let base = (key as usize) & 255;
+            for probe in 0..4usize {
+                let idx = (base + probe) & 255;
+                let (slot_key, slot_count) = slots[idx];
+                if slot_key == key {
+                    if slot_count >= cap {
+                        return false;
+                    }
+                    slots[idx].1 = slot_count + 1;
+                    return true;
+                }
+                if slot_key == 0 {
+                    slots[idx] = (key, 1);
+                    return true;
+                }
+            }
+            false
+        }
+
         let mut bundler = HdcBundler::new();
+        let mut slots = [(0u64, 0u8); 256];
         let mut prev_hv: Option<Self> = None;
+        let mut prev_raw: Option<&str> = None;
+        let mut consecutive_repeats = 0usize;
+        let mut tokens_seen = 0usize;
 
         for raw_tok in
             text.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
@@ -172,13 +203,31 @@ impl Hypervector {
             if tok.len() < 2 {
                 continue;
             }
+            tokens_seen += 1;
+            if tokens_seen > MAX_TEXT_TOKENS {
+                break;
+            }
+            if prev_raw.is_some_and(|p| p.eq_ignore_ascii_case(tok)) {
+                consecutive_repeats += 1;
+                if consecutive_repeats > MAX_UNIGRAM_REINFORCEMENTS as usize {
+                    continue;
+                }
+            } else {
+                prev_raw = Some(tok);
+                consecutive_repeats = 1;
+            }
+
             let lower = tok.to_ascii_lowercase();
             let hv = Self::from_seed("tok", &lower);
-            bundler.add_delta(&hv);
+            if try_reinforce_slot(&mut slots, &hv, MAX_UNIGRAM_REINFORCEMENTS) {
+                bundler.add_delta(&hv);
+            }
 
             if let Some(prev) = prev_hv {
                 let bigram = prev.permute(1).bind(&hv);
-                bundler.add_delta(&bigram);
+                if try_reinforce_slot(&mut slots, &bigram, MAX_BIGRAM_REINFORCEMENTS) {
+                    bundler.add_delta(&bigram);
+                }
             }
             prev_hv = Some(hv);
         }
@@ -425,13 +474,23 @@ impl HdcBundler {
         self.readout.unbind(role)
     }
 
+    /// Returns `true` if `hv`'s 128-bit fingerprint has already been bundled and its
+    /// representation in `readout` remains active (`similarity >= 0.15`).
+    #[inline]
+    pub fn is_actively_bundled(&self, hv: &Hypervector) -> bool {
+        self.count > 0
+            && self
+                .seen_fingerprints
+                .contains(&hv.dedup_fingerprint_u128())
+            && self.readout.similarity(hv) >= 0.15
+    }
+
     /// Adds a hypervector using the Infini-attention Delta Rule: vectors already strongly present
-    /// in the bundle (`similarity >= 0.85` or matching a previously accepted 128-bit fingerprint)
-    /// receive zero delta weight so repetitive boilerplate never saturates the accumulator, while
-    /// novel/orthogonal vectors receive full weight.
+    /// in the bundle (`similarity >= 0.85` or matching a non-diluted 128-bit fingerprint with
+    /// `similarity >= 0.15`) receive zero delta weight so repetitive boilerplate never saturates
+    /// the accumulator, while novel/orthogonal vectors receive full weight.
     pub fn add(&mut self, hv: &Hypervector) {
-        let fp = hv.dedup_fingerprint_u128();
-        if self.seen_fingerprints.contains(&fp) {
+        if self.is_actively_bundled(hv) {
             return;
         }
         let weight: i16 = if self.count == 0 {
@@ -444,7 +503,7 @@ impl HdcBundler {
             let novelty = (1.0 - sim).clamp(0.0, 1.0);
             ((novelty * 16.0).round() as i16).max(1)
         };
-        self.seen_fingerprints.insert(fp);
+        self.seen_fingerprints.insert(hv.dedup_fingerprint_u128());
         self.accumulate_raw(hv, weight);
     }
 
@@ -478,14 +537,10 @@ impl HdcBundler {
     /// has not already been bundled or if its representation in `readout` has been diluted below
     /// `similarity < 0.15` by subsequent novel updates, returning `true` when accumulated.
     pub fn add_weighted_unique(&mut self, hv: &Hypervector, weight: i16) -> bool {
-        let fp = hv.dedup_fingerprint_u128();
-        if self.seen_fingerprints.contains(&fp)
-            && self.count > 0
-            && self.readout.similarity(hv) >= 0.15
-        {
+        if self.is_actively_bundled(hv) {
             return false;
         }
-        self.seen_fingerprints.insert(fp);
+        self.seen_fingerprints.insert(hv.dedup_fingerprint_u128());
         self.accumulate_raw(hv, weight);
         true
     }
@@ -640,6 +695,7 @@ mod tests {
         bundler.add(&base);
         assert_eq!(bundler.count(), 1);
         bundler.add(&near_base);
+        bundler.add_delta(&near_base);
         assert_eq!(
             bundler.count(),
             1,
@@ -655,6 +711,15 @@ mod tests {
             3,
             "near_base must be accepted once bundle shifts away"
         );
+
+        // Verify `encode_text` bounds reinforcement and token scanning on repetitive mixtures
+        let rep_single = "ok ".repeat(2000);
+        let hv_rep_single = Hypervector::encode_text(&rep_single);
+        assert!(hv_rep_single.similarity(&Hypervector::from_seed("tok", "ok")) > 0.45);
+        let rep_alt = "ok err ".repeat(1000);
+        let hv_rep_alt = Hypervector::encode_text(&rep_alt);
+        assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "ok")) > 0.25);
+        assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "err")) > 0.25);
     }
 
     #[test]

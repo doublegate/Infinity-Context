@@ -84,10 +84,12 @@ impl AntigravityAdapter {
                 } else {
                     format!("{args_str}\nerror: {err_str}")
                 };
-                let _ = mmu.ingest_payload(
+                let exit_code = InfinityContextMmu::extract_exit_code(&payload);
+                let _ = mmu.ingest_payload_with_exit_code(
                     AgentKind::AntigravityCli,
                     tool_name,
                     &combined,
+                    exit_code,
                     !err_str.is_empty(),
                 );
                 json!({})

@@ -176,16 +176,18 @@ impl TitansSurpriseGate {
         exit_code: Option<i32>,
         force_anomaly: bool,
     ) -> SurpriseVerdict {
-        let novelty = if self.events_seen == 0 {
-            1.0
-        } else {
-            (1.0 - self.bundler.finalize().similarity(hv)).clamp(0.0, 1.0)
-        };
-
         let entropy = Self::shannon_entropy_norm(raw_text.as_bytes());
         let exit_anomaly = exit_code.is_some_and(|c| c != 0);
         let is_anomaly = force_anomaly || exit_anomaly || Self::has_diagnostic_anomaly(raw_text);
         let anomaly_boost = if is_anomaly { 0.45 } else { 0.0 };
+
+        let novelty = if self.events_seen == 0 {
+            1.0
+        } else if !is_anomaly && self.bundler.is_actively_bundled(hv) {
+            0.0
+        } else {
+            (1.0 - self.bundler.finalize().similarity(hv)).clamp(0.0, 1.0)
+        };
 
         let instantaneous = (0.65 * novelty + 0.35 * entropy + anomaly_boost).clamp(0.0, 1.0);
         self.momentum = if is_anomaly {
@@ -286,15 +288,19 @@ mod tests {
         );
 
         // Verify alternating routine boilerplate (A, B, C) is deduplicated by add_weighted_unique
+        // and decays into ColdBeacon despite normal text entropy.
         let mut alt_gate = TitansSurpriseGate::default();
         let a = Hypervector::from_seed("routine", "boilerplate_a");
         let b = Hypervector::from_seed("routine", "boilerplate_b");
         let c = Hypervector::from_seed("routine", "boilerplate_c");
+        let mut last_verdict = None;
         for _ in 0..8 {
-            let _ = alt_gate.observe(&a, "ok a", false);
-            let _ = alt_gate.observe(&b, "ok b", false);
-            let _ = alt_gate.observe(&c, "ok c", false);
+            let _ = alt_gate.observe(&a, "running routine check alpha: status ok", false);
+            let _ = alt_gate.observe(&b, "running routine check beta: status ok", false);
+            last_verdict =
+                Some(alt_gate.observe(&c, "running routine check gamma: status ok", false));
         }
         assert_eq!(alt_gate.bundler.count(), 3);
+        assert_eq!(last_verdict.unwrap().tier, RetentionTier::ColdBeacon);
     }
 }

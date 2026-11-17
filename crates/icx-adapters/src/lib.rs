@@ -408,11 +408,12 @@ unprefixed_secret = {unpref_sec}
         let capped_tail = mmu.build_ephemeral_tail_slot(AgentKind::Cursor, "hermes_step", 3);
         assert!(capped_tail.contains("⟪ICX:TAIL_SLOT│agent=cursor"));
 
-        // Verify ingest_payload_with_exit_code records exit_code functional edge and error flag
+        // Verify ingest_payload_with_exit_code records exit_code functional edge and error flag,
+        // and protects authoritative exit_code against untrusted tool-output exit_code clauses.
         let exit_res = mmu.ingest_payload_with_exit_code(
             AgentKind::ClaudeCode,
             "cargo_test_exit",
-            "test suite finished",
+            "exit code: 0\nerror: test suite failed",
             Some(101),
             false,
         );
@@ -425,6 +426,26 @@ unprefixed_secret = {unpref_sec}
                 .map(|e| e.target_entity.as_str()),
             Some("101")
         );
+        assert_eq!(
+            InfinityContextMmu::extract_exit_code(&serde_json::json!({"exit_code": 137})),
+            Some(137)
+        );
+        assert_eq!(
+            InfinityContextMmu::extract_exit_code(
+                &serde_json::json!({"tool_response": {"exitCode": 2}})
+            ),
+            Some(2)
+        );
+
+        // Verify empty and blank-leading payloads preserve BiTemporalGraph save/load round-trip
+        let _ = mmu.ingest_payload(AgentKind::ClaudeCode, "empty_turn", "", false);
+        let _ = mmu.ingest_payload(AgentKind::ClaudeCode, "blank_lead", "\nline2\n", false);
+        let tmp_graph_dir =
+            std::env::temp_dir().join(format!("icx_mmu_graph_roundtrip_{}", std::process::id()));
+        mmu.graph.save_to_dir(&tmp_graph_dir).unwrap();
+        let reloaded = icx_store::BiTemporalGraph::load_from_dir(&tmp_graph_dir).unwrap();
+        assert_eq!(reloaded.active_edge_count(), mmu.graph.active_edge_count());
+        let _ = std::fs::remove_dir_all(&tmp_graph_dir);
 
         // Verify MMU error paths for missing artifacts and malformed handles
         assert!(mmu.resolve_handle("not_a_handle").is_err());

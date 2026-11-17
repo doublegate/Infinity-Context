@@ -59,7 +59,14 @@ impl ClaudeCodeAdapter {
                     None => String::new(),
                 };
 
-                let res = mmu.ingest_payload(AgentKind::ClaudeCode, tool_name, &raw_output, false);
+                let exit_code = InfinityContextMmu::extract_exit_code(&payload);
+                let res = mmu.ingest_payload_with_exit_code(
+                    AgentKind::ClaudeCode,
+                    tool_name,
+                    &raw_output,
+                    exit_code,
+                    false,
+                );
                 if res.was_virtualized {
                     let stub = format!(
                         "⟪ICX:STUB│{}│raw={}B→{}B⟫\n{}",

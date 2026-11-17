@@ -248,13 +248,25 @@ impl HdcAssociativeIndex {
 
     #[inline]
     fn subject_matches_token(subject_lower: &str, tok: &str) -> bool {
-        if tok.len() >= 4 && (tok.contains('/') || tok.contains(':') || tok.contains('.')) {
+        if tok.len() >= 4 {
             return subject_lower.contains(tok);
         }
-        for seg in subject_lower.split(|c: char| !c.is_alphanumeric() && c != '_') {
-            if seg == tok || (tok.len() >= 4 && seg.contains(tok)) {
+        let is_word_byte = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+        let hay = subject_lower.as_bytes();
+        let needle = tok.as_bytes();
+        if needle.is_empty() || needle.len() > hay.len() {
+            return false;
+        }
+        let mut start = 0usize;
+        while let Some(rel) = subject_lower[start..].find(tok) {
+            let pos = start + rel;
+            let end = pos + needle.len();
+            let left_ok = pos == 0 || !is_word_byte(hay[pos - 1]);
+            let right_ok = end == hay.len() || !is_word_byte(hay[end]);
+            if left_ok && right_ok {
                 return true;
             }
+            start = pos + 1;
         }
         false
     }
@@ -454,9 +466,20 @@ mod tests {
             "pub fn locate_quantum_passkey() { panic!(\"E0502 quantum fault\"); }",
             true,
         );
-        let staged_hits = trait_ref.query_associative("quantum_needle locate_quantum_passkey", 5);
+        let staged_hits = trait_ref.query_associative(
+            "crates/icx-core/src/quantum_needle locate_quantum_passkey a/b",
+            5,
+        );
         assert_eq!(staged_hits.len(), 5);
         assert_eq!(staged_hits[0].artifact_id, ArtifactId(999));
+        assert!(HdcAssociativeIndex::subject_matches_token(
+            "pkg:a/b:item",
+            "a/b"
+        ));
+        assert!(!HdcAssociativeIndex::subject_matches_token(
+            "pkg:alpha/beta:item",
+            "a/b"
+        ));
 
         // Verify requesting top_k > 64 returns all requested hits up to entries.len()
         let large_hits = trait_ref.query_associative("helper module", 100);

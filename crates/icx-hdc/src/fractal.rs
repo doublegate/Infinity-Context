@@ -529,5 +529,23 @@ mod tests {
             FractalCoord::decode_fc_hex64(&"z".repeat(64), 1).is_none(),
             "non-hex must return None"
         );
+
+        // Verify L2 Euclidean tie-breaking and ArtifactId tie-breaking at depth >= 4
+        let mut tie_archive = FractalTrajectoryArchive::new();
+        let target_deep = FractalCoord {
+            coords: [0.95; 16],
+            depth: 6,
+        };
+        let mut l2_closer = target_deep;
+        l2_closer.coords[0] = 0.94;
+        let mut l2_farther = target_deep;
+        l2_farther.coords.fill(0.94);
+        tie_archive.insert_coord(ArtifactId(30), l2_farther);
+        tie_archive.insert_coord(ArtifactId(20), l2_closer);
+        tie_archive.insert_coord(ArtifactId(10), l2_closer);
+        let tie_hits = tie_archive.query_shared_suffix(&target_deep, 4, 3);
+        assert_eq!(tie_hits[0].0, ArtifactId(10));
+        assert_eq!(tie_hits[1].0, ArtifactId(20));
+        assert_eq!(tie_hits[2].0, ArtifactId(30));
     }
 }

@@ -277,6 +277,9 @@ impl BiTemporalGraph {
         let src = source_entity.trim().to_owned();
         let rel = relation.trim().to_owned();
         let dst = target_entity.trim().to_owned();
+        if src.is_empty() || rel.is_empty() || dst.is_empty() {
+            return 0;
+        }
 
         if is_functional {
             for e in &mut self.edges {
@@ -712,6 +715,18 @@ mod tests {
         let repaired = BiTemporalGraph::load_from_dir(&tmp_dir).expect("repaired load succeeds");
         assert_eq!(repaired.active_edge_count(), 1);
         assert_eq!(repaired.entity_count(), 3);
+        assert_eq!(
+            g.upsert_edge(" ", "status", "ok", true, 100, ArtifactId(1), 1.0),
+            0
+        );
+        assert_eq!(
+            g.upsert_edge("src", "", "ok", true, 100, ArtifactId(1), 1.0),
+            0
+        );
+        assert_eq!(
+            g.upsert_edge("src", "status", "  ", true, 100, ArtifactId(1), 1.0),
+            0
+        );
 
         let _ = fs::remove_dir_all(&tmp_dir);
     }

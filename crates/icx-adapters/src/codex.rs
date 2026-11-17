@@ -66,7 +66,14 @@ impl CodexAdapter {
                     Some(other) => other.to_string(),
                     None => String::new(),
                 };
-                let res = mmu.ingest_payload(AgentKind::Codex, tool_name, &raw_output, false);
+                let exit_code = InfinityContextMmu::extract_exit_code(&payload);
+                let res = mmu.ingest_payload_with_exit_code(
+                    AgentKind::Codex,
+                    tool_name,
+                    &raw_output,
+                    exit_code,
+                    false,
+                );
 
                 json!({
                     "continue": true,
