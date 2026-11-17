@@ -170,8 +170,8 @@ impl InfinityContextMmu {
             Some(artifact_id),
             receipt.hologram_bytes,
         );
+        packet.clauses.retain(|c| c.key != "exit_code");
         if let Some(code) = exit_code {
-            packet.clauses.retain(|c| c.key != "exit_code");
             packet.clauses.push(icx_codec::AhtlClause::new(
                 if code == 0 {
                     icx_codec::ClauseOp::Verified

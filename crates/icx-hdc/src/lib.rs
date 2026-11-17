@@ -217,7 +217,6 @@ impl HdcAssociativeIndex {
         exit_code: Option<i32>,
         force_anomaly: bool,
     ) -> ObservationReceipt {
-        let subject_lower = subject.to_ascii_lowercase();
         let composite_hv = Hypervector::encode_text(&format!("{subject} {content}"));
 
         let verdict = self.surprise_gate.observe_with_exit_code(
@@ -248,22 +247,21 @@ impl HdcAssociativeIndex {
             sketch[0], sketch[1], sketch[2], sketch[3], quad[0], quad[1], surp_byte, flags_byte,
         ];
 
+        let entry = IndexedEntry::new(
+            artifact_id,
+            subject,
+            composite_hv,
+            current_trajectory,
+            verdict.momentum_surprise,
+        );
         self.summaries.push(EntrySummary {
             hv_sub64: composite_hv.sub_hypervector_64(),
-            subj_bloom32: Self::compute_subject_bloom32(&subject_lower),
+            subj_bloom32: Self::compute_subject_bloom32(entry.subject_lower()),
             quadrant_u16: quad_u16,
             surprise_q8: surp_byte,
             flags: flags_byte,
         });
-
-        self.entries.push(IndexedEntry {
-            artifact_id,
-            subject: subject.to_owned(),
-            subject_lower,
-            hv: composite_hv,
-            fractal_coord: current_trajectory,
-            surprise: verdict.momentum_surprise,
-        });
+        self.entries.push(entry);
 
         ObservationReceipt {
             verdict,
@@ -277,10 +275,15 @@ impl HdcAssociativeIndex {
         if !tok.contains('/') && !tok.contains(':') && tok.chars().count() >= 4 {
             return subject_lower.contains(tok);
         }
+        if tok.is_empty() {
+            return false;
+        }
         let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
         let tok_left_sep = tok.chars().next().is_some_and(|c| !is_word_char(c));
         let tok_right_sep = tok.chars().next_back().is_some_and(|c| !is_word_char(c));
-        for (pos, _) in subject_lower.match_indices(tok) {
+        let mut start = 0usize;
+        while let Some(rel) = subject_lower[start..].find(tok) {
+            let pos = start + rel;
             let end = pos + tok.len();
             let left_ok = tok_left_sep
                 || subject_lower[..pos]
@@ -295,6 +298,11 @@ impl HdcAssociativeIndex {
             if left_ok && right_ok {
                 return true;
             }
+            start = pos
+                + subject_lower[pos..]
+                    .chars()
+                    .next()
+                    .map_or(1, char::len_utf8);
         }
         false
     }
@@ -521,6 +529,11 @@ mod tests {
             "src/é/mod.rs",
             "é"
         ));
+        assert!(HdcAssociativeIndex::subject_matches_token(
+            "myfoo/foo/foo",
+            "foo/foo"
+        ));
+        assert!(!HdcAssociativeIndex::subject_matches_token("myfoo", ""));
         let _ = trait_ref.observe_event(ArtifactId(1000), "", "empty subject body", false);
         let _ = trait_ref.observe_event(ArtifactId(1001), "a/b x:y", "short composite", false);
 

@@ -608,17 +608,20 @@ impl BiTemporalGraph {
                     continue;
                 }
                 if let Some(mut inv) = loaded.edges[ci].t_invalid {
+                    let mut tx_end = loaded.edges[ci].t_tx_end.unwrap_or(inv);
                     if let Some(w_idx) = winner_idx {
                         inv = inv.min(loaded.edges[w_idx].t_valid);
+                        tx_end = tx_end.min(loaded.edges[w_idx].t_tx_start);
                     }
-                    for &next_i in &ordered[pos + 1..] {
-                        let next_e = &loaded.edges[next_i];
-                        if next_e.t_invalid != Some(next_e.t_valid) {
-                            inv = inv.min(next_e.t_valid);
-                            break;
-                        }
-                    }
+                    let next_bound = ordered[pos + 1..]
+                        .iter()
+                        .copied()
+                        .find(|&ni| loaded.edges[ni].t_invalid != Some(loaded.edges[ni].t_valid));
+                    inv = inv.min(next_bound.map_or(inv, |ni| loaded.edges[ni].t_valid));
+                    tx_end =
+                        tx_end.min(next_bound.map_or(tx_end, |ni| loaded.edges[ni].t_tx_start));
                     loaded.edges[ci].t_invalid = Some(inv.max(loaded.edges[ci].t_valid));
+                    loaded.edges[ci].t_tx_end = Some(tx_end.max(loaded.edges[ci].t_tx_start));
                 }
             }
         }

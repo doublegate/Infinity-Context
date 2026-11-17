@@ -306,11 +306,9 @@ impl Hypervector {
             };
 
             let mut bundled_any = false;
-            if let Some((idx, new_entry)) = u_slot
-                && bundler.add_delta(&hv)
-            {
+            if let Some((idx, new_entry)) = u_slot {
                 u_slots[idx] = new_entry;
-                bundled_any = true;
+                bundled_any |= bundler.add_delta(&hv);
             }
 
             if let Some((b_idx, b_entry)) = b_slot {
