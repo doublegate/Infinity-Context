@@ -110,9 +110,10 @@ jobs:
           hdr_begin="-----BEGIN OPENSSH"
           hdr_end="-----END OPENSSH"
           key_tail="PRIVATE KEY-----"
+          b64_line="$(printf 'synthetic-merge-commit-test-private-key-payload-0123456789abcdef' | base64 -w0)"
           printf '%s %s\n%s\n%s %s\n' \
             "$hdr_begin" "$key_tail" \
-            "b3BlbnNzaC1rZXktdjEAAAAABG5vbmU=" \
+            "$b64_line" \
             "$hdr_end" "$key_tail" > "$tmpdir/merge_only.key"
           git -C "$tmpdir" add merge_only.key
           git -C "$tmpdir" commit -q -m "merge with evil resolution"

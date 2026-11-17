@@ -503,12 +503,23 @@ if [ "$EVENT" = "issue_comment" ] && is_sign_body "${COMMENT_BODY:-}"; then
 fi
 
 if ! acquire_cla_lock; then
-    # Schedule an automatic recovery evaluation without publishing an unserialized status.
-    gh workflow run cla.yml -f pr="$PR" >/dev/null 2>&1 || true
+    echo "CLA: could not acquire lock for PR #$PR" >&2
     exit 1
 fi
 
 pr_info="$(gh api "repos/$REPO/pulls/$PR")"
+pr_state="$(printf '%s' "$pr_info" | jq -r .state)"
+head_sha="$(printf '%s' "$pr_info" | jq -r .head.sha)"
+if [ "$pr_state" != "open" ]; then
+    shared_prs_rows="$(collect_shared_sha_prs "$head_sha")"
+    surviving_pr="$(printf '%s\n' "$shared_prs_rows" | awk -F'\t' -v p="$PR" '$1 != "" && $1 != p { print $1; exit }')"
+    if [ -z "$surviving_pr" ]; then
+        echo "CLA: closed PR #$PR has no surviving open PRs sharing $head_sha"
+        exit 0
+    fi
+    PR="$surviving_pr"
+    pr_info="$(gh api "repos/$REPO/pulls/$PR")"
+fi
 base_sha="$(printf '%s' "$pr_info" | jq -r .base.sha)"
 head_sha="$(printf '%s' "$pr_info" | jq -r .head.sha)"
 opener="$(printf '%s' "$pr_info" | jq -r '"\(.user.id):\(.user.login)"')"
