@@ -63,7 +63,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           files: lcov.info
-          fail_ci_if_error: false
+          fail_ci_if_error: ${{ env.CODECOV_TOKEN != '' }}
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
@@ -107,8 +107,11 @@ jobs:
           git -C "$tmpdir" add main2.txt
           git -C "$tmpdir" commit -q -m "main2"
           git -C "$tmpdir" merge -q --no-commit side
-          printf 'GITHUB_TOKEN=ghp_0123456789abcdefghijklmnopqrstuvwxyz\n' > "$tmpdir/merge_only.env"
-          git -C "$tmpdir" add merge_only.env
+          printf '%s\n%s\n%s\n' \
+            "-----BEGIN OPENSSH PRIVATE KEY-----" \
+            "b3BlbnNzaC1rZXktdjEAAAAABG5vbmU=" \
+            "-----END OPENSSH PRIVATE KEY-----" > "$tmpdir/merge_only.key"
+          git -C "$tmpdir" add merge_only.key
           git -C "$tmpdir" commit -q -m "merge with evil resolution"
           if "$RUNNER_TEMP/gitleaks" git "$tmpdir" --log-opts="--all --full-history -m" --no-banner --redact --exit-code 1 >/dev/null 2>&1; then
             echo "ERROR: gitleaks failed to detect synthetic secret in merge commit" >&2

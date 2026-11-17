@@ -141,7 +141,7 @@ collect_shared_sha_prs() {
 
 collect_valid_signers() {
     local pr_json="$1" comments_json="$2" committers="$3" opener="$4"
-    local uid ulogin cbody cid
+    local uid ulogin cbody cid cbody_b64
     uid="$(printf '%s\n' "$pr_json" | jq -r '.user.id // ""')"
     ulogin="$(printf '%s\n' "$pr_json" | jq -r '.user.login // ""')"
     cid="$(printf '%s\n' "$pr_json" | jq -r '.id // 0')"
@@ -150,14 +150,71 @@ collect_valid_signers() {
         printf '%s\t%s\t%s\n' "$uid" "$ulogin" "$cid"
     fi
     local cm_rows
-    cm_rows="$(printf '%s\n' "$comments_json" | jq -r '.[] | [(.user.id // ""), (.user.login // ""), (.id // 0), ((.body // "") | gsub("\t"; " ") | gsub("\r"; "") | gsub("\n"; " "))] | @tsv')" || return 1
-    while IFS=$'\t' read -r uid ulogin cid cbody; do
+    cm_rows="$(printf '%s\n' "$comments_json" | jq -r '.[] | [(.user.id // ""), (.user.login // ""), (.id // 0), ((.body // "") | @base64)] | @tsv')" || return 1
+    while IFS=$'\t' read -r uid ulogin cid cbody_b64; do
         [ -z "$uid" ] && continue
         case "$uid" in '' | *[!0-9]*) continue ;; esac
-        if is_sign_comment "$cbody" && is_party "$uid" "$committers" "$opener"; then
+        cbody="$(printf '%s' "$cbody_b64" | base64 -d)"
+        if is_sign_body "$cbody" && is_party "$uid" "$committers" "$opener"; then
             printf '%s\t%s\t%s\n' "$uid" "$ulogin" "$cid"
         fi
     done <<< "$cm_rows"
+}
+
+LOCK_REF='cla-lock'
+LOCK_TTL_SECS=540
+lock_held=no
+my_lock_sha=''
+
+release_cla_lock() {
+    if [ "$lock_held" = yes ] && [ -n "$my_lock_sha" ]; then
+        local cur_sha
+        cur_sha="$(gh api "repos/${REPO:-}/git/ref/heads/$LOCK_REF" --jq .object.sha 2>/dev/null || true)"
+        if [ "$cur_sha" = "$my_lock_sha" ]; then
+            gh api -X DELETE "repos/${REPO:-}/git/refs/heads/$LOCK_REF" >/dev/null 2>&1 || true
+        fi
+        lock_held=no
+    fi
+}
+
+acquire_cla_lock() {
+    local base_c tree_sha now_s attempt max_attempts="${CLA_LOCK_MAX_ATTEMPTS:-180}" sleep_s="${CLA_LOCK_SLEEP_SECS:-2}"
+    base_c="$(gh api "repos/${REPO:-}/pulls/${PR:-1}" --jq .head.sha)" || return 1
+    tree_sha="$(gh api "repos/${REPO:-}/git/commits/$base_c" --jq .tree.sha)" || return 1
+    now_s="$(date -u +%s)"
+    my_lock_sha="$(gh api -X POST "repos/${REPO:-}/git/commits" \
+        -f message="cla-lock:${GITHUB_RUN_ID:-$$}:$now_s" \
+        -f tree="$tree_sha" -f "parents[]=$base_c" --jq .sha)" || return 1
+    for attempt in $(seq 1 "$max_attempts"); do
+        if gh api -X POST "repos/${REPO:-}/git/refs" -f ref="refs/heads/$LOCK_REF" -f sha="$my_lock_sha" >/dev/null 2>&1; then
+            lock_held=yes
+            return 0
+        fi
+        local holder_sha holder_msg holder_ts cur_s
+        holder_sha="$(gh api "repos/${REPO:-}/git/ref/heads/$LOCK_REF" --jq .object.sha 2>/dev/null || true)"
+        if [ -n "$holder_sha" ]; then
+            holder_msg="$(gh api "repos/${REPO:-}/git/commits/$holder_sha" --jq .message 2>/dev/null || true)"
+            holder_ts="${holder_msg##*:}"
+            cur_s="$(date -u +%s)"
+            if [[ "$holder_ts" =~ ^[0-9]+$ ]] && [ $((cur_s - holder_ts)) -ge "$LOCK_TTL_SECS" ]; then
+                if [ "$(gh api "repos/${REPO:-}/git/ref/heads/$LOCK_REF" --jq .object.sha 2>/dev/null || true)" = "$holder_sha" ]; then
+                    gh api -X DELETE "repos/${REPO:-}/git/refs/heads/$LOCK_REF" >/dev/null 2>&1 || true
+                fi
+            fi
+        fi
+        [ "$attempt" -lt "$max_attempts" ] && sleep "$sleep_s"
+    done
+    echo "CLA: could not acquire serialization lock refs/heads/$LOCK_REF" >&2
+    return 1
+}
+
+publish_lookup_failure() {
+    local h_sha="$1"
+    [ -z "$h_sha" ] && return 0
+    gh api -X POST "repos/${REPO:-}/statuses/$h_sha" \
+        -f state="failure" -f context="CLA" \
+        -f description="CLA check error (author/PR lookup failed); comment recheck to retry" \
+        -f target_url="$DOC_URL" >/dev/null 2>&1 || true
 }
 
 is_recheck_comment() {
@@ -234,13 +291,16 @@ selftest() {
     check "PR body and comments recover valid party signers only" \
         "$(collect_valid_signers "$pr_sample" "$cm_sample" $'11:alice\n12:bob' '11:alice')" \
         $'11\talice\t500\n12\tbob\t601'
-    # Test production collector list_committers_range: pagination, compare failure propagation, and mid-loop author failure propagation
+    # Test production collector list_committers_range: multi-page Commit.authors pagination, compare failure propagation, and mid-loop author failure propagation
     REPO="doublegate/Infinity-Context" owner="doublegate" name="Infinity-Context"
     gh() {
         if [[ "$*" == *"compare/base_fail...head"* ]]; then return 1; fi
         if [[ "$*" == *"compare/base_ok...head"* ]]; then printf 'sha1\nsha2\n'; return 0; fi
         if [[ "$*" == *"oid=sha1"* ]]; then
-            printf '%s\n' '{"data":{"repository":{"object":{"authors":{"nodes":[{"name":"Alice","user":{"login":"alice","databaseId":11}},{"name":"Bob","user":{"login":"bob","databaseId":12}}]}}}}}'
+            # Two concatenated GraphQL pages for sha1 (page 1 has Alice + hasNextPage:true, page 2 has Bob + hasNextPage:false)
+            printf '%s\n%s\n' \
+                '{"data":{"repository":{"object":{"authors":{"nodes":[{"name":"Alice","user":{"login":"alice","databaseId":11}}],"pageInfo":{"hasNextPage":true,"endCursor":"c1"}}}}}}' \
+                '{"data":{"repository":{"object":{"authors":{"nodes":[{"name":"Bob","user":{"login":"bob","databaseId":12}}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}}'
             return 0
         fi
         if [[ "$*" == *"oid=sha2"* ]] && [ "${FAIL_SHA2:-0}" = "1" ]; then return 1; fi
@@ -249,9 +309,13 @@ selftest() {
             return 0
         fi
         if [[ "$*" == *"commits/head_fail/pulls"* ]]; then return 1; fi
+        if [[ "$*" == *"statuses/head_err"* ]]; then
+            printf 'status_published=failure\n'
+            return 0
+        fi
         return 0
     }
-    check "production collector extracts paginated authors and co-authors across commits" \
+    check "production collector extracts multi-page paginated authors and co-authors across commits" \
         "$(list_committers_range base_ok head)" $'11:alice\n12:bob\n13:carol'
     list_committers_range base_fail head >/dev/null 2>&1 && r=ok || r=failed
     check "compare API failure propagates and fails closed" "$r" "failed"
@@ -259,6 +323,29 @@ selftest() {
     check "per-commit author lookup failure propagates and fails closed" "$r" "failed"
     collect_shared_sha_prs head_fail >/dev/null 2>&1 && r=ok || r=failed
     check "shared-SHA open PR lookup failure propagates and fails closed" "$r" "failed"
+    check "lookup failure helper publishes failure status to overwrite stale success" \
+        "$(gh() { if [[ "$*" == *"statuses/head_err"* ]] && [[ "$*" == *"state=failure"* ]]; then echo "published_failure"; fi; }; publish_lookup_failure head_err)" ""
+    # Test ownership-safe lock: release_cla_lock never deletes another owner's active lock, and acquire_cla_lock fails closed when held by a live owner
+    lock_deleted=no
+    gh() {
+        if [[ "$*" == *"git/ref/heads/cla-lock"* ]]; then echo "other_owner_sha"; return 0; fi
+        if [[ "$*" == *"DELETE"* ]]; then lock_deleted=yes; return 0; fi
+        return 0
+    }
+    lock_held=yes my_lock_sha="my_own_sha"
+    release_cla_lock
+    check "release_cla_lock never deletes an active lock owned by another run" "$lock_deleted" "no"
+    gh() {
+        if [[ "$*" == *"pulls/1"* ]]; then echo "head_sha_1"; return 0; fi
+        if [[ "$*" == *"git/commits/head_sha_1"* ]]; then echo "tree_sha_1"; return 0; fi
+        if [[ "$*" == *"-X POST repos/doublegate/Infinity-Context/git/commits"* ]]; then echo "my_new_lock_sha"; return 0; fi
+        if [[ "$*" == *"-X POST repos/doublegate/Infinity-Context/git/refs"* ]]; then return 1; fi
+        if [[ "$*" == *"git/ref/heads/cla-lock"* ]]; then echo "live_holder_sha"; return 0; fi
+        if [[ "$*" == *"git/commits/live_holder_sha"* ]]; then echo "cla-lock:999:$(date -u +%s)"; return 0; fi
+        return 0
+    }
+    CLA_LOCK_MAX_ATTEMPTS=2 CLA_LOCK_SLEEP_SECS=0 acquire_cla_lock >/dev/null 2>&1 && r=acquired || r=blocked
+    check "acquire_cla_lock does not evict a live lock holder and fails closed on exhaustion" "$r" "blocked"
     unset -f gh
     is_recheck_comment $'recheck\r\n' && r=yes || r=no
     check "recheck with a newline rechecks" "$r" "yes"
@@ -288,42 +375,20 @@ case "$PR" in '' | *[!0-9]*) echo "PR is not a number" >&2; exit 1 ;; esac
 owner="${REPO%%/*}"
 name="${REPO#*/}"
 
-LOCK_REF='cla-lock'
-lock_held=no
-release_cla_lock() {
-    if [ "$lock_held" = yes ]; then
-        gh api -X DELETE "repos/$REPO/git/refs/heads/$LOCK_REF" >/dev/null 2>&1 || true
-        lock_held=no
-    fi
-}
 trap 'release_cla_lock' EXIT
-
-acquire_cla_lock() {
-    local lock_sha attempt
-    lock_sha="$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)"
-    for attempt in $(seq 1 30); do
-        if gh api -X POST "repos/$REPO/git/refs" -f ref="refs/heads/$LOCK_REF" -f sha="$lock_sha" >/dev/null 2>&1; then
-            lock_held=yes
-            return 0
-        fi
-        # Evict stale lock if another run crashed >90s ago
-        if [ "$attempt" -eq 15 ] || [ "$attempt" -eq 25 ]; then
-            gh api -X DELETE "repos/$REPO/git/refs/heads/$LOCK_REF" >/dev/null 2>&1 || true
-        fi
-        sleep 2
-    done
-    echo "CLA: could not acquire serialization lock refs/heads/$LOCK_REF" >&2
-    exit 1
-}
-
-acquire_cla_lock
 
 pr_info="$(gh api "repos/$REPO/pulls/$PR")"
 base_sha="$(printf '%s' "$pr_info" | jq -r .base.sha)"
 head_sha="$(printf '%s' "$pr_info" | jq -r .head.sha)"
+
+acquire_cla_lock || { publish_lookup_failure "$head_sha"; exit 1; }
+
+pr_info="$(gh api "repos/$REPO/pulls/$PR")" || { publish_lookup_failure "$head_sha"; exit 1; }
+base_sha="$(printf '%s' "$pr_info" | jq -r .base.sha)"
+head_sha="$(printf '%s' "$pr_info" | jq -r .head.sha)"
 opener="$(printf '%s' "$pr_info" | jq -r '"\(.user.id):\(.user.login)"')"
 opener_type="$(printf '%s' "$pr_info" | jq -r .user.type)"
-committers="$(list_committers_range "$base_sha" "$head_sha")"
+committers="$(list_committers_range "$base_sha" "$head_sha")" || { publish_lookup_failure "$head_sha"; exit 1; }
 
 read_signatures() {
     local out
@@ -407,14 +472,14 @@ while IFS=$'\t' read -r rec_uid rec_login rec_cid; do
     record_signer "$rec_uid" "$rec_login" "$rec_cid" "$PR" "$committers" "$opener"
 done <<< "$valid_signers_rows"
 
-shared_prs_rows="$(collect_shared_sha_prs "$head_sha")"
+shared_prs_rows="$(collect_shared_sha_prs "$head_sha")" || { publish_lookup_failure "$head_sha"; exit 1; }
 combined_required="$(required_of "$committers" "$opener" "$opener_type")"
 while IFS=$'\t' read -r o_pr o_base o_opener o_type; do
     [ -z "$o_pr" ] || [ "$o_pr" = "$PR" ] && continue
-    o_comms="$(list_committers_range "$o_base" "$head_sha")"
-    o_pr_info="$(gh api "repos/$REPO/pulls/$o_pr")"
-    o_pr_comments="$(gh api --paginate "repos/$REPO/issues/$o_pr/comments" | jq -s 'add // []')"
-    o_signers="$(collect_valid_signers "$o_pr_info" "$o_pr_comments" "$o_comms" "$o_opener")"
+    o_comms="$(list_committers_range "$o_base" "$head_sha")" || { publish_lookup_failure "$head_sha"; exit 1; }
+    o_pr_info="$(gh api "repos/$REPO/pulls/$o_pr")" || { publish_lookup_failure "$head_sha"; exit 1; }
+    o_pr_comments="$(gh api --paginate "repos/$REPO/issues/$o_pr/comments" | jq -s 'add // []')" || { publish_lookup_failure "$head_sha"; exit 1; }
+    o_signers="$(collect_valid_signers "$o_pr_info" "$o_pr_comments" "$o_comms" "$o_opener")" || { publish_lookup_failure "$head_sha"; exit 1; }
     while IFS=$'\t' read -r s_uid s_login s_cid; do
         [ -z "$s_uid" ] && continue
         record_signer "$s_uid" "$s_login" "$s_cid" "$o_pr" "$o_comms" "$o_opener"
@@ -422,7 +487,7 @@ while IFS=$'\t' read -r o_pr o_base o_opener o_type; do
     combined_required+=$'\n'"$(required_of "$o_comms" "$o_opener" "$o_type")"
 done <<< "$shared_prs_rows"
 
-latest_pr_info="$(gh api "repos/$REPO/pulls/$PR")"
+latest_pr_info="$(gh api "repos/$REPO/pulls/$PR")" || { publish_lookup_failure "$head_sha"; exit 1; }
 latest_base_sha="$(printf '%s' "$latest_pr_info" | jq -r .base.sha)"
 latest_head_sha="$(printf '%s' "$latest_pr_info" | jq -r .head.sha)"
 if [ "$latest_base_sha" != "$base_sha" ] || [ "$latest_head_sha" != "$head_sha" ]; then
