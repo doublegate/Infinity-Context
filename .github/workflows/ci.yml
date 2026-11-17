@@ -86,7 +86,8 @@ jobs:
           tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP" gitleaks
           rm "$RUNNER_TEMP/gitleaks.tgz"
       - name: Scan git history (including merge-commit patches)
-        run: "$RUNNER_TEMP/gitleaks" git . --log-opts="--all --full-history -m" --no-banner --redact --exit-code 1
+        run: |
+          "$RUNNER_TEMP/gitleaks" git . --log-opts="--all --full-history -m" --no-banner --redact --exit-code 1
       - name: Verify merge-commit secret detection fixture
         run: |
           tmpdir="$(mktemp -d)"

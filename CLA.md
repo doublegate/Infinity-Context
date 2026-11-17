@@ -62,6 +62,6 @@ This agreement is governed by the laws of the United States and the State of Del
 
 ---
 
-To sign this CLA when submitting a pull request, include the following statement in your pull request description or in a pull request comment:
+To sign this CLA when submitting a pull request, post a pull request comment (or include a standalone line in your pull request description) with the following statement:
 
 > I have read the Infinity-Context CLA Document and I hereby sign the CLA

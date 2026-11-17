@@ -28,7 +28,7 @@
   <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/10%2C240--bit%20HDC%20scan-1.31%20%C2%B5s%2Fnode-0284c7.svg" alt="HDC Scan: 1.31 us/node"></a><br/>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.80%2B%20(8%20crates)-f97316.svg?logo=rust" alt="Rust: 1.80+ (8 crates)"></a>
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v0.1.0-2563eb.svg" alt="Release: v0.1.0"></a>
-  <a href="#five-plane-architecture"><img src="https://img.shields.io/badge/shm%20seqlock-%3C300%20ns-0d9488.svg" alt="SHM Seqlock: <300 ns"></a>
+  <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/shm%20seqlock-%3C300%20ns-0d9488.svg" alt="SHM Seqlock: <300 ns"></a>
   <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20MCP-475569.svg" alt="Supported Agents"></a>
 </p>
 

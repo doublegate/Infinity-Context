@@ -62,11 +62,7 @@ path = [
   "docs/**",
   "images/**",
   "assets/**",
-  "ref-docs/*.md",
-  "ref-docs/agent-internals/**",
-  "ref-docs/prior-art/**",
-  "ref-docs/novel-methods/**",
-  "ref-docs/papers/INDEX.md",
+  "ref-docs/**",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 DoubleGate"
