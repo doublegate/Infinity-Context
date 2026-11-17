@@ -336,6 +336,9 @@ impl BiTemporalGraph {
     /// Explicitly invalidates an active edge by `edge_id`, stamping `t_invalid = Some(now_ms)`
     /// and `t_tx_end = Some(now_ms)`. Returns `true` if an active edge was found and invalidated.
     pub fn invalidate_edge(&mut self, edge_id: u64, now_ms: u64) -> bool {
+        if edge_id == 0 {
+            return false;
+        }
         for e in &mut self.edges {
             if e.edge_id == edge_id && e.t_invalid.is_none() {
                 e.t_invalid = Some(now_ms.max(e.t_valid.saturating_add(1)));
@@ -595,43 +598,24 @@ impl BiTemporalGraph {
                 }
             }
             let winner_idx = active.last().copied();
-            if let Some(w_idx) = winner_idx {
-                let w_edge_id = loaded.edges[w_idx].edge_id;
-                for &ci in indices {
-                    if let Some(inv) = loaded.edges[ci]
-                        .t_invalid
-                        .filter(|&inv| inv > loaded.edges[ci].t_valid)
-                    {
-                        if loaded.edges[ci].edge_id < w_edge_id {
-                            loaded.edges[w_idx].t_valid = loaded.edges[w_idx].t_valid.max(inv);
-                            let tx_end = loaded.edges[ci].t_tx_end.unwrap_or(inv);
-                            loaded.edges[w_idx].t_tx_start =
-                                loaded.edges[w_idx].t_tx_start.max(tx_end);
-                        }
-                    }
-                }
-            }
-            let mut ordered = indices.clone();
-            ordered.sort_by_key(|&i| {
+            let mut closed_ordered: Vec<usize> = indices
+                .iter()
+                .copied()
+                .filter(|&i| Some(i) != winner_idx)
+                .collect();
+            closed_ordered.sort_by_key(|&i| {
                 (
                     loaded.edges[i].t_valid,
                     loaded.edges[i].t_tx_start,
                     loaded.edges[i].edge_id,
                 )
             });
-            for (pos, &ci) in ordered.iter().enumerate() {
-                let Some(mut inv) = loaded.edges[ci]
+            for (pos, &ci) in closed_ordered.iter().enumerate() {
+                let mut inv = loaded.edges[ci]
                     .t_invalid
-                    .filter(|_| Some(ci) != winner_idx)
-                else {
-                    continue;
-                };
+                    .unwrap_or(loaded.edges[ci].t_valid);
                 let mut tx_end = loaded.edges[ci].t_tx_end.unwrap_or(inv);
-                if let Some(w_idx) = winner_idx {
-                    inv = inv.min(loaded.edges[w_idx].t_valid);
-                    tx_end = tx_end.min(loaded.edges[w_idx].t_tx_start);
-                }
-                let next_bound = ordered[pos + 1..]
+                let next_bound = closed_ordered[pos + 1..]
                     .iter()
                     .copied()
                     .find(|&ni| loaded.edges[ni].t_invalid != Some(loaded.edges[ni].t_valid));
@@ -639,6 +623,30 @@ impl BiTemporalGraph {
                 tx_end = tx_end.min(next_bound.map_or(tx_end, |ni| loaded.edges[ni].t_tx_start));
                 loaded.edges[ci].t_invalid = Some(inv.max(loaded.edges[ci].t_valid));
                 loaded.edges[ci].t_tx_end = Some(tx_end.max(loaded.edges[ci].t_tx_start));
+            }
+            if let Some(w_idx) = winner_idx {
+                let w_edge_id = loaded.edges[w_idx].edge_id;
+                for &ci in &closed_ordered {
+                    let inv = loaded.edges[ci]
+                        .t_invalid
+                        .unwrap_or(loaded.edges[ci].t_valid);
+                    let tx_end = loaded.edges[ci].t_tx_end.unwrap_or(inv);
+                    if inv > loaded.edges[ci].t_valid && loaded.edges[ci].edge_id < w_edge_id {
+                        loaded.edges[w_idx].t_valid = loaded.edges[w_idx].t_valid.max(inv);
+                        loaded.edges[w_idx].t_tx_start = loaded.edges[w_idx].t_tx_start.max(tx_end);
+                    }
+                }
+                let w_valid = loaded.edges[w_idx].t_valid;
+                let w_tx = loaded.edges[w_idx].t_tx_start;
+                for &ci in &closed_ordered {
+                    let inv = loaded.edges[ci]
+                        .t_invalid
+                        .unwrap_or(loaded.edges[ci].t_valid)
+                        .min(w_valid);
+                    let tx_end = loaded.edges[ci].t_tx_end.unwrap_or(inv).min(w_tx);
+                    loaded.edges[ci].t_invalid = Some(inv.max(loaded.edges[ci].t_valid));
+                    loaded.edges[ci].t_tx_end = Some(tx_end.max(loaded.edges[ci].t_tx_start));
+                }
             }
         }
 
@@ -825,6 +833,7 @@ mod tests {
         assert_eq!(active_edge.target_entity, "NEW");
         assert_eq!(active_edge.edge_id, 2);
         assert!(repaired.invalidate_edge(active_edge.edge_id, 50));
+        assert!(!repaired.invalidate_edge(0, 50));
 
         // Verify load_from_dir preserves an active winner whose t_valid (50) precedes an already-invalidated empty edge (100..100)
         // and clamps an earlier closed edge [10, 80) against its successor at 50

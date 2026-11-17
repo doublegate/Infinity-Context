@@ -306,9 +306,11 @@ impl Hypervector {
             };
 
             let mut bundled_any = false;
-            if let Some((idx, new_entry)) = u_slot {
+            if let Some((idx, new_entry)) = u_slot
+                && bundler.add_delta(&hv)
+            {
                 u_slots[idx] = new_entry;
-                bundled_any |= bundler.add_delta(&hv);
+                bundled_any = true;
             }
 
             if let Some((b_idx, b_entry)) = b_slot {
@@ -318,8 +320,10 @@ impl Hypervector {
                     Self::from_seed("tok", p_lower)
                 });
                 let bigram = prev.permute(1).bind(&hv);
-                b_slots[b_idx] = b_entry;
-                bundled_any |= bundler.add_delta(&bigram);
+                if bundler.add_delta(&bigram) {
+                    b_slots[b_idx] = b_entry;
+                    bundled_any = true;
+                }
             }
             prev_hv = Some(hv);
             prev_key = Some(u_key);

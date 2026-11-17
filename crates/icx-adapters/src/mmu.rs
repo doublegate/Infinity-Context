@@ -113,35 +113,6 @@ impl InfinityContextMmu {
         self.ingest_payload_with_exit_code(agent, subject, raw_text, None, force_anomaly)
     }
 
-    #[inline]
-    pub(crate) fn clamp_utf8_boundary(text: &str, max_bytes: usize) -> usize {
-        if text.len() <= max_bytes {
-            return text.len();
-        }
-        let mut bound = max_bytes;
-        while !text.is_char_boundary(bound) {
-            bound -= 1;
-        }
-        bound
-    }
-
-    #[inline]
-    pub(crate) fn clamp_raw_ingest(raw_text: &str, max_bytes: usize) -> &str {
-        if raw_text.len() <= max_bytes {
-            return raw_text;
-        }
-        let mut bound = Self::clamp_utf8_boundary(raw_text, max_bytes);
-        // Prefer cutting at a newline near the cap so trailing secrets are not split mid-line.
-        let search_floor = bound.saturating_sub(4096);
-        if let Some(rel_nl) = raw_text.as_bytes()[search_floor..bound]
-            .iter()
-            .rposition(|&b| b == b'\n')
-        {
-            bound = search_floor + rel_nl + 1;
-        }
-        &raw_text[..bound]
-    }
-
     /// Ingests a tool output or turn with an optional process `exit_code` (`Some(code != 0)`
     /// triggers Titans anomaly boost and records a functional `exit_code` edge in `BiTemporalGraph`).
     pub fn ingest_payload_with_exit_code(
@@ -153,11 +124,32 @@ impl InfinityContextMmu {
         force_anomaly: bool,
     ) -> IngestResult {
         self.clock_ms += 10;
-        let bounded_raw = Self::clamp_raw_ingest(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
+        let bounded_raw = if raw_text.len() > icx_core::ICX_MAX_INGEST_BYTES {
+            let mut bound = icx_core::ICX_MAX_INGEST_BYTES;
+            while !raw_text.is_char_boundary(bound) {
+                bound -= 1;
+            }
+            // Prefer cutting at a newline near the cap so trailing secrets are not split mid-line.
+            let search_floor = bound.saturating_sub(4096);
+            if let Some(rel_nl) = raw_text.as_bytes()[search_floor..bound]
+                .iter()
+                .rposition(|&b| b == b'\n')
+            {
+                bound = search_floor + rel_nl + 1;
+            }
+            &raw_text[..bound]
+        } else {
+            raw_text
+        };
         let mut sanitized = SecretRedactor::sanitize(bounded_raw);
         let was_redacted = bounded_raw.lines().ne(sanitized.lines());
-        let san_bound = Self::clamp_utf8_boundary(&sanitized, icx_core::ICX_MAX_INGEST_BYTES);
-        sanitized.truncate(san_bound);
+        if sanitized.len() > icx_core::ICX_MAX_INGEST_BYTES {
+            let mut bound = icx_core::ICX_MAX_INGEST_BYTES;
+            while !sanitized.is_char_boundary(bound) {
+                bound -= 1;
+            }
+            sanitized.truncate(bound);
+        }
         let raw_bytes = sanitized.len();
         let (artifact_id, _) = self.cas.put_bytes(sanitized.as_bytes());
 
@@ -327,7 +319,7 @@ impl InfinityContextMmu {
                 .graph
                 .personalized_pagerank(&seeds, None, 0.15, 6, top_k);
             for node in ppr_nodes {
-                for &prov in node.provenance_artifacts.iter().take(1) {
+                if let Some(&prov) = node.provenance_artifacts.first() {
                     lines.push(format!(
                         "⟦Ω:PPR_GRAPH⊢entity={}⋮score={:.3}↦{}⟧",
                         node.entity, node.score, prov

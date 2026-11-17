@@ -497,21 +497,6 @@ unprefixed_secret = {unpref_sec}
         .unwrap();
         assert!(null_out.contains("ok") || !null_out.contains("null"));
 
-        assert_eq!(InfinityContextMmu::clamp_utf8_boundary("hello", 10), 5);
-        assert_eq!(InfinityContextMmu::clamp_utf8_boundary("aé", 2), 1);
-        assert_eq!(
-            InfinityContextMmu::clamp_raw_ingest("hello\nworld", 20),
-            "hello\nworld"
-        );
-        assert_eq!(
-            InfinityContextMmu::clamp_raw_ingest("line1\nline2_overflow", 12),
-            "line1\n"
-        );
-        assert_eq!(
-            InfinityContextMmu::clamp_raw_ingest("no_newline_é_tail", 12),
-            "no_newline_"
-        );
-
         let no_args_call = McpPagerServer::handle_jsonrpc(
             r#"{"jsonrpc":"2.0","id":99,"method":"tools/call","params":{}}"#,
             &mut mmu,

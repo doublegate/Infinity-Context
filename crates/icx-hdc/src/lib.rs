@@ -163,33 +163,39 @@ impl HdcAssociativeIndex {
     }
 
     #[inline]
-    fn compute_subject_bloom32(subject_lower: &str) -> u32 {
+    fn composite_token_bloom32(comp: &str) -> u32 {
         let mut mask = 0u32;
-        for tok in subject_lower.split(|c: char| !c.is_alphanumeric() && c != '_') {
-            if tok.len() >= 2 {
-                mask |= Self::token_bloom_bits32(tok);
+        if comp.len() >= 2 {
+            mask |= Self::token_bloom_bits32(comp);
+        }
+        let mut seg_starts = [0usize; 8];
+        let mut seg_count = 0usize;
+        let mut byte_idx = 0usize;
+        for seg in comp.split(['/', ':']) {
+            let start = byte_idx;
+            let end = start + seg.len();
+            byte_idx = end + 1;
+            if seg.len() >= 2 {
+                mask |= Self::token_bloom_bits32(seg);
+            }
+            if !seg.is_empty() && seg_count < seg_starts.len() {
+                for &prev_start in &seg_starts[..seg_count] {
+                    mask |= Self::token_bloom_bits32(&comp[prev_start..end]);
+                }
+                seg_starts[seg_count] = start;
+                seg_count += 1;
             }
         }
+        mask
+    }
+
+    #[inline]
+    fn compute_subject_bloom32(subject_lower: &str) -> u32 {
+        let mut mask = 0u32;
         for comp in
             subject_lower.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
         {
-            let mut short_spans = [0usize; 8];
-            let mut span_len = 0usize;
-            let mut byte_idx = 0usize;
-            for seg in comp.split(['/', ':']) {
-                let start = byte_idx;
-                let end = start + seg.len();
-                byte_idx = end + 1;
-                if !seg.is_empty() && seg.len() < 2 && span_len < short_spans.len() {
-                    short_spans[span_len] = start;
-                    for &prev_start in &short_spans[..span_len] {
-                        mask |= Self::token_bloom_bits32(&comp[prev_start..end]);
-                    }
-                    span_len += 1;
-                } else {
-                    span_len = 0;
-                }
-            }
+            mask |= Self::composite_token_bloom32(comp);
         }
         if !subject_lower.is_empty() {
             mask |= Self::token_bloom_bits32(subject_lower);
@@ -375,20 +381,7 @@ impl HdcAssociativeIndex {
                 let q_sub64 = q_hv.sub_hypervector_64();
                 let mut q_bloom32 = 0u32;
                 for tok in &q_tokens {
-                    if tok.contains(':') || tok.contains('/') {
-                        let mut any_sub = false;
-                        for sub in tok.split(|c: char| !c.is_alphanumeric() && c != '_') {
-                            if sub.len() >= 2 {
-                                q_bloom32 |= Self::token_bloom_bits32(sub);
-                                any_sub = true;
-                            }
-                        }
-                        if !any_sub {
-                            q_bloom32 |= Self::token_bloom_bits32(tok);
-                        }
-                    } else {
-                        q_bloom32 |= Self::token_bloom_bits32(tok);
-                    }
+                    q_bloom32 |= Self::composite_token_bloom32(tok);
                 }
                 let q_bloom_bits = q_bloom32.count_ones().max(1);
                 let cur_quad = self.current_trajectory().quadrant_signature_u16();
