@@ -456,7 +456,11 @@ fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
                 }
                 i += 2;
             }
-            _ => i += 1,
+            unknown => {
+                return Err(format!(
+                    "icx encode-ahtl error: unknown option `{unknown}` (expected `--dir` or `--profile`)"
+                ));
+            }
         }
     }
     let content =
@@ -777,11 +781,11 @@ mod tests {
                 sample_path_str.clone(),
                 "--dir".into(),
                 dir_arg.clone(),
-                "--extra".into(),
             ],
             io::Cursor::new(""),
         )
         .unwrap();
+        assert!(run_encode_ahtl(&[sample_path_str.clone(), "--unknown".into()]).is_err());
         assert!(run_encode_ahtl(&[]).is_err());
         assert!(run_encode_ahtl(&["/nonexistent/file/path.rs".into()]).is_err());
 

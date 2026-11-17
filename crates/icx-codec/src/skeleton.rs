@@ -14,7 +14,7 @@ use std::collections::BTreeSet;
 pub struct StructuralSkeletonizer;
 
 impl StructuralSkeletonizer {
-    /// Automatically detects payload domain (unified diff, test/build log, or source/text)
+    /// Automatically detects payload domain (test/build log, unified diff, or source/text)
     /// and compiles a high-density `AhtlPacket`.
     pub fn compress_to_packet(
         subject: &str,
@@ -25,32 +25,42 @@ impl StructuralSkeletonizer {
         let clean = SecretRedactor::sanitize(raw_text);
         let total_lines = clean.lines().count().max(1) as u32;
 
-        if Self::looks_like_diff(&clean) {
-            Self::skeletonize_diff(subject, &clean, total_lines, deref_id, hologram_bytes)
-        } else if Self::looks_like_test_or_build_log(&clean) {
+        if Self::looks_like_test_or_build_log(&clean) {
             Self::skeletonize_log(subject, &clean, total_lines, deref_id, hologram_bytes)
+        } else if Self::looks_like_diff(&clean) {
+            Self::skeletonize_diff(subject, &clean, total_lines, deref_id, hologram_bytes)
         } else {
             Self::skeletonize_source_or_text(subject, &clean, total_lines, deref_id, hologram_bytes)
         }
     }
 
+    /// Line-anchored detection of compiler and test-runner logs so that source files containing
+    /// diagnostic string literals (and test logs containing assertion diffs) are classified
+    /// accurately.
     fn looks_like_test_or_build_log(text: &str) -> bool {
-        (text.contains("running ") && text.contains("test result:"))
-            || text.contains("Compiling ")
-            || text.contains("error[E")
-            || text.contains("panicked at")
-            || text.contains("test session starts")
-            || text.contains("=== FAILURES ===")
-            || text.contains("Traceback (most recent call last):")
-            || text.contains("error TS")
-            || text.contains("Test Files ")
-            || text.contains("=== RUN ")
-            || text.contains("--- PASS:")
-            || text.contains("--- FAIL:")
+        text.lines().any(|line| {
+            let t = line.trim();
+            (t.starts_with("running ") && t.ends_with(" tests"))
+                || t.starts_with("test result:")
+                || t.starts_with("Compiling ")
+                || t.starts_with("error[E")
+                || (t.starts_with("thread '") && t.contains("panicked at"))
+                || (t.starts_with("==") && t.contains("test session starts"))
+                || (t.starts_with("==") && t.contains("FAILURES"))
+                || t == "Traceback (most recent call last):"
+                || t.starts_with("Test Files ")
+                || t.starts_with("=== RUN ")
+                || t.starts_with("--- PASS:")
+                || t.starts_with("--- FAIL:")
+                || t.contains(": error TS")
+                || t.contains("): error TS")
+        })
     }
 
+    /// Line-anchored detection of unified `git diff` payloads.
     fn looks_like_diff(text: &str) -> bool {
-        text.contains("diff --git ") || text.contains("@@ -")
+        text.lines()
+            .any(|line| line.starts_with("diff --git ") || line.starts_with("@@ -"))
     }
 
     fn skeletonize_log(
@@ -87,8 +97,6 @@ impl StructuralSkeletonizer {
             }
 
             // 2. Failing test lines across cargo test, pytest, vitest/jest, and go test
-            // Failing test identities are preserved unconditionally and deduplicated across
-            // progress vs. summary lines (`Codex 4601196666` & `4601196691`).
             let extracted_fail = if trimmed.starts_with("test ") && trimmed.ends_with(" ... FAILED")
             {
                 Some(
@@ -110,11 +118,12 @@ impl StructuralSkeletonizer {
                     .strip_prefix("FAIL ")
                     .or_else(|| trimmed.strip_prefix("❯ "))
                     .or_else(|| trimmed.strip_prefix("✕ "))
+                    .map(|rest| rest.split(" (").next().unwrap_or(rest).trim())
             };
 
             if let Some(raw_test_name) = extracted_fail {
                 let norm_name = Self::compact_token(raw_test_name);
-                if seen_failed_tests.insert(norm_name.clone()) {
+                if !norm_name.is_empty() && seen_failed_tests.insert(norm_name.clone()) {
                     fail_count += 1;
                     clauses.push(AhtlClause::new(
                         ClauseOp::Anomaly,
@@ -180,37 +189,47 @@ impl StructuralSkeletonizer {
         deref_id: Option<ArtifactId>,
         hologram_bytes: [u8; 8],
     ) -> AhtlPacket {
+        let lines: Vec<&str> = text.lines().collect();
         let mut clauses = Vec::new();
         let mut added = 0usize;
         let mut removed = 0usize;
         let mut seen_files: BTreeSet<String> = BTreeSet::new();
         let mut hunk_count = 0usize;
 
-        for line in text.lines() {
+        for (idx, &line) in lines.iter().enumerate() {
             if line.starts_with("diff --git ") {
                 continue;
             }
+            // Match unified diff file header pairs (`--- <old>` immediately followed by `+++ <new>`)
+            // so removed lines starting with `-- ` inside a hunk are never mistaken for headers.
             if let Some(after_minus) = line.strip_prefix("--- ") {
-                let raw_path = after_minus.trim();
-                if raw_path != "/dev/null" {
-                    let clean_path = raw_path.strip_prefix("a/").unwrap_or(raw_path);
-                    let tok = Self::compact_token(clean_path);
-                    if seen_files.len() < 4 && seen_files.insert(tok.clone()) {
-                        clauses.push(AhtlClause::new(ClauseOp::Neutral, "file", Some(tok)));
+                if lines
+                    .get(idx + 1)
+                    .is_some_and(|next| next.starts_with("+++ "))
+                {
+                    let raw_path = after_minus.trim();
+                    if raw_path != "/dev/null" {
+                        let clean_path = raw_path.strip_prefix("a/").unwrap_or(raw_path);
+                        let tok = Self::compact_token(clean_path);
+                        if seen_files.len() < 4 && seen_files.insert(tok.clone()) {
+                            clauses.push(AhtlClause::new(ClauseOp::Neutral, "file", Some(tok)));
+                        }
                     }
+                    continue;
                 }
-                continue;
             }
             if let Some(after_plus) = line.strip_prefix("+++ ") {
-                let raw_path = after_plus.trim();
-                if raw_path != "/dev/null" {
-                    let clean_path = raw_path.strip_prefix("b/").unwrap_or(raw_path);
-                    let tok = Self::compact_token(clean_path);
-                    if seen_files.len() < 4 && seen_files.insert(tok.clone()) {
-                        clauses.push(AhtlClause::new(ClauseOp::Neutral, "file", Some(tok)));
+                if idx > 0 && lines[idx - 1].starts_with("--- ") {
+                    let raw_path = after_plus.trim();
+                    if raw_path != "/dev/null" {
+                        let clean_path = raw_path.strip_prefix("b/").unwrap_or(raw_path);
+                        let tok = Self::compact_token(clean_path);
+                        if seen_files.len() < 4 && seen_files.insert(tok.clone()) {
+                            clauses.push(AhtlClause::new(ClauseOp::Neutral, "file", Some(tok)));
+                        }
                     }
+                    continue;
                 }
-                continue;
             }
             if let Some(after_at) = line.strip_prefix("@@ ") {
                 if let Some((coords, _)) = after_at.split_once(" @@") {
@@ -285,10 +304,31 @@ impl StructuralSkeletonizer {
         let mut import_last_line = 0usize;
         let mut import_count = 0usize;
         let mut still_in_header_imports = true;
+        let mut in_go_import_block = false;
 
         for (idx, &line) in lines.iter().enumerate() {
             let trimmed = line.trim();
             let line_no = idx + 1;
+
+            if in_go_import_block {
+                if trimmed.starts_with(')') {
+                    in_go_import_block = false;
+                    import_last_line = line_no;
+                } else if !trimmed.is_empty() && !trimmed.starts_with("//") {
+                    import_count += 1;
+                    import_last_line = line_no;
+                }
+                continue;
+            }
+
+            if trimmed == "import (" && still_in_header_imports {
+                in_go_import_block = true;
+                if import_first_line.is_none() {
+                    import_first_line = Some(line_no);
+                }
+                import_last_line = line_no;
+                continue;
+            }
 
             if Self::is_import_line(trimmed) {
                 if still_in_header_imports {
@@ -302,7 +342,6 @@ impl StructuralSkeletonizer {
             }
 
             if let Some(mod_name) = Self::extract_module_header(trimmed) {
-                still_in_header_imports = false;
                 if clauses.len() < 18 {
                     clauses.push(AhtlClause::new(
                         ClauseOp::Added,
@@ -465,12 +504,12 @@ impl StructuralSkeletonizer {
     }
 
     /// Scans a single source line for unquoted, uncommented `{` and `}` braces, returning
-    /// `(net_brace_delta, saw_opening_brace)`.
+    /// `(net_brace_delta, saw_opening_brace)`. Distinguishes single-character literals (`'}'`,
+    /// `'\''`) from Rust lifetime/loop annotations (`&'static str`, `View<'a>`, `'outer: loop`).
     fn scan_code_braces(line: &str) -> (i32, bool) {
         let mut delta = 0i32;
         let mut saw_open = false;
         let mut in_double = false;
-        let mut in_single = false;
         let mut chars = line.chars().peekable();
 
         while let Some(ch) = chars.next() {
@@ -482,21 +521,27 @@ impl StructuralSkeletonizer {
                 }
                 continue;
             }
-            if in_single {
-                if ch == '\\' {
-                    let _ = chars.next();
-                } else if ch == '\'' {
-                    in_single = false;
-                }
-                continue;
-            }
             if ch == '/' && chars.peek() == Some(&'/') {
                 break;
             }
             if ch == '"' {
                 in_double = true;
             } else if ch == '\'' {
-                in_single = true;
+                // Consume `'c'` or `'\x'` character literals while leaving Rust lifetimes untouched
+                let mut lookahead = chars.clone();
+                if let Some(first_after) = lookahead.next() {
+                    if first_after == '\\' {
+                        let _ = lookahead.next();
+                        if lookahead.next() == Some('\'') {
+                            let _ = chars.next();
+                            let _ = chars.next();
+                            let _ = chars.next();
+                        }
+                    } else if lookahead.next() == Some('\'') {
+                        let _ = chars.next();
+                        let _ = chars.next();
+                    }
+                }
             } else if ch == '{' {
                 delta += 1;
                 saw_open = true;
@@ -508,28 +553,43 @@ impl StructuralSkeletonizer {
     }
 
     /// Resolves the 1-based ending line number of a function, struct, class, or impl block starting
-    /// at 0-based `start_idx` using indentation tracking (Python) or quote/comment-aware brace depth
-    /// tracking (Rust, TypeScript/JS, Go, C/C++).
+    /// at 0-based `start_idx` using indentation tracking (Python) or quote/lifetime/comment-aware
+    /// brace depth tracking (Rust, TypeScript/JS, Go, C/C++).
     fn resolve_block_end_line(lines: &[&str], start_idx: usize) -> usize {
         let first_line = lines[start_idx];
         let trimmed = first_line.trim();
 
-        // Python indentation-delimited block (`def ...:` / `async def ...:` / `class ...:`)
-        if (trimmed.starts_with("def ")
+        // Python indentation-delimited block (`def ...` / `async def ...` / `class ...` without `{`)
+        let is_python_decl = trimmed.starts_with("def ")
             || trimmed.starts_with("async def ")
-            || trimmed.starts_with("class "))
-            && trimmed.ends_with(':')
-        {
+            || (trimmed.starts_with("class ")
+                && !trimmed.contains('{')
+                && (trimmed.ends_with(':') || trimmed.contains('(')));
+        if is_python_decl {
             let base_indent = first_line.len() - first_line.trim_start().len();
-            let mut last_body_line = start_idx + 1;
-            for (offset, &line) in lines[start_idx + 1..].iter().enumerate() {
+            let mut body_start_idx = start_idx + 1;
+            if !trimmed.ends_with(':') {
+                for (offset, &line) in lines[start_idx + 1..].iter().enumerate().take(10) {
+                    if line.trim().ends_with(':') {
+                        body_start_idx = start_idx + 1 + offset + 1;
+                        break;
+                    }
+                }
+            }
+            let mut last_body_line = body_start_idx.min(lines.len());
+            for (offset, &line) in lines
+                .get(body_start_idx..)
+                .unwrap_or(&[])
+                .iter()
+                .enumerate()
+            {
                 let t = line.trim();
                 if t.is_empty() || t.starts_with('#') {
                     continue;
                 }
                 let indent = line.len() - line.trim_start().len();
                 if indent > base_indent {
-                    last_body_line = start_idx + 1 + offset + 1;
+                    last_body_line = body_start_idx + offset + 1;
                 } else {
                     break;
                 }
@@ -599,11 +659,13 @@ mod tests {
         log.push_str(
             "thread 'module::allocator::test_page_align' panicked at src/alloc.rs:412:9: index out of bounds\n",
         );
+        log.push_str("@@ -1,2 +1,2 @@\n-left\n+right\n");
         log.push_str("test result: FAILED. 299 passed; 1 failed;\n");
 
         let (id, _) = ArtifactId::hash_bytes(log.as_bytes());
         let pkt =
             StructuralSkeletonizer::compress_to_packet("cargo_test", &log, Some(id), [0xAA; 8]);
+        assert_eq!(pkt.kind, PacketKind::ToolStub);
         let rendered = pkt.render();
 
         let ratio = (log.len() as f64) / (rendered.len() as f64);
@@ -684,7 +746,7 @@ mod tests {
         let ts_str = ts_pkt.render();
         assert!(ts_str.contains("✓pass:80"));
         assert!(ts_str.contains("!fail:1"));
-        assert!(ts_str.contains("src/router/auth.test.ts"));
+        assert!(ts_str.contains("!FAIL@L82:src/router/auth.test.ts"));
         assert!(ts_str.contains("TS2345"));
 
         // 3. Go `go test` log
@@ -708,13 +770,14 @@ mod tests {
     }
 
     #[test]
-    fn skeletonizes_unified_diffs_multi_language_source_code_quoted_braces_and_utf8() {
+    fn skeletonizes_unified_diffs_multi_language_source_code_quoted_braces_lifetimes_and_utf8() {
         let diff = "\
 diff --git a/src/lib.rs b/src/lib.rs
 --- /dev/null
 +++ b/src/lib.rs
-@@ -0,0 +1,4 @@
+@@ -0,0 +1,5 @@
 -fn old_helper() {}
+--- removed sql comment that starts with three dashes
 +pub fn new_helper() {}
 +pub struct Config { pub x: u32 }
 +// INVARIANT: monotonic epoch counter
@@ -722,34 +785,42 @@ diff --git a/src/lib.rs b/src/lib.rs
         let diff_pkt = StructuralSkeletonizer::compress_to_packet("git_diff", diff, None, [0; 8]);
         assert_eq!(diff_pkt.kind, PacketKind::CodeDelta);
         let diff_str = diff_pkt.render();
-        assert!(diff_str.contains("hunks:+3/-1"));
+        assert!(diff_str.contains("hunks:+3/-2"));
         assert!(diff_str.contains("file:src/lib.rs"));
-        assert!(diff_str.contains("hunk:-0,0_+1,4"));
+        assert!(diff_str.contains("hunk:-0,0_+1,5"));
         assert!(diff_str.contains("⊕sym:new_helper()"));
         assert!(diff_str.contains("⊖sym:old_helper()"));
         assert!(diff_str.contains("✓pin:"));
 
-        // Multi-line Rust + Python + TS + Go source with imports, modules, quoted braces, and UTF-8 near byte 56
+        // Multi-line Rust + Python + Go source with lifetimes, quoted braces, multi-line Python def, and Go import block
         let src = "\
-use std::collections::BTreeMap;
-use std::sync::Arc;
+package scheduler
 
-pub mod scheduler;
+import (
+    \"context\"
+    \"fmt\"
+)
+
+pub mod submod;
+use std::collections::BTreeMap;
 
 pub async fn serve() {}
-pub fn multi_line_worker(limit: usize) -> usize {
-    let url = \"http://example.com/}\";
+pub fn multi_line_worker<'a>(label: &'static str, limit: usize) -> &'a str {
+    let url = \"http://example.com/}@@ -1,1 +1,1 @@ panicked at\";
     let ch = '}';
     let esc_ch = '\\'';
     let escaped = \"\\\"}\";
-    limit + url.len() + (ch as usize) + (esc_ch as usize) + escaped.len() // trailing comment }
+    let _ = limit + url.len() + (ch as usize) + (esc_ch as usize) + escaped.len(); // trailing comment }
+    label
 }
 pub enum Mode { Fast }
 pub trait Handler {
     fn on_event(&self);
 }
 type RequestId = u64;
-def validate_assertion(steps: int) -> float:
+def validate_assertion(
+    steps: int,
+) -> float:
     # comment inside python block
     if steps < 0:
         raise AssertionError(\"bad steps\")
@@ -768,13 +839,17 @@ use super::*;
 // PASSKEY_ALPHA_123
 ";
         let src_pkt = StructuralSkeletonizer::compress_to_packet("src/lib.rs", src, None, [1; 8]);
+        assert_eq!(src_pkt.kind, PacketKind::CodeDelta);
         let src_str = src_pkt.render();
-        assert!(src_str.contains("imports:L1-2(2)"));
-        assert!(src_str.contains("⊕mod@L4:scheduler"));
-        assert!(src_str.contains("⊕L6:serve()"));
-        assert!(src_str.contains("⊕L7-13:multi_line_worker(limit:_usize)_->_usize"));
-        assert!(src_str.contains("⊕L18:RequestId_=_u64;"));
-        assert!(src_str.contains("⊕L19-24:validate_assertion(steps:_int)_->_float:"));
+        assert!(src_str.contains("imports:L3-9(3)"));
+        assert!(src_str.contains("⊕mod@L1:scheduler"));
+        assert!(src_str.contains("⊕mod@L8:submod"));
+        assert!(src_str.contains("⊕L11:serve()"));
+        assert!(
+            src_str.contains("⊕L12-19:multi_line_worker<'a>(label:_&'static_str,_limit:_usize)")
+        );
+        assert!(src_str.contains("⊕L24:RequestId_=_u64;"));
+        assert!(src_str.contains("⊕L25-32:validate_assertion("));
         assert!(src_str.contains("PASSKEY_ALPHA_123"));
 
         let plain = "just a plain note without any symbol declarations\nsecond line\n";

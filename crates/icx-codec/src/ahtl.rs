@@ -157,21 +157,31 @@ impl AhtlClause {
     }
 }
 
-/// Bijectively escapes `%` (`%25`), `#L` (`%23L`), `⟦` (`%E2%9F%A6`), and `⟧` (`%E2%9F%A7`) in a
-/// subject string so that literal `#L`, `%23L`, or packet delimiters inside `subject` never
-/// collide with outer `⟦...⟧` delimiters or the `#L<start>-<end>` line-range suffix.
+/// Bijectively escapes `%` (`%25`), `#L` (`%23L`), `⟦` (`%E2%9F%A6`), `⟧` (`%E2%9F%A7`),
+/// `⊢` (`%E2%8A%A2`), `⋮` (`%E2%8B%AE`), and `↦` (`%E2%86%A6`) in a subject string so that
+/// literal `#L`, `%23L`, or AHTL structural delimiters inside `subject` never collide with
+/// outer `⟦...⟧` delimiters, clause/deref separators, or the `#L<start>-<end>` line-range suffix.
 fn escape_subject(s: &str) -> String {
-    if !s.contains('%') && !s.contains("#L") && !s.contains('⟦') && !s.contains('⟧') {
+    if !s.contains('%')
+        && !s.contains("#L")
+        && !s.contains('⟦')
+        && !s.contains('⟧')
+        && !s.contains('⊢')
+        && !s.contains('⋮')
+        && !s.contains('↦')
+    {
         return s.to_owned();
     }
     s.replace('%', "%25")
         .replace("#L", "%23L")
         .replace('⟦', "%E2%9F%A6")
         .replace('⟧', "%E2%9F%A7")
+        .replace('⊢', "%E2%8A%A2")
+        .replace('⋮', "%E2%8B%AE")
+        .replace('↦', "%E2%86%A6")
 }
 
-/// Single-pass left-to-right inverse of `escape_subject`, restoring `%25` -> `%`, `%23L` -> `#L`,
-/// `%E2%9F%A6` -> `⟦`, and `%E2%9F%A7` -> `⟧`.
+/// Single-pass left-to-right inverse of `escape_subject`.
 fn unescape_subject(s: &str) -> String {
     if !s.contains('%') {
         return s.to_owned();
@@ -190,6 +200,15 @@ fn unescape_subject(s: &str) -> String {
             rest = after;
         } else if let Some(after) = rest.strip_prefix("%E2%9F%A7") {
             out.push('⟧');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%E2%8A%A2") {
+            out.push('⊢');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%E2%8B%AE") {
+            out.push('⋮');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%E2%86%A6") {
+            out.push('↦');
             rest = after;
         } else {
             let mut chars = rest.chars();

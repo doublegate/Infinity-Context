@@ -35,10 +35,10 @@ pub struct ChannelBHologram {
 }
 
 impl ChannelBHologram {
-    /// Returns `true` if all bits in `flag` are set in `self.structural_flags`.
+    /// Returns `true` if `flag` is non-zero and all bits in `flag` are set in `self.structural_flags`.
     #[inline]
     pub const fn has_flag(self, flag: u8) -> bool {
-        (self.structural_flags & flag) == flag
+        flag != 0 && (self.structural_flags & flag) == flag
     }
     /// Packs the structured fields into a canonical big-endian 8-byte array `B[0..7]`.
     #[inline]
