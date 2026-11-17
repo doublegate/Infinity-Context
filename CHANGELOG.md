@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Phase 1 Sprint 2 — Lossless Merkle-DAG (`LCM`), Nested Context-Folding & Cache-Epoch Budget Retargeting (`crates/icx-core`):**
+  - Added structured `ToolArtifactNode` (`DagNode::ToolArtifact`) with domain-separated `b"ICX_DAG_TOOL_V1"` hashing (`ToolArtifactNode::compute_merkle_digest`) and `MerkleContextDag::append_tool_artifact` (`T-12-001`).
+  - Upgraded `MerkleContextDag` branch state to a nested stack (`branch_stack: Vec<OpenBranch>`, `active_branch_depth`), added `expand_branch` for lossless recursive `L2 -> L1` branch expansion, added `fold_epochs` for `L3 -> L4` hierarchical epoch compaction, and added `verify_merkle_integrity` for cryptographic verification of any `L1`, `L2`, `L3`, or `L4` node (`T-12-001`, `T-12-002`).
+  - Added provider-tuned `EpochControllerConfig::anthropic_default()` (`16,384` rollover tokens, `6` protected turns, `2,048` tail slot) and `openai_default()` (`8,192` rollover tokens), `CacheEpochController::record_node`, `zone1_compressed_tokens`, level-order pairwise `retarget_budget` (`L3 -> L4` folding), and the 200-turn Prefix-Cache Simulation Test verifying `>= 94%` average prefix-cache hit rate (`T-12-003`).
 - **Phase 1 Sprint 1 — Normalized FastCDC, Dual-Profile `#icx:<hex>` Handle Resolution & Selective Chunk Line Slicing (`crates/icx-core`, `crates/icx-adapters`):**
   - Implemented `ArtifactId::parse_prefix_range`, `ArtifactId::to_short_hex12`, `ArtifactId::to_short_handle`, and `CasStore::resolve_handle` supporting both 64-bit (`#icx:<16-hex>`) and 48-bit (`#icx:<12-hex>`) handles with $O(\log N)$ `BTreeMap::range` lookup and fail-closed prefix ambiguity detection (`IcxError::AmbiguousHandlePrefix`), wired into `McpPagerServer` (`deref`, `slice`, `grep`).
   - Upgraded `chunk_bytes` (`crates/icx-core/src/chunker.rs`) to two-threshold Normalized FastCDC (`mask_s` before `avg_size`, `mask_l` from `avg_size` to `max_size`) and added streaming `chunk_bytes_with_lines` (`ChunkLineSpan`).

@@ -28,7 +28,10 @@ impl McpPagerServer {
                                 "enum": ["deref", "slice", "grep", "recall", "fold", "xagent", "status"]
                             },
                             "id": { "type": "string" },
-                            "q": { "type": "string" },
+                            "q": {
+                                "type": "string",
+                                "description": "Search pattern for grep/recall, or 'begin:<label>' / '<outcome_summary>' for fold."
+                            },
                             "range": {
                                 "type": "array",
                                 "items": { "type": "integer" }
@@ -111,7 +114,7 @@ impl McpPagerServer {
                 let Some(id_str) = args.get("id").and_then(Value::as_str) else {
                     return "ERR: missing `id` (#icx:<16-hex> or #icx:<12-hex>)".into();
                 };
-                match mmu.cas.resolve_handle(id_str) {
+                match mmu.resolve_handle(id_str) {
                     Ok(aid) => mmu
                         .deref_text(aid)
                         .unwrap_or_else(|e| format!("ERR: {e}")),
@@ -132,7 +135,7 @@ impl McpPagerServer {
                     })
                     .unwrap_or((1, 50));
 
-                match mmu.cas.resolve_handle(id_str) {
+                match mmu.resolve_handle(id_str) {
                     Ok(aid) => mmu
                         .deref_lines(aid, range.0, range.1)
                         .unwrap_or_else(|e| format!("ERR: {e}")),
@@ -167,9 +170,15 @@ impl McpPagerServer {
             }
             "fold" => {
                 let summary = args.get("q").and_then(Value::as_str).unwrap_or("completed");
-                match mmu.dag.fold_branch(summary) {
-                    Ok(bid) => format!("⟪ICX:BRANCH_FOLDED│{bid}⟫"),
-                    Err(e) => format!("ERR: {e}"),
+                if let Some(label) = summary.strip_prefix("begin:") {
+                    let clean_label = label.trim();
+                    mmu.epochs.begin_branch(&mut mmu.dag, clean_label);
+                    format!("⟪ICX:BRANCH_OPENED│{clean_label}⟫")
+                } else {
+                    match mmu.epochs.fold_branch(&mut mmu.dag, summary) {
+                        Ok(bid) => format!("⟪ICX:BRANCH_FOLDED│{bid}⟫"),
+                        Err(e) => format!("ERR: {e}"),
+                    }
                 }
             }
             "xagent" => {
