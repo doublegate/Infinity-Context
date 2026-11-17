@@ -28,6 +28,28 @@ impl Default for EpochControllerConfig {
     }
 }
 
+impl EpochControllerConfig {
+    /// Normative preset for Anthropic 4-breakpoint explicit `cache_control` (`16,384` rollover tokens,
+    /// `6` protected recent turns, `2,048` tail slot budget — `docs/virtual-memory-and-dag-engine.md` §4).
+    pub const fn anthropic_default() -> Self {
+        Self {
+            epoch_rollover_tokens: 16_384,
+            protect_last_n_turns: 6,
+            tail_slot_max_tokens: 2_048,
+        }
+    }
+
+    /// Normative preset for OpenAI automatic 1024-token block prefix caching (`8,192` rollover tokens,
+    /// `6` protected recent turns, `2,048` tail slot budget).
+    pub const fn openai_default() -> Self {
+        Self {
+            epoch_rollover_tokens: 8_192,
+            protect_last_n_turns: 6,
+            tail_slot_max_tokens: 2_048,
+        }
+    }
+}
+
 /// Assembled 4-zone prompt view ready for wire transmission or hook injection.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssembledWindow {
@@ -100,6 +122,21 @@ impl CacheEpochController {
         &self.sealed_epochs
     }
 
+    /// Total compressed token estimate across all sealed epochs in Zone 1.
+    pub fn zone1_compressed_tokens(&self) -> usize {
+        self.sealed_epochs
+            .iter()
+            .map(DagNode::token_estimate)
+            .fold(0usize, usize::saturating_add)
+    }
+
+    /// Records an existing `L1` (`Turn`, `ToolArtifact`) or `L2` (`SubTrajectoryBranch`) node into
+    /// the active window and triggers an amortized Epoch Rollover if thresholds are exceeded.
+    pub fn record_node(&mut self, dag: &mut MerkleContextDag, node_id: ArtifactId) {
+        self.unsealed_turn_ids.push(node_id);
+        self.maybe_rollover(dag);
+    }
+
     /// Records a new turn into the active window and triggers an amortized Epoch Rollover if
     /// the unsealed token count exceeds `epoch_rollover_tokens`.
     pub fn record_turn(
@@ -120,8 +157,7 @@ impl CacheEpochController {
             surprise,
             token_estimate,
         );
-        self.unsealed_turn_ids.push(turn_id);
-        self.maybe_rollover(dag);
+        self.record_node(dag, turn_id);
         turn_id
     }
 
@@ -130,11 +166,8 @@ impl CacheEpochController {
         let unsealed_tokens: usize = self
             .unsealed_turn_ids
             .iter()
-            .filter_map(|&id| match dag.get_node(id) {
-                Some(DagNode::Turn { token_estimate, .. }) => Some(*token_estimate),
-                _ => None,
-            })
-            .sum();
+            .filter_map(|&id| dag.get_node(id).map(DagNode::token_estimate))
+            .fold(0usize, usize::saturating_add);
 
         if unsealed_tokens < self.config.epoch_rollover_tokens
             || self.unsealed_turn_ids.len() <= self.config.protect_last_n_turns
@@ -146,17 +179,50 @@ impl CacheEpochController {
         let to_seal: Vec<ArtifactId> = self.unsealed_turn_ids.drain(0..seal_count).collect();
         let raw_tokens: usize = to_seal
             .iter()
-            .filter_map(|&id| match dag.get_node(id) {
-                Some(DagNode::Turn { token_estimate, .. }) => Some(*token_estimate),
-                _ => None,
-            })
-            .sum();
+            .filter_map(|&id| dag.get_node(id).map(DagNode::token_estimate))
+            .fold(0usize, usize::saturating_add);
 
         let epoch_idx = self.sealed_epochs.len() as u32;
         let epoch_node = dag.seal_epoch(epoch_idx, to_seal, raw_tokens);
         let id = epoch_node.id();
         self.sealed_epochs.push(epoch_node);
         Some(id)
+    }
+
+    /// Hierarchically folds existing `L3` epochs `(E_0, E_1) -> E_{0..1}^{(L4)}` in level-order pairs
+    /// when switching mid-session to a model with a smaller Zone 1 token budget (`docs/virtual-memory-and-dag-engine.md` §5).
+    /// Returns the number of pairwise epoch-fold operations performed.
+    pub fn retarget_budget(
+        &mut self,
+        dag: &mut MerkleContextDag,
+        max_zone1_tokens: usize,
+    ) -> usize {
+        let mut folds = 0usize;
+        let mut pair_idx = 0usize;
+
+        while self.zone1_compressed_tokens() > max_zone1_tokens && self.sealed_epochs.len() >= 2 {
+            if pair_idx + 1 >= self.sealed_epochs.len() {
+                pair_idx = 0;
+            }
+            let before_pair_tokens = self.sealed_epochs[pair_idx]
+                .token_estimate()
+                .saturating_add(self.sealed_epochs[pair_idx + 1].token_estimate());
+            let id0 = self.sealed_epochs[pair_idx].id();
+            let id1 = self.sealed_epochs[pair_idx + 1].id();
+
+            let Ok(folded) = dag.fold_epochs(&[id0, id1]) else {
+                break;
+            };
+            if folded.token_estimate() >= before_pair_tokens {
+                break;
+            }
+
+            self.sealed_epochs.splice(pair_idx..=pair_idx + 1, [folded]);
+            folds += 1;
+            pair_idx += 1;
+        }
+
+        folds
     }
 
     /// Assembles the 4-zone prompt view with the provided dynamic Ephemeral Tail Slot recall.
@@ -177,13 +243,7 @@ impl CacheEpochController {
         let active_window: Vec<String> = self
             .unsealed_turn_ids
             .iter()
-            .filter_map(|&id| match dag.get_node(id) {
-                Some(DagNode::Turn { ahtl_repr, .. }) => Some(ahtl_repr.clone()),
-                Some(DagNode::SubTrajectoryBranch {
-                    folded_ahtl_commit, ..
-                }) => Some(folded_ahtl_commit.clone()),
-                _ => None,
-            })
+            .filter_map(|&id| dag.get_node(id).map(|n| n.ahtl_representation().to_owned()))
             .collect();
 
         let total_cached_prefix_bytes = self.pinned_head.len()
@@ -255,5 +315,73 @@ mod tests {
             avg_hit >= 0.94,
             "expected >= 94% average prefix cache hit ratio, got {avg_hit:.4}"
         );
+    }
+
+    #[test]
+    fn prefix_cache_200_turn_simulation_and_retarget_budget_l4_folding() {
+        let mut dag = MerkleContextDag::new();
+        let anthropic_cfg = EpochControllerConfig::anthropic_default();
+        assert_eq!(anthropic_cfg.epoch_rollover_tokens, 16_384);
+        assert_eq!(anthropic_cfg.protect_last_n_turns, 6);
+        let openai_cfg = EpochControllerConfig::openai_default();
+        assert_eq!(openai_cfg.epoch_rollover_tokens, 8_192);
+
+        let sim_cfg = EpochControllerConfig {
+            epoch_rollover_tokens: 3000,
+            protect_last_n_turns: 4,
+            tail_slot_max_tokens: 512,
+        };
+        let mut ctrl = CacheEpochController::new(
+            "⟪ICX:PINNED_HEAD│system=infinity-context-v1│tier=mmu⟫".repeat(36),
+            sim_cfg,
+        );
+
+        let mut prev_prefix = String::new();
+        let mut prev_epochs: Vec<String> = Vec::new();
+        let mut hit_ratios = Vec::with_capacity(200);
+
+        for turn in 0..200u32 {
+            let (raw_id, _) = ArtifactId::hash_bytes(&turn.to_le_bytes());
+            let ahtl =
+                format!("⟦Δ:crates/icx-core/src/mod_{turn}.rs#L1-80⊢⊕fn:op_{turn}↦{raw_id}⟧");
+            ctrl.record_turn(
+                &mut dag,
+                AgentKind::ClaudeCode,
+                "assistant",
+                raw_id,
+                ahtl,
+                if turn % 5 == 0 { 0.85 } else { 0.25 },
+                350,
+            );
+
+            let win = ctrl.assemble_window(&dag, format!("⟦Θ:tail_recall_{turn}⟧"));
+            for (ep_idx, old_ep) in prev_epochs.iter().enumerate() {
+                assert_eq!(&win.sealed_epochs[ep_idx], old_ep);
+            }
+            if !prev_prefix.is_empty() && win.sealed_epochs.len() == prev_epochs.len() {
+                hit_ratios.push(win.prefix_cache_hit_ratio(&prev_prefix));
+            }
+            prev_epochs.clone_from(&win.sealed_epochs);
+            prev_prefix = win.deterministic_prefix();
+        }
+
+        assert!(ctrl.sealed_epoch_count() >= 15);
+        let avg_200_hit: f64 = hit_ratios.iter().sum::<f64>() / (hit_ratios.len() as f64);
+        assert!(
+            avg_200_hit >= 0.94,
+            "200-turn simulation expected >= 94% cache hit rate, got {avg_200_hit:.4}"
+        );
+
+        // Verify model-switch retarget_budget folds L3 epochs into L4 epochs while preserving Merkle integrity
+        let initial_zone1_tokens = ctrl.zone1_compressed_tokens();
+        let initial_epochs = ctrl.sealed_epoch_count();
+        let target_budget = initial_zone1_tokens / 2;
+        let folds = ctrl.retarget_budget(&mut dag, target_budget);
+        assert!(folds >= 1);
+        assert!(ctrl.sealed_epoch_count() < initial_epochs);
+        assert!(ctrl.zone1_compressed_tokens() <= target_budget);
+        for ep in ctrl.sealed_epochs() {
+            assert!(dag.verify_merkle_integrity(ep.id()).unwrap());
+        }
     }
 }
