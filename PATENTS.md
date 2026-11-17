@@ -2,17 +2,19 @@
 
 **Project:** Infinity-Context (`icx`)  
 **Copyright & Intellectual Property Owner:** DoubleGate (<https://github.com/doublegate>)  
-**Status:** Patent Pending
+**Status:** Patent Pending (5 Pending Patent Applications / 5 Invention Families)
 
 ---
 
-## 1. Notice of Patent-Pending Subject Matter
+## 1. Notice of Patent-Pending Subject Matter (Five Invention Families)
 
-Portions of the systems, architectures, algorithms, protocols, and methods implemented or described in **Infinity-Context (`icx`)** are the subject of three pending patent applications held by the Project Owner covering:
+Portions of the systems, architectures, algorithms, wire protocols, symbolic codecs, and methods implemented or described in **Infinity-Context (`icx`)** are the subject of **five pending patent applications** (corresponding to the five architectural planes of the project) held by the Project Owner:
 
-1. **Symbolic Context Compression & Lossless Virtual Memory Paging** — Non-human symbolic encoding, compact structural representation, and content-addressed virtual context paging for machine-learning models and autonomous agents.
-2. **Hyperdimensional, Fractal & Temporal Associative Retrieval** — High-dimensional vector-symbolic indexing, multi-scale trajectory addressing, surprise-gated retention, and temporal graph ranking.
-3. **Cache-Preserving Context Window Management & Cross-Agent Synchronization** — Append-only cache-epoch partitioning, provider cache-breakpoint alignment, shared-memory inter-agent state synchronization, and polymorphic virtual memory paging interfaces.
+1. **Invention Family I — Non-Human Symbolic Context Compression & Bijective Visual-Bit Sketching (`Plane 1`)** — Non-human BPE-aligned symbolic context encoding, bijective multi-bit glyph sketching for self-attention geometry, structural AST/diagnostic skeletonization, and pre-ingestion credential and prompt-injection boundary sanitization.
+2. **Invention Family II — Virtual Context Memory Management Unit (`MMU`) & Lossless Content-Addressed Merkle-DAG Paging (`Plane 2`)** — Content-defined rolling chunking, cryptographic content-addressed handle generation, multi-tier hierarchical Merkle-DAG context storage, subtask context-folding rollback, and O(1) byte-exact virtual memory page-in.
+3. **Invention Family III — Hyperdimensional Vector-Symbolic & Contractive Fractal Associative Memory (`Plane 3A`)** — High-dimensional binary hypervector binding, hardware population-count associative scanning, delta-orthogonality superposition gating, and contractive iterated-function-system trajectory addressing.
+4. **Invention Family IV — Surprise-Gated Momentum Filtering, Bi-Temporal Graph Ranking & Prefix-Cache-Locked Epoch Paging (`Plane 3B & Plane 4`)** — Test-time surprise momentum gating, bi-temporal knowledge graph auto-invalidation with personalized PageRank traversal, and byte-frozen append-only epoch partitioning with multi-provider KV-cache breakpoint rotation.
+5. **Invention Family V — Lock-Free Shared-Memory Cross-Agent Telepathy Fabric & Polymorphic Virtual Memory Pager (`Plane 5`)** — Cache-line-aligned lock-free shared-memory seqlock ring buffers for sub-microsecond cross-agent context synchronization across heterogeneous AI harnesses, paired with a constant-token single-tool polymorphic virtual memory pager.
 
 ---
 
@@ -22,7 +24,7 @@ Portions of the systems, architectures, algorithms, protocols, and methods imple
    - Any patent license granted under Section 11 of the **GNU General Public License v3.0 (`GPL-3.0-or-later`)** or the **GNU Affero General Public License v3.0 (`AGPL-3.0-or-later`)** applies **solely and exclusively** to recipients who exercise rights in full compliance with all copyleft source-disclosure, network-interaction, and licensing obligations of `GPL-3.0-or-later` and `AGPL-3.0-or-later` (see [`LICENSING.md`](LICENSING.md)).
 
 2. **No Implied Patent License for Proprietary, Closed-Source, Cloud/SaaS, or Clean-Room Implementations:**
-   - **No patent license (express, implied, by estoppel, or otherwise)** is granted to any corporation, organization, or individual that:
+   - **No patent license (express, implied, by estoppel, or otherwise)** across any of the five pending patent families is granted to any corporation, organization, or individual that:
      - Embeds, links, wraps, or deploys any part of **Infinity-Context (`icx`)** in a proprietary, closed-source, or internal commercial product or cloud/SaaS service without complying with `GPL-3.0-or-later` / `AGPL-3.0-or-later`; or
      - Re-implements, ports, or translates the patent-pending architectures, protocols, or methods of **Infinity-Context (`icx`)** into another programming language or proprietary codebase ("clean-room re-implementation") for commercial or corporate use.
 
@@ -33,4 +35,4 @@ Portions of the systems, architectures, algorithms, protocols, and methods imple
 
 ## 3. Commercial & Patent Licensing Inquiries
 
-Corporations, AI labs, cloud providers, and enterprise organizations seeking a **Commercial Copyright & Patent License** or strategic IP licensing agreement must obtain a separate written agreement from the Project Owner. See [`COMMERCIAL.md`](COMMERCIAL.md) for details.
+Corporations, AI labs, cloud providers, and enterprise organizations seeking a **Commercial Copyright & Patent License** across one or more of the five invention families or strategic IP acquisition must obtain a separate written agreement from the Project Owner. See [`COMMERCIAL.md`](COMMERCIAL.md) for details.

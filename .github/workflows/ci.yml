@@ -5,14 +5,23 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   check:
-    name: Format, Clippy, Test & Benchmark
+    name: Format, Clippy, Test, Docs, Benchmark & Self-Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -30,3 +39,51 @@ jobs:
         run: cargo doc --workspace --no-deps
       - name: Run benchmark & SLO gate
         run: cargo run --release -p icx-cli -- benchmark
+      - name: Run CLI doctor check
+        run: cargo run --release -p icx-cli -- doctor
+      - name: Antigravity reviewer self-test
+        run: bash scripts/agy-review-selftest.sh
+      - name: CLA script self-test
+        run: bash .github/scripts/cla-check.sh --selftest
+
+  coverage:
+    name: Code Coverage (Codecov)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate LCOV coverage report
+        run: cargo llvm-cov --workspace --all-targets --lcov --output-path lcov.info
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  secrets:
+    name: Secret Scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks (pinned, checksum-verified)
+        run: |
+          curl -sSfL --retry 3 --retry-all-errors -o gitleaks.tgz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz gitleaks
+          rm gitleaks.tgz
+      - name: Scan git history
+        run: ./gitleaks git . --no-banner --redact --exit-code 1

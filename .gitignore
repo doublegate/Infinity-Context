@@ -4,9 +4,11 @@
 **/*.rs.bk
 *.pdb
 
-# Python cache files
+# Python cache & virtual environments
 __pycache__/
 *.py[cod]
+.venv/
+venv/
 
 # OS & Editor files
 .DS_Store
@@ -14,14 +16,17 @@ Thumbs.db
 *~
 *.swp
 *.swo
+*.orig
+*.bak
 .idea/
 .vscode/
 
-# Runtime / test artifacts
+# Runtime / test / coverage artifacts
 *.shm
 *.sock
 *.profraw
 lcov.info
+coverage/
 .icx-data/
 
 # Antigravity PR reviewer: large-diff on-disk handoff (transient, removed by the script).
