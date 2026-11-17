@@ -161,60 +161,73 @@ collect_valid_signers() {
     done <<< "$cm_rows"
 }
 
-LOCK_REF='cla-lock'
-LOCK_TTL_SECS=540
+LOCK_FILE='signatures/version1/cla-lock.json'
+LOCK_TTL_SECS=900
 lock_held=no
-my_lock_sha=''
+my_lock_blob_sha=''
+status_published=no
 
 release_cla_lock() {
-    if [ "$lock_held" = yes ] && [ -n "$my_lock_sha" ]; then
-        local cur_sha
-        cur_sha="$(gh api "repos/${REPO:-}/git/ref/heads/$LOCK_REF" --jq .object.sha 2>/dev/null || true)"
-        if [ "$cur_sha" = "$my_lock_sha" ]; then
-            gh api -X DELETE "repos/${REPO:-}/git/refs/heads/$LOCK_REF" >/dev/null 2>&1 || true
-        fi
+    if [ "$lock_held" = yes ] && [ -n "$my_lock_blob_sha" ]; then
+        local unlocked_b64
+        unlocked_b64="$(printf '%s\n' '{"owner":"","expires_at":0}' | base64 | tr -d '\n')"
+        # Atomic compare-and-swap via Contents API: succeeds ONLY if the current blob SHA equals my_lock_blob_sha.
+        gh api -X PUT "repos/${REPO:-}/contents/$LOCK_FILE" \
+            -f message="chore(cla): release lock" \
+            -f content="$unlocked_b64" \
+            -f branch="$BRANCH" \
+            -f sha="$my_lock_blob_sha" >/dev/null 2>&1 || true
         lock_held=no
     fi
 }
 
 acquire_cla_lock() {
-    local base_c tree_sha now_s attempt max_attempts="${CLA_LOCK_MAX_ATTEMPTS:-180}" sleep_s="${CLA_LOCK_SLEEP_SECS:-2}"
-    base_c="$(gh api "repos/${REPO:-}/pulls/${PR:-1}" --jq .head.sha)" || return 1
-    tree_sha="$(gh api "repos/${REPO:-}/git/commits/$base_c" --jq .tree.sha)" || return 1
-    now_s="$(date -u +%s)"
-    my_lock_sha="$(gh api -X POST "repos/${REPO:-}/git/commits" \
-        -f message="cla-lock:${GITHUB_RUN_ID:-$$}:$now_s" \
-        -f tree="$tree_sha" -f "parents[]=$base_c" --jq .sha)" || return 1
+    local attempt max_attempts="${CLA_LOCK_MAX_ATTEMPTS:-180}" sleep_s="${CLA_LOCK_SLEEP_SECS:-2}"
+    local out cur_blob_sha cur_doc cur_owner cur_exp now_s new_exp payload_b64 put_out
     for attempt in $(seq 1 "$max_attempts"); do
-        if gh api -X POST "repos/${REPO:-}/git/refs" -f ref="refs/heads/$LOCK_REF" -f sha="$my_lock_sha" >/dev/null 2>&1; then
-            lock_held=yes
-            return 0
-        fi
-        local holder_sha holder_msg holder_ts cur_s
-        holder_sha="$(gh api "repos/${REPO:-}/git/ref/heads/$LOCK_REF" --jq .object.sha 2>/dev/null || true)"
-        if [ -n "$holder_sha" ]; then
-            holder_msg="$(gh api "repos/${REPO:-}/git/commits/$holder_sha" --jq .message 2>/dev/null || true)"
-            holder_ts="${holder_msg##*:}"
-            cur_s="$(date -u +%s)"
-            if [[ "$holder_ts" =~ ^[0-9]+$ ]] && [ $((cur_s - holder_ts)) -ge "$LOCK_TTL_SECS" ]; then
-                if [ "$(gh api "repos/${REPO:-}/git/ref/heads/$LOCK_REF" --jq .object.sha 2>/dev/null || true)" = "$holder_sha" ]; then
-                    gh api -X DELETE "repos/${REPO:-}/git/refs/heads/$LOCK_REF" >/dev/null 2>&1 || true
+        now_s="$(date -u +%s)"
+        new_exp=$((now_s + LOCK_TTL_SECS))
+        payload_b64="$(jq -n --arg o "run-${GITHUB_RUN_ID:-$$}-$attempt" --argjson e "$new_exp" '{owner:$o,expires_at:$e}' | base64 | tr -d '\n')"
+        if out="$(gh api "repos/${REPO:-}/contents/$LOCK_FILE?ref=$BRANCH" 2>&1)"; then
+            cur_blob_sha="$(printf '%s' "$out" | jq -r .sha)"
+            cur_doc="$(printf '%s' "$out" | jq -r .content | base64 -d)"
+            cur_owner="$(printf '%s' "$cur_doc" | jq -r '.owner // ""')"
+            cur_exp="$(printf '%s' "$cur_doc" | jq -r '.expires_at // 0')"
+            if [ -z "$cur_owner" ] || [ "$cur_exp" -le "$now_s" ]; then
+                # Atomic compare-and-swap via -f sha="$cur_blob_sha": if another waiter updates first, GitHub returns 409 Conflict.
+                if put_out="$(gh api -X PUT "repos/${REPO:-}/contents/$LOCK_FILE" \
+                    -f message="chore(cla): acquire lock" \
+                    -f content="$payload_b64" \
+                    -f branch="$BRANCH" \
+                    -f sha="$cur_blob_sha" 2>/dev/null)"; then
+                    my_lock_blob_sha="$(printf '%s' "$put_out" | jq -r .content.sha)"
+                    lock_held=yes
+                    return 0
                 fi
+            fi
+        elif printf '%s' "$out" | grep -q 'Not Found\|HTTP 404'; then
+            if put_out="$(gh api -X PUT "repos/${REPO:-}/contents/$LOCK_FILE" \
+                -f message="chore(cla): initialize lock" \
+                -f content="$payload_b64" \
+                -f branch="$BRANCH" 2>/dev/null)"; then
+                my_lock_blob_sha="$(printf '%s' "$put_out" | jq -r .content.sha)"
+                lock_held=yes
+                return 0
             fi
         fi
         [ "$attempt" -lt "$max_attempts" ] && sleep "$sleep_s"
     done
-    echo "CLA: could not acquire serialization lock refs/heads/$LOCK_REF" >&2
+    echo "CLA: could not acquire serialization lock $LOCK_FILE" >&2
     return 1
 }
 
 publish_lookup_failure() {
     local h_sha="$1"
-    [ -z "$h_sha" ] && return 0
+    [ -z "$h_sha" ] && return 1
     gh api -X POST "repos/${REPO:-}/statuses/$h_sha" \
         -f state="failure" -f context="CLA" \
         -f description="CLA check error (author/PR lookup failed); comment recheck to retry" \
-        -f target_url="$DOC_URL" >/dev/null 2>&1 || true
+        -f target_url="$DOC_URL" >/dev/null
 }
 
 is_recheck_comment() {
@@ -323,29 +336,47 @@ selftest() {
     check "per-commit author lookup failure propagates and fails closed" "$r" "failed"
     collect_shared_sha_prs head_fail >/dev/null 2>&1 && r=ok || r=failed
     check "shared-SHA open PR lookup failure propagates and fails closed" "$r" "failed"
-    check "lookup failure helper publishes failure status to overwrite stale success" \
-        "$(gh() { if [[ "$*" == *"statuses/head_err"* ]] && [[ "$*" == *"state=failure"* ]]; then echo "published_failure"; fi; }; publish_lookup_failure head_err)" ""
-    # Test ownership-safe lock: release_cla_lock never deletes another owner's active lock, and acquire_cla_lock fails closed when held by a live owner
-    lock_deleted=no
+    local published_state=""
     gh() {
-        if [[ "$*" == *"git/ref/heads/cla-lock"* ]]; then echo "other_owner_sha"; return 0; fi
-        if [[ "$*" == *"DELETE"* ]]; then lock_deleted=yes; return 0; fi
+        if [[ "$*" == *"statuses/head_err"* ]] && [[ "$*" == *"state=failure"* ]]; then
+            published_state="failure"
+            return 0
+        fi
+        return 1
+    }
+    publish_lookup_failure head_err
+    check "lookup failure helper publishes failure status to overwrite stale success" "$published_state" "failure"
+    # Test atomic Contents-API CAS lock: overlapping owners, expired takeover, and CAS-fenced release
+    local current_lock_sha="blob_owner_a" current_lock_owner="owner_a"
+    gh() {
+        if [[ "$*" == *"-X PUT"*"cla-lock.json"* ]]; then
+            if [[ "$*" == *"sha=$current_lock_sha"* ]]; then
+                current_lock_sha="blob_updated"
+                printf '{"content":{"sha":"%s"}}\n' "$current_lock_sha"
+                return 0
+            fi
+            return 1 # 409 Conflict when sha does not match
+        fi
+        if [[ "$*" == *"cla-lock.json?ref="* ]]; then
+            local b64
+            b64="$(jq -n --arg o "$current_lock_owner" --argjson e "$LOCK_EXP_TEST" '{owner:$o,expires_at:$e}' | base64 | tr -d '\n')"
+            printf '{"sha":"%s","content":"%s"}\n' "$current_lock_sha" "$b64"
+            return 0
+        fi
         return 0
     }
-    lock_held=yes my_lock_sha="my_own_sha"
+    # 1. If Owner B already replaced Owner A's lock (current_lock_sha="blob_owner_b"), Owner A's release with stale sha="blob_owner_a" is rejected by CAS (409)
+    current_lock_sha="blob_owner_b" lock_held=yes my_lock_blob_sha="blob_owner_a"
     release_cla_lock
-    check "release_cla_lock never deletes an active lock owned by another run" "$lock_deleted" "no"
-    gh() {
-        if [[ "$*" == *"pulls/1"* ]]; then echo "head_sha_1"; return 0; fi
-        if [[ "$*" == *"git/commits/head_sha_1"* ]]; then echo "tree_sha_1"; return 0; fi
-        if [[ "$*" == *"-X POST repos/doublegate/Infinity-Context/git/commits"* ]]; then echo "my_new_lock_sha"; return 0; fi
-        if [[ "$*" == *"-X POST repos/doublegate/Infinity-Context/git/refs"* ]]; then return 1; fi
-        if [[ "$*" == *"git/ref/heads/cla-lock"* ]]; then echo "live_holder_sha"; return 0; fi
-        if [[ "$*" == *"git/commits/live_holder_sha"* ]]; then echo "cla-lock:999:$(date -u +%s)"; return 0; fi
-        return 0
-    }
+    check "release_cla_lock CAS precondition prevents overwriting a newer owner's lock" "$current_lock_sha" "blob_owner_b"
+    # 2. While Owner A's lease is active (expires_at = now + 900), Owner B cannot evict it
+    LOCK_EXP_TEST=$(($(date -u +%s) + 900)) current_lock_sha="blob_owner_a" current_lock_owner="owner_a"
     CLA_LOCK_MAX_ATTEMPTS=2 CLA_LOCK_SLEEP_SECS=0 acquire_cla_lock >/dev/null 2>&1 && r=acquired || r=blocked
     check "acquire_cla_lock does not evict a live lock holder and fails closed on exhaustion" "$r" "blocked"
+    # 3. Once Owner A's lease expires (expires_at = 100), Owner B atomically CAS-acquires the lock and gets the new blob SHA
+    LOCK_EXP_TEST=100 current_lock_sha="blob_owner_a" current_lock_owner="owner_a"
+    CLA_LOCK_MAX_ATTEMPTS=1 CLA_LOCK_SLEEP_SECS=0 acquire_cla_lock >/dev/null 2>&1 && r="$my_lock_blob_sha" || r=blocked
+    check "acquire_cla_lock atomically CAS-takes over an expired lock" "$r" "blob_updated"
     unset -f gh
     is_recheck_comment $'recheck\r\n' && r=yes || r=no
     check "recheck with a newline rechecks" "$r" "yes"
@@ -366,7 +397,7 @@ if [ "${1:-}" = "--selftest" ]; then
 fi
 
 : "${GH_TOKEN:?}" "${REPO:?}" "${PR:?}" "${EVENT:?}"
-if [ "$EVENT" = "issue_comment" ] && ! is_sign_comment "${COMMENT_BODY:-}" \
+if [ "$EVENT" = "issue_comment" ] && ! is_sign_body "${COMMENT_BODY:-}" \
     && ! is_recheck_comment "${COMMENT_BODY:-}"; then
     echo "CLA: comment ignored (neither the signing text nor recheck)"
     exit 0
@@ -375,20 +406,16 @@ case "$PR" in '' | *[!0-9]*) echo "PR is not a number" >&2; exit 1 ;; esac
 owner="${REPO%%/*}"
 name="${REPO#*/}"
 
-trap 'release_cla_lock' EXIT
-
-pr_info="$(gh api "repos/$REPO/pulls/$PR")"
-base_sha="$(printf '%s' "$pr_info" | jq -r .base.sha)"
-head_sha="$(printf '%s' "$pr_info" | jq -r .head.sha)"
-
-acquire_cla_lock || { publish_lookup_failure "$head_sha"; exit 1; }
-
-pr_info="$(gh api "repos/$REPO/pulls/$PR")" || { publish_lookup_failure "$head_sha"; exit 1; }
-base_sha="$(printf '%s' "$pr_info" | jq -r .base.sha)"
-head_sha="$(printf '%s' "$pr_info" | jq -r .head.sha)"
-opener="$(printf '%s' "$pr_info" | jq -r '"\(.user.id):\(.user.login)"')"
-opener_type="$(printf '%s' "$pr_info" | jq -r .user.type)"
-committers="$(list_committers_range "$base_sha" "$head_sha")" || { publish_lookup_failure "$head_sha"; exit 1; }
+on_exit() {
+    local rc="$1"
+    if [ "$lock_held" = yes ]; then
+        if [ "$rc" -ne 0 ] && [ "${status_published:-no}" != yes ] && [ -n "${head_sha:-}" ]; then
+            publish_lookup_failure "$head_sha" || true
+        fi
+        release_cla_lock
+    fi
+}
+trap 'on_exit $?' EXIT
 
 read_signatures() {
     local out
@@ -400,10 +427,9 @@ read_signatures() {
         sig_doc='{"signedContributors":[]}'
     else
         echo "cannot read the signatures: $out" >&2
-        exit 1
+        return 1
     fi
 }
-read_signatures
 
 ensure_branch() {
     local out blob tree commit ref_out
@@ -412,16 +438,16 @@ ensure_branch() {
         return 0
     elif ! printf '%s' "$out" | grep -q 'Not Found\|HTTP 404'; then
         echo "cannot read the $BRANCH branch: $out" >&2
-        exit 1
+        return 1
     fi
-    blob="$(gh api -X POST "repos/$REPO/git/blobs" -f content='{"signedContributors":[]}' -f encoding=utf-8 --jq .sha)"
+    blob="$(gh api -X POST "repos/$REPO/git/blobs" -f content='{"signedContributors":[]}' -f encoding=utf-8 --jq .sha)" || return 1
     tree="$(jq -n --arg p "$FILE" --arg b "$blob" '{tree: [{path: $p, mode: "100644", type: "blob", sha: $b}]}' \
-        | gh api -X POST "repos/$REPO/git/trees" --input - --jq .sha)"
-    commit="$(gh api -X POST "repos/$REPO/git/commits" -f message='chore(cla): start the CLA signatures record' -f tree="$tree" --jq .sha)"
+        | gh api -X POST "repos/$REPO/git/trees" --input - --jq .sha)" || return 1
+    commit="$(gh api -X POST "repos/$REPO/git/commits" -f message='chore(cla): start the CLA signatures record' -f tree="$tree" --jq .sha)" || return 1
     if ! ref_out="$(gh api -X POST "repos/$REPO/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$commit" 2>&1)"; then
         if ! printf '%s' "$ref_out" | grep -q 'Reference already exists'; then
             echo "cannot create the $BRANCH branch: $ref_out" >&2
-            exit 1
+            return 1
         fi
     fi
     read_signatures
@@ -438,11 +464,11 @@ record_signer() {
         return 0
     fi
     [ -z "$sig_sha" ] && ensure_branch
-    for attempt in $(seq 1 10); do
+    for attempt in $(seq 1 15); do
         if signed_of "$sig_doc" | grep -Fxq -- "$s_uid"; then
             break
         fi
-        repo_id="$(gh api "repos/$REPO" --jq .id)"
+        repo_id="$(gh api "repos/$REPO" --jq .id)" || return 1
         new_doc="$(add_signature "$sig_doc" "$s_login" "$s_uid" "$s_cid" \
             "$s_pr" "$repo_id" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
         args=(-X PUT "repos/$REPO/contents/$FILE"
@@ -454,13 +480,44 @@ record_signer() {
             read_signatures
             break
         fi
-        [ "$attempt" = 10 ] && { echo "could not record the signature for @$s_login" >&2; exit 1; }
+        [ "$attempt" = 15 ] && { echo "could not record the signature for @$s_login" >&2; return 1; }
         sleep 2
         read_signatures
     done
 }
 
-if [ "$EVENT" = "issue_comment" ] && is_sign_comment "${COMMENT_BODY:-}"; then
+# Ensure the cla-signatures branch exists before acquiring the CAS lock file on it.
+read_signatures
+[ -z "$sig_sha" ] && ensure_branch
+
+# If triggered by a signing comment, persist the signature via CAS on cla.json even before waiting on cla-lock.json
+# so a signature is never lost even if lock acquisition later times out.
+if [ "$EVENT" = "issue_comment" ] && is_sign_body "${COMMENT_BODY:-}"; then
+    : "${COMMENT_USER:?}" "${COMMENT_USER_ID:?}" "${COMMENT_ID:?}"
+    pre_info="$(gh api "repos/$REPO/pulls/$PR")"
+    pre_base="$(printf '%s' "$pre_info" | jq -r .base.sha)"
+    pre_head="$(printf '%s' "$pre_info" | jq -r .head.sha)"
+    pre_opener="$(printf '%s' "$pre_info" | jq -r '"\(.user.id):\(.user.login)"')"
+    pre_comms="$(list_committers_range "$pre_base" "$pre_head")"
+    record_signer "$COMMENT_USER_ID" "$COMMENT_USER" "$COMMENT_ID" "$PR" "$pre_comms" "$pre_opener"
+fi
+
+if ! acquire_cla_lock; then
+    # Schedule an automatic recovery evaluation without publishing an unserialized status.
+    gh workflow run cla.yml -f pr="$PR" >/dev/null 2>&1 || true
+    exit 1
+fi
+
+pr_info="$(gh api "repos/$REPO/pulls/$PR")"
+base_sha="$(printf '%s' "$pr_info" | jq -r .base.sha)"
+head_sha="$(printf '%s' "$pr_info" | jq -r .head.sha)"
+opener="$(printf '%s' "$pr_info" | jq -r '"\(.user.id):\(.user.login)"')"
+opener_type="$(printf '%s' "$pr_info" | jq -r .user.type)"
+committers="$(list_committers_range "$base_sha" "$head_sha")"
+
+read_signatures
+
+if [ "$EVENT" = "issue_comment" ] && is_sign_body "${COMMENT_BODY:-}"; then
     : "${COMMENT_USER:?}" "${COMMENT_USER_ID:?}" "${COMMENT_ID:?}"
     record_signer "$COMMENT_USER_ID" "$COMMENT_USER" "$COMMENT_ID" "$PR" "$committers" "$opener"
 fi
@@ -472,14 +529,14 @@ while IFS=$'\t' read -r rec_uid rec_login rec_cid; do
     record_signer "$rec_uid" "$rec_login" "$rec_cid" "$PR" "$committers" "$opener"
 done <<< "$valid_signers_rows"
 
-shared_prs_rows="$(collect_shared_sha_prs "$head_sha")" || { publish_lookup_failure "$head_sha"; exit 1; }
+shared_prs_rows="$(collect_shared_sha_prs "$head_sha")"
 combined_required="$(required_of "$committers" "$opener" "$opener_type")"
 while IFS=$'\t' read -r o_pr o_base o_opener o_type; do
     [ -z "$o_pr" ] || [ "$o_pr" = "$PR" ] && continue
-    o_comms="$(list_committers_range "$o_base" "$head_sha")" || { publish_lookup_failure "$head_sha"; exit 1; }
-    o_pr_info="$(gh api "repos/$REPO/pulls/$o_pr")" || { publish_lookup_failure "$head_sha"; exit 1; }
-    o_pr_comments="$(gh api --paginate "repos/$REPO/issues/$o_pr/comments" | jq -s 'add // []')" || { publish_lookup_failure "$head_sha"; exit 1; }
-    o_signers="$(collect_valid_signers "$o_pr_info" "$o_pr_comments" "$o_comms" "$o_opener")" || { publish_lookup_failure "$head_sha"; exit 1; }
+    o_comms="$(list_committers_range "$o_base" "$head_sha")"
+    o_pr_info="$(gh api "repos/$REPO/pulls/$o_pr")"
+    o_pr_comments="$(gh api --paginate "repos/$REPO/issues/$o_pr/comments" | jq -s 'add // []')"
+    o_signers="$(collect_valid_signers "$o_pr_info" "$o_pr_comments" "$o_comms" "$o_opener")"
     while IFS=$'\t' read -r s_uid s_login s_cid; do
         [ -z "$s_uid" ] && continue
         record_signer "$s_uid" "$s_login" "$s_cid" "$o_pr" "$o_comms" "$o_opener"
@@ -487,7 +544,7 @@ while IFS=$'\t' read -r o_pr o_base o_opener o_type; do
     combined_required+=$'\n'"$(required_of "$o_comms" "$o_opener" "$o_type")"
 done <<< "$shared_prs_rows"
 
-latest_pr_info="$(gh api "repos/$REPO/pulls/$PR")" || { publish_lookup_failure "$head_sha"; exit 1; }
+latest_pr_info="$(gh api "repos/$REPO/pulls/$PR")"
 latest_base_sha="$(printf '%s' "$latest_pr_info" | jq -r .base.sha)"
 latest_head_sha="$(printf '%s' "$latest_pr_info" | jq -r .head.sha)"
 if [ "$latest_base_sha" != "$base_sha" ] || [ "$latest_head_sha" != "$head_sha" ]; then
@@ -512,6 +569,7 @@ fi
 
 gh api -X POST "repos/$REPO/statuses/$head_sha" \
     -f state="$state" -f context='CLA' -f description="$desc" -f target_url="$DOC_URL" >/dev/null
+status_published=yes
 
 existing="$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
     --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- infinity-context-cla-check -->"))) | .id' | sed -n 1p)"

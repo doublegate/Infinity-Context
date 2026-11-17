@@ -19,7 +19,6 @@ path = [
   ".gitignore",
   ".gitleaks.toml",
   ".markdownlint.json",
-  "codecov.yml",
   ".github/**",
   "crates/icx-core/**",
   "crates/icx-hdc/**",

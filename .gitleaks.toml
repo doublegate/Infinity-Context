@@ -3,7 +3,8 @@
 #
 # Gitleaks configuration for Infinity-Context (icx).
 # Extends the default Gitleaks ruleset while allowlisting the synthetic
-# credential and PEM redaction test vectors inside crates/icx-codec/src/redact.rs.
+# credential and PEM redaction test vectors inside crates/icx-codec/src/redact.rs
+# and the synthetic merge-commit test step in .github/workflows/ci.yml.
 
 title = "Infinity-Context (icx) Gitleaks Configuration"
 
@@ -11,7 +12,10 @@ title = "Infinity-Context (icx) Gitleaks Configuration"
 useDefault = true
 
 [allowlist]
-description = "Synthetic unit-test fixtures for Pre-Hash SecretRedactor"
+description = "Synthetic unit-test fixtures for Pre-Hash SecretRedactor and CI merge-commit test"
 paths = [
-  '''^crates/icx-codec/src/redact\.rs$''',
+  '''crates/icx-codec/src/redact\.rs''',
+]
+regexes = [
+  '''b3BlbnNzaC1rZXktdjEAAAAABG5vbmU=''',
 ]

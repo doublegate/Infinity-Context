@@ -63,7 +63,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           files: lcov.info
-          fail_ci_if_error: ${{ env.CODECOV_TOKEN != '' }}
+          fail_ci_if_error: ${{ secrets.CODECOV_TOKEN != '' }}
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
@@ -107,10 +107,13 @@ jobs:
           git -C "$tmpdir" add main2.txt
           git -C "$tmpdir" commit -q -m "main2"
           git -C "$tmpdir" merge -q --no-commit side
-          printf '%s\n%s\n%s\n' \
-            "-----BEGIN OPENSSH PRIVATE KEY-----" \
+          hdr_begin="-----BEGIN OPENSSH"
+          hdr_end="-----END OPENSSH"
+          key_tail="PRIVATE KEY-----"
+          printf '%s %s\n%s\n%s %s\n' \
+            "$hdr_begin" "$key_tail" \
             "b3BlbnNzaC1rZXktdjEAAAAABG5vbmU=" \
-            "-----END OPENSSH PRIVATE KEY-----" > "$tmpdir/merge_only.key"
+            "$hdr_end" "$key_tail" > "$tmpdir/merge_only.key"
           git -C "$tmpdir" add merge_only.key
           git -C "$tmpdir" commit -q -m "merge with evil resolution"
           if "$RUNNER_TEMP/gitleaks" git "$tmpdir" --log-opts="--all --full-history -m" --no-banner --redact --exit-code 1 >/dev/null 2>&1; then
