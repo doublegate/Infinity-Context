@@ -27,16 +27,22 @@ impl WireProxyTransformer {
             if total > protect_tail {
                 let fold_end = total - protect_tail;
                 for (idx, msg) in messages[..fold_end].iter_mut().enumerate() {
-                    if let Some(content_str) = msg.get("content").and_then(Value::as_str) {
-                        if content_str.len() >= mmu.tool_virtualize_threshold {
-                            let subj = format!("turn_{idx}");
-                            let res = mmu.ingest_payload(
-                                AgentKind::ClaudeCode,
-                                &subj,
-                                content_str,
-                                false,
-                            );
-                            msg["content"] = Value::String(res.compressed_ahtl);
+                    let role = msg.get("role").and_then(Value::as_str).unwrap_or("");
+                    if role != "system" && role != "developer" {
+                        if let Some(content_str) = msg.get("content").and_then(Value::as_str) {
+                            if content_str.len() >= mmu.tool_virtualize_threshold
+                                && !content_str.starts_with('⟦')
+                                && !content_str.starts_with("⟪ICX:")
+                            {
+                                let subj = format!("turn_{idx}");
+                                let res = mmu.ingest_payload(
+                                    AgentKind::ClaudeCode,
+                                    &subj,
+                                    content_str,
+                                    false,
+                                );
+                                msg["content"] = Value::String(res.compressed_ahtl);
+                            }
                         }
                     }
                     // Pin Anthropic prompt-cache breakpoint on the last sealed epoch message
@@ -79,8 +85,15 @@ impl WireProxyTransformer {
             if total > protect_tail {
                 let fold_end = total - protect_tail;
                 for (idx, msg) in messages[..fold_end].iter_mut().enumerate() {
+                    let role = msg.get("role").and_then(Value::as_str).unwrap_or("");
+                    if role == "system" || role == "developer" {
+                        continue;
+                    }
                     if let Some(content_str) = msg.get("content").and_then(Value::as_str) {
-                        if content_str.len() >= mmu.tool_virtualize_threshold {
+                        if content_str.len() >= mmu.tool_virtualize_threshold
+                            && !content_str.starts_with('⟦')
+                            && !content_str.starts_with("⟪ICX:")
+                        {
                             let subj = format!("openai_turn_{idx}");
                             let res =
                                 mmu.ingest_payload(AgentKind::Codex, &subj, content_str, false);
@@ -204,6 +217,38 @@ mod tests {
             WireProxyTransformer::transform_openai_request(&two_msg, &mut mmu)
                 .unwrap()
                 .contains("⟪ICX:TAIL_SLOT")
+        );
+
+        // Verify Zone 0 `system` / `developer` prompts and already-virtualized AHTL turns are never overwritten
+        let big_sys = "You are a systems architect.\n".repeat(40);
+        let pinned_req = json!({
+            "model": "gpt-5",
+            "messages": [
+                { "role": "system", "content": big_sys },
+                { "role": "developer", "content": big_sys },
+                { "role": "user", "content": "⟦Δ:already_virtualized⟧".repeat(30) },
+                { "role": "assistant", "content": "ack" },
+                { "role": "user", "content": "latest query" }
+            ]
+        })
+        .to_string();
+        let pinned_oai: Value = serde_json::from_str(
+            &WireProxyTransformer::transform_openai_request(&pinned_req, &mut mmu).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            pinned_oai["messages"][0]["content"].as_str().unwrap(),
+            big_sys
+        );
+        assert_eq!(
+            pinned_oai["messages"][1]["content"].as_str().unwrap(),
+            big_sys
+        );
+        assert!(
+            pinned_oai["messages"][2]["content"]
+                .as_str()
+                .unwrap()
+                .starts_with("⟦Δ:already_virtualized⟧")
         );
     }
 }

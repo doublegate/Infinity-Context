@@ -151,6 +151,8 @@ impl Default for FabricMemoryLayout {
 struct SharedFileStore {
     file: File,
     write_guard: Mutex<()>,
+    #[cfg(not(unix))]
+    cursor_guard: Mutex<()>,
 }
 
 impl SharedFileStore {
@@ -164,7 +166,7 @@ impl SharedFileStore {
         {
             use std::io::{Read, Seek, SeekFrom};
             let _guard = self
-                .write_guard
+                .cursor_guard
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let mut f = &self.file;
@@ -182,6 +184,10 @@ impl SharedFileStore {
         #[cfg(not(unix))]
         {
             use std::io::{Seek, SeekFrom, Write};
+            let _guard = self
+                .cursor_guard
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let mut f = &self.file;
             f.seek(SeekFrom::Start(offset))?;
             f.write_all(buf)
@@ -342,6 +348,8 @@ impl SeqlockTelemetryBus {
         let store = Arc::new(SharedFileStore {
             file,
             write_guard: Mutex::new(()),
+            #[cfg(not(unix))]
+            cursor_guard: Mutex::new(()),
         });
 
         let mut validation_err: Option<BusError> = None;
@@ -488,7 +496,7 @@ impl SeqlockTelemetryBus {
 
                 fence(Ordering::AcqRel);
                 for (i, chunk) in root.as_chunks::<8>().0.iter().enumerate() {
-                    let val = u64::from_be_bytes(*chunk);
+                    let val = u64::from_le_bytes(*chunk);
                     header.global_dag_root[i].store(val, Ordering::Relaxed);
                 }
                 fence(Ordering::AcqRel);
@@ -531,7 +539,7 @@ impl SeqlockTelemetryBus {
                     if s1 == s2 {
                         let mut out = [0u8; 32];
                         for (i, w) in words.iter().enumerate() {
-                            out[i * 8..(i + 1) * 8].copy_from_slice(&w.to_be_bytes());
+                            out[i * 8..(i + 1) * 8].copy_from_slice(&w.to_le_bytes());
                         }
                         return out;
                     }
@@ -569,9 +577,9 @@ impl SeqlockTelemetryBus {
         }
     }
 
-    /// Publishes a cross-agent telepathy event into the ring buffer using the lock-free Seqlock protocol.
+    /// Publishes a cross-agent telepathy event into the ring buffer, returning `Result<u64, BusError>`.
     #[allow(clippy::too_many_arguments)]
-    pub fn publish(
+    pub fn try_publish(
         &self,
         agent: AgentKind,
         artifact_id: ArtifactId,
@@ -581,7 +589,7 @@ impl SeqlockTelemetryBus {
         fractal_q15: [i16; 16],
         ahtl_packet: &str,
         timestamp_ms: u64,
-    ) -> u64 {
+    ) -> Result<u64, BusError> {
         let mut copy_len = ahtl_packet.len().min(ICX_AHTL_INLINE_CAP);
         while !ahtl_packet.is_char_boundary(copy_len) {
             copy_len -= 1;
@@ -605,7 +613,7 @@ impl SeqlockTelemetryBus {
                 loop {
                     let cur = slot.seqlock.load(Ordering::Acquire);
                     if cur >= even_version {
-                        return seq + 1;
+                        return Ok(seq + 1);
                     }
                     if (cur & 1) == 0 {
                         if slot
@@ -623,7 +631,7 @@ impl SeqlockTelemetryBus {
                     } else if cur == stalled_odd {
                         spins += 1;
                         if spins >= MAX_WRITER_SPIN_ITERS {
-                            return seq + 1;
+                            return Ok(seq + 1);
                         }
                     } else {
                         stalled_odd = cur;
@@ -657,67 +665,98 @@ impl SeqlockTelemetryBus {
 
                 fence(Ordering::AcqRel);
                 slot.seqlock.store(even_version, Ordering::Release);
-                seq + 1
+                Ok(seq + 1)
             }
             BackingStore::SharedFile(store) => {
                 let bit = (agent as u8) & 63;
-                store
-                    .with_exclusive_lock(|| {
-                        let mut hdr_slice = [0u8; 16];
-                        store.read_at(16, &mut hdr_slice)?;
-                        let seq = u64::from_le_bytes([
-                            hdr_slice[0],
-                            hdr_slice[1],
-                            hdr_slice[2],
-                            hdr_slice[3],
-                            hdr_slice[4],
-                            hdr_slice[5],
-                            hdr_slice[6],
-                            hdr_slice[7],
-                        ]);
-                        let mask = u64::from_le_bytes([
-                            hdr_slice[8],
-                            hdr_slice[9],
-                            hdr_slice[10],
-                            hdr_slice[11],
-                            hdr_slice[12],
-                            hdr_slice[13],
-                            hdr_slice[14],
-                            hdr_slice[15],
-                        ]) | (1u64 << bit);
+                let seq = store.with_exclusive_lock(|| {
+                    let mut hdr_slice = [0u8; 16];
+                    store.read_at(16, &mut hdr_slice)?;
+                    let seq = u64::from_le_bytes([
+                        hdr_slice[0],
+                        hdr_slice[1],
+                        hdr_slice[2],
+                        hdr_slice[3],
+                        hdr_slice[4],
+                        hdr_slice[5],
+                        hdr_slice[6],
+                        hdr_slice[7],
+                    ]);
+                    let mask = u64::from_le_bytes([
+                        hdr_slice[8],
+                        hdr_slice[9],
+                        hdr_slice[10],
+                        hdr_slice[11],
+                        hdr_slice[12],
+                        hdr_slice[13],
+                        hdr_slice[14],
+                        hdr_slice[15],
+                    ]) | (1u64 << bit);
 
-                        let next_seq = seq + 1;
-                        let mut updated_hdr = [0u8; 16];
-                        updated_hdr[0..8].copy_from_slice(&next_seq.to_le_bytes());
-                        updated_hdr[8..16].copy_from_slice(&mask.to_le_bytes());
-                        store.write_at(16, &updated_hdr)?;
+                    let next_seq = seq + 1;
+                    let slot_idx = (seq as usize) % ICX_RING_SLOTS;
+                    let slot_offset = (HEADER_BYTES + slot_idx * SLOT_BYTES) as u64;
+                    let odd_version = (seq << 1) | 1;
+                    let even_version = next_seq << 1;
 
-                        let slot_idx = (seq as usize) % ICX_RING_SLOTS;
-                        let slot_offset = (HEADER_BYTES + slot_idx * SLOT_BYTES) as u64;
-                        let odd_version = (seq << 1) | 1;
-                        let even_version = next_seq << 1;
+                    // 1. Mark slot as odd and write the 4,096-byte slot payload with odd_version at offset 0..8
+                    // so concurrent readers never observe even_version while payload bytes 8..4096 are in flight.
+                    store.write_at(slot_offset, &odd_version.to_le_bytes())?;
 
-                        store.write_at(slot_offset, &odd_version.to_le_bytes())?;
+                    let mut slot_buf = [0u8; SLOT_BYTES];
+                    slot_buf[0..8].copy_from_slice(&odd_version.to_le_bytes());
+                    slot_buf[8..16].copy_from_slice(&timestamp_ms.to_le_bytes());
+                    slot_buf[16..24].copy_from_slice(&artifact_id.0.to_le_bytes());
+                    slot_buf[24..32].copy_from_slice(&workspace_hash.to_le_bytes());
+                    slot_buf[32..40].copy_from_slice(&meta_word.to_le_bytes());
+                    for (i, &w) in hdc_sketch.iter().enumerate() {
+                        slot_buf[40 + i * 8..48 + i * 8].copy_from_slice(&w.to_le_bytes());
+                    }
+                    for (i, &w) in fractal_words.iter().enumerate() {
+                        slot_buf[72 + i * 8..80 + i * 8].copy_from_slice(&w.to_le_bytes());
+                    }
+                    slot_buf[128..128 + copy_len].copy_from_slice(raw_bytes);
+                    store.write_at(slot_offset, &slot_buf)?;
 
-                        let mut slot_buf = vec![0u8; SLOT_BYTES];
-                        slot_buf[0..8].copy_from_slice(&even_version.to_le_bytes());
-                        slot_buf[8..16].copy_from_slice(&timestamp_ms.to_le_bytes());
-                        slot_buf[16..24].copy_from_slice(&artifact_id.0.to_le_bytes());
-                        slot_buf[24..32].copy_from_slice(&workspace_hash.to_le_bytes());
-                        slot_buf[32..40].copy_from_slice(&meta_word.to_le_bytes());
-                        for (i, &w) in hdc_sketch.iter().enumerate() {
-                            slot_buf[40 + i * 8..48 + i * 8].copy_from_slice(&w.to_le_bytes());
-                        }
-                        for (i, &w) in fractal_words.iter().enumerate() {
-                            slot_buf[72 + i * 8..80 + i * 8].copy_from_slice(&w.to_le_bytes());
-                        }
-                        slot_buf[128..128 + copy_len].copy_from_slice(raw_bytes);
-                        store.write_at(slot_offset, &slot_buf)?;
-                        Ok(next_seq)
-                    })
-                    .unwrap_or(0)
+                    // 2. Commit even_version to slot_offset (0..8) only after all payload bytes are written.
+                    store.write_at(slot_offset, &even_version.to_le_bytes())?;
+
+                    // 3. Advance header.write_seq to next_seq only after the slot is committed.
+                    let mut updated_hdr = [0u8; 16];
+                    updated_hdr[0..8].copy_from_slice(&next_seq.to_le_bytes());
+                    updated_hdr[8..16].copy_from_slice(&mask.to_le_bytes());
+                    store.write_at(16, &updated_hdr)?;
+                    Ok(next_seq)
+                })?;
+                Ok(seq)
             }
         }
+    }
+
+    /// Publishes a cross-agent telepathy event into the ring buffer using the Seqlock protocol.
+    #[allow(clippy::too_many_arguments)]
+    pub fn publish(
+        &self,
+        agent: AgentKind,
+        artifact_id: ArtifactId,
+        workspace_hash: u64,
+        surprise_q8: u8,
+        hdc_sketch: [u64; 4],
+        fractal_q15: [i16; 16],
+        ahtl_packet: &str,
+        timestamp_ms: u64,
+    ) -> u64 {
+        self.try_publish(
+            agent,
+            artifact_id,
+            workspace_hash,
+            surprise_q8,
+            hdc_sketch,
+            fractal_q15,
+            ahtl_packet,
+            timestamp_ms,
+        )
+        .unwrap_or_else(|_| self.write_sequence())
     }
 
     /// Wait-free optimistic poll of all committed telepathy events with sequence number `> since_seq`.
@@ -795,7 +834,7 @@ impl SeqlockTelemetryBus {
                 }
             }
             BackingStore::SharedFile(store) => {
-                let mut slot_buf = vec![0u8; SLOT_BYTES];
+                let mut slot_buf = [0u8; SLOT_BYTES];
                 for offset in 0..slot_count {
                     let seq = start_seq + (offset as u64);
                     let slot_idx = (seq as usize) % ICX_RING_SLOTS;

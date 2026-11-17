@@ -18,5 +18,5 @@ We implement a POSIX shared-memory **Lock-Free Seqlock Ring Buffer** (`/dev/shm/
 
 ## Consequences
 
-- **Positive:** `< 1 microsecond` publish/poll latency; 100% safe Rust (`unsafe_code = "forbid"` across all 8 crates); immune to deadlocks even if an agent process crashes or is `SIGKILL`ed mid-write.
-- **Negative:** Positional `AtomicU64` word packing requires little-endian 8-byte word marshaling on `ahtl_words` and `fractal_q15_words`, which is negligible compared to `< 1 µs` slot latency.
+- **Positive:** `< 300 ns` lock-free publish/poll latency for the in-process atomic ring (`BackingStore::InProcess`) and `< 10 µs` cross-process `/dev/shm` positional I/O + OS advisory lock transport (`BackingStore::SharedFile`); 100% safe Rust (`unsafe_code = "forbid"` across all 8 crates); immune to deadlocks even if an agent process crashes or is `SIGKILL`ed mid-write.
+- **Negative:** Positional `AtomicU64` word packing and `pread`/`pwrite` syscalls on the file-backed `/dev/shm` path add a few microseconds over raw `mmap`, which remains well within the `< 100 µs` synchronous hook budget while guaranteeing 100% safe Rust.

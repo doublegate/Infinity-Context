@@ -37,8 +37,8 @@ jobs:
             exit 1
           fi
           for manifest in crates/*/Cargo.toml; do
-            if grep -Eq 'unsafe_code[[:space:]]*=[[:space:]]*"(allow|warn)"' "$manifest"; then
-              echo "ERROR: $manifest weakens unsafe_code = \"forbid\"" >&2
+            if grep -Eq 'unsafe_code[[:space:]]*=' "$manifest"; then
+              echo "ERROR: $manifest overrides workspace unsafe_code policy" >&2
               exit 1
             fi
             if ! grep -A2 '^\[lints\]$' "$manifest" | grep -Eq '^workspace = true$'; then
@@ -46,7 +46,7 @@ jobs:
               exit 1
             fi
           done
-          if grep -rnE 'allow\(unsafe_code\)|\bunsafe[[:space:]]+(\{|fn\b|trait\b|impl\b|extern\b)' crates/; then
+          if grep -rnE '(allow|expect)\(unsafe_code\)|\bunsafe[[:space:]]+(async[[:space:]]+)?(\{|fn\b|trait\b|impl\b|extern\b)' crates/; then
             echo "ERROR: unsafe code is strictly forbidden across the Infinity-Context workspace" >&2
             exit 1
           fi

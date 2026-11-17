@@ -41,16 +41,11 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
             }
             Ok(())
         }
-        "mcp-serve" => {
-            for resp in serve_mcp_reader(reader) {
-                println!("{resp}");
-            }
-            Ok(())
-        }
+        "mcp-serve" => serve_mcp_stream(reader, io::stdout().lock()),
         "proxy-transform" => {
             let mut stdin_buf = String::new();
             let _ = reader.read_to_string(&mut stdin_buf);
-            let transformed = execute_proxy_transform(&stdin_buf)?;
+            let transformed = execute_proxy_transform(tail, &stdin_buf)?;
             println!("{transformed}");
             Ok(())
         }
@@ -274,24 +269,57 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
     }
 }
 
-fn serve_mcp_reader<R: BufRead>(reader: R) -> Vec<String> {
+fn serve_mcp_stream<R: BufRead, W: io::Write>(reader: R, mut writer: W) -> Result<(), String> {
     let mut mmu = InfinityContextMmu::default();
-    let mut responses = Vec::new();
     for line in reader.lines() {
         let Ok(req_line) = line else { break };
         if req_line.trim().is_empty() {
             continue;
         }
         let resp = McpPagerServer::handle_jsonrpc(&req_line, &mut mmu);
-        responses.push(resp.to_string());
+        writeln!(writer, "{resp}").map_err(|e| format!("mcp-serve write error: {e}"))?;
+        writer
+            .flush()
+            .map_err(|e| format!("mcp-serve flush error: {e}"))?;
     }
-    responses
+    Ok(())
 }
 
-fn execute_proxy_transform(stdin_buf: &str) -> Result<String, String> {
+fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, String> {
+    let mut provider: Option<&str> = None;
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--provider" && i + 1 < args.len() {
+            provider = Some(args[i + 1].as_str());
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    let is_openai = match provider {
+        Some(p) => p.eq_ignore_ascii_case("openai"),
+        None => serde_json::from_str::<serde_json::Value>(stdin_buf)
+            .ok()
+            .and_then(|v| {
+                v.get("model").and_then(serde_json::Value::as_str).map(|m| {
+                    let lower = m.to_ascii_lowercase();
+                    lower.starts_with("gpt-")
+                        || lower.starts_with("o1")
+                        || lower.starts_with("o3")
+                        || lower.starts_with("o4")
+                        || lower.contains("codex")
+                })
+            })
+            .unwrap_or(false),
+    };
     let mut mmu = InfinityContextMmu::default();
-    WireProxyTransformer::transform_anthropic_messages(stdin_buf, &mut mmu)
-        .map_err(|e| format!("proxy-transform error: {e}"))
+    if is_openai {
+        WireProxyTransformer::transform_openai_request(stdin_buf, &mut mmu)
+            .map_err(|e| format!("proxy-transform error: {e}"))
+    } else {
+        WireProxyTransformer::transform_anthropic_messages(stdin_buf, &mut mmu)
+            .map_err(|e| format!("proxy-transform error: {e}"))
+    }
 }
 
 fn encode_payload_into_workspace(
@@ -683,12 +711,28 @@ mod tests {
         )
         .unwrap();
 
-        // Test proxy-transform dispatch
+        // Test proxy-transform dispatch (Anthropic default & OpenAI via --provider / model auto-detect)
         dispatch_cli_args(
             &["icx".into(), "proxy-transform".into()],
             io::Cursor::new(
                 r#"{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hi"}]}"#,
             ),
+        )
+        .unwrap();
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "proxy-transform".into(),
+                "--provider".into(),
+                "openai".into(),
+                "--extra".into(),
+            ],
+            io::Cursor::new(r#"{"model":"gpt-5","messages":[{"role":"user","content":"hi"}]}"#),
+        )
+        .unwrap();
+        dispatch_cli_args(
+            &["icx".into(), "proxy-transform".into()],
+            io::Cursor::new(r#"{"model":"gpt-5","messages":[{"role":"user","content":"hi"}]}"#),
         )
         .unwrap();
         assert!(
