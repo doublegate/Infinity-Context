@@ -594,16 +594,31 @@ impl BiTemporalGraph {
                         Some(next_tx.max(loaded.edges[cur_i].t_tx_start.saturating_add(1)));
                 }
             }
-            if let Some(&winner_idx) = active.last() {
-                let winner_valid = loaded.edges[winner_idx].t_valid;
-                for &ci in indices {
-                    if ci != winner_idx
-                        && let Some(inv) = loaded.edges[ci].t_invalid
-                        && inv > winner_valid
-                    {
-                        loaded.edges[ci].t_invalid =
-                            Some(inv.min(winner_valid).max(loaded.edges[ci].t_valid));
+            let winner_idx = active.last().copied();
+            let mut ordered = indices.clone();
+            ordered.sort_by_key(|&i| {
+                (
+                    loaded.edges[i].t_valid,
+                    loaded.edges[i].t_tx_start,
+                    loaded.edges[i].edge_id,
+                )
+            });
+            for (pos, &ci) in ordered.iter().enumerate() {
+                if Some(ci) == winner_idx {
+                    continue;
+                }
+                if let Some(mut inv) = loaded.edges[ci].t_invalid {
+                    if let Some(w_idx) = winner_idx {
+                        inv = inv.min(loaded.edges[w_idx].t_valid);
                     }
+                    for &next_i in &ordered[pos + 1..] {
+                        let next_e = &loaded.edges[next_i];
+                        if next_e.t_invalid != Some(next_e.t_valid) {
+                            inv = inv.min(next_e.t_valid);
+                            break;
+                        }
+                    }
+                    loaded.edges[ci].t_invalid = Some(inv.max(loaded.edges[ci].t_valid));
                 }
             }
         }
@@ -793,9 +808,10 @@ mod tests {
         assert!(repaired.invalidate_edge(active_edge.edge_id, 50));
 
         // Verify load_from_dir preserves an active winner whose t_valid (50) precedes an already-invalidated edge (100)
+        // and clamps an earlier closed edge [10, 80) against its successor at 50
         fs::write(
             &json_path,
-            r#"{"edges":[{"edge_id":0,"source_entity":"a","relation":"status","target_entity":"OLD_INV","is_functional":true,"t_valid":100,"t_invalid":100,"t_tx_start":100,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":1,"source_entity":"a","relation":"status","target_entity":"ACTIVE_WINNER","is_functional":true,"t_valid":50,"t_invalid":null,"t_tx_start":50,"t_tx_end":null,"provenance":1,"weight":1.0}],"entities":[],"next_edge_id":0}"#,
+            r#"{"edges":[{"edge_id":0,"source_entity":"a","relation":"status","target_entity":"OLD_INV","is_functional":true,"t_valid":100,"t_invalid":100,"t_tx_start":100,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":1,"source_entity":"a","relation":"status","target_entity":"ACTIVE_WINNER","is_functional":true,"t_valid":50,"t_invalid":null,"t_tx_start":50,"t_tx_end":null,"provenance":1,"weight":1.0},{"edge_id":2,"source_entity":"a","relation":"status","target_entity":"EARLY_CLOSED","is_functional":true,"t_valid":10,"t_invalid":80,"t_tx_start":10,"t_tx_end":80,"provenance":1,"weight":1.0}],"entities":[],"next_edge_id":0}"#,
         )
         .unwrap();
         let winner_graph =

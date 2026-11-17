@@ -164,7 +164,7 @@ impl Hypervector {
     /// reinforcement and a `1,024`-token scan cap.
     pub fn encode_text(text: &str) -> Self {
         const MAX_TEXT_TOKENS: usize = 1024;
-        const MAX_RAW_SCANS: usize = 16_384;
+        const MAX_ENCODE_BYTES: usize = 65_536;
         const MAX_UNIGRAM_REINFORCEMENTS: u64 = 2;
         const MAX_BIGRAM_REINFORCEMENTS: u64 = 1;
         const SLOT_COUNT: usize = 2048;
@@ -232,6 +232,16 @@ impl Hypervector {
             Some(((base + 7) & SLOT_MASK, key | 1))
         }
 
+        let bounded_text = if text.len() > MAX_ENCODE_BYTES {
+            let mut cap = MAX_ENCODE_BYTES;
+            while !text.is_char_boundary(cap) {
+                cap -= 1;
+            }
+            &text[..cap]
+        } else {
+            text
+        };
+
         let mut bundler = HdcBundler::new();
         let mut u_slots = [0u64; SLOT_COUNT];
         let mut b_slots = [0u64; SLOT_COUNT];
@@ -246,10 +256,9 @@ impl Hypervector {
         let mut prev_raw: Option<&str> = None;
         let mut consecutive_repeats = 0usize;
         let mut tokens_seen = 0usize;
-        let mut raw_scans = 0usize;
 
         for raw_tok in
-            text.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
+            bounded_text.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
         {
             let tok = raw_tok.trim();
             if tok.len() < 2 {
@@ -263,10 +272,6 @@ impl Hypervector {
             } else {
                 prev_raw = Some(tok);
                 consecutive_repeats = 1;
-            }
-            raw_scans += 1;
-            if raw_scans > MAX_RAW_SCANS {
-                break;
             }
 
             let lower = lower_into(tok, &mut stack_lower, &mut heap_lower);
@@ -301,9 +306,10 @@ impl Hypervector {
             };
 
             let mut bundled_any = false;
-            if let Some((idx, new_entry)) = u_slot {
+            if let Some((idx, new_entry)) = u_slot
+                && bundler.add_delta(&hv)
+            {
                 u_slots[idx] = new_entry;
-                let _ = bundler.add_delta(&hv);
                 bundled_any = true;
             }
 
@@ -315,8 +321,7 @@ impl Hypervector {
                 });
                 let bigram = prev.permute(1).bind(&hv);
                 b_slots[b_idx] = b_entry;
-                let _ = bundler.add_delta(&bigram);
-                bundled_any = true;
+                bundled_any |= bundler.add_delta(&bigram);
             }
             prev_hv = Some(hv);
             prev_key = Some(u_key);
@@ -853,9 +858,15 @@ mod tests {
             "novel tokens past 256 must not be dropped"
         );
 
-        // Verify Default, >128-byte mixed-case token, >1,024 distinct tokens, and >16,384 raw scans
+        // Verify Default, >128-byte mixed-case token, >1,024 distinct tokens, and >65,536 byte UTF-8 boundary cap
         assert_eq!(Hypervector::default(), Hypervector::zero());
-        let long_mixed = format!("Upper_{} {}", "A".repeat(140), "ok err ".repeat(8_205));
+        let mut long_mixed = format!("Upper_{} ", "A".repeat(140));
+        while long_mixed.len() < 65_535 {
+            long_mixed.push_str("ok err ");
+        }
+        long_mixed.truncate(65_535);
+        long_mixed.push('é'); // 2-byte UTF-8 char straddling index 65_536
+        long_mixed.push_str(" tail");
         let _ = Hypervector::encode_text(&long_mixed);
         let mut over_1024 = String::new();
         for i in 0..1030usize {
