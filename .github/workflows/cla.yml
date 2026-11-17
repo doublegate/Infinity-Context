@@ -51,6 +51,7 @@ jobs:
           REPO: ${{ github.repository }}
           EVENT: ${{ github.event_name }}
           PR: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
+          BEFORE_SHA: ${{ github.event.before }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_USER: ${{ github.event.comment.user.login }}
           COMMENT_USER_ID: ${{ github.event.comment.user.id }}
