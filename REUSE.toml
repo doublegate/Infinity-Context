@@ -107,3 +107,56 @@ precedence = "override"
 SPDX-FileCopyrightText = "The respective arXiv paper authors cataloged in ref-docs/papers/INDEX.md"
 SPDX-License-Identifier = "CC-BY-4.0 OR LicenseRef-arXiv-NonExclusive"
 SPDX-FileComment = "Academic preprints downloaded from arXiv.org for the research corpus; see ref-docs/papers/INDEX.md for per-paper authors and arXiv IDs."
+
+# ---------------------------------------------------------------------------
+# 7. Retrieved Wikipedia & Wikimedia Commons Reference Archives
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "docs/ahtl/images/retrieved/**",
+  "ref-docs/unicode-braille-patterns/images/retrieved/**",
+  "ref-docs/unicode-braille-patterns/wikipedia_*",
+  "ref-docs/blake3-cryptographic-hash/images/retrieved/**",
+  "ref-docs/blake3-cryptographic-hash/wikipedia_*",
+  "ref-docs/hypercube-and-hamming-geometry/images/retrieved/**",
+  "ref-docs/hypercube-and-hamming-geometry/wikipedia_*",
+  "ref-docs/ahtl-foundations/images/retrieved/**",
+  "ref-docs/ahtl-foundations/wikipedia_*",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Wikimedia Foundation contributors and respective Wikimedia Commons authors"
+SPDX-License-Identifier = "CC-BY-SA-4.0 OR CC0-1.0"
+SPDX-FileComment = "Archival snapshots of Wikipedia articles and Wikimedia Commons technical figures cataloged in each ref-docs/<topic>/README.md."
+
+# ---------------------------------------------------------------------------
+# 8. Unicode Consortium & ISO/IEC JTC1/SC2/WG2 Archival Documents
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "ref-docs/unicode-braille-patterns/Unicode_U2800_Braille_Patterns_Chart.pdf",
+  "ref-docs/unicode-braille-patterns/standards-and-wg2/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "1991-2026 Unicode, Inc. and ISO/IEC JTC1/SC2/WG2 contributors"
+SPDX-License-Identifier = "Unicode-3.0"
+SPDX-FileComment = "Unicode Standard code chart, UCD data files, UTC minutes, and ISO/IEC JTC1/SC2/WG2 archival proposals for the U+2800..U+28FF Braille Patterns block."
+
+# ---------------------------------------------------------------------------
+# 9. Official BLAKE3 Cryptographic Specification Preprint
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = "ref-docs/blake3-cryptographic-hash/BLAKE3_Official_Specification.pdf"
+precedence = "override"
+SPDX-FileCopyrightText = "2020 Jack O'Connor, Jean-Philippe Aumasson, Samuel Neves, and Zooko Wilcox-O'Hearn"
+SPDX-License-Identifier = "CC0-1.0"
+SPDX-FileComment = "Official BLAKE3 cryptographic hash function specification placed in the public domain (CC0-1.0) by the BLAKE3 team."
+
+# ---------------------------------------------------------------------------
+# 10. AHTL Diagram & PDF Volume Generator Scripts
+# ---------------------------------------------------------------------------
+[[annotations]]
+path = "docs/ahtl/*.py"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 DoubleGate"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+SPDX-FileComment = "First-party deterministic SVG diagram and PDF specification volume builders under GPL-3.0-or-later."

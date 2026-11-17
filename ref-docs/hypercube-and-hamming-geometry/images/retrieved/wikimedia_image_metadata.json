@@ -1,0 +1,3191 @@
+{
+  "batchcomplete": "",
+  "query": {
+    "normalized": [
+      {
+        "from": "File:Dimension_levels.svg",
+        "to": "File:Dimension levels.svg"
+      },
+      {
+        "from": "File:1-simplex_t0.svg",
+        "to": "File:1-simplex t0.svg"
+      },
+      {
+        "from": "File:3-cube_graph.svg",
+        "to": "File:3-cube graph.svg"
+      },
+      {
+        "from": "File:4-cube_graph.svg",
+        "to": "File:4-cube graph.svg"
+      },
+      {
+        "from": "File:5-cube_graph.svg",
+        "to": "File:5-cube graph.svg"
+      },
+      {
+        "from": "File:6-cube_graph.svg",
+        "to": "File:6-cube graph.svg"
+      },
+      {
+        "from": "File:7-cube_graph.svg",
+        "to": "File:7-cube graph.svg"
+      },
+      {
+        "from": "File:From_Point_to_Tesseract_(Looped_Version).gif",
+        "to": "File:From Point to Tesseract (Looped Version).gif"
+      },
+      {
+        "from": "File:Schlegel_wireframe_8-cell.png",
+        "to": "File:Schlegel wireframe 8-cell.png"
+      },
+      {
+        "from": "File:Gray_code_tesseract_432.svg",
+        "to": "File:Gray code tesseract 432.svg"
+      },
+      {
+        "from": "File:Snakes_and_coils_in_the_box.svg",
+        "to": "File:Snakes and coils in the box.svg"
+      },
+      {
+        "from": "File:3-generalized-2-cube_skew.svg",
+        "to": "File:3-generalized-2-cube skew.svg"
+      }
+    ],
+    "pages": {
+      "-1": {
+        "ns": 6,
+        "title": "File:Hexahedron.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 11434,
+            "width": 540,
+            "height": 600,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/a/a5/Hexahedron.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Hexahedron.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/2231470",
+            "sha1": "aa424e381cf29b5f7085b9ec93abf0c436f7e866",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2024-02-18 13:27:18",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "Hexahedron",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "GFDL|License migration completed|Set of Platonic solids; green; svg|Hexahedron (green)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "Cube",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2024-02-16",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "vectorisation of <a href=\"//commons.wikimedia.org/wiki/File:Hexahedron.jpg\" title=\"File:Hexahedron.jpg\">Hexahedron.jpg</a> \u00a0 <small>(initially uploaded as separate file by <a href=\"//commons.wikimedia.org/wiki/User:AquitaneHungerForce\" title=\"User:AquitaneHungerForce\">AquitaneHungerForce</a>)</small>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:AquitaneHungerForce\" title=\"User:AquitaneHungerForce\">AquitaneHungerForce</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 3.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 3.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "http://creativecommons.org/licenses/by-sa/3.0/",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-3.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-2": {
+        "ns": 6,
+        "title": "File:Dimension levels.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 14574,
+            "width": 385,
+            "height": 129,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/4/45/Dimension_levels.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Dimension_levels.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/5514315",
+            "sha1": "0970744a1e68cf5a2f8bb02bbe4ad9258391787a",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2022-02-05 14:25:13",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "Dimension levels",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "GFDL|License migration redundant|2008 illustrations|Self-published work|Tesseract construction|Illustrations by Commons users",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "A drawing of the first four dimensions. On the left is zero dimensions (a point) and on the right is four dimensions (A tesseract). There is an axis and labels on the right and which level of dimensions it is on the bottom. The arrows alongside the shapes indicate the direction of extrusion.",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "12/16/08",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:NerdBoy1392\" title=\"User:NerdBoy1392\">NerdBoy1392</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 3.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 3.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/3.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-3.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-3": {
+        "ns": 6,
+        "title": "File:1-simplex t0.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 462,
+            "width": 1600,
+            "height": 1600,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/0/02/1-simplex_t0.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:1-simplex_t0.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/11155607",
+            "sha1": "e509e59791ddad2da092ec9cc4e88376ce95dd4a",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2010-08-12 03:24:58",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "1-simplex t0",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Self-published work|PD-self|Single edge graph",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/1-simplex\" class=\"extiw\" title=\"en:1-simplex\">en:1-simplex</a> family graph, in A1 Coxeter plane",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "false",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Copyrighted": {
+                "value": "False",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-4": {
+        "ns": 6,
+        "title": "File:2-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 710,
+            "width": 800,
+            "height": 800,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/3/3e/2-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:2-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/9657374",
+            "sha1": "e4da1b8889e33a8f1f863115fa60ae7608a4e60c",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2010-06-17 01:15:13",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "2-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "GFDL|License migration redundant|Hypercube graphs|Self-published work|Red squares|Cycle graph 4|Invalid SVG created with Text Editor:Diagrams",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "2-Cube",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2010-06-16",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">User:Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 3.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 3.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/3.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-3.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-5": {
+        "ns": 6,
+        "title": "File:3-cube graph.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 1386,
+            "width": 800,
+            "height": 800,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/3-cube_graph.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:3-cube_graph.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/10745890",
+            "sha1": "3f67e44de926b6c56904a2a77ff9d79e91b3190f",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2010-06-27 20:56:14",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "3-cube graph",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "PD-user|Hypercubes|Set of colored Coxeter plane graphs; 7 vertices; wheel; 3-cube t0",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/3-cube\" class=\"extiw\" title=\"en:3-cube\">3-cube</a> cube graph, 2 vertices at orange center",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2010-02-25 22:16",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "I (<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)) created this work entirely by myself.",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "false",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Copyrighted": {
+                "value": "False",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-6": {
+        "ns": 6,
+        "title": "File:4-cube graph.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 2942,
+            "width": 800,
+            "height": 800,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/d/dd/4-cube_graph.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:4-cube_graph.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/10745904",
+            "sha1": "5949a184781673e122910c5808a992e83a2b31e2",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2010-06-27 20:58:16",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "4-cube graph",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "PD-user|Octagonal tesseract shadow",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/4-cube\" class=\"extiw\" title=\"en:4-cube\">4-cube</a> tesseract graph",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2010-02-25 22:16",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "I (<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)) created this work entirely by myself.",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "false",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Copyrighted": {
+                "value": "False",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-7": {
+        "ns": 6,
+        "title": "File:5-cube graph.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 6572,
+            "width": 800,
+            "height": 800,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/e/e6/5-cube_graph.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:5-cube_graph.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/10745918",
+            "sha1": "0e66e34f44ca1f35f94a699125a09361960c389a",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2010-06-27 20:59:38",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "5-cube graph",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "PD-user|Hypercubes|5-cube|Set of colored Coxeter plane graphs; 31 vertices",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/5-cube\" class=\"extiw\" title=\"en:5-cube\">5-cube</a> penteract graph",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2010-02-25 22:16",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "I (<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)) created this work entirely by myself.",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "false",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Copyrighted": {
+                "value": "False",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-8": {
+        "ns": 6,
+        "title": "File:6-cube graph.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 14246,
+            "width": 800,
+            "height": 800,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/e/e2/6-cube_graph.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:6-cube_graph.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/10745966",
+            "sha1": "66cddc6c0f93b4104be3efb24f61d77ee8aebf1b",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2010-06-27 21:07:37",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "6-cube graph",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "PD-user|Hypercubes|Set of colored Coxeter plane graphs (red, orange, yellow, green... vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/6-cube\" class=\"extiw\" title=\"en:6-cube\">6-cube</a> hexeract graph",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2010-02-25 22:16",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "I (<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)) created this work entirely by myself.<br>Transferred from <a class=\"external text\" data-mw-original-href=\"http://en.wikipedia.org\" href=\"https://en.wikipedia.org\">en.wikipedia</a>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "false",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Copyrighted": {
+                "value": "False",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-9": {
+        "ns": 6,
+        "title": "File:7-cube graph.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 33099,
+            "width": 800,
+            "height": 800,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/2/2d/7-cube_graph.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:7-cube_graph.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/10745984",
+            "sha1": "b4c7368e9ec9ae2a7901153aaedb9898ba3d5b71",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2010-06-27 21:10:30",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "7-cube graph",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "PD-user|Hypercubes|Set of colored Coxeter plane graphs (red, orange, yellow, green... vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/7-cube\" class=\"extiw\" title=\"en:7-cube\">7-cube</a> hepteract graph",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2010-02-25 22:16",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "I (<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)) created this work entirely by myself.",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "false",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Copyrighted": {
+                "value": "False",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-10": {
+        "ns": 6,
+        "title": "File:8-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 73696,
+            "width": 800,
+            "height": 800,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/d/db/8-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:8-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/9657406",
+            "sha1": "49f646996f73707d9d4c051847a953e3bc7def12",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2010-08-24 02:14:46",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "8-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "PD-user|16-gonal octeract shadow|Set of colored Coxeter plane graphs; 256 vertices",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/8-cube\" class=\"extiw\" title=\"en:8-cube\">8-cube</a> octeract graph",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2010-02-25 22:16",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "I (<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)) created this work entirely by myself.<br>Transferred from <a class=\"external text\" data-mw-original-href=\"http://en.wikipedia.org\" href=\"https://en.wikipedia.org\">en.wikipedia</a>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "false",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Copyrighted": {
+                "value": "False",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-11": {
+        "ns": 6,
+        "title": "File:9-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 155655,
+            "width": 800,
+            "height": 800,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/e/e9/9-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:9-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/10481765",
+            "sha1": "37e713215d49b0b7db6c22c4f325bc2dd917b3a7",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2010-08-24 02:06:53",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "9-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "PD-user|Hypercubes|Set of colored Coxeter plane graphs (red, orange, yellow, green... vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/9-cube\" class=\"extiw\" title=\"en:9-cube\">9-cube</a> enneract graph",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2010-02-25 22:16",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<p>Own work by <a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<span lang=\"en\" dir=\"ltr\">Original text: <i><bdi lang=\"\">I (<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)) created this work entirely by myself.</bdi></i></span>)<br>\n</p>\n<bdi lang=\"en\" dir=\"ltr\">Transferred from <span class=\"plainlinks\"><a class=\"external text\" data-mw-original-href=\"//en.wikipedia.org\" href=\"https://en.wikipedia.org\">en.wikipedia</a></span> to Commons by <a href=\"//commons.wikimedia.org/wiki/User:Sreejithk2000\" title=\"User:Sreejithk2000\">Sreejithk2000</a> using <a href=\"https://iw.toolforge.org/commonshelper/\" class=\"extiw\" title=\"toollabs:commonshelper/\">CommonsHelper</a>.</bdi> Original uploader was <a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tomruen</a> at <a class=\"external text\" data-mw-original-href=\"http://en.wikipedia.org\" href=\"https://en.wikipedia.org\">en.wikipedia</a>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>).",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "false",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Copyrighted": {
+                "value": "False",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-12": {
+        "ns": 6,
+        "title": "File:10-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 353844,
+            "width": 800,
+            "height": 800,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/d/d2/10-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:10-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/10128824",
+            "sha1": "7199f6ce74050268d79ccd03bc12a69a2f45005d",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2010-08-24 02:09:20",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "10-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "PD-user|Petrie polygons|Hypercube graphs|Regular 20-gons",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/10-cube\" class=\"extiw\" title=\"en:10-cube\">10-cube</a> dekeract graph",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2010-02-25 22:16",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "I (<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)) created this work entirely by myself.",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"en:User:Tomruen\">Tom Ruen</a> (<a href=\"https://en.wikipedia.org/wiki/User_talk:Tomruen\" class=\"extiw\" title=\"en:User talk:Tomruen\">talk</a>)",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "false",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Copyrighted": {
+                "value": "False",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-13": {
+        "ns": 6,
+        "title": "File:From Point to Tesseract (Looped Version).gif",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 838289,
+            "width": 256,
+            "height": 256,
+            "duration": 20.959999999999834,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/d/d9/From_Point_to_Tesseract_%28Looped_Version%29.gif?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:From_Point_to_Tesseract_(Looped_Version).gif",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/31380489",
+            "sha1": "6492bb06d4e58b97f5323f27c71990d2a44ee40f",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2014-02-28 15:20:08",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "From Point to Tesseract (Looped Version)",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Animated GIF files|Hypercubes|Self-published work|Tesseract Schlegel diagrams",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "n-cubes from point to tesseract, created by movement of (n-1) cube over perpendicular axis.",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2014-02-28 19:12:27",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/w/index.php?title=User:Tmp6154&amp;action=edit&amp;redlink=1\" class=\"new\" title=\"User:Tmp6154 (page does not exist)\">Vitaly Ostrosablin</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 3.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 3.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/3.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-3.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/gif"
+          }
+        ]
+      },
+      "-14": {
+        "ns": 6,
+        "title": "File:8-cell.gif",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 3638957,
+            "width": 255,
+            "height": 255,
+            "duration": 9.600000000000001,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/d/d7/8-cell.gif?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:8-cell.gif",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/1702289",
+            "sha1": "1601fdbf136882c6e408086922038e8b9a2e794e",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2011-06-17 21:46:39",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "8-cell",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "PD-user|Set of convex regular 4-polytopes; animated blue on black|Tesseract Schlegel diagrams|GIF animations created with Maya|Animated GIF files with black background",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "quality",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "An animated GIF of a <a href=\"https://en.wikipedia.org/wiki/tesseract\" class=\"extiw\" title=\"w:tesseract\">tesseract</a>.",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2007-02-21",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/User:JasonHise\" class=\"extiw\" title=\"w:User:JasonHise\">Jason Hise</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "false",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Copyrighted": {
+                "value": "False",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/gif"
+          }
+        ]
+      },
+      "-15": {
+        "ns": 6,
+        "title": "File:Schlegel wireframe 8-cell.png",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 351462,
+            "width": 1000,
+            "height": 1000,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/a/a2/Schlegel_wireframe_8-cell.png?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Schlegel_wireframe_8-cell.png",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/4694970",
+            "sha1": "b28cd3047d3f2a4729ab1219d5bed740bea8a921",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2013-12-26 05:28:40",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "Schlegel wireframe 8-cell",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Created with Stella|Attribution only license|Items with VRTS permission confirmed|Set of convex regular 4-polytopes; Schlegel silgol|Tesseract Schlegel diagrams|Set of duoprisms; silgol ryb",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "Central projection of the <a href=\"https://en.wikipedia.org/wiki/tesseract\" class=\"extiw\" title=\"w:tesseract\">tesseract</a>, a <a href=\"https://en.wikipedia.org/wiki/Schlegel_diagram\" class=\"extiw\" title=\"w:Schlegel diagram\">Schlegel diagram</a>\n<p><br>\n</p>\n<table class=\"layouttemplate licensetpl\" lang=\"en\" dir=\"ltr\" cellpadding=\"0\" style=\"width: 100%; clear: both; margin: 0.5em auto; background-color: var(--background-color-success-subtle, #dff2eb); color: var(--color-base, #202122); border-width: var(--border-width-thick, 2px); border-style: solid; border-color: var(--border-color-success, #099979); border-spacing: 8px; box-sizing: border-box;\">\n<tbody><tr>\n<td style=\"width:90px;\" rowspan=\"3\"><span typeof=\"mw:File\"><span title=\"\u00a9\"><img alt=\"\u00a9\" src=\"https://thumb.wikimedia.org/wikipedia/commons/thumb/5/57/Green_copyright.svg/120px-Green_copyright.svg.png?utm_source=commons.wikimedia.org&amp;utm_campaign=parser&amp;utm_content=thumbnail\" decoding=\"async\" loading=\"lazy\" width=\"64\" height=\"64\" class=\"mw-file-element\" srcset=\"https://thumb.wikimedia.org/wikipedia/commons/thumb/5/57/Green_copyright.svg/250px-Green_copyright.svg.png?utm_source=commons.wikimedia.org&amp;utm_campaign=parser&amp;utm_content=thumbnail 2x\" data-file-width=\"197\" data-file-height=\"197\"></span></span>\n</td>\n<td>The copyright holder of this file, <a href=\"https://en.wikipedia.org/wiki/User:RobertCWebb\" class=\"extiw\" title=\"en:User:RobertCWebb\">Robert Webb</a>, allows anyone to use it <b>for any purpose, provided that</b> the copyright holder is properly attributed. Redistribution, derivative work, commercial use, and all other use is permitted.\n</td></tr>\n<tr style=\"text-align:center;\">\n<td><div style=\"font-weight: bold;display:inline;\">Attribution: <div style=\"font-size: larger;display:inline;\" class=\"licensetpl_attr\">Attribution must be given to Robert Webb's <a href=\"https://en.wikipedia.org/wiki/Stella_(software)\" class=\"extiw\" title=\"en:Stella (software)\">Stella software</a> as the creator of this image along with a link to the website: <a rel=\"nofollow\" class=\"external free\" href=\"http://www.software3d.com/Stella.php\">http://www.software3d.com/Stella.php</a>. A complimentary copy of any book or poster using images from the Software would also be appreciated where feasible.</div></div>\n<p><span class=\"licensetpl_short\" style=\"display:none;\">Attribution</span>\n</p>\n</td></tr></tbody></table><span class=\"layouttemplateargs\" style=\"display:none;speak:none;\" title=\"template=PermissionTicket 1%3Dhttps%3A%2F%2Fticket.wikimedia.org%2Fotrs%2Findex.pl%3FAction%3DAgentTicketZoom%26TicketNumber%3D2011112810034763 2%3D2011112810034763\">\u00a0</span>\n<style data-mw-deduplicate=\"TemplateStyles:r1254222110\">.mw-parser-output .messagebox{margin:4px 0;width:auto;border-collapse:collapse;border:2px solid var(--border-color-progressive,#6485d1);background-color:var(--background-color-neutral-subtle,#fbfcff);color:var(--color-base,#202122);box-sizing:border-box;border-inline-start-width:8px}.mw-parser-output .messagebox.mbox-small{font-size:88%;line-height:1.25em}.mw-parser-output .mbox-warning,.mw-parser-output .mbox-speedy{border:2px solid var(--border-color-error,#b22222);background:var(--background-color-error-subtle,#ffdbdb);border-inline-start-width:8px}.mw-parser-output .mbox-serious,.mw-parser-output .mbox-delete,.mw-parser-output .mbox-stop{border:2px solid var(--border-color-error,#b22222);border-inline-start-width:8px}.mw-parser-output .mbox-issue,.mw-parser-output .mbox-content{border:2px solid #f28500;background:var(--background-color-warning-subtle,#ffe);border-inline-start-width:8px}.mw-parser-output .mbox-query,.mw-parser-output .mbox-style{border:2px solid #f4c430;background:var(--background-color-warning-subtle,#ffe);border-inline-start-width:8px}.mw-parser-output .mbox-shit{border:2px solid #960;border-inline-start-width:8px}.mw-parser-output .mbox-license{border:2px solid #88a;border-inline-start-width:initial}.mw-parser-output .mbox-legal{border:2px solid var(--border-color-notice,#666);background:var(--background-color-base,#fff);border-inline-start-width:8px}.mw-parser-output .mbox-honor{border:2px solid #ca3;background:var(--background-color-warning-subtle,#fcf4db);border-inline-start-width:8px}.mw-parser-output .mbox-growth{border:2px solid #8d4;background:var(--background-color-success-subtle,#d5fdf4);border-inline-start-width:8px}.mw-parser-output .mbox-move{border:2px solid #93c;border-inline-start-width:8px}.mw-parser-output .mbox-protection,.mw-parser-output .mbox-message{border:2px solid var(--border-color-base,#aaa);border-inline-start-width:8px}.mw-parser-output .messagebox .mbox-text{border:none;padding:0.25em 0.9em;width:100%}.mw-parser-output .messagebox .mbox-image{border:none;padding-top:2px;padding-bottom:2px;padding-inline-start:0.9em;padding-inline-end:0;text-align:center}.mw-parser-output .messagebox .mbox-imageright{border:none;padding-top:2px;padding-bottom:2px;padding-inline-start:0;padding-inline-end:0.9em;text-align:center}.mw-parser-output .messagebox .mbox-empty-cell{border:none;padding:0;width:1px}.mw-parser-output .messagebox .mbox-invalid-type{text-align:center}@media(min-width:720px){.mw-parser-output .messagebox{margin:4px 10%}.mw-parser-output .messagebox.mbox-small{clear:right;float:right;margin:4px 0 4px 1em;width:238px}}body.skin--responsive .mw-parser-output table.messagebox img{max-width:none!important}</style><table class=\"plainlinks messagebox mbox-notice layouttemplate\" role=\"presentation\" style=\"margin:0.3em 0;width:100%;\"><tbody><tr><td class=\"mbox-image\"><span typeof=\"mw:File\"><span title=\"VRT Wikimedia\"><img alt=\"VRT Wikimedia\" src=\"https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f0/Permission_logo_2021.svg/120px-Permission_logo_2021.svg.png?utm_source=commons.wikimedia.org&amp;utm_campaign=parser&amp;utm_content=thumbnail\" decoding=\"async\" loading=\"lazy\" width=\"75\" height=\"48\" class=\"mw-file-element\" srcset=\"https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f0/Permission_logo_2021.svg/250px-Permission_logo_2021.svg.png?utm_source=commons.wikimedia.org&amp;utm_campaign=parser&amp;utm_content=thumbnail 2x\" data-file-width=\"935\" data-file-height=\"600\"></span></span></td><td class=\"mbox-text\">This work is <a href=\"https://freedomdefined.org/Definition\" class=\"extiw\" title=\"freedomdefined:Definition\">free</a> and may be used by anyone for any purpose. If you wish to <b><a href=\"//commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia\" title=\"Commons:Reusing content outside Wikimedia\">use this content</a></b>, you do not need to request permission as long as you follow any licensing requirements mentioned on this page.\n<p>The Wikimedia Foundation has received an e-mail confirming that the copyright holder has approved publication under the terms mentioned on this page. This correspondence has been <strong style=\"color: var(--color-content-added, darkgreen);\">reviewed</strong> by a <a href=\"//commons.wikimedia.org/wiki/Template:PermissionTicket/Users\" title=\"Template:PermissionTicket/Users\">Volunteer Response Team (VRT) member</a> and stored in our <a href=\"//commons.wikimedia.org/wiki/Commons:Volunteer_Response_Team\" title=\"Commons:Volunteer Response Team\">permission archive</a>. The correspondence is available to trusted volunteers as <b><a href=\"https://ticket.wikimedia.org/otrs/index.pl?Action=AgentTicketZoom&amp;TicketNumber=2011112810034763\" class=\"extiw\" title=\"ticket:2011112810034763\">ticket #2011112810034763</a></b>.\n</p><p><small>If you have questions about the archived correspondence, please use the <a href=\"//commons.wikimedia.org/wiki/Commons:Volunteer_Response_Team/Noticeboard\" title=\"Commons:Volunteer Response Team/Noticeboard\">VRT noticeboard</a>.</small>\n<small>Ticket link: <a class=\"external free\" href=\"https://ticket.wikimedia.org/otrs/index.pl?Action=AgentTicketZoom&amp;TicketNumber=2011112810034763\">https://ticket.wikimedia.org/otrs/index.pl?Action=AgentTicketZoom&amp;TicketNumber=2011112810034763</a></small>\n<br><small>Find other files from the same ticket:</small> <span typeof=\"mw:File\"><a href=\"https://wcqs-beta.wmflabs.org/#%23defaultView%3AImageGrid%09%0ASELECT%20%3Fimage%20%20%20%7B%0A%20%20%3Ffile%20wdt%3AP6305%20%222011112810034763%22%20.%0A%20%20%3Ffile%20schema%3Aurl%20%3Fimage.%0A%7D%20%0A\" title=\"SDC query (SPARQL)\" rel=\"nofollow\"><img alt=\"SDC query (SPARQL)\" src=\"https://thumb.wikimedia.org/wikipedia/commons/thumb/7/77/Wikimedia_Commons_Query_Service_Logo.svg/20px-Wikimedia_Commons_Query_Service_Logo.svg.png?utm_source=commons.wikimedia.org&amp;utm_campaign=parser&amp;utm_content=thumbnail\" decoding=\"async\" loading=\"lazy\" width=\"15\" height=\"20\" class=\"mw-file-element\" srcset=\"https://thumb.wikimedia.org/wikipedia/commons/thumb/7/77/Wikimedia_Commons_Query_Service_Logo.svg/40px-Wikimedia_Commons_Query_Service_Logo.svg.png?utm_source=commons.wikimedia.org&amp;utm_campaign=parser&amp;utm_content=thumbnail 2x\" data-file-width=\"512\" data-file-height=\"688\"></a></span>\n</p>\n<span id=\"field-otrs\" title=\"https://ticket.wikimedia.org/otrs/index.pl?Action=AgentTicketZoom&amp;TicketNumber=2011112810034763\"></span></td></tr></tbody></table>",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "17 March 2007 (original upload date)",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<bdi lang=\"en\" dir=\"ltr\">Transferred from <span class=\"plainlinks\"><a class=\"external text\" data-mw-original-href=\"//en.wikipedia.org\" href=\"https://en.wikipedia.org\">en.wikipedia</a></span> to Commons by <a href=\"//commons.wikimedia.org/wiki/User:Jalo\" title=\"User:Jalo\">Jalo</a> using <a href=\"https://iw.toolforge.org/commonshelper/\" class=\"extiw\" title=\"toollabs:commonshelper/\">CommonsHelper</a>.</bdi>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "The original uploader was <a href=\"https://en.wikipedia.org/wiki/User:Tomruen\" class=\"extiw\" title=\"wikipedia:User:Tomruen\">Tomruen</a> at <a href=\"https://en.wikipedia.org/wiki/\" class=\"extiw\" title=\"wikipedia:\">English Wikipedia</a>.",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 3.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 3.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/3.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-3.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/png"
+          }
+        ]
+      },
+      "-16": {
+        "ns": 6,
+        "title": "File:Hypercubestar.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 2205,
+            "width": 330,
+            "height": 330,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/f/f8/Hypercubestar.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Hypercubestar.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/2674082",
+            "sha1": "e3dfeccfe3109f7a756275de9bb3879e5e580c45",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2025-01-06 00:45:02",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "Hypercubestar",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Self-published work|PD-self|Octagonal tesseract shadow|Unit distance graphs|Colored nibbles (blue, green, white); graph",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/Petrie_polygon\" class=\"extiw\" title=\"w:Petrie polygon\">Petrie polygon</a> graph of the <a href=\"https://en.wikipedia.org/wiki/tesseract\" class=\"extiw\" title=\"w:tesseract\">4-dimensional cube</a>",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2007-09-02",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<table>\n<tbody><tr>\n<td style=\"padding: 15px;\"><span typeof=\"mw:File\"><a href=\"//commons.wikimedia.org/wiki/File:Watchduck.svg\" class=\"mw-file-description\"><img src=\"https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d8/Watchduck.svg/40px-Watchduck.svg.png?utm_source=commons.wikimedia.org&amp;utm_campaign=parser&amp;utm_content=thumbnail\" decoding=\"async\" loading=\"lazy\" width=\"40\" height=\"46\" class=\"mw-file-element\" srcset=\"https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d8/Watchduck.svg/120px-Watchduck.svg.png?utm_source=commons.wikimedia.org&amp;utm_campaign=parser&amp;utm_content=thumbnail 2x\" data-file-width=\"703\" data-file-height=\"806\"></a></span>\n</td>\n<td><a href=\"//commons.wikimedia.org/wiki/User:Watchduck\" title=\"User:Watchduck\">Watchduck</a><br><span style=\"color: gray; font-size: 80%;\">You can name the author as \"T. Piesk\", \"Tilman Piesk\" or \"Watchduck\".</span>\n</td></tr></tbody></table>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "false",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Copyrighted": {
+                "value": "False",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-17": {
+        "ns": 6,
+        "title": "File:Hypercubeconstruction.png",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 19009,
+            "width": 641,
+            "height": 474,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/a/aa/Hypercubeconstruction.png?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Hypercubeconstruction.png",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/18890108",
+            "sha1": "ef947b5c295c9f29a6445d9e41e34d7dd42b926e",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2012-07-08 07:02:29",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "Hypercubeconstruction",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "PD-user|Media lacking a description|Graph images that should use vector graphics|PNG that should use vector graphics|Unlabeled cube graph|Files moved from en.wikipedia to Commons requiring review as of 29 March 2012",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "DateTimeOriginal": {
+                "value": "8 September 2008 (original upload date)",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<bdi lang=\"en\" dir=\"ltr\">Transferred from <span class=\"plainlinks\"><a class=\"external text\" data-mw-original-href=\"//en.wikipedia.org\" href=\"https://en.wikipedia.org\">en.wikipedia</a></span> to Commons by <a href=\"//commons.wikimedia.org/w/index.php?title=User:Shashenka&amp;action=edit&amp;redlink=1\" class=\"new\" title=\"User:Shashenka (page does not exist)\">Shashenka</a> using <a href=\"https://iw.toolforge.org/commonshelper/\" class=\"extiw\" title=\"toollabs:commonshelper/\">CommonsHelper</a>.</bdi>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/User:Stdazi\" class=\"extiw\" title=\"wikipedia:User:Stdazi\">Stdazi</a> at <a href=\"https://en.wikipedia.org/wiki/\" class=\"extiw\" title=\"wikipedia:\">English Wikipedia</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "false",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Copyrighted": {
+                "value": "False",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/png"
+          }
+        ]
+      },
+      "-18": {
+        "ns": 6,
+        "title": "File:Gray code tesseract 432.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 5359,
+            "width": 512,
+            "height": 288,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/a/a9/Gray_code_tesseract_432.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Gray_code_tesseract_432.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/187061300",
+            "sha1": "41713237431913720aa23965d0933b2b275f4ebb",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2026-03-26 01:45:36",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "Gray code tesseract 432",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "GFDL|Gray code|License migration redundant|Tesseract|Self-published work|SVG orb|4-3-2 trimetric projection",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "The Gray code in its Wikipedia article as a traversal of vertices of a tesseract by CMG Lee. The more significant the bit, the more horizontally oriented it is drawn.",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Cmglee\" title=\"User:Cmglee\">Cmglee</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-19": {
+        "ns": 6,
+        "title": "File:Snakes and coils in the box.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 3869,
+            "width": 512,
+            "height": 512,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/6/68/Snakes_and_coils_in_the_box.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Snakes_and_coils_in_the_box.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/105445728",
+            "sha1": "8543fafc15b58d6f329bad25cbae5185bf59da3c",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2021-05-18 00:23:25",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "Snakes and coils in the box",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "GFDL|License migration redundant|Self-published work|Snake-in-the-box",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "Maximum lengths of snakes (<i>L</i>s) and coils (<i>L</i>c) in the snakes-in-the-box problem for dimensions <i>n</i> from 1 to 4 by CMG Lee based on diagram on <a rel=\"nofollow\" class=\"external free\" href=\"http://semanticscholar.org/paper/d814d14677be7ffe8e33493369ac135556419283\">http://semanticscholar.org/paper/d814d14677be7ffe8e33493369ac135556419283</a> .",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Cmglee\" title=\"User:Cmglee\">Cmglee</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-20": {
+        "ns": 6,
+        "title": "File:2-generalized-2-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 1794,
+            "width": 1000,
+            "height": 1000,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/d/da/2-generalized-2-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:2-generalized-2-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/51134969",
+            "sha1": "6980c5ad7fd0cd96027144f511c1b76e5fc9e03c",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2016-09-05 01:54:19",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "2-generalized-2-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Self-published work|M-generalized-n-cube (green vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/Complex_polytope\" class=\"extiw\" title=\"en:Complex polytope\">en:Complex polytope</a>, p-generalized-2-cube (square), p-edges alternately colored red and blue, vertices green",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2016-09-04",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-21": {
+        "ns": 6,
+        "title": "File:2-generalized-3-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 1166,
+            "width": 1000,
+            "height": 866,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/8/86/2-generalized-3-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:2-generalized-3-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/51535634",
+            "sha1": "ce57dcc0046ddeb1b463df1205624e1c7b029289",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2016-09-19 11:17:52",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "2-generalized-3-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Self-published work|M-generalized-n-cube (red vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/Complex_polytope\" class=\"extiw\" title=\"en:Complex polytope\">en:Complex polytope</a>, p-generalized 3-cube",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2016-09-19",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-22": {
+        "ns": 6,
+        "title": "File:2-generalized-4-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 2022,
+            "width": 1000,
+            "height": 1000,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/d/d6/2-generalized-4-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:2-generalized-4-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/51536118",
+            "sha1": "bbc3dbf39a1bfa67a41cbb344824d3b35bdae089",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2016-09-19 11:50:54",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "2-generalized-4-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Self-published work|M-generalized-n-cube (red vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/Complex_polytope\" class=\"extiw\" title=\"en:Complex polytope\">en:Complex polytope</a>, p-generalized 4-cube",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2016-09-19",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-23": {
+        "ns": 6,
+        "title": "File:2-generalized-5-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 4227,
+            "width": 1000,
+            "height": 951,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/d/d3/2-generalized-5-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:2-generalized-5-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/51536892",
+            "sha1": "e1cbf65c73581c65a00ab20e11648eede9a7dcb2",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2016-09-19 12:38:01",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "2-generalized-5-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Self-published work|M-generalized-n-cube (red vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/Complex_polytope\" class=\"extiw\" title=\"en:Complex polytope\">en:Complex polytope</a> p-generalized 5-cube",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2016-09-19",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-24": {
+        "ns": 6,
+        "title": "File:2-generalized-6-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 7768,
+            "width": 1000,
+            "height": 1000,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/e/ed/2-generalized-6-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:2-generalized-6-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/51537329",
+            "sha1": "e3a8a1bfa51496c90388c8539ed830a53a71d2b1",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2016-09-19 13:02:38",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "2-generalized-6-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Self-published work|M-generalized-n-cube (red vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/Complex_polytope\" class=\"extiw\" title=\"en:Complex polytope\">en:Complex polytope</a> p-generalized 6-cube",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2016-09-19",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-25": {
+        "ns": 6,
+        "title": "File:2-generalized-7-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 19469,
+            "width": 1000,
+            "height": 975,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/7/74/2-generalized-7-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:2-generalized-7-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/51626032",
+            "sha1": "9dc2d63c78e9228875a7e99e99178e8fce1f762b",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2016-09-21 23:38:42",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "2-generalized-7-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Self-published work|M-generalized-n-cube (red vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/Complex_polytope\" class=\"extiw\" title=\"en:Complex polytope\">en:Complex polytope</a> p-generalized-n-cube",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2016-09-21",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-26": {
+        "ns": 6,
+        "title": "File:2-generalized-8-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 42482,
+            "width": 1000,
+            "height": 1000,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/5/5e/2-generalized-8-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:2-generalized-8-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/51626031",
+            "sha1": "aaf251c63e9c32b4ff3c9646bd83e2b1212041f1",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2016-09-21 23:52:08",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "2-generalized-8-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Self-published work|M-generalized-n-cube (red vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/Complex_polytope\" class=\"extiw\" title=\"en:Complex polytope\">en:Complex polytope</a> p-generalized-n-cube",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2016-09-21",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-27": {
+        "ns": 6,
+        "title": "File:3-generalized-2-cube skew.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 3197,
+            "width": 1000,
+            "height": 1000,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/d/dc/3-generalized-2-cube_skew.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:3-generalized-2-cube_skew.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/51135130",
+            "sha1": "302563fb0a4475780ab430d960464d2c9e5fb008",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2016-09-05 02:16:03",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "3-generalized-2-cube skew",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "3-3 duoprism|Self-published work|M-generalized-n-cube (green vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/Complex_polytope\" class=\"extiw\" title=\"en:Complex polytope\">en:Complex polytope</a>, p-generalize-2-cube (square), slightly skew perspective to move coinciding vertices from the center.",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2016-09-04",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-28": {
+        "ns": 6,
+        "title": "File:3-generalized-3-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 4342,
+            "width": 985,
+            "height": 1000,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/8/8d/3-generalized-3-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:3-generalized-3-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/51535636",
+            "sha1": "72e204f74ba4a6da2cd1d8b2bea4bacb8a239ef2",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2016-09-19 11:17:52",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "3-generalized-3-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Self-published work|M-generalized-n-cube (red vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/Complex_polytope\" class=\"extiw\" title=\"en:Complex polytope\">en:Complex polytope</a>, p-generalized 3-cube",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2016-09-19",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-29": {
+        "ns": 6,
+        "title": "File:3-generalized-4-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 7650,
+            "width": 1000,
+            "height": 1000,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/d/d9/3-generalized-4-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:3-generalized-4-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/51536115",
+            "sha1": "9098713750d5cb1ec99b3384055b5c5fd946ee2a",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2016-09-19 11:50:54",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "3-generalized-4-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Self-published work|M-generalized-n-cube (red vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/Complex_polytope\" class=\"extiw\" title=\"en:Complex polytope\">en:Complex polytope</a>, p-generalized 4-cube",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2016-09-19",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-30": {
+        "ns": 6,
+        "title": "File:4-generalized-2-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 5360,
+            "width": 1000,
+            "height": 1000,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/e/e5/4-generalized-2-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:4-generalized-2-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/51134970",
+            "sha1": "e8d2276b389dfe6ab11c07edc4ad9ca3eebd62bb",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2016-09-05 01:54:19",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "4-generalized-2-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Self-published work|Octagonal tesseract shadow|M-generalized-n-cube (green vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/Complex_polytope\" class=\"extiw\" title=\"en:Complex polytope\">en:Complex polytope</a>, p-generalized-2-cube (square), p-edges alternately colored red and blue, vertices green",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2016-09-04",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-31": {
+        "ns": 6,
+        "title": "File:4-generalized-3-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 11003,
+            "width": 1000,
+            "height": 1000,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/a/a8/4-generalized-3-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:4-generalized-3-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/51535635",
+            "sha1": "be0e50de6c292e0caddf6eb3639ba4f7abbb37fc",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2016-09-19 11:17:52",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "4-generalized-3-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Self-published work|M-generalized-n-cube (red vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/Complex_polytope\" class=\"extiw\" title=\"en:Complex polytope\">en:Complex polytope</a>, p-generalized 3-cube",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2016-09-19",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "-32": {
+        "ns": 6,
+        "title": "File:4-generalized-4-cube.svg",
+        "missing": "",
+        "known": "",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 63351,
+            "width": 1000,
+            "height": 1000,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/e/ef/4-generalized-4-cube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:4-generalized-4-cube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/51536116",
+            "sha1": "658f5ec68064a3eff207158287e2a0c3d7cca42b",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2016-09-19 11:50:54",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "4-generalized-4-cube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "Self-published work|M-generalized-n-cube (red vertices)",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/Complex_polytope\" class=\"extiw\" title=\"en:Complex polytope\">en:Complex polytope</a>, p-generalized 4-cube",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2016-09-19",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tomruen\" title=\"User:Tomruen\">Tomruen</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 4.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "31627390": {
+        "pageid": 31627390,
+        "ns": 6,
+        "title": "File:Hypercube.svg",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 8989,
+            "width": 417,
+            "height": 453,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/2/22/Hypercube.svg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Hypercube.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/865937",
+            "sha1": "619eb79ea3d192501a1f46bf16027a96e06530ce",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2026-09-01 17:00:16",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "Hypercube",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "GFDL|License migration completed|Self-published work|Tesseract Schlegel diagrams|Valid SVG created with Adobe Illustrator:Diagrams",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "A <a href=\"https://en.wikipedia.org/wiki/tesseract\" class=\"extiw\" title=\"w:tesseract\">tesseract</a>, also known as a four-dimensional hypercube. It is the 4-dimensional equivalent of a cube. Created by me using Inkscape tracing the PNG.",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "2006-06-15",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "Own work based on: <a href=\"//commons.wikimedia.org/wiki/File:Hypercube.png\" title=\"File:Hypercube.png\">Hypercube.png</a>:\u00a0<span typeof=\"mw:File\"><a href=\"//commons.wikimedia.org/wiki/File:Hypercube.png\" class=\"mw-file-description\"><img src=\"https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0f/Hypercube.png/60px-Hypercube.png?utm_source=commons.wikimedia.org&amp;utm_campaign=parser&amp;utm_content=thumbnail\" decoding=\"async\" loading=\"lazy\" width=\"48\" height=\"52\" class=\"mw-file-element\" srcset=\"https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0f/Hypercube.png/120px-Hypercube.png?utm_source=commons.wikimedia.org&amp;utm_campaign=parser&amp;utm_content=thumbnail 2x\" data-file-width=\"417\" data-file-height=\"453\"></a></span>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Goffrie\" title=\"User:Goffrie\">Goffrie</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY-SA 3.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution-Share Alike 3.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Attribution": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Goffrie\" title=\"User:Goffrie\">Goffrie</a>",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "http://creativecommons.org/licenses/by-sa/3.0/",
+                "source": "commons-desc-page"
+              },
+              "Copyrighted": {
+                "value": "True",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-sa-3.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/svg+xml"
+          }
+        ]
+      },
+      "31627362": {
+        "pageid": 31627362,
+        "ns": 6,
+        "title": "File:Tesseract.gif",
+        "imagerepository": "shared",
+        "imageinfo": [
+          {
+            "size": 468689,
+            "width": 256,
+            "height": 256,
+            "duration": 1.920000000000001,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/5/55/Tesseract.gif?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Tesseract.gif",
+            "descriptionshorturl": "https://commons.wikimedia.org/wiki/Special:Redirect/page/1493225",
+            "sha1": "d47f25efe844d5583ef3b1d5bdc05e66e8a06c2c",
+            "extmetadata": {
+              "DateTime": {
+                "value": "2023-09-26 05:29:12",
+                "source": "mediawiki-metadata",
+                "hidden": ""
+              },
+              "ObjectName": {
+                "value": "Tesseract",
+                "source": "mediawiki-metadata"
+              },
+              "CommonsMetadataExtension": {
+                "value": 1.2,
+                "source": "extension",
+                "hidden": ""
+              },
+              "Categories": {
+                "value": "PD-user|Animated GIF files|Tesseract Schlegel diagrams|Animations on black background|Animations of convex regular 4-polytopes|GIF animations created with Maya",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "Assessments": {
+                "value": "",
+                "source": "commons-categories",
+                "hidden": ""
+              },
+              "ImageDescription": {
+                "value": "Animated projection of a rotating <a href=\"https://en.wikipedia.org/wiki/Tesseract\" class=\"extiw\" title=\"en:Tesseract\">tesseract</a>. Created using Maya and Macromedia Fireworks.",
+                "source": "commons-desc-page"
+              },
+              "DateTimeOriginal": {
+                "value": "26 December 2006 (upload date)",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<ul><li><bdi lang=\"en\" dir=\"ltr\">Transferred from <span class=\"plainlinks\"><a class=\"external text\" data-mw-original-href=\"//en.wikipedia.org\" href=\"https://en.wikipedia.org\">en.wikipedia</a></span> to Commons.</bdi></li>\n<li><span class=\"int-own-work\" lang=\"en\">Own work</span></li></ul>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"https://en.wikipedia.org/wiki/User:JasonHise\" class=\"extiw\" title=\"wikipedia:User:JasonHise\">Jason Hise</a> at <a href=\"https://en.wikipedia.org/wiki/\" class=\"extiw\" title=\"wikipedia:\">English Wikipedia</a>",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "false",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Copyrighted": {
+                "value": "False",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "image/gif"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" width="1200" height="400">
+  <rect width="1200" height="400" rx="14" fill="#0b0f19" stroke="#1e293b" stroke-width="2"/>
+  <text x="600" y="36" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="16.5" font-weight="700" fill="#fb923c">
+    SEGMENT 3: 10,240-BIT HYPERDIMENSIONAL VSA TO 64-BIT BRAILLE-256 PROJECTION
+  </text>
+  <text x="600" y="58" text-anchor="middle" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" fill="#94a3b8">
+    Kanerva MAP Algebra (XOR Bind, Cyclic Permute, Delta-Rule Bundler) Projected into 8 Unicode Braille Glyphs
+  </text>
+
+  <!-- Step 1: 10,240-Bit Hypervector -->
+  <rect x="28" y="82" width="356" height="290" rx="10" fill="#111827" stroke="#06b6d4" stroke-width="1.5"/>
+  <text x="206" y="110" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="13" font-weight="700" fill="#22d3ee">1. 10,240-Bit Hypervector (VSA)</text>
+  <text x="46" y="138" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.8" fill="#e2e8f0">#[repr(C, align(64))]</text>
+  <text x="46" y="156" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.8" fill="#22d3ee">struct Hypervector { words: [u64; 160] }</text>
+  <text x="46" y="184" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Seeded via BLAKE3 XOF (ICX_HDC_10240_V1)</text>
+  <text x="46" y="206" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Quasi-orthogonal: E[d_H] = 5120, sigma = 50.6</text>
+  <text x="46" y="228" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Binding (XOR): H_subj ^ H_text (self-inverse)</text>
+  <text x="46" y="250" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Sequence: Pi^1(H_t) ^ H_(t+1) rotation</text>
+  <text x="46" y="272" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Delta Bundler: w_i = 1 - sim(V, M_(t-1))</text>
+  <text x="46" y="302" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.5" fill="#34d399">20 AVX-512 ZMM regs -&gt; 12 ns POPCNT scan</text>
+
+  <!-- Step 2: 64-Bit Topological Hologram Layout -->
+  <rect x="412" y="82" width="376" height="290" rx="10" fill="#111827" stroke="#f97316" stroke-width="1.5"/>
+  <text x="600" y="110" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="13" font-weight="700" fill="#fb923c">2. 64-Bit Hologram Byte Layout</text>
+  <rect x="428" y="128" width="136" height="54" rx="6" fill="#06b6d4" fill-opacity="0.2" stroke="#06b6d4"/>
+  <text x="496" y="150" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.2" font-weight="700" fill="#22d3ee">Bytes 0..3 (32b)</text>
+  <text x="496" y="169" text-anchor="middle" font-family="Inter, DejaVu Sans, sans-serif" font-size="9.5" fill="#e2e8f0">XOR HDC Sketch</text>
+
+  <rect x="572" y="128" width="96" height="54" rx="6" fill="#10b981" fill-opacity="0.2" stroke="#10b981"/>
+  <text x="620" y="150" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10" font-weight="700" fill="#34d399">B 4..5 (16b)</text>
+  <text x="620" y="169" text-anchor="middle" font-family="Inter, DejaVu Sans, sans-serif" font-size="9.5" fill="#e2e8f0">IFS Quad u16</text>
+
+  <rect x="676" y="128" width="96" height="54" rx="6" fill="#6366f1" fill-opacity="0.2" stroke="#6366f1"/>
+  <text x="724" y="150" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10" font-weight="700" fill="#818cf8">B 6..7 (16b)</text>
+  <text x="724" y="169" text-anchor="middle" font-family="Inter, DejaVu Sans, sans-serif" font-size="9.5" fill="#e2e8f0">Surp + Tier</text>
+
+  <text x="432" y="210" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.5" fill="#fb923c">acc ^= words[i].rotate_left(i % 64)</text>
+  <text x="432" y="232" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.5" fill="#fb923c">sketch_u32 = (acc &gt;&gt; 32) ^ (acc as u32)</text>
+  <text x="432" y="262" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Preserves rotational word parity across all</text>
+  <text x="432" y="282" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">  160 u64 words (10,240 bits -&gt; 32 bits)</text>
+  <text x="432" y="304" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Packed with 16-bit IFS sign mask &amp; S_t</text>
+
+  <!-- Step 3: Bijective Braille-256 Encoding -->
+  <rect x="816" y="82" width="356" height="290" rx="10" fill="#111827" stroke="#6366f1" stroke-width="1.5"/>
+  <text x="994" y="110" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="13" font-weight="700" fill="#818cf8">3. Braille-256 Bijection (U+2800)</text>
+  <rect x="836" y="128" width="316" height="44" rx="6" fill="#0f172a" stroke="#6366f1"/>
+  <text x="994" y="155" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="12" font-weight="700" fill="#fb923c">char::from_u32(0x2800 + byte as u32)</text>
+  <text x="836" y="200" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* 8 bytes -&gt; 8 Braille codepoints (24 UTF-8 B)</text>
+  <text x="836" y="222" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Zero branch / table lookup overhead</text>
+  <text x="836" y="244" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Identical topological states emit identical</text>
+  <text x="836" y="264" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">  Braille token sequences for Q*K^T resonance</text>
+  <text x="836" y="294" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="11" fill="#34d399">100% lossless round-trip: decode(encode(b))==b</text>
+</svg>

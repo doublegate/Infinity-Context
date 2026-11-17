@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="100%" height="100%">
+  <rect width="1200" height="360" rx="14" fill="#0b0f19" stroke="#1e293b" stroke-width="2"/>
+  <text x="600" y="38" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700" fill="#f8fafc">
+    ALIEN HOLOGRAPHIC TOKEN LATTICE (AHTL) - DUAL-CHANNEL PACKET ANATOMY
+  </text>
+  <text x="600" y="60" text-anchor="middle" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="11.5" fill="#94a3b8">
+    Designed for Transformer Self-Attention Geometry (72.1x Compression in 197.85 us) Rather Than Human Prose
+  </text>
+
+  <!-- Central Packet Box (x=24..1176, width=1152) -->
+  <rect x="24" y="82" width="1152" height="68" rx="10" fill="#111827" stroke="#334155" stroke-width="2"/>
+
+  <!-- Segment 1: Header & BLAKE3 Handle (x=38, w=290) -->
+  <rect x="38" y="94" width="290" height="44" rx="6" fill="#06b6d4" fill-opacity="0.18" stroke="#06b6d4" stroke-width="1.5"/>
+  <text x="183" y="121" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="700" fill="#22d3ee">
+    &lt;&lt;AHTLv1 #icx:7bf8239fb7c504f1
+  </text>
+
+  <!-- Segment 2: Surprise + Fractal IFS Address (x=340, w=230) -->
+  <rect x="340" y="94" width="230" height="44" rx="6" fill="#10b981" fill-opacity="0.18" stroke="#10b981" stroke-width="1.5"/>
+  <text x="455" y="121" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="700" fill="#34d399">
+    !0.84 @0123:0210
+  </text>
+
+  <!-- Segment 3: Braille-256 64-Bit Sketch (x=582, w=210) -->
+  <rect x="582" y="94" width="210" height="44" rx="6" fill="#f97316" fill-opacity="0.18" stroke="#f97316" stroke-width="1.5"/>
+  <text x="687" y="121" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="700" fill="#fb923c">
+    [Braille-256: 64-Bit]
+  </text>
+
+  <!-- Segment 4: Structural AST & Error Skeleton (x=804, w=358) -->
+  <rect x="804" y="94" width="358" height="44" rx="6" fill="#6366f1" fill-opacity="0.18" stroke="#6366f1" stroke-width="1.5"/>
+  <text x="983" y="121" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="700" fill="#818cf8">
+    $fn:verify_token $ty:AuthErr !err:401&gt;&gt;
+  </text>
+
+  <!-- 4 Callout Cards (each 274px wide with 18px gap: 24 + 274 + 18 + 274 + 18 + 274 + 18 + 274 = 1174) -->
+  <g transform="translate(24, 176)">
+    <rect x="0" y="0" width="274" height="156" rx="8" fill="#111827" stroke="#06b6d4" stroke-width="1.5"/>
+    <text x="137" y="26" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="700" fill="#22d3ee">1. Lossless BLAKE3 Handle</text>
+    <text x="16" y="50" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* 128-bit prefix of 256-bit BLAKE3</text>
+    <text x="16" y="71" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* Content-addressed in CasStore</text>
+    <text x="16" y="92" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* 100% byte-exact O(1) recovery:</text>
+    <text x="16" y="114" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.2" fill="#22d3ee">  icx(op="deref", ref="#icx:...")</text>
+    <text x="16" y="135" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.2" fill="#22d3ee">  icx(op="slice", ref="#icx:...")</text>
+
+    <rect x="292" y="0" width="274" height="156" rx="8" fill="#111827" stroke="#10b981" stroke-width="1.5"/>
+    <text x="429" y="26" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="700" fill="#34d399">2. Surprise &amp; Fractal Locus</text>
+    <text x="308" y="50" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* !0.84: Titans Surprise S_t</text>
+    <text x="308" y="71" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* S_t = eta*S_(t-1) + (1-eta)*g_t</text>
+    <text x="308" y="92" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* @0123:0210: Contractive IFS</text>
+    <text x="308" y="113" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* 16-D hypercube [-1, 1]^16 path</text>
+    <text x="308" y="134" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#94a3b8">* O(1) suffix trajectory locality</text>
+
+    <rect x="584" y="0" width="274" height="156" rx="8" fill="#111827" stroke="#f97316" stroke-width="1.5"/>
+    <text x="721" y="26" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="700" fill="#fb923c">3. Braille-256 VSA Sketch</text>
+    <text x="600" y="50" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* Unicode block U+2800..U+28FF</text>
+    <text x="600" y="71" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* Bijective 8 bits per Braille glyph</text>
+    <text x="600" y="92" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* Packs 64-bit HDC parity sketch</text>
+    <text x="600" y="113" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* Direct Q*K^T attention dot-product</text>
+    <text x="600" y="134" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#94a3b8">* 8 glyphs = 24 UTF-8 bytes total</text>
+
+    <rect x="876" y="0" width="276" height="156" rx="8" fill="#111827" stroke="#6366f1" stroke-width="1.5"/>
+    <text x="1014" y="26" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="700" fill="#818cf8">4. Structural AST Skeleton</text>
+    <text x="892" y="50" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* $fn: Function &amp; method signatures</text>
+    <text x="892" y="71" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* $ty: Struct, enum, trait, class</text>
+    <text x="892" y="92" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* $mod / $use: Module imports</text>
+    <text x="892" y="113" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#e2e8f0">* !err: Panics, faults &amp; passkeys</text>
+    <text x="892" y="134" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#94a3b8">* Zero prose filler or JSON noise</text>
+  </g>
+</svg>

@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 520" width="1360" height="520">
+  <defs>
+    <style>
+      .bg { fill: #0d1117; }
+      .panel { fill: #161b22; stroke: #30363d; stroke-width: 1.8; rx: 12; }
+      .box { fill: #21262d; stroke: #388bfd; stroke-width: 1.4; rx: 8; }
+      .box-purple { fill: #21262d; stroke: #a371f7; stroke-width: 1.4; rx: 8; }
+      .box-green { fill: #21262d; stroke: #3fb950; stroke-width: 1.4; rx: 8; }
+      .title { font-family: "DejaVu Sans", "Segoe UI", sans-serif; font-size: 20px; font-weight: 700; fill: #e6edf3; }
+      .subtitle { font-family: "DejaVu Sans", "Segoe UI", sans-serif; font-size: 13px; fill: #8b949e; }
+      .h2 { font-family: "DejaVu Sans Mono", monospace; font-size: 14.5px; font-weight: 700; fill: #58a6ff; }
+      .h2-purple { font-family: "DejaVu Sans Mono", monospace; font-size: 14.5px; font-weight: 700; fill: #d2a8ff; }
+      .h2-green { font-family: "DejaVu Sans Mono", monospace; font-size: 14.5px; font-weight: 700; fill: #7ee787; }
+      .mono { font-family: "DejaVu Sans Mono", monospace; font-size: 11.2px; fill: #c9d1d9; }
+      .accent { font-family: "DejaVu Sans Mono", monospace; font-size: 11.5px; font-weight: 700; fill: #ffa657; }
+    </style>
+  </defs>
+  <rect class="bg" width="1360" height="520"/>
+  <text x="30" y="36" class="title">Infinity-Context Plane 3 (crates/icx-hdc): Dual Hypercube Geometries</text>
+  <text x="30" y="58" class="subtitle">Discrete 10,240-Bit Boolean Hypercube Q_10240 ({0,1}^10240) + Continuous 16-D Fractal IFS Hypercube ([-1,+1]^16)</text>
+
+  <!-- Left Panel: Q_10240 (x=25, w=640) -->
+  <rect class="panel" x="25" y="78" width="640" height="415"/>
+  <text x="45" y="108" class="h2">1. Discrete Boolean Hypercube Q_10240 = {0, 1}^10240</text>
+  <rect class="box" x="45" y="124" width="600" height="90"/>
+  <text x="60" y="148" class="accent">#[repr(C, align(64))] pub struct Hypervector { pub words: [u64; 160] }</text>
+  <text x="60" y="170" class="mono">• Vertex Space: 2^10240 ≈ 10^3082.5 vertices (1,280 B = 20 AVX-512 ZMM regs)</text>
+  <text x="60" y="190" class="mono">• Seed Mapping: BLAKE3 XOF("ICX_HDC_10240_V1:" || domain || "::" || symbol)</text>
+
+  <rect class="box" x="45" y="228" width="600" height="120"/>
+  <text x="60" y="252" class="h2">Isometric Automorphisms of Q_10240 (Coxeter Group B_10240)</text>
+  <text x="60" y="274" class="mono">• Hamming Metric: d_H(A, B) = Σ_{w=0..159} popcnt(A[w] ^ B[w])</text>
+  <text x="60" y="294" class="mono">• XOR Binding:    bind(A, B) = A ⊕ B (GF(2)^10240 translation, self-inverse)</text>
+  <text x="60" y="314" class="mono">• Permutation:    permute(A, k) = Π^k(A) (Coordinate axis shift in S_10240)</text>
+  <text x="60" y="334" class="mono">• Exact Isometry: d_H(A ⊕ C, B ⊕ C) = d_H(A, B) &amp; d_H(Π^k A, Π^k B) = d_H(A, B)</text>
+
+  <rect class="box-green" x="45" y="362" width="600" height="112"/>
+  <text x="60" y="386" class="h2-green">Concentration of Measure on Q_10240 (Binomial(10240, 1/2))</text>
+  <text x="60" y="408" class="mono">• Expected Equator Distance: μ = D/2 = 5,120 bits</text>
+  <text x="60" y="428" class="mono">• Standard Deviation:        σ = √(D/4) = √2560 ≈ 50.5964 bits (0.494% of D)</text>
+  <text x="60" y="448" class="mono">• Hoeffding Tail Bound:      P(|d_H - 5120| ≥ 512) ≤ 2·exp(-51.2) ≈ 1.16e-22</text>
+  <text x="60" y="466" class="mono">• Normalized Similarity:     sim(A, B) = 1 - min(d_H(A,B), 5120) / 5120 ∈ [0, 1]</text>
+
+  <!-- Right Panel: [-1, +1]^16 (x=695, w=640) -->
+  <rect class="panel" x="695" y="78" width="640" height="415"/>
+  <text x="715" y="108" class="h2-purple">2. Continuous 16-Cube [-1, +1]^16 (Fractal Chaos-Game)</text>
+  <rect class="box-purple" x="715" y="124" width="600" height="90"/>
+  <text x="730" y="148" class="accent">pub struct FractalCoord { pub coords: [f64; 16], pub depth: u32 }</text>
+  <text x="730" y="170" class="mono">• Ambient Polytope: Centered 16-cube [-1, +1]^16 with 2^16 = 65,536 corners</text>
+  <text x="730" y="190" class="mono">• Projection Q_10240 → {-1,+1}^16: 16 blocks × 10 u64 words (640 bits/block)</text>
+
+  <rect class="box-purple" x="715" y="228" width="600" height="120"/>
+  <text x="730" y="252" class="h2-purple">Contractive Iterated Function System (IFS) Dynamics</text>
+  <text x="730" y="274" class="mono">• Affine Step (c = 1/2): z_t = (1/2) z_{t-1} + (1/2) v(s_t), v(s_t) ∈ {-1,+1}^16</text>
+  <text x="730" y="294" class="mono">• Closed-Form Series:    z_t = Σ_{i=0..t-1} (1/2)^{i+1} v(s_{t-i})</text>
+  <text x="730" y="314" class="mono">• Nested Sub-Hypercubes: Last k steps confine z_t to a sub-16-cube of side 2^{1-k}</text>
+  <text x="730" y="334" class="mono">• Octal / Quadrant Code: 16-bit sign mask → AHTL @o1:o2 &amp; Braille Channel B</text>
+
+  <rect class="box-green" x="715" y="362" width="600" height="112"/>
+  <text x="730" y="386" class="h2-green">O(1) Chebyshev (L_∞) Suffix Theorem on [-1, +1]^16</text>
+  <text x="730" y="408" class="mono">• Chebyshev Metric:      d_∞(z_a, z_b) = max_{j ∈ 0..16} |z_{a,j} - z_{b,j}| ∈ [0, 2]</text>
+  <text x="730" y="428" class="mono">• Shared Suffix Depth:   L_shared = ⌊ -log_2( d_∞(z_a, z_b) / 2 ) ⌋ ∈ [0, 32]</text>
+  <text x="730" y="448" class="mono">• Execution Latency:     &lt; 10 ns per pair (16 FP64 sub/abs/max operations)</text>
+  <text x="730" y="466" class="mono">• Telepathy Bus Export:  to_q15() quantizes [-1,+1]^16 → [i16; 16] (32 bytes)</text>
+</svg>

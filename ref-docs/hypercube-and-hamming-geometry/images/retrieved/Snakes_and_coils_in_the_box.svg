@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100%" height="100%" viewBox="-85 -140 460 460">
+ <title>Snakes and coils in the box</title>
+ <desc>Maximum lengths of snakes (''L''s) and coils (''L''c) in the snakes-in-the-box problem for dimensions ''n'' from 1 to 4 by CMG Lee based on diagram on http://semanticscholar.org/paper/d814d14677be7ffe8e33493369ac135556419283 .</desc>
+ <style type="text/css">
+.main  { font-family:Helvetica,Arial,sans-serif; font-size:40px; text-anchor:middle;
+         fill:none; stroke:#cccccc; stroke-width:3; stroke-linejoin:round; stroke-linecap:round; }
+.var   { font-style:italic; }
+text   { fill:#000000; stroke:none; cursor:default; }
+.snake { stroke:#3333ff; stroke-width:2; marker-start:url(#marker); marker-end:url(#marker); }
+.coil  { stroke:#ff0000; stroke-width:2; }
+ </style>
+ <defs>
+  <marker id="marker" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+   <circle cx="4" cy="4" r="1" stroke="#0000ff"/>
+  </marker>
+  <path id="line" d="M -25,0 h 50"/>
+  <path id="square" d="M 25,-25 h -50 v 50 h 50 z"/>
+  <path id="diagonals" d="M 5,-5 l 40,-40 M -45,-5 l 40,-40 M -45,45 l 40,-40 M 5,45 l 40,-40"/>
+  <g id="cube">
+   <use xlink:href="#diagonals"/>
+   <use xlink:href="#square" transform="translate(20,-20)"/>
+   <use xlink:href="#square" transform="translate(-20,20)"/>
+  </g>
+  <g id="tesseract">
+   <use xlink:href="#diagonals" transform="translate(20,-20) scale(-1,1)"/>
+   <use xlink:href="#diagonals" transform="translate(-20,20) scale(-1,1)"/>
+   <use xlink:href="#cube" transform="translate(-20,-20)"/>
+   <use xlink:href="#cube" transform="translate(20,20)"/>
+  </g>
+ </defs>
+ <circle cx="0" cy="0" r="99999" fill="#ffffff"/>
+ <g class="main">
+  <g transform="translate(-60,0)">
+   <text x="0" y="-100" class="var">n</text>
+   <g transform="translate(0,0)">
+    <text x="0" y="100"><tspan class="var">L</tspan><tspan dy="0.5ex">s</tspan></text>
+   </g>
+   <g transform="translate(0,200)">
+    <text x="0" y="100"><tspan class="var">L</tspan><tspan dy="0.5ex">c</tspan></text>
+   </g>
+  </g>
+  <g transform="translate(0,0)">
+   <text x="0" y="-100">1</text>
+   <g transform="translate(0,0)">
+    <text x="0" y="100">1</text>
+    <use xlink:href="#line"/>
+    <use class="snake" xlink:href="#line"/>
+   </g>
+   <g transform="translate(0,200)">
+    <text x="0" y="100">0</text>
+    <use xlink:href="#line"/>
+   </g>
+  </g>
+  <g transform="translate(70,0)">
+   <text x="0" y="-100">2</text>
+   <g transform="translate(0,0)">
+    <text x="0" y="100">2</text>
+    <use xlink:href="#square"/>
+    <path class="snake" d="M -25,-25 h 50 v 50"/>
+   </g>
+   <g transform="translate(0,200)">
+    <text x="0" y="100">4</text>
+    <use xlink:href="#square"/>
+    <use class="coil" xlink:href="#square"/>
+   </g>
+  </g>
+  <g transform="translate(165,0)">
+   <text x="0" y="-100">3</text>
+   <g transform="translate(0,0)">
+    <text x="0" y="100">4</text>
+    <use xlink:href="#cube"/>
+    <path class="snake" d="M -5,-45 h 50 v 50 l -40,40 h -50"/>
+   </g>
+   <g transform="translate(0,200)">
+    <text x="0" y="100">6</text>
+    <use xlink:href="#cube"/>
+    <path class="coil" d="M -5,-45 h 50 v 50 l -40,40 h -50 v -50 z"/>
+   </g>
+  </g>
+  <g transform="translate(300,0)">
+   <text x="0" y="-100">4</text>
+   <g transform="translate(0,0)">
+    <text x="0" y="100">7</text>
+    <use xlink:href="#tesseract"/>
+    <path class="snake" d="M 15,-25 h 50 v 50 l -40,40 h -50 l -40,-40 v -50 h 50"/>
+   </g>
+   <g transform="translate(0,200)">
+    <text x="0" y="100">8</text>
+    <use xlink:href="#tesseract"/>
+    <path class="coil" d="M -25,-65 h 50 l 40,40 v 50 l -40,40 h -50 l -40,-40 v -50 z"/>
+   </g>
+  </g>
+ </g>
+</svg>

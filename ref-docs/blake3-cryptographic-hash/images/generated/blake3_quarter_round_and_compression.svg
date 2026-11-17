@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 760" width="1360" height="760">
+  <defs>
+    <style>
+      .bg { fill: #0d1117; }
+      .panel { fill: #161b22; stroke: #30363d; stroke-width: 2; rx: 10; }
+      .box-blue { fill: #1f3a60; stroke: #58a6ff; stroke-width: 2; rx: 6; }
+      .box-green { fill: #123d2a; stroke: #3fb950; stroke-width: 2; rx: 6; }
+      .box-purple { fill: #3b235a; stroke: #bc8cff; stroke-width: 2; rx: 6; }
+      .box-orange { fill: #4d2d18; stroke: #f0883e; stroke-width: 2; rx: 6; }
+      .title { fill: #f0f6fc; font-family: monospace; font-size: 20px; font-weight: bold; }
+      .subtitle { fill: #8b949e; font-family: monospace; font-size: 12px; }
+      .label { fill: #e6edf3; font-family: monospace; font-size: 13px; font-weight: bold; }
+      .code { fill: #79c0ff; font-family: monospace; font-size: 11.5px; }
+    </style>
+  </defs>
+  <rect class="bg" width="1360" height="760"/>
+  <text x="680" y="36" text-anchor="middle" class="title">BLAKE3 Compression Function F(h, m, t, b, d) &amp; Quarter-Round G_i(a, b, c, d)</text>
+  <text x="680" y="58" text-anchor="middle" class="subtitle">7-Round Keyed Permutation E(m, v) over 4x4 32-Bit State Matrix with Single-Permutation Schedule &amp; Feed-Forward</text>
+
+  <!-- Panel 1: 4x4 State Matrix Initialization -->
+  <rect class="panel" x="30" y="80" width="620" height="325"/>
+  <text x="55" y="108" class="label">1. 16-Word State Matrix Initialization (v_0 .. v_15)</text>
+  <g transform="translate(55, 124)">
+    <!-- Row 0 -->
+    <rect class="box-blue" x="0" y="0" width="130" height="44"/><text x="65" y="27" text-anchor="middle" class="label">v0 = h0</text>
+    <rect class="box-blue" x="145" y="0" width="130" height="44"/><text x="210" y="27" text-anchor="middle" class="label">v1 = h1</text>
+    <rect class="box-blue" x="290" y="0" width="130" height="44"/><text x="355" y="27" text-anchor="middle" class="label">v2 = h2</text>
+    <rect class="box-blue" x="435" y="0" width="130" height="44"/><text x="500" y="27" text-anchor="middle" class="label">v3 = h3</text>
+    <!-- Row 1 -->
+    <rect class="box-blue" x="0" y="54" width="130" height="44"/><text x="65" y="81" text-anchor="middle" class="label">v4 = h4</text>
+    <rect class="box-blue" x="145" y="54" width="130" height="44"/><text x="210" y="81" text-anchor="middle" class="label">v5 = h5</text>
+    <rect class="box-blue" x="290" y="54" width="130" height="44"/><text x="355" y="81" text-anchor="middle" class="label">v6 = h6</text>
+    <rect class="box-blue" x="435" y="54" width="130" height="44"/><text x="500" y="81" text-anchor="middle" class="label">v7 = h7</text>
+    <!-- Row 2 -->
+    <rect class="box-purple" x="0" y="108" width="130" height="44"/><text x="65" y="127" text-anchor="middle" class="label">v8 = IV0</text><text x="65" y="144" text-anchor="middle" class="code">0x6a09e667</text>
+    <rect class="box-purple" x="145" y="108" width="130" height="44"/><text x="210" y="127" text-anchor="middle" class="label">v9 = IV1</text><text x="210" y="144" text-anchor="middle" class="code">0xbb67ae85</text>
+    <rect class="box-purple" x="290" y="108" width="130" height="44"/><text x="355" y="127" text-anchor="middle" class="label">v10 = IV2</text><text x="355" y="144" text-anchor="middle" class="code">0x3c6ef372</text>
+    <rect class="box-purple" x="435" y="108" width="130" height="44"/><text x="500" y="127" text-anchor="middle" class="label">v11 = IV3</text><text x="500" y="144" text-anchor="middle" class="code">0xa54ff53a</text>
+    <!-- Row 3 -->
+    <rect class="box-orange" x="0" y="162" width="130" height="44"/><text x="65" y="181" text-anchor="middle" class="label">v12 = t0</text><text x="65" y="198" text-anchor="middle" class="code">counter_lo</text>
+    <rect class="box-orange" x="145" y="162" width="130" height="44"/><text x="210" y="181" text-anchor="middle" class="label">v13 = t1</text><text x="210" y="198" text-anchor="middle" class="code">counter_hi</text>
+    <rect class="box-orange" x="290" y="162" width="130" height="44"/><text x="355" y="181" text-anchor="middle" class="label">v14 = b</text><text x="355" y="198" text-anchor="middle" class="code">block_len</text>
+    <rect class="box-orange" x="435" y="162" width="130" height="44"/><text x="500" y="181" text-anchor="middle" class="label">v15 = d</text><text x="500" y="198" text-anchor="middle" class="code">domain_flags</text>
+  </g>
+  <text x="55" y="362" class="subtitle">Col Step: G0(0,4,8,12) G1(1,5,9,13) G2(2,6,10,14) G3(3,7,11,15)</text>
+  <text x="55" y="384" class="subtitle">Diag Step: G4(0,5,10,15) G5(1,6,11,12) G6(2,7,8,13) G7(3,4,9,14)</text>
+
+  <!-- Panel 2: Quarter-Round ARX Circuit -->
+  <rect class="panel" x="675" y="80" width="655" height="650"/>
+  <text x="700" y="108" class="label">2. ARX Quarter-Round Function G_i(a, b, c, d, m_{2i}, m_{2i+1})</text>
+  <g transform="translate(700, 128)">
+    <rect class="box-green" x="0" y="0" width="605" height="50"/>
+    <text x="302" y="30" text-anchor="middle" class="label">Step 1: a &lt;- (a + b + m_{2i}) mod 2^32   |   d &lt;- (d XOR a) &gt;&gt;&gt; 16</text>
+
+    <rect class="box-blue" x="0" y="66" width="605" height="50"/>
+    <text x="302" y="96" text-anchor="middle" class="label">Step 2: c &lt;- (c + d) mod 2^32            |   b &lt;- (b XOR c) &gt;&gt;&gt; 12</text>
+
+    <rect class="box-green" x="0" y="132" width="605" height="50"/>
+    <text x="302" y="162" text-anchor="middle" class="label">Step 3: a &lt;- (a + b + m_{2i+1}) mod 2^32 |   d &lt;- (d XOR a) &gt;&gt;&gt; 8</text>
+
+    <rect class="box-blue" x="0" y="198" width="605" height="50"/>
+    <text x="302" y="228" text-anchor="middle" class="label">Step 4: c &lt;- (c + d) mod 2^32            |   b &lt;- (b XOR c) &gt;&gt;&gt; 7</text>
+
+    <rect class="box-purple" x="0" y="272" width="605" height="96"/>
+    <text x="302" y="298" text-anchor="middle" class="label">Single-Permutation Message Schedule (Between Rounds 1..6)</text>
+    <text x="302" y="325" text-anchor="middle" class="code">idx:  [0, 1, 2, 3,  4, 5, 6, 7,  8, 9, 10, 11, 12, 13, 14, 15]</text>
+    <text x="302" y="350" text-anchor="middle" class="code">perm: [2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5,  9, 14, 15,  8]</text>
+
+    <rect class="box-orange" x="0" y="392" width="605" height="180"/>
+    <text x="302" y="420" text-anchor="middle" class="label">3. Feed-Forward &amp; Extendable Output (XOF) Finalization</text>
+    <text x="302" y="448" text-anchor="middle" class="code">h_prime[0..7]  = v_prime[0..7] XOR v_prime[8..15]  (256-bit CV)</text>
+    <text x="302" y="472" text-anchor="middle" class="code">h_prime[8..15] = v_prime[8..15] XOR h[0..7]        (512-bit XOF)</text>
+    <text x="302" y="504" text-anchor="middle" class="subtitle">Interior nodes truncate to h_prime[0..7] (32 bytes).</text>
+    <text x="302" y="528" text-anchor="middle" class="subtitle">Root XOF repeats root compression with counter t = 0, 1, 2, ...</text>
+    <text x="302" y="552" text-anchor="middle" class="subtitle">yielding 64 bytes per block (parallelizable &amp; seekable).</text>
+  </g>
+
+  <!-- Panel 3: Domain Flags Table -->
+  <rect class="panel" x="30" y="425" width="620" height="305"/>
+  <text x="55" y="453" class="label">4. BLAKE3 Domain Separation Flags (d Bitfield)</text>
+  <g transform="translate(55, 474)">
+    <text x="0" y="18" class="code">CHUNK_START         = 1 &lt;&lt; 0 (0x01) | First 64B block of a 1024B chunk</text>
+    <text x="0" y="46" class="code">CHUNK_END           = 1 &lt;&lt; 1 (0x02) | Final 64B block of a 1024B chunk</text>
+    <text x="0" y="74" class="code">PARENT              = 1 &lt;&lt; 2 (0x04) | Binary Merkle parent node</text>
+    <text x="0" y="102" class="code">ROOT                = 1 &lt;&lt; 3 (0x08) | Final root or XOF block</text>
+    <text x="0" y="130" class="code">KEYED_HASH          = 1 &lt;&lt; 4 (0x10) | MAC/PRF with 256-bit caller key</text>
+    <text x="0" y="158" class="code">DERIVE_KEY_CONTEXT  = 1 &lt;&lt; 5 (0x20) | KDF Stage 1: context string</text>
+    <text x="0" y="186" class="code">DERIVE_KEY_MATERIAL = 1 &lt;&lt; 6 (0x40) | KDF Stage 2: key material</text>
+    <text x="0" y="222" class="subtitle">Rounds: BLAKE (14/16) -&gt; BLAKE2s/2b (10/12) -&gt; BLAKE3 (7 rounds)</text>
+  </g>
+</svg>

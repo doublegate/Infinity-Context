@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420">
+  <rect width="1200" height="420" rx="14" fill="#0b0f19" stroke="#1e293b" stroke-width="2"/>
+  <text x="600" y="36" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="16.5" font-weight="700" fill="#34d399">
+    SEGMENT 2: TITANS SURPRISE (!0.84) &amp; CONTRACTIVE IFS FRACTAL LOCUS (@0123:0210)
+  </text>
+  <text x="600" y="58" text-anchor="middle" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" fill="#94a3b8">
+    Banach Contraction Mapping (alpha = 1/2) on [-1, 1]^16 Yielding O(1) Chebyshev Trajectory Suffix Isomorphism
+  </text>
+
+  <!-- Left Panel: Banach Contraction & Chaos Game -->
+  <rect x="28" y="80" width="360" height="312" rx="10" fill="#111827" stroke="#10b981" stroke-width="1.5"/>
+  <text x="208" y="108" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="13" font-weight="700" fill="#34d399">1. Chaos Game &amp; Banach Map</text>
+  <!-- Quadrant grid -->
+  <rect x="78" y="124" width="160" height="160" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+  <line x1="158" y1="124" x2="158" y2="284" stroke="#475569" stroke-dasharray="4,4"/>
+  <line x1="78" y1="204" x2="238" y2="204" stroke="#475569" stroke-dasharray="4,4"/>
+  <!-- Sub-quadrant -->
+  <rect x="158" y="124" width="80" height="80" fill="#10b981" fill-opacity="0.12" stroke="#10b981" stroke-width="1"/>
+  <rect x="198" y="124" width="40" height="40" fill="#10b981" fill-opacity="0.25" stroke="#34d399" stroke-width="1.5"/>
+  <circle cx="110" cy="250" r="4" fill="#94a3b8"/>
+  <circle cx="174" cy="162" r="4" fill="#22d3ee"/>
+  <circle cx="206" cy="142" r="5" fill="#34d399"/>
+  <path d="M 110 250 L 174 162 L 206 142" fill="none" stroke="#34d399" stroke-width="2"/>
+  <text x="250" y="148" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.5" fill="#e2e8f0">z_t = 0.5*z_(t-1)</text>
+  <text x="250" y="166" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.5" fill="#e2e8f0">    + 0.5*v(s_t)</text>
+  <text x="250" y="196" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.5" fill="#94a3b8">v(s_t) in {-1,+1}^16</text>
+  <text x="250" y="216" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.5" fill="#94a3b8">Lip(f_v) = 1/2 &lt; 1</text>
+  <text x="46" y="314" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.8" fill="#34d399">z_t = sum_(k=0..t-1) 2^-(k+1) v(s_(t-k))</text>
+  <text x="46" y="338" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Most recent step = MSB of dyadic address</text>
+  <text x="46" y="360" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* @0123:0210 = Base-4 Morton Z-order path</text>
+
+  <!-- Center Panel: O(1) Suffix Isomorphism -->
+  <rect x="412" y="80" width="376" height="312" rx="10" fill="#111827" stroke="#06b6d4" stroke-width="1.5"/>
+  <text x="600" y="108" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="13" font-weight="700" fill="#22d3ee">2. O(1) Chebyshev Suffix Theorem</text>
+  <text x="430" y="140" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" fill="#e2e8f0">Two agent trajectories T_A, T_B share the</text>
+  <text x="430" y="160" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" fill="#e2e8f0">exact trailing L-step suffix iff:</text>
+  <rect x="434" y="176" width="332" height="44" rx="6" fill="#0f172a" stroke="#06b6d4" stroke-width="1"/>
+  <text x="600" y="203" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="12" font-weight="700" fill="#22d3ee">||z_A - z_B||_inf &lt; 2^(1 - L)</text>
+  <text x="430" y="246" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.8" fill="#34d399">L_shared = floor(-log2(d_inf(z_A, z_B) / 2))</text>
+  <text x="430" y="276" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Replaces O(N*L) suffix tree string matching</text>
+  <text x="430" y="298" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* 16-float L_inf norm takes &lt; 10 nanoseconds</text>
+  <text x="430" y="320" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* Detects cross-agent debugging loops instantly</text>
+  <text x="430" y="346" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.5" fill="#94a3b8">Ref: Gusev (arXiv:2607.07144), Barnsley (1988)</text>
+
+  <!-- Right Panel: Titans Surprise Gate -->
+  <rect x="812" y="80" width="360" height="312" rx="10" fill="#111827" stroke="#f97316" stroke-width="1.5"/>
+  <text x="992" y="108" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="13" font-weight="700" fill="#fb923c">3. Titans Surprise Momentum (!0.84)</text>
+  <rect x="832" y="126" width="320" height="58" rx="6" fill="#0f172a" stroke="#f97316" stroke-width="1"/>
+  <text x="992" y="148" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="11" fill="#fb923c">g_t = clamp(0.65*nu_t + 0.35*H_t + delta_t)</text>
+  <text x="992" y="170" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="11.5" font-weight="700" fill="#f8fafc">S_t = eta * S_(t-1) + (1 - eta) * g_t</text>
+  <text x="832" y="210" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* nu_t: 10,240-bit HDC Hamming novelty</text>
+  <text x="832" y="232" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* H_t: Normalized Shannon byte entropy</text>
+  <text x="832" y="254" font-family="Inter, DejaVu Sans, sans-serif" font-size="10.8" fill="#e2e8f0">* delta_t: Compiler/panic anomaly boost (+0.45)</text>
+  <text x="832" y="284" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.8" fill="#34d399">S_t &gt;= 0.70 -&gt; L1 PinHighResolution (!0.84)</text>
+  <text x="832" y="306" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.8" fill="#22d3ee">0.35..0.70  -&gt; L2 FoldAhtlStub</text>
+  <text x="832" y="328" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.8" fill="#94a3b8">S_t &lt;  0.35 -&gt; L3/L4 ColdBeacon</text>
+  <text x="832" y="356" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="10.5" fill="#94a3b8">Ref: Behrouz et al. (arXiv:2501.00663)</text>
+</svg>

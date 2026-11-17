@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-FileCopyrightText: 2026 DoubleGate
+  SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commercial
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 580" width="1200" height="580" font-family="DejaVu Sans Mono, JetBrains Mono, monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b0f19"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="accentCyan" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="accentViolet" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#db2777"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="580" rx="14" fill="url(#bg)" stroke="#334155" stroke-width="2"/>
+
+  <!-- Header -->
+  <text x="600" y="38" fill="#f8fafc" font-size="19" font-weight="700" text-anchor="middle">
+    ISO/TR 11548-1 &amp; Unicode Braille Patterns (U+2800..U+28FF) &#x2194; AHTL Channel B Bijection
+  </text>
+  <text x="600" y="60" fill="#94a3b8" font-size="12.5" text-anchor="middle">
+    Little-Endian 8-Dot Binary/Hexadecimal Mapping (bit 0..7 &#x2192; dot 1..8 &#x2192; 0x01..0x80) &amp; 64-Bit Holographic Sketch
+  </text>
+
+  <!-- Panel 1: ISO 11548-1 Dot Numbering (x=28, w=348 -> center=202) -->
+  <rect x="28" y="80" width="348" height="472" rx="10" fill="url(#panel)" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="202" y="108" fill="#38bdf8" font-size="15" font-weight="700" text-anchor="middle">1. ISO 11548-1 Dot Numbering</text>
+  <text x="202" y="128" fill="#94a3b8" font-size="10.5" text-anchor="middle">6-Dot Classical (1..6) + 8-Dot Extension (7..8)</text>
+
+  <!-- 2x4 Braille Cell Grid (Panel 1): Left col x=142, Right col x=262; rows y=178, 260, 342, 438 -->
+  <line x1="78" y1="392" x2="326" y2="392" stroke="#475569" stroke-dasharray="5,5" stroke-width="1.5"/>
+  <text x="202" y="384" fill="#94a3b8" font-size="10" text-anchor="middle">6-Dot / 8-Dot Boundary</text>
+
+  <!-- Dots Left: 1, 2, 3, 7 -->
+  <circle cx="142" cy="178" r="29" fill="url(#accentCyan)" stroke="#e0f2fe" stroke-width="2"/>
+  <text x="142" y="175" fill="#ffffff" font-size="13" font-weight="700" text-anchor="middle">Dot 1</text>
+  <text x="142" y="191" fill="#e0f2fe" font-size="10" text-anchor="middle">bit 0</text>
+
+  <circle cx="142" cy="260" r="29" fill="url(#accentCyan)" stroke="#e0f2fe" stroke-width="2"/>
+  <text x="142" y="257" fill="#ffffff" font-size="13" font-weight="700" text-anchor="middle">Dot 2</text>
+  <text x="142" y="273" fill="#e0f2fe" font-size="10" text-anchor="middle">bit 1</text>
+
+  <circle cx="142" cy="342" r="29" fill="url(#accentCyan)" stroke="#e0f2fe" stroke-width="2"/>
+  <text x="142" y="339" fill="#ffffff" font-size="13" font-weight="700" text-anchor="middle">Dot 3</text>
+  <text x="142" y="355" fill="#e0f2fe" font-size="10" text-anchor="middle">bit 2</text>
+
+  <circle cx="142" cy="438" r="29" fill="url(#accentViolet)" stroke="#f3e8ff" stroke-width="2"/>
+  <text x="142" y="435" fill="#ffffff" font-size="13" font-weight="700" text-anchor="middle">Dot 7</text>
+  <text x="142" y="451" fill="#f3e8ff" font-size="10" text-anchor="middle">bit 6</text>
+
+  <!-- Dots Right: 4, 5, 6, 8 -->
+  <circle cx="262" cy="178" r="29" fill="url(#accentCyan)" stroke="#e0f2fe" stroke-width="2"/>
+  <text x="262" y="175" fill="#ffffff" font-size="13" font-weight="700" text-anchor="middle">Dot 4</text>
+  <text x="262" y="191" fill="#e0f2fe" font-size="10" text-anchor="middle">bit 3</text>
+
+  <circle cx="262" cy="260" r="29" fill="url(#accentCyan)" stroke="#e0f2fe" stroke-width="2"/>
+  <text x="262" y="257" fill="#ffffff" font-size="13" font-weight="700" text-anchor="middle">Dot 5</text>
+  <text x="262" y="273" fill="#e0f2fe" font-size="10" text-anchor="middle">bit 4</text>
+
+  <circle cx="262" cy="342" r="29" fill="url(#accentCyan)" stroke="#e0f2fe" stroke-width="2"/>
+  <text x="262" y="339" fill="#ffffff" font-size="13" font-weight="700" text-anchor="middle">Dot 6</text>
+  <text x="262" y="355" fill="#e0f2fe" font-size="10" text-anchor="middle">bit 5</text>
+
+  <circle cx="262" cy="438" r="29" fill="url(#accentViolet)" stroke="#f3e8ff" stroke-width="2"/>
+  <text x="262" y="435" fill="#ffffff" font-size="13" font-weight="700" text-anchor="middle">Dot 8</text>
+  <text x="262" y="451" fill="#f3e8ff" font-size="10" text-anchor="middle">bit 7</text>
+
+  <text x="202" y="504" fill="#cbd5e1" font-size="11" text-anchor="middle">Col 1: [1, 2, 3, 7] | Col 2: [4, 5, 6, 8]</text>
+  <text x="202" y="526" fill="#94a3b8" font-size="10.5" text-anchor="middle">ISO 15924: Brai (570) &#x2022; Category: So</text>
+
+  <!-- Panel 2: Hexadecimal Dot Weights (x=396, w=348 -> center=570) -->
+  <rect x="396" y="80" width="348" height="472" rx="10" fill="url(#panel)" stroke="#a855f7" stroke-width="1.5"/>
+  <text x="570" y="108" fill="#c084fc" font-size="15" font-weight="700" text-anchor="middle">2. Hexadecimal Dot Weights</text>
+  <text x="570" y="128" fill="#94a3b8" font-size="10.5" text-anchor="middle">Codepoint = U+2800 + &#x03A3; (Raised Hex Weights)</text>
+
+  <line x1="446" y1="392" x2="694" y2="392" stroke="#475569" stroke-dasharray="5,5" stroke-width="1.5"/>
+  <text x="570" y="384" fill="#94a3b8" font-size="10" text-anchor="middle">+0x40 (Dot 7) / +0x80 (Dot 8)</text>
+
+  <!-- Hex Dots Left: 0x01, 0x02, 0x04, 0x40 -->
+  <circle cx="510" cy="178" r="29" fill="#1e1b4b" stroke="#38bdf8" stroke-width="2"/>
+  <text x="510" y="175" fill="#38bdf8" font-size="13" font-weight="700" text-anchor="middle">0x01</text>
+  <text x="510" y="191" fill="#cbd5e1" font-size="9.5" text-anchor="middle">dec 1</text>
+
+  <circle cx="510" cy="260" r="29" fill="#1e1b4b" stroke="#38bdf8" stroke-width="2"/>
+  <text x="510" y="257" fill="#38bdf8" font-size="13" font-weight="700" text-anchor="middle">0x02</text>
+  <text x="510" y="273" fill="#cbd5e1" font-size="9.5" text-anchor="middle">dec 2</text>
+
+  <circle cx="510" cy="342" r="29" fill="#1e1b4b" stroke="#38bdf8" stroke-width="2"/>
+  <text x="510" y="339" fill="#38bdf8" font-size="13" font-weight="700" text-anchor="middle">0x04</text>
+  <text x="510" y="355" fill="#cbd5e1" font-size="9.5" text-anchor="middle">dec 4</text>
+
+  <circle cx="510" cy="438" r="29" fill="#2e1065" stroke="#e879f9" stroke-width="2"/>
+  <text x="510" y="435" fill="#e879f9" font-size="13" font-weight="700" text-anchor="middle">0x40</text>
+  <text x="510" y="451" fill="#f3e8ff" font-size="9.5" text-anchor="middle">dec 64</text>
+
+  <!-- Hex Dots Right: 0x08, 0x10, 0x20, 0x80 -->
+  <circle cx="630" cy="178" r="29" fill="#1e1b4b" stroke="#38bdf8" stroke-width="2"/>
+  <text x="630" y="175" fill="#38bdf8" font-size="13" font-weight="700" text-anchor="middle">0x08</text>
+  <text x="630" y="191" fill="#cbd5e1" font-size="9.5" text-anchor="middle">dec 8</text>
+
+  <circle cx="630" cy="260" r="29" fill="#1e1b4b" stroke="#22c55e" stroke-width="2"/>
+  <text x="630" y="257" fill="#4ade80" font-size="13" font-weight="700" text-anchor="middle">0x10</text>
+  <text x="630" y="273" fill="#cbd5e1" font-size="9.5" text-anchor="middle">dec 16</text>
+
+  <circle cx="630" cy="342" r="29" fill="#1e1b4b" stroke="#22c55e" stroke-width="2"/>
+  <text x="630" y="339" fill="#4ade80" font-size="13" font-weight="700" text-anchor="middle">0x20</text>
+  <text x="630" y="355" fill="#cbd5e1" font-size="9.5" text-anchor="middle">dec 32</text>
+
+  <circle cx="630" cy="438" r="29" fill="#2e1065" stroke="#e879f9" stroke-width="2"/>
+  <text x="630" y="435" fill="#e879f9" font-size="13" font-weight="700" text-anchor="middle">0x80</text>
+  <text x="630" y="451" fill="#f3e8ff" font-size="9.5" text-anchor="middle">dec 128</text>
+
+  <text x="570" y="504" fill="#cbd5e1" font-size="11" text-anchor="middle">Low Nibble (0x0F): Dots {1, 2, 3, 4}</text>
+  <text x="570" y="526" fill="#cbd5e1" font-size="11" text-anchor="middle">High Nibble (0xF0): Dots {5, 6, 7, 8}</text>
+
+  <!-- Panel 3: ICX AHTL Channel B 64-Bit Hologram (x=764, w=408 -> center=968) -->
+  <rect x="764" y="80" width="408" height="472" rx="10" fill="url(#panel)" stroke="#10b981" stroke-width="1.5"/>
+  <text x="968" y="108" fill="#34d399" font-size="15" font-weight="700" text-anchor="middle">3. ICX AHTL Channel B (64-Bit Sketch)</text>
+  <text x="968" y="128" fill="#94a3b8" font-size="10.5" text-anchor="middle">8 Bytes &#x2192; 8 Unicode Braille Codepoints (&#x03A8;:8-Braille)</text>
+
+  <!-- Formula box -->
+  <rect x="784" y="148" width="368" height="60" rx="6" fill="#090d16" stroke="#334155" stroke-width="1"/>
+  <text x="968" y="172" fill="#f8fafc" font-size="12" font-weight="700" text-anchor="middle">char::from_u32(0x2800 + (b as u32))</text>
+  <text x="968" y="194" fill="#38bdf8" font-size="10.5" text-anchor="middle">UTF-8: [0xE2, 0xA0 | (b &gt;&gt; 6), 0x80 | (b &amp; 0x3F)]</text>
+
+  <!-- Slot Breakdown -->
+  <rect x="784" y="222" width="368" height="74" rx="6" fill="#172554" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="800" y="244" fill="#60a5fa" font-size="12" font-weight="700">Bytes 0..3 (32 bits) &#x2192; 4 Braille Chars</text>
+  <text x="800" y="263" fill="#e2e8f0" font-size="11">10,240-Bit HDC Hypervector XOR-Tree Parity</text>
+  <text x="800" y="281" fill="#93c5fd" font-size="10">Fast pre-filter before SIMD POPCNT Hamming check</text>
+
+  <rect x="784" y="310" width="368" height="74" rx="6" fill="#2e1065" stroke="#a855f7" stroke-width="1.2"/>
+  <text x="800" y="332" fill="#c084fc" font-size="12" font-weight="700">Bytes 4..5 (16 bits) &#x2192; 2 Braille Chars</text>
+  <text x="800" y="351" fill="#e2e8f0" font-size="11">Fractal Chaos-Game (FCGA) IFS Quadrant</text>
+  <text x="800" y="369" fill="#d8b4fe" font-size="10">Quantized 2D trajectory attractor coordinate (x, y)</text>
+
+  <rect x="784" y="398" width="368" height="74" rx="6" fill="#064e3b" stroke="#10b981" stroke-width="1.2"/>
+  <text x="800" y="420" fill="#34d399" font-size="12" font-weight="700">Bytes 6..7 (16 bits) &#x2192; 2 Braille Chars</text>
+  <text x="800" y="439" fill="#e2e8f0" font-size="11">Titans Surprise Score (u8) + Kind Bitmask (u8)</text>
+  <text x="800" y="457" fill="#6ee7b7" font-size="10">Encodes anomaly magnitude S_t &amp; packet operator flags</text>
+
+  <rect x="784" y="486" width="368" height="46" rx="6" fill="#090d16" stroke="#475569" stroke-width="1"/>
+  <text x="968" y="514" fill="#f8fafc" font-size="12" text-anchor="middle">Packet Tail: &#x22EE;&#x03A8;:&#x2813;&#x28C7;&#x28FF;&#x28A1;&#x2865;&#x2892;&#x28BA;&#x28CF;[9f2c]&#x27E7;</text>
+</svg>
