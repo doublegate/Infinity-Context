@@ -61,7 +61,7 @@ impl CodexAdapter {
                     .get("tool_name")
                     .and_then(Value::as_str)
                     .unwrap_or("codex_tool");
-                let raw_output = match payload.get("tool_response") {
+                let raw_output = match payload.get("tool_response").filter(|v| !v.is_null()) {
                     Some(Value::String(s)) => s.clone(),
                     Some(other) => other.to_string(),
                     None => String::new(),

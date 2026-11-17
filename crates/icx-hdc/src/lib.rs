@@ -178,9 +178,13 @@ impl HdcAssociativeIndex {
             if seg.len() >= 2 {
                 mask |= Self::token_bloom_bits32(seg);
             }
-            if !seg.is_empty() && seg_count < seg_starts.len() {
+            if !seg.is_empty() {
                 for &prev_start in &seg_starts[..seg_count] {
                     mask |= Self::token_bloom_bits32(&comp[prev_start..end]);
+                }
+                if seg_count == seg_starts.len() {
+                    seg_starts.copy_within(1.., 0);
+                    seg_count -= 1;
                 }
                 seg_starts[seg_count] = start;
                 seg_count += 1;
@@ -544,7 +548,7 @@ mod tests {
         let _ = trait_ref.observe_event(ArtifactId(1000), "", "empty subject body", false);
         let _ = trait_ref.observe_event(
             ArtifactId(1001),
-            "dir/a/b x:y a:b/c",
+            "dir/a/b x:y a:b/c a/b/c/d/e/f/g/h/i/j",
             "short composite",
             false,
         );

@@ -553,6 +553,7 @@ impl BiTemporalGraph {
                 functional_groups.entry((src, rel)).or_default().push(idx);
             }
 
+            // Standard JSON deserialization via serde_json guarantees finite f32 values.
             let w = loaded.edges[idx].weight;
             loaded.edges[idx].weight = w.clamp(0.01, 1_000.0);
             max_next_id = max_next_id.max(edge_id.saturating_add(1));

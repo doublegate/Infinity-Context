@@ -229,7 +229,13 @@ impl Hypervector {
                     return Some((idx, key | 1));
                 }
             }
-            Some(((base + 7) & SLOT_MASK, key | 1))
+            let tail_idx = (base + 7) & SLOT_MASK;
+            let tail_count = slots[tail_idx] & COUNT_MASK;
+            if tail_count >= cap {
+                None
+            } else {
+                Some((tail_idx, key | (tail_count + 1)))
+            }
         }
 
         let bounded_text = if text.len() > MAX_ENCODE_BYTES {
@@ -306,11 +312,10 @@ impl Hypervector {
             };
 
             let mut bundled_any = false;
-            if let Some((idx, new_entry)) = u_slot
-                && bundler.add_delta(&hv)
-            {
-                u_slots[idx] = new_entry;
-                bundled_any = true;
+            if let Some((idx, new_entry)) = u_slot {
+                let accepted = bundler.add_delta(&hv);
+                u_slots[idx] = if accepted { new_entry } else { u_slots[idx] };
+                bundled_any |= accepted;
             }
 
             if let Some((b_idx, b_entry)) = b_slot {
@@ -320,10 +325,9 @@ impl Hypervector {
                     Self::from_seed("tok", p_lower)
                 });
                 let bigram = prev.permute(1).bind(&hv);
-                if bundler.add_delta(&bigram) {
-                    b_slots[b_idx] = b_entry;
-                    bundled_any = true;
-                }
+                let accepted = bundler.add_delta(&bigram);
+                b_slots[b_idx] = if accepted { b_entry } else { b_slots[b_idx] };
+                bundled_any |= accepted;
             }
             prev_hv = Some(hv);
             prev_key = Some(u_key);

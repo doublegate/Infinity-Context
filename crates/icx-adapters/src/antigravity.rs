@@ -87,7 +87,14 @@ impl AntigravityAdapter {
                         other => other.to_string(),
                     })
                     .unwrap_or_default();
-                let err_str = payload.get("error").and_then(Value::as_str).unwrap_or("");
+                let err_str = payload
+                    .get("error")
+                    .filter(|v| !v.is_null())
+                    .map(|v| match v {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    })
+                    .unwrap_or_default();
                 let err_line = if err_str.is_empty() {
                     String::new()
                 } else {

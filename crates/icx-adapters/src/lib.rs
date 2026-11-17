@@ -491,7 +491,7 @@ unprefixed_secret = {unpref_sec}
 
         let null_out = AntigravityAdapter::handle_hook(
             "PostToolUse",
-            r#"{"toolCall":{"args":null},"toolResponse":null,"result":"ok_fallback"}"#,
+            r#"{"toolCall":{"args":null},"toolResponse":null,"result":"ok_fallback","error":{"code":1}}"#,
             &mut mmu,
         )
         .unwrap();
