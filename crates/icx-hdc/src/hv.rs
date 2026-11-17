@@ -46,6 +46,23 @@ impl Hypervector {
         Self { words }
     }
 
+    /// Deterministically generates a 10,240-bit hypervector from a 64-bit integer seed using
+    /// the bijective Stafford `Mix13` (`SplitMix64`) recurrence (`docs/ahtl/04-hyperdimensional-10240-bit-lattice.md` §3.2).
+    #[inline]
+    pub const fn from_u64_seed(seed: u64) -> Self {
+        let mut words = [0u64; HV_WORDS];
+        let mut s = seed;
+        let mut i = 0;
+        while i < HV_WORDS {
+            s = s.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = (s ^ (s >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            words[i] = z ^ (z >> 31);
+            i += 1;
+        }
+        Self { words }
+    }
+
     /// Encodes a text string into a composite hypervector by binding token unigrams and
     /// permutation-shifted bigrams.
     pub fn encode_text(text: &str) -> Self {
@@ -114,13 +131,26 @@ impl Hypervector {
         1.0 - ((d as f32) / 5120.0)
     }
 
-    /// Folds the 10,240-bit hypervector into a compact 32-bit parity sketch for Braille-256 Channel B.
+    /// Computes the 64-bit rotational XOR-tree parity fold (`hv:<16-hex>` in Profile A).
     #[inline]
-    pub fn sketch_u32(&self) -> u32 {
+    pub fn hv_digest_u64(&self) -> u64 {
         let mut acc = 0u64;
         for (i, &w) in self.words.iter().enumerate() {
             acc ^= w.rotate_left((i as u32) % 64);
         }
+        acc
+    }
+
+    /// Formats the 64-bit rotational XOR-tree parity digest as 16 lowercase hexadecimal characters.
+    #[inline]
+    pub fn encode_hv_hex16(&self) -> String {
+        format!("{:016x}", self.hv_digest_u64())
+    }
+
+    /// Folds the 10,240-bit hypervector into a compact 32-bit parity sketch for Braille-256 Channel B.
+    #[inline]
+    pub fn sketch_u32(&self) -> u32 {
+        let acc = self.hv_digest_u64();
         ((acc >> 32) as u32) ^ (acc as u32)
     }
 
@@ -132,6 +162,34 @@ impl Hypervector {
             out[i % 4] ^= w.rotate_left((i as u32) % 64);
         }
         out
+    }
+
+    /// Projects the 10,240-bit hypervector onto a 64-band (`512-bit`, `[u8; 64]`) spectral sketch
+    /// via 1-Lipschitz disjoint 20-bit sub-block majority voting (`docs/ahtl/02-braille-256-spectral-bijection.md` §§3–4).
+    ///
+    /// Guarantees the 1-Lipschitz metric bound $d_{\text{spectral}}(P, Q) \le d_H(A, B)$:
+    /// flipping any single bit in `self` can alter at most one 20-bit sub-block majority vote.
+    pub fn spectral_bands_64(&self) -> [u8; 64] {
+        let mut bands = [0u8; 64];
+        for (m, band_out) in bands.iter_mut().enumerate() {
+            let band_bit_start = m * 160;
+            let mut byte_val = 0u8;
+            for j in 0..8 {
+                let sub_start = band_bit_start + j * 20;
+                let mut ones = 0u32;
+                for offset in 0..20 {
+                    let bit_idx = sub_start + offset;
+                    let word_idx = bit_idx / 64;
+                    let bit_in_word = bit_idx % 64;
+                    ones += ((self.words[word_idx] >> bit_in_word) & 1) as u32;
+                }
+                if ones >= 10 {
+                    byte_val |= 1u8 << j;
+                }
+            }
+            *band_out = byte_val;
+        }
+        bands
     }
 }
 
@@ -236,5 +294,34 @@ mod tests {
             memory.similarity(&anomaly) > 0.25,
             "anomaly must remain retrievable despite 50x boilerplate repetition"
         );
+    }
+
+    #[test]
+    fn splitmix64_seed_and_1_lipschitz_spectral_bands_64() {
+        let a = Hypervector::from_u64_seed(42);
+        let b = Hypervector::from_u64_seed(43);
+        assert!(a.similarity(&b) < 0.05);
+        assert_eq!(a.encode_hv_hex16().len(), 16);
+
+        let bands_a = a.spectral_bands_64();
+        // Flip k bits in `a` and verify 1-Lipschitz inequality: d_spectral(P, Q) <= d_H(a, mutated)
+        let mut mutated = a;
+        for flip_idx in 0..25usize {
+            let word = (flip_idx * 7) % HV_WORDS;
+            let bit = (flip_idx * 13) % 64;
+            mutated.words[word] ^= 1u64 << bit;
+
+            let d_full = a.hamming_distance(&mutated);
+            let bands_m = mutated.spectral_bands_64();
+            let d_spectral: u32 = bands_a
+                .iter()
+                .zip(bands_m.iter())
+                .map(|(&x, &y)| (x ^ y).count_ones())
+                .sum();
+            assert!(
+                d_spectral <= d_full,
+                "1-Lipschitz violation: d_spectral ({d_spectral}) > d_full ({d_full})"
+            );
+        }
     }
 }
