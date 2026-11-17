@@ -331,6 +331,11 @@ fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, S
     let has_workspace = icx_dir.exists();
     let _guard = if has_workspace {
         let g = acquire_workspace_lock(icx_dir)?;
+        let shm_path = icx_dir.join("icx-fabric-v1.shm");
+        if shm_path.exists() {
+            mmu.bus = icx_bus::SeqlockTelemetryBus::open_shared_file(&shm_path)
+                .map_err(|e| e.to_string())?;
+        }
         let cas_path = icx_dir.join("cas_store.json");
         if cas_path.exists() {
             mmu.cas = icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;

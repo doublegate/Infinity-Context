@@ -502,7 +502,7 @@ impl SeqlockTelemetryBus {
 
                 fence(Ordering::AcqRel);
                 for (i, chunk) in root.as_chunks::<8>().0.iter().enumerate() {
-                    let val = u64::from_le_bytes(*chunk);
+                    let val = u64::from_be_bytes(*chunk);
                     header.global_dag_root[i].store(val, Ordering::Relaxed);
                 }
                 fence(Ordering::AcqRel);
@@ -511,13 +511,18 @@ impl SeqlockTelemetryBus {
                     .store(odd_ver.wrapping_add(1), Ordering::Release);
             }
             BackingStore::SharedFile(store) => {
+                let mut encoded_root = [0u8; 32];
+                for (i, chunk) in root.as_chunks::<8>().0.iter().enumerate() {
+                    let word = u64::from_be_bytes(*chunk);
+                    encoded_root[i * 8..(i + 1) * 8].copy_from_slice(&word.to_le_bytes());
+                }
                 let _ = store.with_exclusive_lock(|| {
                     let mut seq_buf = [0u8; 4];
                     store.read_at(12, &mut seq_buf)?;
                     let cur = u32::from_le_bytes(seq_buf);
                     let odd_ver = (cur & !1).wrapping_add(1);
                     store.write_at(12, &odd_ver.to_le_bytes())?;
-                    store.write_at(32, &root)?;
+                    store.write_at(32, &encoded_root)?;
                     let even_ver = odd_ver.wrapping_add(1);
                     store.write_at(12, &even_ver.to_le_bytes())
                 });
@@ -545,7 +550,7 @@ impl SeqlockTelemetryBus {
                     if s1 == s2 {
                         let mut out = [0u8; 32];
                         for (i, w) in words.iter().enumerate() {
-                            out[i * 8..(i + 1) * 8].copy_from_slice(&w.to_le_bytes());
+                            out[i * 8..(i + 1) * 8].copy_from_slice(&w.to_be_bytes());
                         }
                         return out;
                     }
@@ -564,8 +569,8 @@ impl SeqlockTelemetryBus {
                         core::hint::spin_loop();
                         continue;
                     }
-                    let mut out = [0u8; 32];
-                    if store.read_at(32, &mut out).is_err() {
+                    let mut raw_words = [0u8; 32];
+                    if store.read_at(32, &mut raw_words).is_err() {
                         break;
                     }
                     let mut seq_buf2 = [0u8; 4];
@@ -574,6 +579,11 @@ impl SeqlockTelemetryBus {
                     }
                     let s2 = u32::from_le_bytes(seq_buf2);
                     if s1 == s2 {
+                        let mut out = [0u8; 32];
+                        for (i, chunk) in raw_words.as_chunks::<8>().0.iter().enumerate() {
+                            let word = u64::from_le_bytes(*chunk);
+                            out[i * 8..(i + 1) * 8].copy_from_slice(&word.to_be_bytes());
+                        }
                         return out;
                     }
                     core::hint::spin_loop();
@@ -705,12 +715,11 @@ impl SeqlockTelemetryBus {
                     let odd_version = (seq << 1) | 1;
                     let even_version = next_seq << 1;
 
-                    // 1. Mark slot as odd and write the 4,096-byte slot payload with odd_version at offset 0..8
-                    // so concurrent readers never observe even_version while payload bytes 8..4096 are in flight.
+                    // 1. Mark slot as odd at offset 0..8 and write the payload bytes at offset 8..128+copy_len
+                    // so concurrent readers never observe even_version while payload bytes are in flight.
                     store.write_at(slot_offset, &odd_version.to_le_bytes())?;
 
                     let mut slot_buf = [0u8; SLOT_BYTES];
-                    slot_buf[0..8].copy_from_slice(&odd_version.to_le_bytes());
                     slot_buf[8..16].copy_from_slice(&timestamp_ms.to_le_bytes());
                     slot_buf[16..24].copy_from_slice(&artifact_id.0.to_le_bytes());
                     slot_buf[24..32].copy_from_slice(&workspace_hash.to_le_bytes());
@@ -722,7 +731,7 @@ impl SeqlockTelemetryBus {
                         slot_buf[72 + i * 8..80 + i * 8].copy_from_slice(&w.to_le_bytes());
                     }
                     slot_buf[128..128 + copy_len].copy_from_slice(raw_bytes);
-                    store.write_at(slot_offset, &slot_buf)?;
+                    store.write_at(slot_offset + 8, &slot_buf[8..128 + copy_len])?;
 
                     // 2. Commit even_version to slot_offset (0..8) only after all payload bytes are written.
                     store.write_at(slot_offset, &even_version.to_le_bytes())?;
@@ -1102,7 +1111,7 @@ mod tests {
         let bus_a = SeqlockTelemetryBus::open_shared_file(&shm_path).expect("open bus_a");
         assert!(bus_a.in_process_layout().is_none());
         let bus_b = SeqlockTelemetryBus::open_shared_file(&shm_path).expect("attach bus_b");
-        let root = [0xABu8; 32];
+        let root: [u8; 32] = core::array::from_fn(|i| (i as u8).wrapping_mul(7).wrapping_add(3));
         bus_a.set_global_dag_root(root);
         assert_eq!(bus_b.global_dag_root(), root);
         bus_a.register_agent(AgentKind::AntigravityCli);

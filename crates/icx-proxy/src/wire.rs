@@ -131,6 +131,7 @@ impl WireProxyTransformer {
         let last_query = items
             .last()
             .and_then(Self::extract_item_text)
+            .map(Self::strip_existing_tail_slot)
             .unwrap_or("openai_turn")
             .to_owned();
         let tail_slot = mmu.build_ephemeral_tail_slot(AgentKind::Codex, &last_query, 3);
