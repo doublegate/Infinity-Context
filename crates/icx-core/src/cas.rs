@@ -481,9 +481,9 @@ impl CasStore {
                 return Err(IcxError::IntegrityViolation(id));
             }
             for &cid in &art.chunk_ids {
-                if !store.chunks.contains_key(&cid) {
+                if let std::collections::btree_map::Entry::Vacant(e) = store.chunks.entry(cid) {
                     if let Some((cdigest, bytes)) = verified_chunks.get(&cid) {
-                        store.chunks.insert(cid, (*cdigest, bytes.clone()));
+                        e.insert((*cdigest, bytes.clone()));
                     }
                 }
             }
