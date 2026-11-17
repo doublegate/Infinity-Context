@@ -333,13 +333,14 @@ impl HdcAssociativeIndex {
                 let q_sub64 = q_hv.sub_hypervector_64();
                 let mut q_bloom32 = 0u32;
                 for tok in &q_tokens {
-                    q_bloom32 |= Self::token_bloom_bits32(tok);
                     if tok.contains(':') || tok.contains('/') {
                         for sub in tok.split(|c: char| !c.is_alphanumeric() && c != '_') {
                             if sub.len() >= 2 {
                                 q_bloom32 |= Self::token_bloom_bits32(sub);
                             }
                         }
+                    } else {
+                        q_bloom32 |= Self::token_bloom_bits32(tok);
                     }
                 }
                 let q_bloom_bits = q_bloom32.count_ones().max(1);

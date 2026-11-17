@@ -294,22 +294,22 @@ impl BiTemporalGraph {
         let mut effective_valid_ms = now_ms;
         let mut effective_tx_ms = now_ms;
         if is_functional {
-            for e in &mut self.edges {
+            for e in &self.edges {
                 if e.is_functional && e.source_entity == src && e.relation == rel {
-                    if let Some(inv) = e.t_invalid {
-                        effective_valid_ms = effective_valid_ms.max(inv);
-                    } else {
-                        let inv_valid = effective_valid_ms.max(e.t_valid.saturating_add(1));
-                        e.t_invalid = Some(inv_valid);
-                        effective_valid_ms = effective_valid_ms.max(inv_valid);
-                    }
-                    if let Some(tx_end) = e.t_tx_end {
-                        effective_tx_ms = effective_tx_ms.max(tx_end);
-                    } else {
-                        let inv_tx = effective_tx_ms.max(e.t_tx_start.saturating_add(1));
-                        e.t_tx_end = Some(inv_tx);
-                        effective_tx_ms = effective_tx_ms.max(inv_tx);
-                    }
+                    let req_valid = e.t_invalid.unwrap_or_else(|| e.t_valid.saturating_add(1));
+                    let req_tx = e.t_tx_end.unwrap_or_else(|| e.t_tx_start.saturating_add(1));
+                    effective_valid_ms = effective_valid_ms.max(req_valid);
+                    effective_tx_ms = effective_tx_ms.max(req_tx);
+                }
+            }
+            for e in &mut self.edges {
+                if e.is_functional
+                    && e.t_invalid.is_none()
+                    && e.source_entity == src
+                    && e.relation == rel
+                {
+                    e.t_invalid = Some(effective_valid_ms);
+                    e.t_tx_end = Some(effective_tx_ms);
                 }
             }
         }

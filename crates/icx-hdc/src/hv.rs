@@ -167,9 +167,28 @@ impl Hypervector {
         const MAX_RAW_SCANS: usize = 16_384;
         const MAX_UNIGRAM_REINFORCEMENTS: u64 = 2;
         const MAX_BIGRAM_REINFORCEMENTS: u64 = 1;
-        const SLOT_COUNT: usize = 4096;
+        const SLOT_COUNT: usize = 2048;
         const SLOT_MASK: usize = SLOT_COUNT - 1;
         const COUNT_MASK: u64 = 0b11;
+
+        #[inline]
+        fn lower_into<'a>(
+            tok: &'a str,
+            stack_buf: &'a mut [u8; 128],
+            heap_slot: &'a mut String,
+        ) -> &'a str {
+            if !tok.bytes().any(|b| b.is_ascii_uppercase()) {
+                tok
+            } else if tok.len() <= stack_buf.len() {
+                for (dst, &src) in stack_buf[..tok.len()].iter_mut().zip(tok.as_bytes()) {
+                    *dst = src.to_ascii_lowercase();
+                }
+                core::str::from_utf8(&stack_buf[..tok.len()]).unwrap_or(tok)
+            } else {
+                *heap_slot = tok.to_ascii_lowercase();
+                heap_slot.as_str()
+            }
+        }
 
         #[inline]
         fn token_key_u64(s: &str) -> u64 {
@@ -214,11 +233,16 @@ impl Hypervector {
         }
 
         let mut bundler = HdcBundler::new();
-        let mut slots = [0u64; SLOT_COUNT];
+        let mut u_slots = [0u64; SLOT_COUNT];
+        let mut b_slots = [0u64; SLOT_COUNT];
         let mut hv_cache = [(0u64, Self::zero()); 4];
         let mut stack_lower = [0u8; 128];
+        let mut prev_stack_lower = [0u8; 128];
+        let mut heap_lower = String::new();
+        let mut prev_heap_lower = String::new();
         let mut prev_hv: Option<Self> = None;
         let mut prev_key: Option<u64> = None;
+        let mut prev_committed_raw: Option<&str> = None;
         let mut prev_raw: Option<&str> = None;
         let mut consecutive_repeats = 0usize;
         let mut tokens_seen = 0usize;
@@ -245,31 +269,26 @@ impl Hypervector {
                 consecutive_repeats = 1;
             }
 
-            let heap_lower: String;
-            let lower: &str = if !tok.bytes().any(|b| b.is_ascii_uppercase()) {
-                tok
-            } else if tok.len() <= stack_lower.len() {
-                for (dst, &src) in stack_lower[..tok.len()].iter_mut().zip(tok.as_bytes()) {
-                    *dst = src.to_ascii_lowercase();
-                }
-                core::str::from_utf8(&stack_lower[..tok.len()]).unwrap_or(tok)
-            } else {
-                heap_lower = tok.to_ascii_lowercase();
-                heap_lower.as_str()
-            };
-
+            let lower = lower_into(tok, &mut stack_lower, &mut heap_lower);
             let u_key = token_key_u64(lower);
-            let u_slot = find_reinforce_slot(&slots, u_key, MAX_UNIGRAM_REINFORCEMENTS);
+            let u_slot = find_reinforce_slot(&u_slots, u_key, MAX_UNIGRAM_REINFORCEMENTS);
             let b_slot = prev_key.and_then(|pk| {
-                find_reinforce_slot(&slots, bigram_key_u64(pk, u_key), MAX_BIGRAM_REINFORCEMENTS)
+                find_reinforce_slot(
+                    &b_slots,
+                    bigram_key_u64(pk, u_key),
+                    MAX_BIGRAM_REINFORCEMENTS,
+                )
             });
             let cache_idx = ((u_key >> 2) as usize) & 3;
 
             if u_slot.is_none() && b_slot.is_none() {
-                if hv_cache[cache_idx].0 == u_key {
-                    prev_hv = Some(hv_cache[cache_idx].1);
-                }
+                prev_hv = if hv_cache[cache_idx].0 == u_key {
+                    Some(hv_cache[cache_idx].1)
+                } else {
+                    None
+                };
                 prev_key = Some(u_key);
+                prev_committed_raw = Some(tok);
                 continue;
             }
 
@@ -284,18 +303,27 @@ impl Hypervector {
             if let Some((idx, new_entry)) = u_slot
                 && bundler.add_delta(&hv)
             {
-                slots[idx] = new_entry;
+                u_slots[idx] = new_entry;
                 tokens_seen += 1;
             }
 
-            if let (Some(prev), Some((b_idx, b_entry))) = (prev_hv, b_slot) {
-                let bigram = prev.permute(1).bind(&hv);
-                if bundler.add_delta(&bigram) {
-                    slots[b_idx] = b_entry;
+            if let Some((b_idx, b_entry)) = b_slot {
+                let resolved_prev = prev_hv.or_else(|| {
+                    prev_committed_raw.map(|pr| {
+                        let p_lower = lower_into(pr, &mut prev_stack_lower, &mut prev_heap_lower);
+                        Self::from_seed("tok", p_lower)
+                    })
+                });
+                if let Some(prev) = resolved_prev {
+                    let bigram = prev.permute(1).bind(&hv);
+                    if bundler.add_delta(&bigram) {
+                        b_slots[b_idx] = b_entry;
+                    }
                 }
             }
             prev_hv = Some(hv);
             prev_key = Some(u_key);
+            prev_committed_raw = Some(tok);
             if tokens_seen >= MAX_TEXT_TOKENS {
                 break;
             }
@@ -794,6 +822,17 @@ mod tests {
         assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "ok")) > 0.20);
         assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "err")) > 0.20);
         assert!(hv_rep_alt.similarity(&Hypervector::from_seed("tok", "panic_412")) > 0.15);
+
+        // Verify 6-token periodic cycle (evicting 4-entry hv_cache) preserves exact predecessor bigram
+        let cycle6 = format!(
+            "{}zeta omega",
+            "alpha beta gamma delta epsi zeta ".repeat(6)
+        );
+        let hv_cycle6 = Hypervector::encode_text(&cycle6);
+        let expected_bigram = Hypervector::from_seed("tok", "zeta")
+            .permute(1)
+            .bind(&Hypervector::from_seed("tok", "omega"));
+        assert!(hv_cycle6.similarity(&expected_bigram) > 0.10);
 
         // Verify > 256 distinct tokens do not drop subsequent novel tokens within the 1,024-token horizon
         let mut many_distinct = String::new();
