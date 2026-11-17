@@ -3,7 +3,7 @@
 
 use icx_adapters::InfinityContextMmu;
 use icx_core::AgentKind;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Transforms outbound LLM API requests to enforce Prefix-Cache-Locked Epochs (`arXiv:2610.28577`)
 /// and inject the Ephemeral Tail Slot without invalidating provider KV caches.

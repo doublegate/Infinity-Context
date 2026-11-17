@@ -2,7 +2,7 @@
 //! or in-process aligned memory for `< 100 µs` cross-agent telepathy.
 
 use core::cell::UnsafeCell;
-use core::sync::atomic::{fence, AtomicU32, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU32, AtomicU64, Ordering, fence};
 use icx_core::{AgentKind, ArtifactId};
 use memmap2::{MmapMut, MmapOptions};
 use serde::{Deserialize, Serialize};

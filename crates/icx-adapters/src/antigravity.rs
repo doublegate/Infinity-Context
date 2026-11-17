@@ -6,7 +6,7 @@
 
 use crate::mmu::InfinityContextMmu;
 use icx_core::AgentKind;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Native hook adapter for Google Antigravity CLI (`agy`).
 #[derive(Clone, Debug, Default)]

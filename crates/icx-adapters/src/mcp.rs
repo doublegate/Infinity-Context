@@ -5,7 +5,7 @@
 
 use crate::mmu::InfinityContextMmu;
 use icx_core::AgentKind;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Single-tool polymorphic Model Context Protocol (`MCP`) server.
 #[derive(Clone, Debug, Default)]
@@ -52,7 +52,7 @@ impl McpPagerServer {
                     "jsonrpc": "2.0",
                     "id": null,
                     "error": { "code": -32700, "message": format!("Parse error: {e}") }
-                })
+                });
             }
         };
 
@@ -115,9 +115,7 @@ impl McpPagerServer {
                     return "ERR: missing `id` (#icx:<16-hex> or #icx:<12-hex>)".into();
                 };
                 match mmu.resolve_handle(id_str) {
-                    Ok(aid) => mmu
-                        .deref_text(aid)
-                        .unwrap_or_else(|e| format!("ERR: {e}")),
+                    Ok(aid) => mmu.deref_text(aid).unwrap_or_else(|e| format!("ERR: {e}")),
                     Err(e) => format!("ERR: {e}"),
                 }
             }

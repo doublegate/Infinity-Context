@@ -4,6 +4,6 @@
 pub mod ring;
 
 pub use ring::{
-    BusError, FabricHeader, FabricMemoryLayout, SeqlockSlot, SeqlockTelemetryBus, TelepathyEvent,
-    ICX_RING_SLOTS, ICX_SHM_MAGIC,
+    BusError, FabricHeader, FabricMemoryLayout, ICX_RING_SLOTS, ICX_SHM_MAGIC, SeqlockSlot,
+    SeqlockTelemetryBus, TelepathyEvent,
 };

@@ -1,8 +1,8 @@
 //! BLAKE3 Content-Addressed Store (`CasStore`) with chunk-level `LineIndexEntry` indexing,
 //! selective chunk line slicing, 48-bit/64-bit prefix resolution, and cold grep.
 
-use crate::chunker::{advance_chunk_line_span, chunk_bytes_with_lines, ChunkerConfig};
-use crate::{ArtifactId, Blake3Digest, ContentAddressedStore, IcxError, ICX_MAX_INGEST_BYTES};
+use crate::chunker::{ChunkerConfig, advance_chunk_line_span, chunk_bytes_with_lines};
+use crate::{ArtifactId, Blake3Digest, ContentAddressedStore, ICX_MAX_INGEST_BYTES, IcxError};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};

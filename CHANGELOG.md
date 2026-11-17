@@ -30,6 +30,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Toolchain, Cargo Workspace Dependencies & GitHub Actions Bumps (`Cargo.toml`, `.github/workflows/`):**
+  - Upgraded workspace Rust edition to `2024` and MSRV (`rust-version`) to `1.100` (`rustc 1.100.0`).
+  - Bumped workspace crate version requirements to current latest releases (`blake3 = "1.8.7"`, `serde = "1.0.229"`, `serde_json = "1.0.154"`, `thiserror = "2.0.21"`, `memmap2 = "0.9.12"`).
+  - Bumped `actions/checkout` from `v4` to `v7` across `.github/workflows/ci.yml`, `.github/workflows/cla.yml`, and `.github/workflows/reuse.yml`, and bumped `codecov/codecov-action` from `v5` to `v7` in `.github/workflows/ci.yml`.
 - **Five-Plane Patent-Pending Notice & README Badge Matrix ([`PATENTS.md`](PATENTS.md), [`README.md`](README.md)):**
   - Reconciled [`PATENTS.md`](PATENTS.md) to explicitly enumerate the five pending invention families across all five architectural planes of **Infinity-Context (`icx`)** (`AHTL` & Braille-256 symbolic codec, Virtual Context MMU & 4-tier `BLAKE3` Merkle-DAG with subtask context-folding, 10,240-bit `HDC` + Delta-Rule bundler + Contractive IFS `FCGA` archive, Titans surprise-gated bi-temporal `PPR` + 4-zone prefix-cache epoch controller, and lock-free `/dev/shm` seqlock telepathy ring bus + multi-harness hook fabric + polymorphic `icx` MCP pager).
   - Optimized the [`README.md`](README.md) hero badge block into four balanced, width-verified rows covering CI, REUSE 3.3, CLA, Codecov, Antigravity (`agy`) PR review, Gitleaks, licensing, 5 pending patent families, verified performance benchmarks, and supported agent harnesses.

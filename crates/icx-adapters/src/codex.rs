@@ -6,7 +6,7 @@
 
 use crate::mmu::InfinityContextMmu;
 use icx_core::AgentKind;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Native hook adapter for OpenAI Codex CLI (`0.169.0+`).
 #[derive(Clone, Debug, Default)]
