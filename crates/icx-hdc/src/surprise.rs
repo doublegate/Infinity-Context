@@ -196,13 +196,13 @@ impl TitansSurpriseGate {
 
         let effective = instantaneous.max(self.momentum);
         if is_anomaly {
-            if novelty >= 0.05 || self.bundler.count() == 0 {
+            if novelty >= 0.05 {
                 let weight = ((effective * 32.0).round() as i16).clamp(1, 64);
                 self.bundler.add_weighted(hv, weight);
             }
         } else if novelty >= 0.15 {
             let weight = ((effective * novelty * 32.0).round() as i16).clamp(1, 64);
-            let _ = self.bundler.add_weighted_unique(hv, weight);
+            self.bundler.add_weighted(hv, weight);
         }
         self.events_seen += 1;
         let tier = if effective >= 0.70 {

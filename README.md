@@ -438,7 +438,7 @@ See [Security & Threat Model](docs/security-and-threat-model.md) and [SECURITY.m
 
 ---
 
-## Roadmap & Completed Milestones (`Phases 0–2` — `v0.1.0` -> `v0.3.0`)
+## Roadmap & Completed Milestones (`Phases 0–3` — `v0.1.0` -> `v0.4.0`)
 
 Development is organized into 5 phases and 15 sprints tracked in [`to-dos/ROADMAP.md`](to-dos/ROADMAP.md):
 
@@ -448,7 +448,8 @@ Development is organized into 5 phases and 15 sprints tracked in [`to-dos/ROADMA
   - Two-threshold Normalized FastCDC with `LineIndexEntry` selective chunk line slicing, 48-bit (`#icx:<12-hex>`) and 64-bit (`#icx:<16-hex>`) BLAKE3 CAS handle resolution with ambiguity guards, 4-tier `MerkleContextDag` (`L1`..`L4` + `ToolArtifact`) with nested `Context-Folding` and `L3 -> L4` epoch compaction, 200-turn `>= 94%` Prefix-Cache simulation, 100% safe `AtomicU32`/`AtomicU64` `/dev/shm` `SeqlockTelemetryBus`, permanent workspace-wide `unsafe_code = "forbid"`, Rust Edition `2024` / MSRV `1.100`, and `>= 95%` Codecov gate.
 - **Phase 2 (`v0.3.0` — COMPLETED): Alien Holographic Token Lattice (`AHTL`), Braille-256, Multi-Language Skeletonizers & 4-Tier Secret Redaction** — [Overview (`Sprints 2.1–2.3`)](to-dos/phase-2-alien-codec-and-compression/overview.md)
   - Dual-Profile `AHTL v1.0` wire codec (`Profile A` `AhtlWirePacketV1` & `Profile B` `AhtlPacket`, `EpochHeader`, `AhtlStream`, `ContextCodec`) with bijective `%25`/`%23L` escaping, Unicode Braille-256 (`8`-byte & `64`-byte) bijection (`byte_to_braille_utf8`, `braille_utf8_to_byte`, `ChannelBHologram`), 1-Lipschitz 64-band HDC spectral folding (`Hypervector::spectral_bands_64`, `from_u64_seed`, `hv_digest_u64`, `hamming_distance_simd`), `FractalCoord::encode_fc_hex64` / `decode_fc_hex64`, multi-language `StructuralSkeletonizer` (`Rust`, `Python`, `TS/JS`, `Go`, `C/C++` + `cargo test`/`clippy`, `pytest`, `tsc`/`vitest`/`jest`, `go test` + unified `git diff` hunks), and 4-Tier `SecretRedactor` with Shannon entropy gating ($H(S)$) and `FLAG_IS_REDACTED` tagging, cross-referenced against `docs/ahtl/AHTL_v1_Complete_Technical_Specification_Volume.pdf`.
-- **Phase 3: 10,240-Bit HDC, Fractal IFS (`FCGA`), Titans Gate & Bi-Temporal PPR** — [Overview](to-dos/phase-3-hyperdimensional-and-fractal-index/overview.md)
+- **Phase 3 (`v0.4.0` — COMPLETED): 10,240-Bit HDC, Contractive IFS Fractal Archive (`FCGA`), Titans Surprise Gate & Bi-Temporal CSR Graph (`PPR`)** — [Overview (`Sprints 3.1–3.3`)](to-dos/phase-3-hyperdimensional-and-fractal-index/overview.md)
+  - 10,240-bit `Hypervector` algebraic engine (`BitXor`/`BitXorAssign`, `unbind`, `inverse_permute`, `from_seed_framed`, `bind_role_filler`, `encode_sequence`, `cosine_bipolar`, `sub_hypervector_64`, `dedup_fingerprint_u128`), Infini-attention Delta-Rule `HdcBundler` with coordinate-parity tie-breaking and 128-bit deduplication, two-stage 16-byte `EntrySummary` L2-cache pre-screened `HdcAssociativeIndex` (`AssociativeMemoryIndex`), Contractive IFS `FractalCoord` (`verified_suffix_depth`, `to_q1_14`/`from_q1_14`, 64-bit Morton Z-order `morton_z64`, `@o1:o2` octal quadrant addressing) and `FractalTrajectoryArchive` verified against Theorem 3.2 bounds ($K \in 1..=32$), `TitansSurpriseGate` (`apply_idle_decay`, `observe_with_exit_code`, Delta-Rule novelty gating), and `BiTemporalGraph` with automatic functional relation supersession, atomic JSON persistence, and `CsrGraphSnapshot` $O(V + E)$ Personalized PageRank (`PPR`).
 - **Phase 4: Cross-Agent Adapters, Polymorphic MCP Pager & Cache-Epoch Wire Proxy** — [Overview](to-dos/phase-4-cross-agent-interception/overview.md)
 - **Phase 5: LongMemEval / SWE-Bench Verification, Fuzzing & Release Packaging** — [Overview](to-dos/phase-5-verification-benchmarks-and-release/overview.md)
 

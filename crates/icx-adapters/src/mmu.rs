@@ -125,10 +125,13 @@ impl InfinityContextMmu {
         let ahtl_rendered = packet.render();
 
         // Populate Bi-Temporal Graph with extracted clause relations
+        let edge_weight = receipt.verdict.momentum_surprise.max(0.2);
         for clause in &packet.clauses {
             if let Some(val) = &clause.value {
-                let is_functional =
-                    clause.key == "status" || clause.key == "fail" || clause.key == "pass";
+                let is_functional = matches!(
+                    clause.key.as_str(),
+                    "status" | "test_status" | "return_type" | "fail" | "pass" | "exit_code"
+                );
                 self.graph.upsert_edge(
                     subject,
                     &clause.key,
@@ -136,7 +139,7 @@ impl InfinityContextMmu {
                     is_functional,
                     self.clock_ms,
                     artifact_id,
-                    receipt.verdict.momentum_surprise.max(0.2),
+                    edge_weight,
                 );
             }
         }

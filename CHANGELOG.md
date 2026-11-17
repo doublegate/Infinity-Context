@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-17
+
+### Added
+
+- **Phase 3 Sprint 3 — Bi-Temporal CSR Knowledge Graph (`CsrGraphSnapshot`), Functional Contradiction Supersession & HippoRAG Personalized PageRank (`crates/icx-store`, `crates/icx-adapters`, `crates/icx-cli`):**
+  - Enhanced [`BiTemporalGraph::upsert_edge`](crates/icx-store/src/graph.rs) (`T-33-001`) so any existing active edge (`t_invalid.is_none()`) sharing `(source_entity, relation)` on a functional relation (`is_functional == true`) is automatically superseded (`t_invalid = Some(now_ms)`, `t_tx_end = Some(now_ms)`), guaranteeing at most one active edge per functional `(source_entity, relation)` pair across all timestamps.
+  - Added [`CsrGraphSnapshot`](crates/icx-store/src/graph.rs) (`nodes`, `row_ptr`, `col_idx`, `weights`, `inv_out_weight`, `prov_row_ptr`, `prov_ids`), `BiTemporalGraph::build_csr`, and `CsrGraphSnapshot::run_ppr` (`T-33-002`) executing HippoRAG Personalized PageRank (`arXiv:2405.14831`) power iteration over flat cache-contiguous Compressed Sparse Row (`CSR`) arrays with $O(V + E)$ scalar dangling-node mass redistribution.
+  - Added `BiTemporalGraph::{entity_count, edges, query_edges_to, query_relation, invalidate_edge, save_to_dir, load_from_dir}` for incoming/relation time-travel queries, explicit invalidation, and atomic JSON persistence (`bitemporal_graph.json`).
+  - Expanded [`InfinityContextMmu::ingest_payload`](crates/icx-adapters/src/mmu.rs) functional-relation classification (`status`, `test_status`, `return_type`, `fail`, `pass`, `exit_code`) and added two-stage `HdcAssociativeIndex` + CSR `PersonalizedPageRank` latency verification to `icx benchmark` (`crates/icx-cli/src/main.rs`).
+- **Phase 3 Sprint 2 — Contractive IFS `FractalTrajectoryArchive`, Boundary-Aware Inverse-IFS Suffix Verification & `TitansSurpriseGate` Momentum Decay (`crates/icx-hdc`):**
+  - Expanded [`FractalCoord`](crates/icx-hdc/src/fractal.rs) (`T-32-001`) with `euclidean_distance` ($L_2$), boundary-aware inverse-IFS suffix verification (`verified_suffix_depth`), signed `Q1.14` fixed-point quantization (`to_q1_14` / `from_q1_14`, scale $2^{14} = 16,384$), uniform half-open dyadic 64-bit Morton Z-order prefix codes (`morton_z64`), `@o1:o2` octal quadrant addressing (`encode_octal_addr` / `decode_octal_addr`), and [`FractalTrajectoryArchive`](crates/icx-hdc/src/fractal.rs) (`record_step`, `insert_coord`, `query_shared_suffix`), verified against Theorem 3.2 contractive bounds ($d_\infty \le 2^{1-K}$ and $d_2 \le 4 d_\infty \le 2^{3-K}$) across all $K \in 1..=32$.
+  - Expanded [`TitansSurpriseGate`](crates/icx-hdc/src/surprise.rs) (`T-32-002`) with `RetentionTier::PinVerbatim`, `with_eta_and_alpha` (with `NaN` sanitization), `momentum()`, `eta()`, `alpha()`, `events_seen()`, `memory_trace()`, uncapped exponential idle decay `apply_idle_decay(steps)` ($S_t \leftarrow (1 - \alpha)^{\text{steps}} S_t$), `observe_with_exit_code`, and Delta-Rule novelty gating (`is_anomaly` with $\nu_t \ge 0.05$, or routine with $\nu_t \ge 0.15$) so repetitive boilerplate never saturates $M_t$.
+  - Integrated `FractalTrajectoryArchive` and `observe_event_with_exit_code` into [`HdcAssociativeIndex`](crates/icx-hdc/src/lib.rs).
+- **Phase 3 Sprint 1 — 10,240-Bit HDC/HRR Algebraic Engine, Infini-Attention Delta Bundler & Two-Stage Associative Index (`crates/icx-hdc`):**
+  - Expanded [`Hypervector`](crates/icx-hdc/src/hv.rs) (`T-31-001`) with `BitXor`/`BitXorAssign` (`^`, `^=`), `unbind`, `inverse_permute` ($\Pi_{-s} \Pi_s = I$), `from_seed_framed` (4-byte little-endian length-framed domain/token hashing), `bind_role_filler`, `encode_sequence`, `popcount`, `cosine_bipolar`, `sub_hypervector_64`, and non-linear 128-bit `dedup_fingerprint_u128`.
+  - Upgraded [`HdcBundler`](crates/icx-hdc/src/hv.rs) (`T-31-002`) with `BTreeSet<u128>` non-linear fingerprint deduplication (recorded only after the `sim < 0.85` similarity gate accepts a vector), `add_weighted_unique`, deterministic coordinate-parity tie-breaking (`((word_idx ^ bit) & 1) == 0`), `count()`, `reset()`, and `unbind_query()`.
+  - Defined [`AssociativeMemoryIndex`](crates/icx-hdc/src/lib.rs) and upgraded [`HdcAssociativeIndex::query_associative`](crates/icx-hdc/src/lib.rs) with a two-stage L2-cache pre-screening pipeline over 16-byte `EntrySummary` records (`hv_sub64`, `subj_bloom32`, `quadrant_u16`, `surprise_q8`, `flags`).
+
 ## [0.3.0] - 2026-11-17
 
 ### Added
