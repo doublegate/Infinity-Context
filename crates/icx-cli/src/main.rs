@@ -431,11 +431,20 @@ fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "--dir" if i + 1 < args.len() => {
+            "--dir" => {
+                if i + 1 >= args.len() {
+                    return Err("icx encode-ahtl error: missing value for --dir".into());
+                }
                 dir_str = &args[i + 1];
                 i += 2;
             }
-            "--profile" if i + 1 < args.len() => {
+            "--profile" => {
+                if i + 1 >= args.len() {
+                    return Err(
+                        "icx encode-ahtl error: missing value for --profile (expected `a` or `b`)"
+                            .into(),
+                    );
+                }
                 match args[i + 1].to_ascii_lowercase().as_str() {
                     "a" => profile_a = true,
                     "b" => profile_a = false,
@@ -942,6 +951,16 @@ mod tests {
                 sample_file.to_string_lossy().into_owned(),
                 "--profile".into(),
                 "invalid_profile".into(),
+            ])
+            .is_err()
+        );
+        assert!(
+            run_encode_ahtl(&[sample_file.to_string_lossy().into_owned(), "--dir".into()]).is_err()
+        );
+        assert!(
+            run_encode_ahtl(&[
+                sample_file.to_string_lossy().into_owned(),
+                "--profile".into()
             ])
             .is_err()
         );
