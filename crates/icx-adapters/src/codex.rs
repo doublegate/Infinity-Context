@@ -214,12 +214,17 @@ impl CodexAdapter {
     }
 }
 
-/// Per-file bookmark tracking committed byte offset and prefix digest so file replacement or
-/// truncation/rewrite is deterministically detected even when the replacement file is longer.
+/// Per-file bookmark tracking committed byte offset, file identity/mtime metadata, a bounded
+/// $O(1)$ multi-window anchor digest (`<= 16 KiB`), and an incremental running record digest so
+/// unchanged polls complete in $O(1)$ and incremental polls complete in $O(\Delta\text{bytes})$.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct RolloutBookmark {
     offset: u64,
-    prefix_digest: icx_core::Blake3Digest,
+    file_len: u64,
+    mtime_nanos: Option<u128>,
+    file_id: (u64, u64),
+    anchor_digest: icx_core::Blake3Digest,
+    running_digest: icx_core::Blake3Digest,
 }
 
 /// Maximum per-record buffer allocation (`64 MiB + 64 KiB`) before draining the remainder of an
@@ -243,48 +248,122 @@ impl CodexRolloutTailer {
         self.bookmarks.get(path).map_or(0, |b| b.offset)
     }
 
-    fn compute_prefix_digest(file: &mut File, len: u64) -> io::Result<icx_core::Blake3Digest> {
-        use std::io::Read;
-        file.seek(SeekFrom::Start(0))?;
-        let mut acc = [0u8; 40];
-        acc[32..40].copy_from_slice(&len.to_le_bytes());
-        let mut remaining = len;
-        let mut chunk = [0u8; 8192];
-        while remaining > 0 {
-            let to_read = remaining.min(chunk.len() as u64) as usize;
-            file.read_exact(&mut chunk[..to_read])?;
-            let h = icx_core::Blake3Digest::hash(&chunk[..to_read]);
-            for (a, b) in acc[..32].iter_mut().zip(h.0.iter()) {
-                *a ^= *b;
-            }
-            let mixed = icx_core::Blake3Digest::hash(&acc);
-            acc[..32].copy_from_slice(&mixed.0);
-            remaining -= to_read as u64;
+    fn extract_file_id(meta: &std::fs::Metadata) -> (u64, u64) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            (meta.dev(), meta.ino())
         }
-        Ok(icx_core::Blake3Digest::hash(&acc))
+        #[cfg(not(unix))]
+        {
+            let _ = meta;
+            (0, 0)
+        }
+    }
+
+    fn extract_mtime_nanos(meta: &std::fs::Metadata) -> Option<u128> {
+        meta.modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos())
+    }
+
+    /// Computes a bounded $O(1)$ anchor digest (`<= 16 KiB` total I/O regardless of file size)
+    /// sampling up to four 4 KiB windows across `[0..len)` (`0`, `len/3`, `2*len/3`, `len-4096`).
+    fn compute_anchor_digest(file: &mut File, len: u64) -> io::Result<icx_core::Blake3Digest> {
+        use std::io::Read;
+        if len <= 16_384 {
+            file.seek(SeekFrom::Start(0))?;
+            let mut buf = vec![0u8; len as usize];
+            file.read_exact(&mut buf)?;
+            buf.extend_from_slice(&len.to_le_bytes());
+            return Ok(icx_core::Blake3Digest::hash(&buf));
+        }
+        let offsets = [0u64, len / 3, (2 * len) / 3, len - 4096];
+        let mut combined = Vec::with_capacity(4 * 4096 + 8);
+        let mut win = [0u8; 4096];
+        for off in offsets {
+            file.seek(SeekFrom::Start(off))?;
+            file.read_exact(&mut win)?;
+            combined.extend_from_slice(&win);
+        }
+        combined.extend_from_slice(&len.to_le_bytes());
+        Ok(icx_core::Blake3Digest::hash(&combined))
+    }
+
+    fn step_running_digest(
+        prev: icx_core::Blake3Digest,
+        line_bytes: &[u8],
+        committed: u64,
+    ) -> icx_core::Blake3Digest {
+        let line_hash = icx_core::Blake3Digest::hash(line_bytes);
+        let mut mix = [0u8; 72];
+        mix[0..32].copy_from_slice(&prev.0);
+        mix[32..64].copy_from_slice(&line_hash.0);
+        mix[64..72].copy_from_slice(&committed.to_le_bytes());
+        icx_core::Blake3Digest::hash(&mix)
     }
 
     /// Polls `path` from its last committed byte offset (resetting to `0` if the file was
     /// truncated, rotated, or rewritten in-place), ingesting newly appended complete JSONL lines
-    /// into `mmu` and advancing the stored bookmark using a single open file descriptor.
+    /// into `mmu` and advancing the stored bookmark in $O(\Delta\text{bytes})$ using a single
+    /// open file descriptor.
     pub fn poll_file(
         &mut self,
         path: &Path,
         mmu: &mut InfinityContextMmu,
     ) -> Result<usize, io::Error> {
-        let prev_bm = self.bookmarks.get(path).copied();
-        let (start_offset, expected_prefix) = match prev_bm {
-            Some(bm) if bm.offset > 0 => (bm.offset, Some(bm.prefix_digest)),
-            _ => (0, None),
+        use std::io::Read;
+        let mut file = File::open(path)?;
+        let meta = file.metadata()?;
+        let file_len = meta.len();
+        let file_id = Self::extract_file_id(&meta);
+        let mtime_nanos = Self::extract_mtime_nanos(&meta);
+
+        let mut start_offset = 0u64;
+        let mut start_running = icx_core::Blake3Digest::hash(&[]);
+        let mut validated_anchor = None;
+
+        if let Some(bm) = self.bookmarks.get(path).copied()
+            && bm.offset > 0
+            && file_len >= bm.offset
+            && file_id == bm.file_id
+        {
+            let cur_anchor = Self::compute_anchor_digest(&mut file, bm.offset)?;
+            if cur_anchor == bm.anchor_digest {
+                if file_len == bm.file_len && mtime_nanos == bm.mtime_nanos {
+                    return Ok(0);
+                }
+                file.seek(SeekFrom::Start(bm.offset - 1))?;
+                let mut prev = [0u8; 1];
+                file.read_exact(&mut prev)?;
+                if prev[0] == b'\n' {
+                    start_offset = bm.offset;
+                    start_running = bm.running_digest;
+                    validated_anchor = Some(cur_anchor);
+                }
+            }
+        }
+
+        let (next_offset, count, mut file, next_running) =
+            Self::ingest_from_validated_offset(file, start_offset, start_running, mmu)?;
+        let anchor_digest = if next_offset == start_offset
+            && let Some(reused) = validated_anchor
+        {
+            reused
+        } else {
+            Self::compute_anchor_digest(&mut file, next_offset)?
         };
-        let file = File::open(path)?;
-        let (next_offset, count, prefix_digest) =
-            Self::ingest_from_open_file(file, start_offset, expected_prefix, true, mmu)?;
+        let end_meta = file.metadata()?;
         self.bookmarks.insert(
             path.to_path_buf(),
             RolloutBookmark {
                 offset: next_offset,
-                prefix_digest: prefix_digest.unwrap_or_else(|| icx_core::Blake3Digest::hash(&[])),
+                file_len: end_meta.len(),
+                mtime_nanos: Self::extract_mtime_nanos(&end_meta),
+                file_id: Self::extract_file_id(&end_meta),
+                anchor_digest,
+                running_digest: next_running,
             },
         );
         Ok(count)
@@ -299,9 +378,23 @@ impl CodexRolloutTailer {
         byte_offset: u64,
         mmu: &mut InfinityContextMmu,
     ) -> Result<(u64, usize), io::Error> {
-        let file = File::open(path)?;
-        let (committed, ingested, _) =
-            Self::ingest_from_open_file(file, byte_offset, None, false, mmu)?;
+        use std::io::Read;
+        let mut file = File::open(path)?;
+        let file_len = file.metadata()?.len();
+        let start_offset = if byte_offset == 0 || file_len < byte_offset {
+            0
+        } else {
+            file.seek(SeekFrom::Start(byte_offset - 1))?;
+            let mut prev = [0u8; 1];
+            file.read_exact(&mut prev)?;
+            if prev[0] == b'\n' { byte_offset } else { 0 }
+        };
+        let (committed, ingested, _, _) = Self::ingest_from_validated_offset(
+            file,
+            start_offset,
+            icx_core::Blake3Digest::hash(&[]),
+            mmu,
+        )?;
         Ok((committed, ingested))
     }
 
@@ -346,31 +439,13 @@ impl CodexRolloutTailer {
         Ok((total_bytes, ended_with_newline, was_truncated))
     }
 
-    fn ingest_from_open_file(
+    fn ingest_from_validated_offset(
         mut file: File,
-        byte_offset: u64,
-        expected_prefix: Option<icx_core::Blake3Digest>,
-        need_prefix_digest: bool,
+        start_offset: u64,
+        mut running_digest: icx_core::Blake3Digest,
         mmu: &mut InfinityContextMmu,
-    ) -> Result<(u64, usize, Option<icx_core::Blake3Digest>), io::Error> {
-        use std::io::Read;
-        let file_len = file.metadata()?.len();
-        let mut committed = if byte_offset == 0 || file_len < byte_offset {
-            0
-        } else {
-            let prefix_ok = match expected_prefix {
-                Some(exp) => Self::compute_prefix_digest(&mut file, byte_offset)? == exp,
-                None => true,
-            };
-            if prefix_ok {
-                file.seek(SeekFrom::Start(byte_offset - 1))?;
-                let mut prev = [0u8; 1];
-                file.read_exact(&mut prev)?;
-                if prev[0] == b'\n' { byte_offset } else { 0 }
-            } else {
-                0
-            }
-        };
+    ) -> Result<(u64, usize, File, icx_core::Blake3Digest), io::Error> {
+        let mut committed = start_offset;
         file.seek(SeekFrom::Start(committed))?;
         let mut reader = BufReader::new(file);
         let mut raw_line = Vec::new();
@@ -388,6 +463,7 @@ impl CodexRolloutTailer {
                 break;
             }
             committed += bytes_read;
+            running_digest = Self::step_running_digest(running_digest, &raw_line, committed);
             let line = String::from_utf8_lossy(&raw_line);
             let trimmed = line.trim();
             if trimmed.is_empty() {
@@ -418,13 +494,7 @@ impl CodexRolloutTailer {
                 ingested += 1;
             }
         }
-        let prefix_digest = if need_prefix_digest {
-            let mut file = reader.into_inner();
-            Some(Self::compute_prefix_digest(&mut file, committed)?)
-        } else {
-            None
-        };
-        Ok((committed, ingested, prefix_digest))
+        Ok((committed, ingested, reader.into_inner(), running_digest))
     }
 
     fn non_empty_body_value(v: &Value) -> Option<String> {

@@ -886,6 +886,8 @@ unprefixed_secret = {unpref_sec}
         assert_eq!(tailer.offset_for(&rollout_path), 0);
         let c1 = tailer.poll_file(&rollout_path, &mut loaded_mmu).unwrap();
         assert_eq!(c1, 3);
+        // Polling an unchanged rollout file returns 0 immediately in O(1)
+        assert_eq!(tailer.poll_file(&rollout_path, &mut loaded_mmu).unwrap(), 0);
         let saved_offset = tailer.offset_for(&rollout_path);
         assert!(saved_offset > 0);
         // Append another complete line (>64 KiB total) + an incomplete trailing multibyte UTF-8 sequence (0xC3)
