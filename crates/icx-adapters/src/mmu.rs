@@ -169,7 +169,7 @@ impl InfinityContextMmu {
             raw_text
         };
         let mut sanitized = SecretRedactor::sanitize(bounded_raw);
-        let was_redacted = bounded_raw.lines().ne(sanitized.lines());
+        let was_redacted = bounded_raw != sanitized;
         if sanitized.len() > max_bytes {
             let mut bound = max_bytes;
             while !sanitized.is_char_boundary(bound) {
@@ -424,7 +424,7 @@ impl InfinityContextMmu {
                 .graph
                 .personalized_pagerank(&seeds, None, 0.15, 6, top_k);
             for node in ppr_nodes {
-                for &prov in node.provenance_artifacts.iter().take(1) {
+                if let Some(&prov) = node.provenance_artifacts.first() {
                     lines.push(format!(
                         "⟦Ω:PPR_GRAPH⊢entity={}⋮score={:.3}↦{}⟧",
                         node.entity, node.score, prov
@@ -607,14 +607,16 @@ impl InfinityContextMmu {
         IcxError::Io(err.to_string())
     }
 
-    fn acquire_workspace_lock(
+    /// Acquires the shared workspace lock (`cas_store.lock` + in-process `WORKSPACE_IO_LOCK`)
+    /// coordinating all workspace readers and writers across `icx-adapters` and `icx-cli`.
+    pub fn acquire_workspace_lock(
         icx_dir: &Path,
     ) -> Result<(std::sync::MutexGuard<'static, ()>, std::fs::File), IcxError> {
         let mem_guard = WORKSPACE_IO_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         std::fs::create_dir_all(icx_dir).map_err(Self::map_io_err)?;
-        let lock_path = icx_dir.join(".icx-workspace.lock");
+        let lock_path = icx_dir.join("cas_store.lock");
         let mut opts = std::fs::OpenOptions::new();
         opts.read(true).write(true).create(true).truncate(false);
         #[cfg(unix)]

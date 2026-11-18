@@ -243,10 +243,10 @@ impl CodexRolloutTailer {
         file.seek(SeekFrom::Start(0))?;
         let mut acc = [0u8; 40];
         acc[32..40].copy_from_slice(&len.to_le_bytes());
-        let mut remaining = len as usize;
+        let mut remaining = len;
         let mut chunk = [0u8; 8192];
         while remaining > 0 {
-            let to_read = remaining.min(chunk.len());
+            let to_read = remaining.min(chunk.len() as u64) as usize;
             file.read_exact(&mut chunk[..to_read])?;
             let h = icx_core::Blake3Digest::hash(&chunk[..to_read]);
             for (a, b) in acc[..32].iter_mut().zip(h.0.iter()) {
@@ -254,7 +254,7 @@ impl CodexRolloutTailer {
             }
             let mixed = icx_core::Blake3Digest::hash(&acc);
             acc[..32].copy_from_slice(&mixed.0);
-            remaining -= to_read;
+            remaining -= to_read as u64;
         }
         Ok(icx_core::Blake3Digest::hash(&acc))
     }
