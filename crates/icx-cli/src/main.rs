@@ -299,6 +299,21 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
     dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)
 }
 
+fn mcp_tool_error_response(req_line: &str, err_msg: &str) -> serde_json::Value {
+    let parsed: serde_json::Value = serde_json::from_str(req_line).unwrap_or_default();
+    let Some(id) = parsed.get("id").filter(|id| !id.is_null()).cloned() else {
+        return serde_json::Value::Null;
+    };
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": {
+            "content": [{ "type": "text", "text": err_msg }],
+            "isError": true
+        }
+    })
+}
+
 fn serve_mcp_stream<R: BufRead, W: io::Write>(
     args: &[String],
     reader: R,
@@ -326,19 +341,31 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
                             && let Err(e) = mmu.save_workspace_dir_unlocked(&ws_dir)
                         {
                             eprintln!("icx mcp-serve warning: save error: {e}");
+                            drop(lock_guard);
+                            mcp_tool_error_response(
+                                &req_line,
+                                &format!("ERR: failed to persist workspace state: {e}"),
+                            )
+                        } else {
+                            drop(lock_guard);
+                            r
                         }
-                        drop(lock_guard);
-                        r
                     }
                     Err(e) => {
                         eprintln!("icx mcp-serve warning: load error: {e}");
                         drop(lock_guard);
-                        McpPagerServer::handle_jsonrpc(&req_line, &mut mmu)
+                        mcp_tool_error_response(
+                            &req_line,
+                            &format!("ERR: failed to load workspace state: {e}"),
+                        )
                     }
                 },
                 Err(e) => {
                     eprintln!("icx mcp-serve warning: lock error: {e}");
-                    McpPagerServer::handle_jsonrpc(&req_line, &mut mmu)
+                    mcp_tool_error_response(
+                        &req_line,
+                        &format!("ERR: failed to acquire workspace lock: {e}"),
+                    )
                 }
             }
         } else {
@@ -1212,6 +1239,12 @@ mod tests {
             .is_err()
         );
         run_decode_ahtl(&[wire_a]).unwrap();
+        let err_rpc =
+            mcp_tool_error_response(r#"{"jsonrpc":"2.0","id":9,"method":"tools/call"}"#, "ERR");
+        assert_eq!(err_rpc["result"]["isError"], true);
+        let notif_rpc =
+            mcp_tool_error_response(r#"{"jsonrpc":"2.0","method":"tools/call"}"#, "ERR");
+        assert!(notif_rpc.is_null());
 
         let _ = fs::remove_dir_all(&tmp_dir);
     }

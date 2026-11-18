@@ -209,6 +209,9 @@ impl McpPagerServer {
     }
 
     /// Executes the polymorphic `icx` tool operation and returns `(output_text, is_error)`.
+    ///
+    /// Result count `k` is clamped per operation (`1..=250` for `grep`, `1..=50` for `recall`,
+    /// and `1..=256` for `xagent`).
     pub fn execute_icx_op_checked(args: &Value, mmu: &mut InfinityContextMmu) -> (String, bool) {
         let op = args.get("op").and_then(Value::as_str).unwrap_or("status");
 

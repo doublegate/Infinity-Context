@@ -450,6 +450,32 @@ impl WireProxyTransformer {
                                     *t = res.compressed_ahtl;
                                 }
                             }
+                            if let Some(resp_obj) = part
+                                .get_mut("functionResponse")
+                                .and_then(|fr| fr.get_mut("response"))
+                                .and_then(Value::as_object_mut)
+                            {
+                                for key in ["output", "result", "content", "text"] {
+                                    if let Some(Value::String(t)) = resp_obj.get_mut(key) {
+                                        if t.starts_with('⟦') || t.starts_with("⟪ICX:") {
+                                            occ_idx += 1;
+                                        } else if t.len() >= threshold {
+                                            let subj =
+                                                format!("gemini_turn_{idx}_p{p_idx}_fr_{key}");
+                                            let (res, _) = mmu.ingest_or_reuse_at_index(
+                                                occ_idx,
+                                                AgentKind::AntigravityCli,
+                                                &subj,
+                                                t,
+                                                None,
+                                                false,
+                                            );
+                                            occ_idx += 1;
+                                            *t = res.compressed_ahtl;
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -539,9 +565,10 @@ impl WireProxyTransformer {
 
     fn find_incomplete_deref_start(s: &str) -> Option<usize> {
         const PREFIX: &str = "⟪!icx:deref(";
+        const MAX_INCOMPLETE_DEREF_BYTES: usize = 96;
         if let Some(open_idx) = s.rfind(PREFIX) {
             let tail = &s[open_idx..];
-            if !tail.contains(")⟫") && tail.len() <= 96 {
+            if !tail.contains(")⟫") && tail.len() <= MAX_INCOMPLETE_DEREF_BYTES {
                 return Some(open_idx);
             }
         }
@@ -597,11 +624,17 @@ impl WireProxyTransformer {
         for seg in path {
             cur = match cur {
                 Value::Object(map) => {
-                    map.retain(|k, v| {
-                        k == seg
-                            || !v.is_string()
-                            || matches!(k.as_str(), "type" | "role" | "id" | "model" | "object")
-                    });
+                    for (k, v) in map.iter_mut() {
+                        if k != seg
+                            && matches!(
+                                k.as_str(),
+                                "text" | "content" | "delta" | "output" | "reasoning_content"
+                            )
+                            && v.is_string()
+                        {
+                            *v = Value::String(String::new());
+                        }
+                    }
                     match map.get_mut(seg) {
                         Some(v) => v,
                         None => return,
@@ -1348,6 +1381,22 @@ impl WireProxyTransformer {
             )? {
                 resp_bytes.extend_from_slice(&chunk);
             }
+        } else if let Some(expected_len) = declared_content_length {
+            if expected_len > Self::MAX_UPSTREAM_RESPONSE_BYTES {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "upstream HTTP response exceeds 64 MiB limit",
+                ));
+            }
+            up_reader
+                .take(expected_len as u64)
+                .read_to_end(&mut resp_bytes)?;
+            if resp_bytes.len() < expected_len {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "upstream HTTP response truncated before declared Content-Length",
+                ));
+            }
         } else {
             up_reader
                 .take((Self::MAX_UPSTREAM_RESPONSE_BYTES as u64) + 1)
@@ -1356,14 +1405,6 @@ impl WireProxyTransformer {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "upstream HTTP response exceeds 64 MiB limit",
-                ));
-            }
-            if let Some(expected_len) = declared_content_length
-                && resp_bytes.len() < expected_len
-            {
-                return Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "upstream HTTP response truncated before declared Content-Length",
                 ));
             }
         }
@@ -3376,5 +3417,33 @@ mod tests {
         let multi_choice_out = WireProxyTransformer::transform_sse_chunk(&multi_choice_sse, &mmu);
         assert!(multi_choice_out.contains("\"content\":\"c1 untouched\""));
         assert!(multi_choice_out.contains("\"content\":\"line_alpha end\""));
+
+        // Residual holdback flush preserves OpenAI `/v1/responses` `item_id` metadata
+        let residual_resp_sse = "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_99\",\"output_index\":0,\"delta\":\"prefix ⟪!icx:deref(\"}\n";
+        let residual_out = WireProxyTransformer::transform_sse_chunk(residual_resp_sse, &mmu);
+        assert!(residual_out.contains("\"item_id\":\"msg_99\""));
+        assert!(residual_out.contains("⟪!icx:deref("));
+
+        // Gemini `functionResponse` oversized output virtualization
+        let big_fr = "fn gemini_tool_payload() {}\n".repeat(100);
+        let gemini_fr_body = serde_json::json!({
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{
+                        "functionResponse": {
+                            "name": "bash",
+                            "response": { "output": big_fr }
+                        }
+                    }]
+                },
+                { "role": "model", "parts": [{ "text": "ok" }] },
+                { "role": "user", "parts": [{ "text": "next" }] }
+            ]
+        })
+        .to_string();
+        let gemini_fr_out =
+            WireProxyTransformer::transform_gemini_request(&gemini_fr_body, &mut mmu).unwrap();
+        assert!(gemini_fr_out.contains("⟦Δ:"));
     }
 }
