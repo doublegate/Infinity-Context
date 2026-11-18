@@ -881,7 +881,7 @@ impl MerkleContextDag {
                         let Some(meta) = store.get_meta(tool.raw_artifact) else {
                             return Err(IcxError::ArtifactNotFound(tool.raw_artifact));
                         };
-                        if meta.full_digest != tool.full_digest {
+                        if meta.full_digest != tool.full_digest || meta.chunk_ids != tool.chunks {
                             return Err(IcxError::IntegrityViolation(tool.raw_artifact));
                         }
                         for &cid in &tool.chunks {
@@ -1275,6 +1275,23 @@ mod tests {
         assert!(l4_deref.contains("ep=0001"));
         let l4_slice = dag.deref_node_lines(folded_l4.id(), 1, 2).unwrap();
         assert!(l4_slice.contains("folded=2"));
+
+        // Verify `verify_all_merkle_integrity_with_cas` succeeds when CAS contains all referenced
+        // artifacts/chunks and fails closed when a ToolArtifact's raw_artifact is missing
+        let mut cas = crate::cas::CasStore::new();
+        let _ = cas.put_bytes(b"tool chunk payload\n");
+        let _ = cas.put_bytes(b"fix step 1");
+        let _ = cas.put_bytes(b"fix step 2");
+        assert_eq!(
+            dag.verify_all_merkle_integrity_with_cas(Some(&cas))
+                .unwrap(),
+            dag.node_count()
+        );
+        let empty_cas = crate::cas::CasStore::new();
+        assert!(matches!(
+            dag.verify_all_merkle_integrity_with_cas(Some(&empty_cas)),
+            Err(IcxError::ArtifactNotFound(_))
+        ));
 
         // Corrupt a leaf turn digest and verify recursive Merkle check fails closed
         dag.corrupt_node_digest_for_test(t1);

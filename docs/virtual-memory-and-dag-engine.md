@@ -95,7 +95,7 @@ When `tokens(W_active) > epoch_rollover_threshold`:
    - `CasStore::put_bytes_checked` enforces the `64 MiB` (`ICX_MAX_INGEST_BYTES`) STRIDE DoS ceiling and verifies full 256-bit digest equality on any 64-bit `ArtifactId` or `L0` chunk collision.
 4. **Retention, Backup & `icx doctor` Verification:**
    - Because `.icx/` is self-contained and updated exclusively via atomic `rename` under `cas_store.lock`, backing up or archiving a session requires only copying `.icx/{cas_store.json,mmu_state.json,bitemporal_graph.json}`.
-   - Running `icx doctor [--dir <PATH>]` inspects local agent harnesses, verifies `/dev/shm` writability, loads `<PATH>` (default `.icx`), and executes `mmu.cas.verify_all_integrity()` + `mmu.dag.verify_all_merkle_integrity()` to report `[VERIFIED] Workspace Storage & Merkle-DAG`.
+   - Running `icx doctor [--dir <PATH>]` inspects local agent harnesses, verifies `/dev/shm` writability, loads `<PATH>` (default `.icx`), and executes `mmu.cas.verify_all_integrity()` + `mmu.dag.verify_all_merkle_integrity_with_cas(Some(&mmu.cas))` to report `[VERIFIED] Workspace Storage & Merkle-DAG`.
 
 ---
 
