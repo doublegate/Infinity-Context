@@ -94,6 +94,7 @@ impl AntigravityAdapter {
                 break;
             }
             if was_truncated {
+                valid_step_idx += 1;
                 continue;
             }
             let line = String::from_utf8_lossy(&raw_line);

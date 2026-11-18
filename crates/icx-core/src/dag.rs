@@ -244,6 +244,9 @@ impl MerkleContextDag {
                     .push((role.clone(), *ordinal, id));
             }
         }
+        for bucket in self.turn_index.values_mut() {
+            bucket.sort_by_key(|(_, ord, _)| *ord);
+        }
     }
 
     /// Finds the most recent `DagNode::Turn` matching `(agent, role, raw_artifact)` in $O(\log N)$

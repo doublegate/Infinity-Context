@@ -1515,6 +1515,35 @@ unprefixed_secret = {unpref_sec}
             .unwrap();
         let mm_sel_out =
             HermesAdapter::handle_hook("select_context", &mm_occ_payload, &mut mm_occ_mmu).unwrap();
+        let mut mm_sel_2_val: Value = serde_json::from_str(&mm_sel_out).unwrap();
+        mm_sel_2_val["protect_first_n"] = serde_json::json!(1);
+        mm_sel_2_val["protect_last_n"] = serde_json::json!(1);
+        let mm_sel_out_2 = HermesAdapter::handle_hook(
+            "select_context",
+            &mm_sel_2_val.to_string(),
+            &mut mm_occ_mmu,
+        )
+        .unwrap();
+        let mm_turn_after_sel_2 =
+            HermesAdapter::handle_hook("on_turn_complete", &mm_sel_out_2, &mut mm_occ_mmu).unwrap();
+        assert!(mm_turn_after_sel_2.contains(r#""ingested_count":0"#));
+        // Also verify ordinary `assistant` `tool_calls` with `content: null` are archived into AHTL
+        // during `compress` and `on_pre_compress` when not preserved verbatim
+        let mut tc_fold_mmu = InfinityContextMmu::default();
+        let fold_tc_req = serde_json::json!({
+            "messages": [
+                {"role": "system", "content": "head"},
+                {"role": "assistant", "content": null, "tool_calls": [{"id": "tc_edit", "function": {"name": "edit_file", "arguments": "{\"path\":\"src/main.rs\"}"}}]},
+                {"role": "tool", "tool_call_id": "tc_edit", "name": "edit_file", "content": "Done"}
+            ]
+        })
+        .to_string();
+        let pre_tc_out =
+            HermesAdapter::handle_hook("on_pre_compress", &fold_tc_req, &mut tc_fold_mmu).unwrap();
+        assert!(pre_tc_out.contains("src/main.rs"));
+        let comp_tc_out =
+            HermesAdapter::handle_hook("compress", &fold_tc_req, &mut tc_fold_mmu).unwrap();
+        assert!(comp_tc_out.contains("src/main.rs"));
         // Calling `select_context` a second time on the original `mm_occ_payload` must also keep
         // canonical occurrence identities intact (without re-ingesting the middle failure over a
         // passing tail turn).
@@ -1787,7 +1816,11 @@ unprefixed_secret = {unpref_sec}
             Some("after_truncated")
         );
         assert_eq!(
-            AntigravityAdapter::read_transcript_step(&tp_trunc, Some(0)).as_deref(),
+            AntigravityAdapter::read_transcript_step(&tp_trunc, Some(0)),
+            None
+        );
+        assert_eq!(
+            AntigravityAdapter::read_transcript_step(&tp_trunc, Some(1)).as_deref(),
             Some("after_truncated")
         );
         let _ = std::fs::remove_file(&tp_trunc);

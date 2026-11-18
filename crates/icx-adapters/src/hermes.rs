@@ -122,6 +122,7 @@ impl HermesAdapter {
         msg: &HermesMessage,
         out: &mut Vec<String>,
         occurrence_idx: &mut usize,
+        carried_slots: &mut Vec<(usize, Option<icx_core::ArtifactId>)>,
         mmu: &mut InfinityContextMmu,
     ) {
         let stub_aid = if Self::is_stubbed_message(msg) {
@@ -135,20 +136,24 @@ impl HermesAdapter {
             let trimmed = line.trim();
             if !trimmed.is_empty() {
                 let sanitized_line = Self::sanitize_embedded_ahtl_line(trimmed);
+                let line_aid =
+                    stub_aid.unwrap_or_else(|| mmu.cas.put_bytes(sanitized_line.as_bytes()).0);
                 if !mmu.has_indexed_occurrence(*occurrence_idx) {
-                    let aid =
-                        stub_aid.unwrap_or_else(|| mmu.cas.put_bytes(sanitized_line.as_bytes()).0);
                     let subj = if stub_aid.is_some() {
                         role_label.as_str()
                     } else {
                         "carried_epoch"
                     };
-                    if mmu.dag.find_turn(AgentKind::Hermes, subj, aid).is_none() {
+                    if mmu
+                        .dag
+                        .find_turn(AgentKind::Hermes, subj, line_aid)
+                        .is_none()
+                    {
                         mmu.epochs.record_turn(
                             &mut mmu.dag,
                             AgentKind::Hermes,
                             subj,
-                            aid,
+                            line_aid,
                             sanitized_line.clone(),
                             0.5,
                             (sanitized_line.len() / 4).max(1),
@@ -158,9 +163,9 @@ impl HermesAdapter {
                         *occurrence_idx,
                         AgentKind::Hermes,
                         subj.to_owned(),
-                        aid,
+                        line_aid,
                         crate::mmu::IngestResult {
-                            artifact_id: aid,
+                            artifact_id: line_aid,
                             raw_bytes: sanitized_line.len(),
                             compressed_ahtl: sanitized_line.clone(),
                             surprise: 0.5,
@@ -168,14 +173,30 @@ impl HermesAdapter {
                         },
                     );
                 }
+                carried_slots.push((*occurrence_idx, stub_aid));
                 *occurrence_idx += 1;
                 out.push(sanitized_line);
             }
         }
     }
 
-    fn count_occurrence_advance(msg: &HermesMessage) -> usize {
-        if Self::is_synthetic_tail_slot(msg) || msg.content.trim().is_empty() {
+    fn effective_message_text(msg: &HermesMessage, raw_opt: Option<&Value>) -> String {
+        if !msg.content.trim().is_empty() {
+            return msg.content.clone();
+        }
+        if let Some(tc) = raw_opt
+            .and_then(|r| r.get("tool_calls"))
+            .filter(|v| v.as_array().is_some_and(|a| !a.is_empty()))
+        {
+            return format!("tool_calls:{tc}");
+        }
+        String::new()
+    }
+
+    fn count_occurrence_advance(msg: &HermesMessage, raw_opt: Option<&Value>) -> usize {
+        if Self::is_synthetic_tail_slot(msg)
+            || Self::effective_message_text(msg, raw_opt).trim().is_empty()
+        {
             0
         } else if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
             msg.content
@@ -233,10 +254,16 @@ impl HermesAdapter {
         let mut idx = 0usize;
         while idx < n {
             let (msg, raw_opt) = mid_slice[idx];
+            let next_is_tool = if idx + 1 < n {
+                mid_slice[idx + 1].0.role == "tool" || mid_slice[idx + 1].0.tool_call_id.is_some()
+            } else {
+                tail_starts_with_tool
+            };
             let is_assistant_tool_call = msg.role == "assistant"
-                && raw_opt
+                && (raw_opt
                     .and_then(|r| r.get("tool_calls"))
-                    .is_some_and(Value::is_array);
+                    .is_some_and(Value::is_array)
+                    || next_is_tool);
             if is_assistant_tool_call {
                 let mut group_end = idx + 1;
                 while group_end < n
@@ -259,29 +286,28 @@ impl HermesAdapter {
         preserve
     }
 
-    /// Records `mmu.reordered_occurrences` in `[mid_start_occ, mid_end_occ)` when folded AHTL lines
+    /// Records `mmu.reordered_occurrences` in `[mid_start_occ, ...)` when folded AHTL lines
     /// and preserved verbatim messages are emitted as `[icx_cache_epoch (folded), preserved_msgs...]`,
-    /// without mutating the canonical `mmu.indexed_occurrences` positions.
+    /// resolving each entry from the current input view without mutating the canonical
+    /// `mmu.indexed_occurrences` positions.
     fn rebind_reordered_occurrences(
         mmu: &mut InfinityContextMmu,
         mid_start_occ: usize,
-        mid_end_occ: usize,
-        folded_occ_indices: &[usize],
-        preserved_occ_indices: &[usize],
+        folded_slots: &[(usize, Option<icx_core::ArtifactId>)],
+        preserved_slots: &[(usize, Option<icx_core::ArtifactId>)],
     ) {
-        if preserved_occ_indices.is_empty() || folded_occ_indices.is_empty() {
+        if preserved_slots.is_empty() || folded_slots.is_empty() {
             return;
         }
-        let snapshot: std::collections::BTreeMap<usize, crate::mmu::IndexedOccurrenceRecord> = mmu
-            .snapshot_indexed_occurrences_range(mid_start_occ, mid_end_occ)
-            .into_iter()
+        let resolved: Vec<(usize, crate::mmu::IndexedOccurrenceRecord)> = (mid_start_occ..)
+            .zip(folded_slots.iter().chain(preserved_slots.iter()))
+            .filter_map(|(new_idx, &(old_idx, aid_opt))| {
+                mmu.get_occurrence_record(old_idx, aid_opt)
+                    .map(|entry| (new_idx, entry))
+            })
             .collect();
-        for (new_idx, &old_idx) in (mid_start_occ..).zip(
-            folded_occ_indices
-                .iter()
-                .chain(preserved_occ_indices.iter()),
-        ) {
-            mmu.set_reordered_occurrence(new_idx, snapshot[&old_idx].clone());
+        for (new_idx, entry) in resolved {
+            mmu.set_reordered_occurrence(new_idx, entry);
         }
     }
 
@@ -293,8 +319,8 @@ impl HermesAdapter {
     ) -> (Vec<String>, Vec<HermesMessage>, Vec<Value>) {
         let start_occ = *occurrence_idx;
         let mut ahtl_frames = Vec::new();
-        let mut folded_occ_indices = Vec::new();
-        let mut preserved_occ_indices = Vec::new();
+        let mut folded_slots = Vec::new();
+        let mut preserved_slots = Vec::new();
         let mut preserved_msgs = Vec::new();
         let mut preserved_vals = Vec::new();
 
@@ -302,31 +328,38 @@ impl HermesAdapter {
             if Self::is_synthetic_cache_epoch(msg)
                 || (Self::is_stubbed_message(msg) && !keep_verbatim)
             {
-                let start = *occurrence_idx;
-                Self::extract_embedded_ahtl_lines(msg, &mut ahtl_frames, occurrence_idx, mmu);
-                folded_occ_indices.extend(start..*occurrence_idx);
+                Self::extract_embedded_ahtl_lines(
+                    msg,
+                    &mut ahtl_frames,
+                    occurrence_idx,
+                    &mut folded_slots,
+                    mmu,
+                );
                 continue;
             }
             if keep_verbatim {
                 if Self::is_stubbed_message(msg) {
-                    let start = *occurrence_idx;
                     let mut stub_sink = Vec::new();
-                    Self::extract_embedded_ahtl_lines(msg, &mut stub_sink, occurrence_idx, mmu);
-                    preserved_occ_indices.extend(start..*occurrence_idx);
+                    Self::extract_embedded_ahtl_lines(
+                        msg,
+                        &mut stub_sink,
+                        occurrence_idx,
+                        &mut preserved_slots,
+                        mmu,
+                    );
                 } else {
                     let subj = Self::message_subject(msg);
-                    if !InfinityContextMmu::is_icx_pager_tool(subj)
-                        && !msg.content.trim().is_empty()
-                    {
-                        let _ = mmu.ingest_or_reuse_at_index(
+                    let eff_text = Self::effective_message_text(msg, raw_opt);
+                    if !InfinityContextMmu::is_icx_pager_tool(subj) && !eff_text.trim().is_empty() {
+                        let (res, _) = mmu.ingest_or_reuse_at_index(
                             *occurrence_idx,
                             AgentKind::Hermes,
                             subj,
-                            &msg.content,
+                            &eff_text,
                             None,
                             false,
                         );
-                        preserved_occ_indices.push(*occurrence_idx);
+                        preserved_slots.push((*occurrence_idx, Some(res.artifact_id)));
                         *occurrence_idx += 1;
                     }
                 }
@@ -336,7 +369,8 @@ impl HermesAdapter {
                 }
                 continue;
             }
-            if msg.content.trim().is_empty() {
+            let eff_text = Self::effective_message_text(msg, raw_opt);
+            if eff_text.trim().is_empty() {
                 continue;
             }
             let subj = Self::message_subject(msg);
@@ -344,21 +378,15 @@ impl HermesAdapter {
                 *occurrence_idx,
                 AgentKind::Hermes,
                 subj,
-                &msg.content,
+                &eff_text,
                 None,
                 false,
             );
-            folded_occ_indices.push(*occurrence_idx);
+            folded_slots.push((*occurrence_idx, Some(res.artifact_id)));
             *occurrence_idx += 1;
             ahtl_frames.push(res.compressed_ahtl);
         }
-        Self::rebind_reordered_occurrences(
-            mmu,
-            start_occ,
-            *occurrence_idx,
-            &folded_occ_indices,
-            &preserved_occ_indices,
-        );
+        Self::rebind_reordered_occurrences(mmu, start_occ, &folded_slots, &preserved_slots);
         (ahtl_frames, preserved_msgs, preserved_vals)
     }
 
@@ -429,7 +457,7 @@ impl HermesAdapter {
 
         let mut occurrence_idx = 0usize;
         for &(msg, raw_opt) in &cleaned[..head_end] {
-            occurrence_idx += Self::count_occurrence_advance(msg);
+            occurrence_idx += Self::count_occurrence_advance(msg, raw_opt);
             selected_msgs.push(msg.clone());
             if let Some(r) = raw_opt {
                 selected_vals.push(r.clone());
@@ -553,7 +581,7 @@ impl HermesAdapter {
                 out.push(stubbed);
                 n_pruned += 1;
             } else {
-                occurrence_idx += Self::count_occurrence_advance(msg);
+                occurrence_idx += Self::count_occurrence_advance(msg, raw_opt);
                 if let Some(r) = raw_opt {
                     out_vals.push(r.clone());
                 }
@@ -605,7 +633,10 @@ impl HermesAdapter {
             }
         }
 
-        let mut occurrence_idx: usize = head_msgs.iter().map(Self::count_occurrence_advance).sum();
+        let mut occurrence_idx: usize = head_msgs
+            .iter()
+            .map(|m| Self::count_occurrence_advance(m, None))
+            .sum();
         let preserve_mask = Self::build_preserve_mask(&body_slice, false);
         let (ahtl_frames, preserved_msgs, preserved_vals) =
             Self::process_body_slice(&body_slice, &preserve_mask, &mut occurrence_idx, mmu);
@@ -674,20 +705,29 @@ impl HermesAdapter {
         Self::compress_core(messages, None, focus_topic, mmu).0
     }
 
-    /// Implements `ContextEngine.on_turn_complete(messages)`:
-    /// Indexes any non-synthetic, non-stubbed, non-pager messages from `messages` that have not
-    /// yet been recorded at their conversation position in `mmu`, returning the count of newly
-    /// ingested messages.
-    pub fn on_turn_complete(messages: &[HermesMessage], mmu: &mut InfinityContextMmu) -> usize {
+    fn on_turn_complete_core(
+        messages: &[HermesMessage],
+        raw_messages: Option<&[Value]>,
+        mmu: &mut InfinityContextMmu,
+    ) -> usize {
         let mut newly_ingested = 0usize;
         let mut occurrence_idx = 0usize;
-        for msg in messages {
-            if Self::is_synthetic_tail_slot(msg) || msg.content.trim().is_empty() {
+        let mut carried_sink = Vec::new();
+        for (i, msg) in messages.iter().enumerate() {
+            let raw_opt = raw_messages.and_then(|r| r.get(i));
+            let eff_text = Self::effective_message_text(msg, raw_opt);
+            if Self::is_synthetic_tail_slot(msg) || eff_text.trim().is_empty() {
                 continue;
             }
             if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
                 let mut sink = Vec::new();
-                Self::extract_embedded_ahtl_lines(msg, &mut sink, &mut occurrence_idx, mmu);
+                Self::extract_embedded_ahtl_lines(
+                    msg,
+                    &mut sink,
+                    &mut occurrence_idx,
+                    &mut carried_sink,
+                    mmu,
+                );
                 continue;
             }
             let subj = Self::message_subject(msg);
@@ -698,7 +738,7 @@ impl HermesAdapter {
                 occurrence_idx,
                 AgentKind::Hermes,
                 subj,
-                &msg.content,
+                &eff_text,
                 None,
                 false,
             );
@@ -710,17 +750,36 @@ impl HermesAdapter {
         newly_ingested
     }
 
-    /// Implements `MemoryProvider.on_pre_compress(messages) -> String`
-    /// (`PRE_COMPRESS_CHECKPOINT_API_VERSION = 2` fail-closed pre-compression evidence handoff).
-    pub fn on_pre_compress(messages: &[HermesMessage], mmu: &mut InfinityContextMmu) -> String {
+    /// Implements `ContextEngine.on_turn_complete(messages)`:
+    /// Indexes any non-synthetic, non-stubbed, non-pager messages from `messages` that have not
+    /// yet been recorded at their conversation position in `mmu`, returning the count of newly
+    /// ingested messages.
+    pub fn on_turn_complete(messages: &[HermesMessage], mmu: &mut InfinityContextMmu) -> usize {
+        Self::on_turn_complete_core(messages, None, mmu)
+    }
+
+    fn on_pre_compress_core(
+        messages: &[HermesMessage],
+        raw_messages: Option<&[Value]>,
+        mmu: &mut InfinityContextMmu,
+    ) -> String {
         let mut ahtl_frames = Vec::new();
         let mut occurrence_idx = 0usize;
-        for msg in messages {
-            if Self::is_synthetic_tail_slot(msg) || msg.content.trim().is_empty() {
+        let mut carried_sink = Vec::new();
+        for (i, msg) in messages.iter().enumerate() {
+            let raw_opt = raw_messages.and_then(|r| r.get(i));
+            let eff_text = Self::effective_message_text(msg, raw_opt);
+            if Self::is_synthetic_tail_slot(msg) || eff_text.trim().is_empty() {
                 continue;
             }
             if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
-                Self::extract_embedded_ahtl_lines(msg, &mut ahtl_frames, &mut occurrence_idx, mmu);
+                Self::extract_embedded_ahtl_lines(
+                    msg,
+                    &mut ahtl_frames,
+                    &mut occurrence_idx,
+                    &mut carried_sink,
+                    mmu,
+                );
                 continue;
             }
             let subj = Self::message_subject(msg);
@@ -731,7 +790,7 @@ impl HermesAdapter {
                 occurrence_idx,
                 AgentKind::Hermes,
                 subj,
-                &msg.content,
+                &eff_text,
                 None,
                 false,
             );
@@ -751,13 +810,22 @@ impl HermesAdapter {
         )
     }
 
+    /// Implements `MemoryProvider.on_pre_compress(messages) -> String`
+    /// (`PRE_COMPRESS_CHECKPOINT_API_VERSION = 2` fail-closed pre-compression evidence handoff).
+    pub fn on_pre_compress(messages: &[HermesMessage], mmu: &mut InfinityContextMmu) -> String {
+        Self::on_pre_compress_core(messages, None, mmu)
+    }
+
     fn parse_messages_with_raw(
         payload: &Value,
     ) -> Result<(Vec<HermesMessage>, Vec<Value>), serde_json::Error> {
         for key in ["messages", "request_messages", "requestMessages"] {
             if let Some(val) = payload.get(key).filter(|v| !v.is_null()) {
                 let raw_msgs = serde_json::from_value::<Vec<Value>>(val.clone())?;
-                let msgs = serde_json::from_value::<Vec<HermesMessage>>(val.clone())?;
+                let mut msgs = Vec::with_capacity(raw_msgs.len());
+                for item in &raw_msgs {
+                    msgs.push(serde_json::from_value::<HermesMessage>(item.clone())?);
+                }
                 return Ok((msgs, raw_msgs));
             }
         }
@@ -824,15 +892,15 @@ impl HermesAdapter {
                 })
             }
             "on_turn_complete" | "on-turn-complete" | "PostToolUse" | "post-tool-use" => {
-                let (msgs, _) = Self::parse_messages_with_raw(&payload)?;
-                let count = Self::on_turn_complete(&msgs, mmu);
+                let (msgs, raw_msgs) = Self::parse_messages_with_raw(&payload)?;
+                let count = Self::on_turn_complete_core(&msgs, Some(&raw_msgs), mmu);
                 json!({
                     "ingested_count": count
                 })
             }
             "on_pre_compress" | "on-pre-compress" => {
-                let (msgs, _) = Self::parse_messages_with_raw(&payload)?;
-                let checkpoint = Self::on_pre_compress(&msgs, mmu);
+                let (msgs, raw_msgs) = Self::parse_messages_with_raw(&payload)?;
+                let checkpoint = Self::on_pre_compress_core(&msgs, Some(&raw_msgs), mmu);
                 json!({
                     "checkpoint_version": PRE_COMPRESS_CHECKPOINT_API_VERSION,
                     "checkpoint": checkpoint

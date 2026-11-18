@@ -334,19 +334,27 @@ impl InfinityContextMmu {
         self.indexed_occurrences.contains_key(&occurrence_idx)
     }
 
-    /// Returns a cloned snapshot of `(occurrence_idx, entry)` pairs from `self.indexed_occurrences`
-    /// in `[start_idx, end_idx)` for re-binding occurrence indices when folded AHTL frames and
-    /// preserved verbatim messages are reordered during context selection/compaction.
+    /// Returns the occurrence record at `occurrence_idx` matching `sanitized_aid` from either
+    /// `self.indexed_occurrences` or `self.reordered_occurrences`, falling back to the canonical
+    /// entry at `occurrence_idx`.
     #[must_use]
-    pub fn snapshot_indexed_occurrences_range(
+    pub fn get_occurrence_record(
         &self,
-        start_idx: usize,
-        end_idx: usize,
-    ) -> Vec<(usize, IndexedOccurrenceRecord)> {
-        self.indexed_occurrences
-            .range(start_idx..end_idx)
-            .map(|(&idx, entry)| (idx, entry.clone()))
-            .collect()
+        occurrence_idx: usize,
+        sanitized_aid: Option<ArtifactId>,
+    ) -> Option<IndexedOccurrenceRecord> {
+        let idx_opt = self.indexed_occurrences.get(&occurrence_idx);
+        let ro_opt = self.reordered_occurrences.get(&occurrence_idx);
+        if let Some(target_aid) = sanitized_aid {
+            if let Some(matched) = idx_opt
+                .into_iter()
+                .chain(ro_opt)
+                .find(|entry| entry.2 == target_aid)
+            {
+                return Some(matched.clone());
+            }
+        }
+        idx_opt.or(ro_opt).cloned()
     }
 
     /// Records a reordered outbound-view occurrence at `occurrence_idx` without mutating the
