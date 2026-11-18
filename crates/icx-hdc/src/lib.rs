@@ -369,9 +369,11 @@ impl HdcAssociativeIndex {
             .map(str::to_ascii_lowercase)
             .collect();
 
+        let adaptive_floor = (self.entries.len() / 64).clamp(16, 512);
         let candidate_cap = top_k
             .saturating_mul(4)
             .clamp(16, 64)
+            .max(adaptive_floor)
             .max(top_k)
             .min(self.entries.len());
 

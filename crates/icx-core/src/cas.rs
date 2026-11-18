@@ -125,13 +125,36 @@ impl CasStore {
         Ok(())
     }
 
-    /// Ingests raw bytes with the 64 MiB STRIDE DoS bound check.
+    /// Ingests raw bytes with the 64 MiB STRIDE DoS bound check and full 256-bit BLAKE3 digest
+    /// collision verification on 64-bit `ArtifactId` hits.
     pub fn put_bytes_checked(
         &mut self,
         raw: &[u8],
     ) -> Result<(ArtifactId, Blake3Digest), IcxError> {
         Self::check_ingest_size(raw.len())?;
+        let (artifact_id, full_digest) = ArtifactId::hash_bytes(raw);
+        if let Some(existing) = self.artifacts.get(&artifact_id) {
+            if existing.full_digest != full_digest {
+                return Err(IcxError::AmbiguousHandlePrefix(artifact_id.to_string()));
+            }
+            return Ok((artifact_id, full_digest));
+        }
         Ok(self.put_bytes(raw))
+    }
+
+    /// Verifies the 256-bit cryptographic BLAKE3 digest of every stored chunk and every
+    /// reassembled top-level artifact in `self`, returning the number of verified artifacts
+    /// (or failing closed with `Err(IcxError::IntegrityViolation)` on any mismatch).
+    pub fn verify_all_integrity(&self) -> Result<usize, IcxError> {
+        for (&cid, (cdigest, bytes)) in &self.chunks {
+            if Blake3Digest::hash(bytes) != *cdigest {
+                return Err(IcxError::IntegrityViolation(cid));
+            }
+        }
+        for &aid in self.artifacts.keys() {
+            let _ = self.deref_bytes(aid)?;
+        }
+        Ok(self.artifacts.len())
     }
 
     /// Ingests raw bytes into the Content-Addressed Store, returning `(ArtifactId, Blake3Digest)`.
@@ -666,5 +689,20 @@ mod tests {
         assert_eq!(cas.deref_lines(cr_id, 1, 1).unwrap(), "first");
         assert_eq!(cas.deref_lines(cr_id, 2, 2).unwrap(), "last\r");
         assert_eq!(cas.deref_lines(cr_id, 1, 2).unwrap(), "first\nlast\r");
+
+        // Verify `put_bytes_checked` idempotence on identical digest and fail-closed rejection on
+        // synthetic 64-bit `ArtifactId` collision with a distinct 256-bit `Blake3Digest`
+        assert_eq!(cas.put_bytes_checked(text.as_bytes()).unwrap().0, id);
+        if let Some(meta) = cas.artifacts.get_mut(&id) {
+            meta.full_digest.0[0] ^= 0xFF;
+        }
+        assert!(matches!(
+            cas.put_bytes_checked(text.as_bytes()),
+            Err(IcxError::AmbiguousHandlePrefix(_))
+        ));
+        assert!(matches!(
+            cas.verify_all_integrity(),
+            Err(IcxError::IntegrityViolation(_))
+        ));
     }
 }

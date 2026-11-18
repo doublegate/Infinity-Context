@@ -60,6 +60,8 @@ struct PersistedMmuState {
     indexed_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     #[serde(default)]
     reordered_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
+    #[serde(default)]
+    agent_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
 }
 
 /// The central Virtual Context Memory Management Unit (`MMU`).
@@ -79,6 +81,7 @@ pub struct InfinityContextMmu {
     hdc_events: Vec<HdcEventRecord>,
     indexed_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     reordered_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
+    agent_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
     clock_ms: u64,
 }
 
@@ -109,6 +112,7 @@ impl InfinityContextMmu {
             hdc_events: Vec::new(),
             indexed_occurrences: BTreeMap::new(),
             reordered_occurrences: BTreeMap::new(),
+            agent_occurrences: BTreeMap::new(),
             clock_ms: 1_794_880_800_000,
         }
     }
@@ -288,6 +292,18 @@ impl InfinityContextMmu {
         let clean_subject = Self::sanitize_hook_label(raw_subject, "event");
         let (sanitized, _) = Self::bound_and_sanitize_raw(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
         let (aid, _) = ArtifactId::hash_bytes(sanitized.as_bytes());
+        if let Some((prev_agent, prev_subj, prev_aid, prev_ec, prev_fa, prev_res)) = self
+            .agent_occurrences
+            .get(&(agent as u8))
+            .and_then(|m| m.get(&occurrence_idx))
+            && *prev_agent == agent as u8
+            && prev_subj == &clean_subject
+            && *prev_aid == aid
+            && *prev_ec == exit_code
+            && *prev_fa == force_anomaly
+        {
+            return (prev_res.clone(), false);
+        }
         if let Some((prev_agent, prev_subj, prev_aid, prev_ec, prev_fa, prev_res)) =
             self.indexed_occurrences.get(&occurrence_idx)
         {
@@ -310,8 +326,12 @@ impl InfinityContextMmu {
         {
             return (prev_res.clone(), false);
         }
-        let _ = self.indexed_occurrences.split_off(&occurrence_idx);
-        let _ = self.reordered_occurrences.split_off(&occurrence_idx);
+        let agent_map = self.agent_occurrences.entry(agent as u8).or_default();
+        let _ = agent_map.split_off(&occurrence_idx);
+        self.indexed_occurrences
+            .retain(|&idx, entry| idx < occurrence_idx || entry.0 != agent as u8);
+        self.reordered_occurrences
+            .retain(|&idx, entry| idx < occurrence_idx || entry.0 != agent as u8);
         let res = self.ingest_payload_for_subagent(
             agent,
             raw_subject,
@@ -320,17 +340,19 @@ impl InfinityContextMmu {
             force_anomaly,
             None,
         );
-        self.indexed_occurrences.insert(
-            occurrence_idx,
-            (
-                agent as u8,
-                clean_subject,
-                aid,
-                exit_code,
-                force_anomaly,
-                res.clone(),
-            ),
+        let record = (
+            agent as u8,
+            clean_subject,
+            aid,
+            exit_code,
+            force_anomaly,
+            res.clone(),
         );
+        self.agent_occurrences
+            .entry(agent as u8)
+            .or_default()
+            .insert(occurrence_idx, record.clone());
+        self.indexed_occurrences.insert(occurrence_idx, record);
         (res, true)
     }
 
@@ -684,6 +706,11 @@ impl InfinityContextMmu {
         // 3. Bi-Temporal Personalized PageRank multi-hop walk
         let seeds: Vec<&str> = query
             .split_whitespace()
+            .map(|w| {
+                w.trim_matches(|c: char| {
+                    !c.is_alphanumeric() && c != '_' && c != ':' && c != '/' && c != '-' && c != '.'
+                })
+            })
             .filter(|w| w.len() >= 3)
             .take(4)
             .collect();
@@ -1030,6 +1057,7 @@ impl InfinityContextMmu {
         self.hdc_events.clear();
         self.indexed_occurrences.clear();
         self.reordered_occurrences.clear();
+        self.agent_occurrences.clear();
         if let Some(st) = persisted_state {
             self.clock_ms = 1_794_880_800_000_u64.max(st.clock_ms).max(max_graph_ms);
             self.dag = st.dag;
@@ -1082,6 +1110,17 @@ impl InfinityContextMmu {
                 .reordered_occurrences
                 .into_iter()
                 .filter(|(_, (_, _, aid, _, _, _))| self.cas.get_meta(*aid).is_some())
+                .collect();
+            self.agent_occurrences = st
+                .agent_occurrences
+                .into_iter()
+                .map(|(agent_id, occs)| {
+                    let valid = occs
+                        .into_iter()
+                        .filter(|(_, (_, _, aid, _, _, _))| self.cas.get_meta(*aid).is_some())
+                        .collect();
+                    (agent_id, valid)
+                })
                 .collect();
         } else {
             self.clock_ms = 1_794_880_800_000_u64.max(max_graph_ms);
@@ -1139,6 +1178,7 @@ impl InfinityContextMmu {
             agent_read_cursors: self.agent_read_cursors.clone(),
             indexed_occurrences: self.indexed_occurrences.clone(),
             reordered_occurrences: self.reordered_occurrences.clone(),
+            agent_occurrences: self.agent_occurrences.clone(),
         };
         let state_bytes = serde_json::to_vec(&state).map_err(Self::map_io_err)?;
         Self::write_atomic_file(icx_dir, "mmu_state.json", &state_bytes)
