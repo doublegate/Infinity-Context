@@ -12,10 +12,15 @@ use icx_hdc::hv::Hypervector;
 use icx_hdc::{AssociativeHit, HdcAssociativeIndex};
 use icx_store::BiTemporalGraph;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 /// Default inline byte threshold above which tool outputs are virtualized into AHTL Holographic Stubs.
 pub const DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES: usize = 512;
+
+/// Canonical AHTL v1.0 operator legend injected at session start (`Zone 0`).
+pub const ICX_AHTL_LEGEND: &str =
+    "⟪ICX:LEGEND│Δ=code_mut│Ψ=tool_stub│Ω=invariant│Θ=xagent│Φ=folded_branch│↦=deref_via_icx_tool⟫";
 
 /// Summary of an ingested tool or turn event.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -26,6 +31,8 @@ pub struct IngestResult {
     pub surprise: f32,
     pub was_virtualized: bool,
 }
+
+type SubagentStep = (String, ArtifactId, String, f32, usize);
 
 /// The central Virtual Context Memory Management Unit (`MMU`).
 #[derive(Clone, Debug)]
@@ -39,6 +46,8 @@ pub struct InfinityContextMmu {
     pub tool_virtualize_threshold: usize,
     pub workspace_hash: u64,
     agent_read_cursors: BTreeMap<u8, u64>,
+    redacted_artifacts: BTreeSet<ArtifactId>,
+    subagent_branches: BTreeMap<String, Vec<SubagentStep>>,
     clock_ms: u64,
 }
 
@@ -54,17 +63,18 @@ impl Default for InfinityContextMmu {
 impl InfinityContextMmu {
     /// Creates a new `InfinityContextMmu`.
     pub fn new(epoch_cfg: EpochControllerConfig, bus: SeqlockTelemetryBus) -> Self {
-        let legend = "⟪ICX:LEGEND│Δ=code_mut│Ψ=tool_stub│Ω=invariant│Θ=xagent│Φ=folded_branch│↦=deref_via_icx_tool⟫";
         Self {
             cas: CasStore::new(),
             dag: MerkleContextDag::new(),
-            epochs: CacheEpochController::new(legend, epoch_cfg),
+            epochs: CacheEpochController::new(ICX_AHTL_LEGEND, epoch_cfg),
             hdc_index: HdcAssociativeIndex::new(),
             graph: BiTemporalGraph::new(),
             bus,
             tool_virtualize_threshold: DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES,
             workspace_hash: 0x4943_585F_574F_524B,
             agent_read_cursors: BTreeMap::new(),
+            redacted_artifacts: BTreeSet::new(),
+            subagent_branches: BTreeMap::new(),
             clock_ms: 1_794_880_800_000,
         }
     }
@@ -162,6 +172,7 @@ impl InfinityContextMmu {
         );
         if was_redacted {
             receipt.hologram_bytes[7] |= icx_codec::FLAG_IS_REDACTED;
+            self.redacted_artifacts.insert(artifact_id);
         }
 
         let mut packet = StructuralSkeletonizer::compress_sanitized_to_packet(
@@ -186,14 +197,22 @@ impl InfinityContextMmu {
 
         // Populate Bi-Temporal Graph with extracted clause relations
         let edge_weight = receipt.verdict.momentum_surprise.max(0.2);
-        for (key, val) in packet
-            .clauses
-            .iter()
-            .filter_map(|c| c.value.as_deref().map(|v| (c.key.as_str(), v)))
-        {
-            if subject.trim().is_empty() || key.trim().is_empty() || val.trim().is_empty() {
+        let mut saw_pass = false;
+        let mut saw_fail = false;
+        let mut saw_anomaly_clause = false;
+        for clause in &packet.clauses {
+            if clause.op == icx_codec::ClauseOp::Anomaly {
+                saw_anomaly_clause = true;
+            }
+            let Some(val) = clause.value.as_deref() else {
+                continue;
+            };
+            let key = clause.key.as_str();
+            if key.trim().is_empty() || val.trim().is_empty() {
                 continue;
             }
+            saw_pass |= key == "pass";
+            saw_fail |= key == "fail";
             let is_functional = matches!(
                 key,
                 "status" | "test_status" | "return_type" | "fail" | "pass" | "exit_code"
@@ -203,6 +222,41 @@ impl InfinityContextMmu {
                 key,
                 val,
                 is_functional,
+                self.clock_ms,
+                artifact_id,
+                edge_weight,
+            );
+        }
+        // Clear-state functional supersession: non-zero exit codes, force_anomaly, or any
+        // diagnostic anomaly/failure clause take strict precedence and record `status = FAIL`;
+        // only clean passing runs (`saw_pass` or `exit_code == Some(0)`) supersede prior failures.
+        let has_failure =
+            force_anomaly || exit_code.is_some_and(|c| c != 0) || saw_fail || saw_anomaly_clause;
+        if has_failure {
+            self.graph.upsert_edge(
+                subject,
+                "status",
+                "FAIL",
+                true,
+                self.clock_ms,
+                artifact_id,
+                edge_weight,
+            );
+        } else if saw_pass || exit_code == Some(0) {
+            self.graph.upsert_edge(
+                subject,
+                "fail",
+                "0",
+                true,
+                self.clock_ms,
+                artifact_id,
+                edge_weight,
+            );
+            self.graph.upsert_edge(
+                subject,
+                "status",
+                "PASS",
+                true,
                 self.clock_ms,
                 artifact_id,
                 edge_weight,
@@ -389,5 +443,133 @@ impl InfinityContextMmu {
         max_matches: usize,
     ) -> Result<Vec<ColdMatch>, IcxError> {
         self.cas.grep_cold(id, pattern, max_matches)
+    }
+
+    /// Returns `true` if pre-CAS secret redaction or delimiter escaping modified `id` during ingestion.
+    #[inline]
+    pub fn is_artifact_redacted(&self, id: ArtifactId) -> bool {
+        self.redacted_artifacts.contains(&id)
+    }
+
+    /// Sanitizes a subagent identifier or summary string through `SecretRedactor::sanitize` and
+    /// strips frame-breaking pipe/newline characters.
+    pub fn sanitize_hook_label(raw: &str, fallback: &str) -> String {
+        let s = SecretRedactor::sanitize(raw)
+            .replace(['│', '\n', '\r'], " ")
+            .trim()
+            .to_owned();
+        if s.is_empty() { fallback.to_owned() } else { s }
+    }
+
+    /// Opens an ID-keyed subagent trajectory scope (`SubagentStart`), isolating concurrent
+    /// sibling subagents from each other and from the parent trajectory.
+    pub fn begin_subagent(&mut self, raw_subagent_id: &str) -> String {
+        let clean_id = Self::sanitize_hook_label(raw_subagent_id, "subagent");
+        self.subagent_branches.entry(clean_id.clone()).or_default();
+        clean_id
+    }
+
+    /// Records a tool or turn event into an active subagent trajectory if `raw_subagent_id`
+    /// matches an open subagent scope.
+    pub fn record_subagent_step(&mut self, raw_subagent_id: &str, role: &str, res: &IngestResult) {
+        let clean_id = Self::sanitize_hook_label(raw_subagent_id, "subagent");
+        if let Some(steps) = self.subagent_branches.get_mut(&clean_id) {
+            let est_tokens = (res.raw_bytes / 4).max(1);
+            steps.push((
+                role.to_owned(),
+                res.artifact_id,
+                res.compressed_ahtl.clone(),
+                res.surprise,
+                est_tokens,
+            ));
+        }
+    }
+
+    /// Completes and folds the trajectory belonging to `raw_subagent_id` (`SubagentStop`),
+    /// sanitizing `raw_summary` through `SecretRedactor::sanitize` before committing the `L2`
+    /// `SubTrajectoryBranch` node to `MerkleContextDag`.
+    pub fn finish_subagent(
+        &mut self,
+        agent: AgentKind,
+        raw_subagent_id: Option<&str>,
+        raw_summary: &str,
+    ) -> String {
+        let clean_summary = Self::sanitize_hook_label(raw_summary, "subagent_completed");
+        let target_key = match raw_subagent_id {
+            Some(id) => Some(Self::sanitize_hook_label(id, "subagent")),
+            None if self.subagent_branches.len() == 1 => {
+                self.subagent_branches.keys().next().cloned()
+            }
+            None => None,
+        };
+        if let Some((clean_id, steps)) =
+            target_key.and_then(|k| self.subagent_branches.remove_entry(&k))
+        {
+            self.epochs.begin_branch(&mut self.dag, &clean_id);
+            if steps.is_empty() {
+                let (aid, _) = self.cas.put_bytes(clean_summary.as_bytes());
+                let _ = self.dag.append_turn(
+                    agent,
+                    &clean_id,
+                    aid,
+                    format!("⟦Φ:{clean_id}⊢{clean_summary}⟧"),
+                    0.3,
+                    (clean_summary.len() / 4).max(1),
+                );
+            } else {
+                for (role, aid, ahtl, surp, est) in steps {
+                    let _ = self.dag.append_turn(agent, &role, aid, ahtl, surp, est);
+                }
+            }
+            let bid = self
+                .epochs
+                .fold_branch(&mut self.dag, &clean_summary)
+                .expect("active subagent branch must fold");
+            return format!("⟪ICX:SUBAGENT_FOLDED│{bid}│{clean_id}│{clean_summary}⟫");
+        }
+        format!("⟪ICX:SUBAGENT_STOP│{clean_summary}⟫")
+    }
+
+    fn map_io_err(err: impl std::fmt::Display) -> IcxError {
+        IcxError::Io(err.to_string())
+    }
+
+    /// Loads persisted `CasStore`, `BiTemporalGraph`, `redacted_artifacts`, and shared-memory
+    /// `SeqlockTelemetryBus` state from `icx_dir`.
+    pub fn load_workspace_dir(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
+        let cas_path = icx_dir.join("cas_store.json");
+        if cas_path.exists() {
+            self.cas = CasStore::load_from_dir(icx_dir)?;
+        }
+        let graph_path = icx_dir.join("bitemporal_graph.json");
+        if graph_path.exists() {
+            self.graph = BiTemporalGraph::load_from_dir(icx_dir)?;
+        }
+        self.redacted_artifacts.clear();
+        let redacted_path = icx_dir.join("redacted_artifacts.json");
+        if redacted_path.exists() {
+            let bytes = std::fs::read(&redacted_path).map_err(Self::map_io_err)?;
+            let ids: Vec<u64> = serde_json::from_slice(&bytes).map_err(Self::map_io_err)?;
+            self.redacted_artifacts.extend(
+                ids.into_iter()
+                    .map(ArtifactId)
+                    .filter(|&aid| self.cas.get_meta(aid).is_some()),
+            );
+        }
+        let shm_path = icx_dir.join("icx-fabric-v1.shm");
+        if shm_path.exists() {
+            self.bus =
+                SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(Self::map_io_err)?;
+        }
+        Ok(())
+    }
+
+    /// Atomically persists `CasStore`, `BiTemporalGraph`, and `redacted_artifacts` state into `icx_dir`.
+    pub fn save_workspace_dir(&self, icx_dir: &Path) -> Result<(), IcxError> {
+        self.cas.save_to_dir(icx_dir)?;
+        self.graph.save_to_dir(icx_dir)?;
+        let redacted_ids: Vec<u64> = self.redacted_artifacts.iter().map(|id| id.0).collect();
+        let bytes = serde_json::to_vec(&redacted_ids).map_err(Self::map_io_err)?;
+        std::fs::write(icx_dir.join("redacted_artifacts.json"), bytes).map_err(Self::map_io_err)
     }
 }

@@ -25,7 +25,7 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 **Exit Criterion:** `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo llvm-cov --workspace --all-targets --fail-under-lines 95` pass with 100% lossless byte/line round-trip recovery, zero `unsafe` code across all 8 crates, and `< 1 µs` seqlock ring latency.  
 **Estimated Duration:** 4 weeks  
 
-- [Phase 1 Overview](phase-1-foundations/overview.md)
+- [Phase 1 Overview](phase-1-foundations/overview.md) · [Phase 1 Implementation Plan](phase-1-foundations/phase_1_implementation_plan.md)
   - [Sprint 1 — Workspace, FastCDC & BLAKE3 CAS (COMPLETED)](phase-1-foundations/sprint-1-workspace-and-cas.md)
   - [Sprint 2 — Lossless Merkle-DAG (`LCM`) & Cache-Epoch Controller (COMPLETED)](phase-1-foundations/sprint-2-merkle-dag-and-epochs.md)
   - [Sprint 3 — Lock-Free `/dev/shm` Seqlock Telepathy Bus (COMPLETED)](phase-1-foundations/sprint-3-shm-seqlock-bus.md)
@@ -38,7 +38,7 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 **Exit Criterion:** Achieves `12x–40x` compression ratio on real agent transcripts/logs with 100% identifier/line preservation, zero delimiter-injection vulnerabilities, and 100% secret redaction coverage, cross-referenced against `docs/ahtl/AHTL_v1_Complete_Technical_Specification_Volume.pdf`.  
 **Estimated Duration:** 3 weeks  
 
-- [Phase 2 Overview](phase-2-alien-codec-and-compression/overview.md)
+- [Phase 2 Overview](phase-2-alien-codec-and-compression/overview.md) · [Phase 2 Implementation Plan](phase-2-alien-codec-and-compression/phase_2_implementation_plan.md)
   - [Sprint 1 — AHTL Grammar, Parser & Braille-256 Bijection (COMPLETED)](phase-2-alien-codec-and-compression/sprint-1-ahtl-grammar-and-braille.md)
   - [Sprint 2 — AST, Test-Log & Diff Structural Skeletonizers (COMPLETED)](phase-2-alien-codec-and-compression/sprint-2-structural-skeletonizers.md)
   - [Sprint 3 — Pre-Ingestion Secret Redactor & Delimiter Escaping (COMPLETED)](phase-2-alien-codec-and-compression/sprint-3-secret-redaction-and-safety.md)
@@ -50,7 +50,7 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 **Exit Criterion:** Associative recall queries complete in `< 50 µs` over 10,000 nodes; Fractal suffix matching identifies shared trajectory suffixes in $O(1)$ time; Bi-Temporal functional edges auto-invalidate stale facts.  
 **Estimated Duration:** 3 weeks  
 
-- [Phase 3 Overview](phase-3-hyperdimensional-and-fractal-index/overview.md)
+- [Phase 3 Overview](phase-3-hyperdimensional-and-fractal-index/overview.md) · [Phase 3 Implementation Plan](phase-3-hyperdimensional-and-fractal-index/phase_3_implementation_plan.md)
   - [Sprint 1 — 10,240-Bit HDC/HRR Engine & Infini-Attention Delta Bundler (COMPLETED)](phase-3-hyperdimensional-and-fractal-index/sprint-1-hdc-10240bit-engine.md)
   - [Sprint 2 — Fractal Chaos-Game Archive (`FCGA`) & Titans Surprise Gate (COMPLETED)](phase-3-hyperdimensional-and-fractal-index/sprint-2-fractal-ifs-and-surprise-gate.md)
   - [Sprint 3 — Bi-Temporal CSR Knowledge Graph & Personalized PageRank (`PPR`) (COMPLETED)](phase-3-hyperdimensional-and-fractal-index/sprint-3-bitemporal-graph-and-ppr.md)
@@ -62,7 +62,7 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 **Exit Criterion:** All four agent adapters pass wire-schema conformance tests; `PostToolUse` rewrites bulky tool outputs into AHTL stubs; cross-agent telepathy propagates across harnesses in `< 100 µs`.  
 **Estimated Duration:** 3 weeks  
 
-- [Phase 4 Overview](phase-4-cross-agent-interception/overview.md)
+- [Phase 4 Overview](phase-4-cross-agent-interception/overview.md) · [Phase 4 Implementation Plan](phase-4-cross-agent-interception/phase_4_implementation_plan.md)
   - [Sprint 1 — Claude Code & OpenAI Codex Hook & WAL Adapters](phase-4-cross-agent-interception/sprint-1-claude-and-codex-adapters.md)
   - [Sprint 2 — Antigravity CLI (`agy`) & Hermes ContextEngine Adapters](phase-4-cross-agent-interception/sprint-2-agy-and-hermes-adapters.md)
   - [Sprint 3 — Single-Tool Polymorphic MCP Pager & Cache-Epoch Wire Proxy](phase-4-cross-agent-interception/sprint-3-mcp-pager-and-wire-proxy.md)

@@ -4,13 +4,33 @@
 //! (`session-start.command.output`, `user-prompt-submit.command.output`,
 //! `post-tool-use.command.output`, `pre-compact.command.output`).
 
-use crate::mmu::InfinityContextMmu;
+use crate::mmu::{ICX_AHTL_LEGEND, InfinityContextMmu};
+use crate::{AdapterError, AgentHookAdapter};
 use icx_core::AgentKind;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
+use std::fs::File;
+use std::io::{self, BufRead, BufReader, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
 
 /// Native hook adapter for OpenAI Codex CLI (`0.169.0+`).
 #[derive(Clone, Debug, Default)]
 pub struct CodexAdapter;
+
+impl AgentHookAdapter for CodexAdapter {
+    fn agent_kind(&self) -> AgentKind {
+        AgentKind::Codex
+    }
+
+    fn handle_hook_event(
+        &self,
+        event_name: &str,
+        stdin_json: &str,
+        mmu: &mut InfinityContextMmu,
+    ) -> Result<String, AdapterError> {
+        Ok(Self::handle_hook(event_name, stdin_json, mmu)?)
+    }
+}
 
 impl CodexAdapter {
     /// Handles a Codex lifecycle hook event JSON payload and emits schema-validated output JSON.
@@ -32,7 +52,7 @@ impl CodexAdapter {
                     "continue": true,
                     "hookSpecificOutput": {
                         "hookEventName": "SessionStart",
-                        "additionalContext": tail
+                        "additionalContext": format!("{ICX_AHTL_LEGEND}\n{tail}")
                     },
                     "stopReason": null,
                     "suppressOutput": false,
@@ -56,6 +76,21 @@ impl CodexAdapter {
                     "systemMessage": null
                 })
             }
+            "PreToolUse" | "pre-tool-use" => {
+                let mut hso = json!({
+                    "hookEventName": "PreToolUse"
+                });
+                if let Some(updated) = payload.get("updatedInput").filter(|v| !v.is_null()) {
+                    hso["updatedInput"] = updated.clone();
+                }
+                json!({
+                    "continue": true,
+                    "hookSpecificOutput": hso,
+                    "stopReason": null,
+                    "suppressOutput": false,
+                    "systemMessage": null
+                })
+            }
             "PostToolUse" | "post-tool-use" => {
                 let tool_name = payload
                     .get("tool_name")
@@ -74,17 +109,72 @@ impl CodexAdapter {
                     exit_code,
                     false,
                 );
+                if let Some(sub_id) = ["subagent_id", "agent_id"]
+                    .into_iter()
+                    .find_map(|k| payload.get(k).and_then(Value::as_str))
+                {
+                    mmu.record_subagent_step(sub_id, tool_name, &res);
+                }
+                let mut hso = json!({
+                    "hookEventName": "PostToolUse",
+                    "additionalContext": res.compressed_ahtl
+                });
+                if tool_name.starts_with("mcp__") && res.was_virtualized {
+                    let total_lines = mmu
+                        .cas
+                        .get_meta(res.artifact_id)
+                        .map_or(1, |m| m.total_lines.max(1));
+                    let stub = format!(
+                        "⟪ICX:STUB│{}│raw={}B→{}B│lines=1..{total_lines}⟫\n{}",
+                        res.artifact_id,
+                        res.raw_bytes,
+                        res.compressed_ahtl.len(),
+                        res.compressed_ahtl
+                    );
+                    hso["updatedMCPToolOutput"] = Value::String(stub);
+                }
 
                 json!({
                     "continue": true,
-                    "hookSpecificOutput": {
-                        "hookEventName": "PostToolUse",
-                        "additionalContext": res.compressed_ahtl
-                    },
+                    "hookSpecificOutput": hso,
                     "reason": null,
                     "stopReason": null,
                     "suppressOutput": false,
                     "systemMessage": null
+                })
+            }
+            "SubagentStart" | "subagent-start" => {
+                let raw_subagent_id = ["subagent_id", "agent_id"]
+                    .into_iter()
+                    .find_map(|k| payload.get(k).and_then(Value::as_str))
+                    .unwrap_or("codex_subagent");
+                let subagent_id = mmu.begin_subagent(raw_subagent_id);
+                let tail = mmu.build_ephemeral_tail_slot(AgentKind::Codex, &subagent_id, 3);
+                json!({
+                    "continue": true,
+                    "hookSpecificOutput": {
+                        "hookEventName": "SubagentStart",
+                        "additionalContext": tail
+                    },
+                    "stopReason": null,
+                    "suppressOutput": false,
+                    "systemMessage": null
+                })
+            }
+            "SubagentStop" | "subagent-stop" => {
+                let subagent_id = ["subagent_id", "agent_id"]
+                    .into_iter()
+                    .find_map(|k| payload.get(k).and_then(Value::as_str));
+                let summary = ["summary", "outcome"]
+                    .into_iter()
+                    .find_map(|k| payload.get(k).and_then(Value::as_str))
+                    .unwrap_or("subagent_completed");
+                let folded_msg = mmu.finish_subagent(AgentKind::Codex, subagent_id, summary);
+                json!({
+                    "continue": true,
+                    "stopReason": null,
+                    "suppressOutput": false,
+                    "systemMessage": folded_msg
                 })
             }
             "PreCompact" | "pre-compact" | "PostCompact" | "post-compact" => {
@@ -98,10 +188,168 @@ impl CodexAdapter {
                 })
             }
             _ => json!({
-                "continue": true
+                "continue": true,
+                "stopReason": null,
+                "suppressOutput": false,
+                "systemMessage": null
             }),
         };
 
         serde_json::to_string(&response)
+    }
+}
+
+/// Per-file bookmark tracking committed byte offset and prefix digest so file replacement or
+/// truncation/rewrite is deterministically detected even when the replacement file is longer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RolloutBookmark {
+    offset: u64,
+    prefix_digest: icx_core::Blake3Digest,
+}
+
+/// Incremental JSONL rollout tailer for OpenAI Codex `threads.rollout_path` (`RolloutItemWire`).
+#[derive(Clone, Debug, Default)]
+pub struct CodexRolloutTailer {
+    bookmarks: BTreeMap<PathBuf, RolloutBookmark>,
+}
+
+impl CodexRolloutTailer {
+    /// Creates a new `CodexRolloutTailer`.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns the committed byte offset for `path`.
+    pub fn offset_for(&self, path: &Path) -> u64 {
+        self.bookmarks.get(path).map_or(0, |b| b.offset)
+    }
+
+    fn compute_prefix_digest(file: &mut File, len: u64) -> io::Result<icx_core::Blake3Digest> {
+        use std::io::Read;
+        file.seek(SeekFrom::Start(0))?;
+        let cap = (len as usize).min(65_536);
+        let mut buf = vec![0u8; cap];
+        file.read_exact(&mut buf)?;
+        Ok(icx_core::Blake3Digest::hash(&buf))
+    }
+
+    /// Polls `path` from its last committed byte offset (resetting to `0` if the file was
+    /// truncated, rotated, or rewritten in-place), ingesting newly appended complete JSONL lines
+    /// into `mmu` and advancing the stored bookmark.
+    pub fn poll_file(
+        &mut self,
+        path: &Path,
+        mmu: &mut InfinityContextMmu,
+    ) -> Result<usize, io::Error> {
+        let mut start_offset = 0u64;
+        if let Some(bm) = self.bookmarks.get(path)
+            && bm.offset > 0
+        {
+            let mut f = File::open(path)?;
+            let flen = f.metadata()?.len();
+            if flen >= bm.offset
+                && Self::compute_prefix_digest(&mut f, bm.offset)? == bm.prefix_digest
+            {
+                start_offset = bm.offset;
+            }
+        }
+        let (next_offset, count) = Self::ingest_rollout_jsonl_since(path, start_offset, mmu)?;
+        let mut f = File::open(path)?;
+        let prefix_digest = Self::compute_prefix_digest(&mut f, next_offset)?;
+        self.bookmarks.insert(
+            path.to_path_buf(),
+            RolloutBookmark {
+                offset: next_offset,
+                prefix_digest,
+            },
+        );
+        Ok(count)
+    }
+
+    /// Reads complete `\n`-terminated `RolloutItemWire` JSONL lines from `path` starting at
+    /// `byte_offset` (resetting to `0` if `file_len < byte_offset` or if `byte_offset` does not
+    /// land immediately after a newline `b'\n'`), ingests non-empty entries into `mmu`, and
+    /// returns `(committed_byte_offset, ingested_count)`.
+    pub fn ingest_rollout_jsonl_since(
+        path: &Path,
+        byte_offset: u64,
+        mmu: &mut InfinityContextMmu,
+    ) -> Result<(u64, usize), io::Error> {
+        use std::io::Read;
+        let mut file = File::open(path)?;
+        let file_len = file.metadata()?.len();
+        let mut committed = if byte_offset == 0 || file_len < byte_offset {
+            0
+        } else {
+            file.seek(SeekFrom::Start(byte_offset - 1))?;
+            let mut prev = [0u8; 1];
+            file.read_exact(&mut prev)?;
+            if prev[0] == b'\n' { byte_offset } else { 0 }
+        };
+        file.seek(SeekFrom::Start(committed))?;
+        let mut reader = BufReader::new(file);
+        let mut line = String::new();
+        let mut ingested = 0usize;
+
+        loop {
+            line.clear();
+            let bytes_read = reader.read_line(&mut line)?;
+            if bytes_read == 0 || !line.ends_with('\n') {
+                // Stop before consuming any incomplete trailing line still being written.
+                break;
+            }
+            committed += bytes_read as u64;
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let Ok(val) = serde_json::from_str::<Value>(trimmed) else {
+                continue;
+            };
+            if let Some((subject, body, exit_code)) = Self::extract_rollout_item(&val) {
+                let _ = mmu.ingest_payload_with_exit_code(
+                    AgentKind::Codex,
+                    &subject,
+                    &body,
+                    exit_code,
+                    false,
+                );
+                ingested += 1;
+            }
+        }
+        Ok((committed, ingested))
+    }
+
+    fn non_empty_body_value(v: &Value) -> Option<String> {
+        match v {
+            Value::String(s) if !s.trim().is_empty() => Some(s.clone()),
+            Value::Array(a) if !a.is_empty() => Some(v.to_string()),
+            Value::Object(o) if !o.is_empty() => Some(v.to_string()),
+            Value::Number(_) | Value::Bool(_) => Some(v.to_string()),
+            _ => None,
+        }
+    }
+
+    fn extract_rollout_item(val: &Value) -> Option<(String, String, Option<i32>)> {
+        let item = ["item", "payload"]
+            .into_iter()
+            .find_map(|k| val.get(k))
+            .unwrap_or(val);
+        let kind = item
+            .get("type")
+            .and_then(Value::as_str)
+            .or_else(|| val.get("type").and_then(Value::as_str))
+            .unwrap_or("rollout_item");
+        let subject = ["name", "tool_name", "call_id", "role"]
+            .into_iter()
+            .find_map(|k| item.get(k).and_then(Value::as_str))
+            .unwrap_or(kind)
+            .to_owned();
+        let body = ["output", "content", "summary", "text"]
+            .into_iter()
+            .find_map(|k| item.get(k).and_then(Self::non_empty_body_value))?;
+        let exit_code = InfinityContextMmu::extract_exit_code(item)
+            .or_else(|| InfinityContextMmu::extract_exit_code(val));
+        Some((subject, body, exit_code))
     }
 }

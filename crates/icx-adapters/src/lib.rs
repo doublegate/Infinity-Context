@@ -11,10 +11,40 @@ pub mod mmu;
 
 pub use antigravity::AntigravityAdapter;
 pub use claude::ClaudeCodeAdapter;
-pub use codex::CodexAdapter;
+pub use codex::{CodexAdapter, CodexRolloutTailer};
 pub use hermes::{HermesAdapter, HermesMessage};
 pub use mcp::McpPagerServer;
-pub use mmu::{DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES, InfinityContextMmu, IngestResult};
+pub use mmu::{
+    DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES, ICX_AHTL_LEGEND, InfinityContextMmu, IngestResult,
+};
+
+use icx_core::{AgentKind, IcxError};
+use thiserror::Error;
+
+/// Error type returned by `AgentHookAdapter::handle_hook_event` (`docs/interfaces.md` §4).
+#[derive(Debug, Error)]
+pub enum AdapterError {
+    #[error("hook JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("core MMU error: {0}")]
+    Icx(#[from] IcxError),
+    #[error("adapter I/O error: {0}")]
+    Io(String),
+}
+
+/// Normative trait implemented by all agent lifecycle hook adapters (`docs/interfaces.md` §4).
+pub trait AgentHookAdapter: Send + Sync {
+    /// Identifies the target agent harness.
+    fn agent_kind(&self) -> AgentKind;
+
+    /// Processes a raw JSON hook payload from `stdin` and produces the exact wire JSON response for `stdout`.
+    fn handle_hook_event(
+        &self,
+        event_name: &str,
+        stdin_json: &str,
+        mmu: &mut InfinityContextMmu,
+    ) -> Result<String, AdapterError>;
+}
 
 #[cfg(test)]
 mod tests {
@@ -516,5 +546,275 @@ unprefixed_secret = {unpref_sec}
                 .is_err()
         );
         assert!(mmu.deref_lines(exit_res.artifact_id, 0, 2).is_err());
+
+        // Verify AgentHookAdapter trait surface, PreToolUse, SubagentStart/Stop, and MCP tool virtualization
+        let claude_trait: &dyn AgentHookAdapter = &ClaudeCodeAdapter;
+        assert_eq!(claude_trait.agent_kind(), AgentKind::ClaudeCode);
+        let claude_pre = claude_trait
+            .handle_hook_event(
+                "PreToolUse",
+                r#"{"updatedInput":{"command":"cargo test --quiet"}}"#,
+                &mut mmu,
+            )
+            .unwrap();
+        assert!(claude_pre.contains("cargo test --quiet"));
+        let claude_sub_start = claude_trait
+            .handle_hook_event("SubagentStart", r#"{"subagent_id":"sub-1"}"#, &mut mmu)
+            .unwrap();
+        assert!(claude_sub_start.contains("SubagentStart"));
+        let claude_mcp_post = claude_trait
+            .handle_hook_event(
+                "PostToolUse",
+                &serde_json::json!({
+                    "tool_name": "mcp__github__search",
+                    "tool_response": "result line\n".repeat(60)
+                })
+                .to_string(),
+                &mut mmu,
+            )
+            .unwrap();
+        assert!(claude_mcp_post.contains("updatedMCPToolOutput"));
+        assert!(claude_mcp_post.contains("lines=1..60"));
+        let claude_sub_stop = claude_trait
+            .handle_hook_event("SubagentStop", r#"{"summary":"done_sub_1"}"#, &mut mmu)
+            .unwrap();
+        assert!(claude_sub_stop.contains("ICX:SUBAGENT_FOLDED"));
+        let claude_sub_stop_empty = claude_trait
+            .handle_hook_event(
+                "SubagentStop",
+                r#"{"outcome":"no_active_branch"}"#,
+                &mut mmu,
+            )
+            .unwrap();
+        assert!(claude_sub_stop_empty.contains("ICX:SUBAGENT_STOP"));
+
+        let codex_trait: &dyn AgentHookAdapter = &CodexAdapter;
+        assert_eq!(codex_trait.agent_kind(), AgentKind::Codex);
+        let _ = claude_trait
+            .handle_hook_event("PreToolUse", "{}", &mut mmu)
+            .unwrap();
+        let _ = codex_trait
+            .handle_hook_event("pre-tool-use", "{}", &mut mmu)
+            .unwrap();
+        let codex_pre = codex_trait
+            .handle_hook_event(
+                "pre-tool-use",
+                r#"{"updatedInput":{"cmd":"pytest"}}"#,
+                &mut mmu,
+            )
+            .unwrap();
+        assert!(codex_pre.contains("PreToolUse"));
+        let codex_sub_start = codex_trait
+            .handle_hook_event("subagent-start", r#"{"agent_id":"cx-sub"}"#, &mut mmu)
+            .unwrap();
+        assert!(codex_sub_start.contains("SubagentStart"));
+        let codex_mcp_post = codex_trait
+            .handle_hook_event(
+                "post-tool-use",
+                &serde_json::json!({
+                    "agent_id": "cx-sub",
+                    "tool_name": "mcp__fs__read",
+                    "tool_response": "file line\n".repeat(60)
+                })
+                .to_string(),
+                &mut mmu,
+            )
+            .unwrap();
+        assert!(codex_mcp_post.contains("updatedMCPToolOutput"));
+        let codex_sub_stop = codex_trait
+            .handle_hook_event("subagent-stop", r#"{"outcome":"cx_done"}"#, &mut mmu)
+            .unwrap();
+        assert!(codex_sub_stop.contains("ICX:SUBAGENT_FOLDED"));
+        let codex_sub_stop_empty = codex_trait
+            .handle_hook_event("subagent-stop", "{}", &mut mmu)
+            .unwrap();
+        assert!(codex_sub_stop_empty.contains("ICX:SUBAGENT_STOP"));
+
+        // Verify overlapping subagents and ID-keyed subagent branch folding
+        let _ = claude_trait
+            .handle_hook_event("SubagentStart", r#"{"subagent_id":"sub-A"}"#, &mut mmu)
+            .unwrap();
+        let _ = claude_trait
+            .handle_hook_event(
+                "PostToolUse",
+                &serde_json::json!({
+                    "subagent_id": "sub-A",
+                    "tool_name": "Bash",
+                    "tool_response": "step A\n".repeat(60)
+                })
+                .to_string(),
+                &mut mmu,
+            )
+            .unwrap();
+        let _ = claude_trait
+            .handle_hook_event("SubagentStart", r#"{"subagent_id":"sub-B"}"#, &mut mmu)
+            .unwrap();
+        let _ = claude_trait
+            .handle_hook_event(
+                "PostToolUse",
+                &serde_json::json!({
+                    "subagent_id": "sub-B",
+                    "tool_name": "Bash",
+                    "tool_response": "step B\n".repeat(60)
+                })
+                .to_string(),
+                &mut mmu,
+            )
+            .unwrap();
+        // Stopping sub-A out-of-order folds sub-A while sub-B stays open
+        let stop_a = claude_trait
+            .handle_hook_event(
+                "SubagentStop",
+                r#"{"subagent_id":"sub-A","summary":"done A"}"#,
+                &mut mmu,
+            )
+            .unwrap();
+        assert!(stop_a.contains("ICX:SUBAGENT_FOLDED"));
+        let stop_b = claude_trait
+            .handle_hook_event(
+                "SubagentStop",
+                r#"{"subagent_id":"sub-B","summary":"done B"}"#,
+                &mut mmu,
+            )
+            .unwrap();
+        assert!(stop_b.contains("ICX:SUBAGENT_FOLDED"));
+
+        // Verify Clear-State Functional Supersession (failing suite -> passing suite supersedes fail & status)
+        let _ = mmu.ingest_payload_with_exit_code(
+            AgentKind::ClaudeCode,
+            "suite_supersede",
+            "running 2 tests\ntest a ... FAILED\ntest result: FAILED. 1 passed; 1 failed;",
+            Some(101),
+            false,
+        );
+        assert_eq!(
+            mmu.graph
+                .query_edges_from("suite_supersede", None)
+                .iter()
+                .find(|e| e.relation == "status")
+                .map(|e| e.target_entity.as_str()),
+            Some("FAIL")
+        );
+        // Mixed run: has a passing test (`saw_pass == true`) but exits non-zero (`Some(101)`) -> must stay FAIL
+        let _ = mmu.ingest_payload_with_exit_code(
+            AgentKind::ClaudeCode,
+            "suite_supersede",
+            "running 1 test\ntest a ... ok\nerror: process exited with code 101",
+            Some(101),
+            false,
+        );
+        assert_eq!(
+            mmu.graph
+                .query_edges_from("suite_supersede", None)
+                .iter()
+                .find(|e| e.relation == "status")
+                .map(|e| e.target_entity.as_str()),
+            Some("FAIL")
+        );
+        let _ = mmu.ingest_payload_with_exit_code(
+            AgentKind::ClaudeCode,
+            "suite_supersede",
+            "running 2 tests\ntest a ... ok\ntest b ... ok\ntest result: ok. 2 passed; 0 failed;",
+            Some(0),
+            false,
+        );
+        assert_eq!(
+            mmu.graph
+                .query_edges_from("suite_supersede", None)
+                .iter()
+                .find(|e| e.relation == "status")
+                .map(|e| e.target_entity.as_str()),
+            Some("PASS")
+        );
+        assert_eq!(
+            mmu.graph
+                .query_edges_from("suite_supersede", None)
+                .iter()
+                .find(|e| e.relation == "fail")
+                .map(|e| e.target_entity.as_str()),
+            Some("0")
+        );
+
+        // Verify redaction tracking (`is_artifact_redacted`) and workspace load/save round-trip
+        let synthetic_secret = format!(
+            "OPENAI_API_KEY={}{}",
+            "sk-proj-", "1234567890abcdefghijklmnop"
+        );
+        let redacted_res = mmu.ingest_payload(
+            AgentKind::ClaudeCode,
+            "secret_env",
+            &synthetic_secret,
+            false,
+        );
+        assert!(mmu.is_artifact_redacted(redacted_res.artifact_id));
+        assert!(!mmu.is_artifact_redacted(exit_ok_res.artifact_id));
+
+        let ws_dir = std::env::temp_dir().join(format!("icx_ws_sprint41_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ws_dir);
+        std::fs::create_dir_all(&ws_dir).unwrap();
+        let mut loaded_mmu = InfinityContextMmu::default();
+        loaded_mmu.load_workspace_dir(&ws_dir).unwrap();
+        std::fs::write(ws_dir.join("icx-fabric-v1.shm"), b"bad_shm").unwrap();
+        assert!(loaded_mmu.load_workspace_dir(&ws_dir).is_err());
+        let _ = std::fs::remove_file(ws_dir.join("icx-fabric-v1.shm"));
+        let _ = icx_bus::SeqlockTelemetryBus::open_shared_file(ws_dir.join("icx-fabric-v1.shm"))
+            .unwrap();
+        mmu.save_workspace_dir(&ws_dir).unwrap();
+        loaded_mmu.load_workspace_dir(&ws_dir).unwrap();
+        assert_eq!(loaded_mmu.cas.artifact_count(), mmu.cas.artifact_count());
+        assert_eq!(
+            loaded_mmu.graph.active_edge_count(),
+            mmu.graph.active_edge_count()
+        );
+        assert!(loaded_mmu.is_artifact_redacted(redacted_res.artifact_id));
+
+        // Verify CodexRolloutTailer incremental tailing, empty-array fallthrough, partial-line safety, and rotation reset
+        let rollout_path = ws_dir.join("rollout.jsonl");
+        std::fs::write(
+            &rollout_path,
+            "{\"type\":\"function_call_output\",\"name\":\"exec\",\"output\":\"hello rollout\",\"exit_code\":0}\n\n{bad_json}\n{\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":\"   \"}}\n{\"type\":\"Compacted\",\"summary\":[],\"text\":\"compacted_fallback_text\"}\n{\"type\":\"TurnContext\",\"payload\":{\"summary\":{\"turn\":1}}}\npartial_trailing_without_newline",
+        )
+        .unwrap();
+        let mut tailer = CodexRolloutTailer::new();
+        assert_eq!(tailer.offset_for(&rollout_path), 0);
+        let c1 = tailer.poll_file(&rollout_path, &mut loaded_mmu).unwrap();
+        assert_eq!(c1, 3);
+        let saved_offset = tailer.offset_for(&rollout_path);
+        assert!(saved_offset > 0);
+        // Append another complete line to existing file to verify prefix_digest match advances from saved_offset
+        {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&rollout_path)
+                .unwrap();
+            writeln!(f, "\n{{\"type\":\"RetainedContext\",\"text\":42}}").unwrap();
+        }
+        let c_inc = tailer.poll_file(&rollout_path, &mut loaded_mmu).unwrap();
+        assert_eq!(c_inc, 1);
+        let saved_offset = tailer.offset_for(&rollout_path);
+        // Direct call with mid-line byte_offset (preceding byte != '\n') resets to 0
+        let (_, c_mid) =
+            CodexRolloutTailer::ingest_rollout_jsonl_since(&rollout_path, 5, &mut loaded_mmu)
+                .unwrap();
+        assert_eq!(c_mid, 4);
+        // Rewrite file with different content of GREATER length to verify prefix_digest mismatch resets offset to 0
+        let rewritten = format!(
+            "{{\"type\":\"RetainedContext\",\"text\":\"{}\"}}\n",
+            "retained_longer_rewrite_".repeat(25)
+        );
+        assert!(rewritten.len() as u64 > saved_offset);
+        std::fs::write(&rollout_path, &rewritten).unwrap();
+        let c_rewrite = tailer.poll_file(&rollout_path, &mut loaded_mmu).unwrap();
+        assert_eq!(c_rewrite, 1);
+        // Truncate file to shorter length to verify offset reset to 0
+        std::fs::write(
+            &rollout_path,
+            "{\"type\":\"RetainedContext\",\"text\":\"retained_after_rotate\"}\n",
+        )
+        .unwrap();
+        let c2 = tailer.poll_file(&rollout_path, &mut loaded_mmu).unwrap();
+        assert_eq!(c2, 1);
+        let _ = std::fs::remove_dir_all(&ws_dir);
     }
 }
