@@ -57,8 +57,8 @@ pub struct AhtlWirePacketV1 {
 }
 
 impl AhtlWirePacketV1 {
-    /// Returns the formatted handle (`#icx:<12-hex>` when `compact_48bit_handle` is `true`,
-    /// otherwise `#icx:<16-hex>`).
+    /// Formats the pure CAS handle string (`#icx:<12-hex>` or `#icx:<16-hex>`), preserving
+    /// handle width for `CasStore::resolve_handle`.
     pub fn cas_handle_string(&self) -> String {
         if self.compact_48bit_handle {
             self.cas_handle.to_short_handle()
@@ -67,74 +67,93 @@ impl AhtlWirePacketV1 {
         }
     }
 
-    /// Serializes this Profile A packet into its canonical UTF-8 wire representation.
+    /// Renders the canonical 6-section Profile A wire packet:
+    /// `⟦AHTL v1│#icx:<12|16-hex>((<slice_hint>))?│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧`
     pub fn render(&self) -> String {
-        let braille_str = encode_braille_64(&self.braille_spectrum);
-        let handle_str = match &self.slice_hint {
-            Some(hint) => format!("{}({hint})", self.cas_handle_string()),
-            None => self.cas_handle_string(),
-        };
+        let mut handle_field = self.cas_handle_string();
+        if let Some(hint) = &self.slice_hint {
+            if !hint.is_empty() {
+                handle_field.push('(');
+                handle_field.push_str(hint);
+                handle_field.push(')');
+            }
+        }
         format!(
             "⟦AHTL v1│{}│fc:{}│hv:{}│{}│{}⟧",
-            handle_str,
+            handle_field,
             self.fractal_coord_hex,
             self.hdc_digest_hex,
-            braille_str,
+            encode_braille_64(&self.braille_spectrum),
             self.skeleton_body
         )
     }
 
-    /// Parses a Profile A wire string (`⟦AHTL v1│#icx:...│fc:...│hv:...│...│...⟧`).
-    pub fn parse(raw: &str) -> Result<Self, crate::ahtl::CodecError> {
-        use crate::ahtl::{CodecError, split_deref_slice_hint};
-        let trimmed = raw.trim();
-        let inner = trimmed
+    /// Parses a canonical 6-section Profile A wire packet (`⟦AHTL v1│...⟧`).
+    pub fn parse(input: &str) -> Result<Self, crate::ahtl::CodecError> {
+        use crate::ahtl::CodecError;
+        let inner = input
+            .trim()
             .strip_prefix('⟦')
             .and_then(|s| s.strip_suffix('⟧'))
             .ok_or(CodecError::MissingDelimiters)?;
 
-        let mut sections = inner.splitn(6, '│');
-        let magic = sections.next().ok_or(CodecError::UnknownPacketKind)?;
+        let mut parts = inner.splitn(6, '│');
+        let magic = parts.next().ok_or(CodecError::UnknownPacketKind)?;
         if magic != "AHTL v1" {
             return Err(CodecError::UnknownPacketKind);
         }
-        let handle_sec = sections
+
+        let handle_field = parts
             .next()
             .ok_or_else(|| CodecError::MalformedHandle(String::new()))?;
-        let fc_sec = sections.next().ok_or(CodecError::MalformedFractalCoord)?;
-        let hv_sec = sections.next().ok_or(CodecError::MalformedHdcDigest)?;
-        let braille_sec = sections.next().ok_or(CodecError::MalformedBrailleSketch)?;
-        let skeleton_body = sections.next().ok_or(CodecError::MalformedSubject)?;
+        let (handle_raw, slice_hint) = if let Some(with_hint) = handle_field.strip_suffix(')') {
+            let (h_part, hint_part) = with_hint
+                .split_once('(')
+                .ok_or_else(|| CodecError::MalformedHandle(handle_field.to_owned()))?;
+            if hint_part.is_empty() {
+                return Err(CodecError::MalformedHandle(handle_field.to_owned()));
+            }
+            (h_part, Some(hint_part.to_owned()))
+        } else {
+            (handle_field, None)
+        };
+        let hex_part = handle_raw
+            .strip_prefix("#icx:")
+            .ok_or_else(|| CodecError::MalformedHandle(handle_raw.to_owned()))?;
+        let compact_48bit_handle = hex_part.len() == 12;
+        let (cas_handle, _) = ArtifactId::parse_prefix_range(handle_raw)
+            .map_err(|_| CodecError::MalformedHandle(handle_raw.to_owned()))?;
 
-        let (handle_token, slice_hint) = split_deref_slice_hint(handle_sec)?;
-        let (min_id, _max_id, is_exact_64) = ArtifactId::parse_prefix_range(handle_token)
-            .ok_or_else(|| CodecError::MalformedHandle(handle_sec.to_owned()))?;
-
-        let fc_hex = fc_sec
+        let fc_raw = parts.next().ok_or(CodecError::MalformedFractalCoord)?;
+        let fc_hex = fc_raw
             .strip_prefix("fc:")
             .ok_or(CodecError::MalformedFractalCoord)?;
         if fc_hex.len() != 64 || !fc_hex.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(CodecError::MalformedFractalCoord);
         }
 
-        let hv_hex = hv_sec
+        let hv_raw = parts.next().ok_or(CodecError::MalformedHdcDigest)?;
+        let hv_hex = hv_raw
             .strip_prefix("hv:")
             .ok_or(CodecError::MalformedHdcDigest)?;
         if hv_hex.len() != 16 || !hv_hex.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(CodecError::MalformedHdcDigest);
         }
 
+        let braille_raw = parts.next().ok_or(CodecError::MalformedBrailleSketch)?;
         let braille_spectrum =
-            decode_braille_64(braille_sec).ok_or(CodecError::MalformedBrailleSketch)?;
+            decode_braille_64(braille_raw).ok_or(CodecError::MalformedBrailleSketch)?;
+
+        let skeleton_body = parts.next().ok_or(CodecError::MalformedSubject)?.to_owned();
 
         Ok(Self {
-            cas_handle: min_id,
-            compact_48bit_handle: !is_exact_64,
+            cas_handle,
+            compact_48bit_handle,
             slice_hint,
             fractal_coord_hex: fc_hex.to_ascii_lowercase(),
             hdc_digest_hex: hv_hex.to_ascii_lowercase(),
             braille_spectrum,
-            skeleton_body: skeleton_body.to_owned(),
+            skeleton_body,
         })
     }
 }

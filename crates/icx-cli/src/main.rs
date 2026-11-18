@@ -58,10 +58,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
             run_status(tail);
             Ok(())
         }
-        "doctor" => {
-            run_doctor(tail);
-            Ok(())
-        }
+        "doctor" => run_doctor(tail),
         "benchmark" => {
             run_benchmark();
             Ok(())
@@ -699,15 +696,14 @@ fn find_executable_in_path(bin_name: &str) -> Option<PathBuf> {
     None
 }
 
+static DOCTOR_PROBE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn is_dir_writable(dir: &Path) -> bool {
     if !dir.is_dir() {
         return false;
     }
-    let probe_path = dir.join(format!(
-        ".icx_doctor_probe_{}_{}",
-        std::process::id(),
-        Instant::now().elapsed().as_nanos()
-    ));
+    let seq = DOCTOR_PROBE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let probe_path = dir.join(format!(".icx_doctor_probe_{}_{seq}", std::process::id()));
     let Ok(f) = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -720,34 +716,62 @@ fn is_dir_writable(dir: &Path) -> bool {
     true
 }
 
-fn run_doctor(args: &[String]) {
+fn run_doctor(args: &[String]) -> Result<(), String> {
     println!("=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===");
     let home = env::var("HOME").unwrap_or_else(|_| "/home/parobek".into());
     let curl_path = find_executable_in_path("curl")
         .map_or_else(|| "/usr/bin/curl".into(), |p| p.display().to_string());
     let probes = [
-        ("Claude Code Binary", format!("{home}/.local/bin/claude")),
-        ("Claude Settings", format!("{home}/.claude/settings.json")),
-        ("OpenAI Codex Binary", format!("{home}/.local/bin/codex")),
-        ("Codex Hooks Config", format!("{home}/.codex/hooks.json")),
+        (
+            "Claude Code Binary",
+            format!("{home}/.local/bin/claude"),
+            true,
+        ),
+        (
+            "Claude Settings",
+            format!("{home}/.claude/settings.json"),
+            false,
+        ),
+        (
+            "OpenAI Codex Binary",
+            format!("{home}/.local/bin/codex"),
+            true,
+        ),
+        (
+            "Codex Hooks Config",
+            format!("{home}/.codex/hooks.json"),
+            false,
+        ),
         (
             "Codex State SQLite",
             format!("{home}/.codex/state_5.sqlite"),
+            false,
         ),
-        ("Antigravity CLI (agy)", format!("{home}/.local/bin/agy")),
+        (
+            "Antigravity CLI (agy)",
+            format!("{home}/.local/bin/agy"),
+            true,
+        ),
         (
             "Antigravity Hooks",
             format!("{home}/.gemini/config/hooks.json"),
+            false,
         ),
         (
             "Hermes Agent Source",
             format!("{home}/.hermes/hermes-agent/agent/context_engine.py"),
+            false,
         ),
-        ("HTTPS Proxy Transport (curl)", curl_path),
+        ("HTTPS Proxy Transport (curl)", curl_path, true),
     ];
 
-    for (label, path) in probes {
-        let exists = Path::new(&path).exists();
+    for (label, path, require_exec) in probes {
+        let p = Path::new(&path);
+        let exists = if require_exec {
+            is_executable_file(p)
+        } else {
+            p.is_file()
+        };
         let status = if exists { "DETECTED" } else { "ABSENT" };
         println!("  [{status:8}] {label:32} -> {path}");
     }
@@ -761,6 +785,7 @@ fn run_doctor(args: &[String]) {
     );
 
     let mut doctor_status = "READY";
+    let mut doctor_err: Option<String> = None;
     let ws_dir = resolve_workspace_dir(parse_dir_flag(args));
     if ws_dir.exists() {
         let mut mmu = InfinityContextMmu::default();
@@ -784,6 +809,10 @@ fn run_doctor(args: &[String]) {
                             "Workspace Storage & Merkle-DAG",
                             ws_dir.display()
                         );
+                        doctor_err = Some(format!(
+                            "icx doctor error: workspace {} is corrupt: {e}",
+                            ws_dir.display()
+                        ));
                     }
                 }
             }
@@ -794,11 +823,19 @@ fn run_doctor(args: &[String]) {
                     "Workspace Storage & Merkle-DAG",
                     ws_dir.display()
                 );
+                doctor_err = Some(format!(
+                    "icx doctor error: workspace {} failed to load: {e}",
+                    ws_dir.display()
+                ));
             }
         }
     }
 
     println!("Doctor status: {doctor_status}");
+    if let Some(err) = doctor_err {
+        return Err(err);
+    }
+    Ok(())
 }
 
 fn run_benchmark() {
@@ -1202,16 +1239,18 @@ mod tests {
             *b0 = serde_json::json!(255);
         }
         fs::write(&mmu_json_path, serde_json::to_string(&mmu_val).unwrap()).unwrap();
-        dispatch_cli_args(
-            &[
-                "icx".into(),
-                "doctor".into(),
-                "--dir".into(),
-                tampered_ws.to_string_lossy().into_owned(),
-            ],
-            io::Cursor::new(""),
-        )
-        .unwrap();
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "doctor".into(),
+                    "--dir".into(),
+                    tampered_ws.to_string_lossy().into_owned(),
+                ],
+                io::Cursor::new(""),
+            )
+            .is_err()
+        );
         dispatch_cli_args(
             &["icx".into(), "decode-ahtl".into(), pkt_str.clone()],
             io::Cursor::new(""),
@@ -1416,16 +1455,18 @@ mod tests {
         let corrupt_ws = tmp_dir.join("corrupt_ws");
         fs::create_dir_all(&corrupt_ws).unwrap();
         fs::write(corrupt_ws.join("mmu_state.json"), "{corrupt_json").unwrap();
-        dispatch_cli_args(
-            &[
-                "icx".into(),
-                "doctor".into(),
-                "--dir".into(),
-                corrupt_ws.to_string_lossy().into_owned(),
-            ],
-            io::Cursor::new(""),
-        )
-        .unwrap();
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "doctor".into(),
+                    "--dir".into(),
+                    corrupt_ws.to_string_lossy().into_owned(),
+                ],
+                io::Cursor::new(""),
+            )
+            .is_err()
+        );
         let corrupt_hook_out = execute_hook(
             &[
                 "--agent".into(),

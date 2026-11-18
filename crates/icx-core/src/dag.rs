@@ -860,10 +860,13 @@ impl MerkleContextDag {
     }
 
     /// Cryptographically recomputes and verifies the domain-separated BLAKE3 Merkle digest of every
-    /// node stored in `self.nodes`, returning the total number of verified DAG nodes.
+    /// node stored in `self.nodes` in $O(V + E)$ time using a memoized `verified` set, returning the
+    /// total number of verified DAG nodes.
     pub fn verify_all_merkle_integrity(&self) -> Result<usize, IcxError> {
+        let mut verified = std::collections::BTreeSet::new();
+        let mut ancestors = Vec::new();
         for &id in self.nodes.keys() {
-            self.verify_merkle_integrity(id)?;
+            self.verify_merkle_integrity_with_ancestors(id, &mut ancestors, &mut verified)?;
         }
         Ok(self.nodes.len())
     }
@@ -872,16 +875,21 @@ impl MerkleContextDag {
     /// and (recursively) all of its descendant DAG nodes.
     pub fn verify_merkle_integrity(&self, id: ArtifactId) -> Result<bool, IcxError> {
         let mut ancestors = Vec::new();
-        self.verify_merkle_integrity_with_ancestors(id, &mut ancestors)
+        let mut verified = std::collections::BTreeSet::new();
+        self.verify_merkle_integrity_with_ancestors(id, &mut ancestors, &mut verified)
     }
 
     fn verify_merkle_integrity_with_ancestors(
         &self,
         id: ArtifactId,
         ancestors: &mut Vec<ArtifactId>,
+        verified: &mut std::collections::BTreeSet<ArtifactId>,
     ) -> Result<bool, IcxError> {
         if ancestors.contains(&id) {
             return Err(IcxError::IntegrityViolation(id));
+        }
+        if verified.contains(&id) {
+            return Ok(true);
         }
         let node = self.nodes.get(&id).ok_or(IcxError::ArtifactNotFound(id))?;
         ancestors.push(id);
@@ -953,7 +961,7 @@ impl MerkleContextDag {
                 hasher.update(&(child_turns.len() as u64).to_be_bytes());
                 let mut expected_saved = 0usize;
                 for &tid in child_turns {
-                    self.verify_merkle_integrity_with_ancestors(tid, ancestors)?;
+                    self.verify_merkle_integrity_with_ancestors(tid, ancestors, verified)?;
                     let child = self
                         .nodes
                         .get(&tid)
@@ -985,7 +993,7 @@ impl MerkleContextDag {
                 ahtl_frame,
             } => {
                 for &cid in child_nodes {
-                    self.verify_merkle_integrity_with_ancestors(cid, ancestors)?;
+                    self.verify_merkle_integrity_with_ancestors(cid, ancestors, verified)?;
                 }
                 let is_l4_folded = ahtl_frame
                     .lines()
@@ -1054,6 +1062,9 @@ impl MerkleContextDag {
             }
         };
         ancestors.pop();
+        if res.is_ok() {
+            verified.insert(id);
+        }
         res
     }
 
