@@ -49,12 +49,10 @@ impl AntigravityAdapter {
     }
 
     fn extract_error_string(v: &Value) -> Option<String> {
-        match v {
-            Value::String(s) if !s.trim().is_empty() => Some(s.clone()),
-            Value::Array(a) if !a.is_empty() => Some(v.to_string()),
-            Value::Object(o) if !o.is_empty() => Some(v.to_string()),
-            Value::Number(_) | Value::Bool(true) => Some(v.to_string()),
-            _ => None,
+        if matches!(v, Value::Bool(false)) {
+            None
+        } else {
+            Self::non_empty_json_value(v)
         }
     }
 
@@ -66,43 +64,28 @@ impl AntigravityAdapter {
             .filter(|s| !s.is_empty())
         {
             let clean_conv = InfinityContextMmu::sanitize_hook_label(conv_id, "conv");
-            if let Some(rest) = tail.strip_prefix("⟪ICX:TAIL_SLOT│") {
-                return format!("⟪ICX:TAIL_SLOT│conv={clean_conv}│{rest}");
-            }
+            return tail.replacen(
+                "⟪ICX:TAIL_SLOT│",
+                &format!("⟪ICX:TAIL_SLOT│conv={clean_conv}│"),
+                1,
+            );
         }
         tail
     }
 
-    /// Reads a tool/step output from an Antigravity `transcript.jsonl` / `transcript_full.jsonl`
-    /// file using bounded JSONL record framing. When `target_step_idx` is `Some(idx)`, returns
-    /// that step's content if found; otherwise returns the latest non-empty step content from the
-    /// trailing window of `path`.
-    pub fn read_transcript_step(path: &Path, target_step_idx: Option<u64>) -> Option<String> {
-        let mut file = File::open(path).ok()?;
-        let file_len = file.metadata().ok()?.len();
-        let mut reader = if target_step_idx.is_none() && file_len > TRANSCRIPT_TAIL_WINDOW_BYTES {
-            let start = file_len - TRANSCRIPT_TAIL_WINDOW_BYTES;
-            file.seek(SeekFrom::Start(start)).ok()?;
-            let mut r = BufReader::new(file);
-            let mut discard = Vec::new();
-            let _ = CodexRolloutTailer::read_bounded_jsonl_record(
-                &mut r,
-                MAX_TRANSCRIPT_RECORD_BYTES,
-                &mut discard,
-            );
-            r
-        } else {
-            BufReader::new(file)
-        };
-
+    fn scan_transcript_reader(
+        reader: &mut BufReader<File>,
+        target_step_idx: Option<u64>,
+        max_lines: usize,
+    ) -> Option<String> {
         let mut raw_line = Vec::new();
         let mut latest_body: Option<String> = None;
         let mut valid_step_idx = 0u64;
 
-        for _ in 0..MAX_TRANSCRIPT_SCAN_LINES {
+        for _ in 0..max_lines {
             let Ok((bytes_read, ended_with_nl, was_truncated)) =
                 CodexRolloutTailer::read_bounded_jsonl_record(
-                    &mut reader,
+                    reader,
                     MAX_TRANSCRIPT_RECORD_BYTES,
                     &mut raw_line,
                 )
@@ -155,6 +138,47 @@ impl AntigravityAdapter {
         } else {
             latest_body
         }
+    }
+
+    /// Reads a tool/step output from an Antigravity `transcript.jsonl` / `transcript_full.jsonl`
+    /// file using bounded JSONL record framing. When `target_step_idx` is `Some(idx)`, returns
+    /// that step's content if found; otherwise returns the latest non-empty step content from the
+    /// trailing window of `path` (falling back to a full scan from offset 0 if a single record
+    /// exceeds the 256 KiB tail window).
+    pub fn read_transcript_step(path: &Path, target_step_idx: Option<u64>) -> Option<String> {
+        let mut file = File::open(path).ok()?;
+        let meta = file.metadata().ok()?;
+        if !meta.file_type().is_file() {
+            return None;
+        }
+        let file_len = meta.len();
+        let max_lines = target_step_idx
+            .and_then(|t| usize::try_from(t).ok())
+            .map(|t| {
+                t.saturating_add(1024)
+                    .clamp(MAX_TRANSCRIPT_SCAN_LINES, 1_000_000)
+            })
+            .unwrap_or(MAX_TRANSCRIPT_SCAN_LINES);
+
+        if target_step_idx.is_none() && file_len > TRANSCRIPT_TAIL_WINDOW_BYTES {
+            let start = file_len - TRANSCRIPT_TAIL_WINDOW_BYTES;
+            file.seek(SeekFrom::Start(start)).ok()?;
+            let mut r = BufReader::new(file);
+            let mut discard = Vec::new();
+            let _ = CodexRolloutTailer::read_bounded_jsonl_record(
+                &mut r,
+                MAX_TRANSCRIPT_RECORD_BYTES,
+                &mut discard,
+            );
+            if let Some(body) = Self::scan_transcript_reader(&mut r, None, max_lines) {
+                return Some(body);
+            }
+            file = r.into_inner();
+            file.seek(SeekFrom::Start(0)).ok()?;
+        }
+
+        let mut reader = BufReader::new(file);
+        Self::scan_transcript_reader(&mut reader, target_step_idx, max_lines)
     }
 
     /// Handles an Antigravity CLI hook payload (camelCase protojson) and returns the response JSON.
@@ -315,11 +339,8 @@ impl AntigravityAdapter {
                     let step_idx = ["stepIdx", "step_index", "idx"]
                         .into_iter()
                         .find_map(|k| payload.get(k).and_then(Value::as_u64));
-                    if let Some(from_transcript) =
-                        Self::read_transcript_step(Path::new(tp), step_idx)
-                    {
-                        resp_str = from_transcript;
-                    }
+                    resp_str =
+                        Self::read_transcript_step(Path::new(tp), step_idx).unwrap_or_default();
                 }
                 let err_str = payload
                     .get("error")
@@ -429,6 +450,7 @@ impl AntigravityAdapter {
                 if !cont_active
                     && (reason == "MAX_TOKEN_BUDGET_EXCEEDED" || reason == "MAX_INVOCATIONS")
                 {
+                    mmu.fold_all_open_subagents(AgentKind::AntigravityCli, "budget_rollover");
                     let ep_id = mmu.force_rollover_and_sync_dag_root();
                     let ep_handle = ep_id
                         .map(|id| id.to_string())

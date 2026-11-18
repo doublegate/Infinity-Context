@@ -224,6 +224,23 @@ impl MerkleContextDag {
         self.nodes.get(&id)
     }
 
+    /// Rebuilds the in-memory `turn_index` from `self.nodes` after deserialization.
+    pub fn rebuild_turn_index(&mut self) {
+        self.turn_index.clear();
+        for (&id, node) in &self.nodes {
+            if let DagNode::Turn {
+                agent,
+                role,
+                raw_artifact,
+                ..
+            } = node
+            {
+                self.turn_index
+                    .insert((*agent as u8, *raw_artifact, role.clone()), id);
+            }
+        }
+    }
+
     /// Finds an existing `DagNode::Turn` matching `(agent, role, raw_artifact)` in $O(\log N)$ via
     /// `turn_index` (with fallback scan for deserialized DAGs) and returns `(ahtl_repr, surprise)`.
     pub fn find_turn(

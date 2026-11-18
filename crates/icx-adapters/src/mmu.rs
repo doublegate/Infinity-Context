@@ -71,6 +71,7 @@ pub struct InfinityContextMmu {
     redacted_artifacts: BTreeSet<ArtifactId>,
     subagent_branches: BTreeMap<String, Vec<SubagentStep>>,
     hdc_events: Vec<HdcEventRecord>,
+    indexed_occurrences: BTreeMap<usize, (u8, String, ArtifactId, IngestResult)>,
     clock_ms: u64,
 }
 
@@ -99,6 +100,7 @@ impl InfinityContextMmu {
             redacted_artifacts: BTreeSet::new(),
             subagent_branches: BTreeMap::new(),
             hdc_events: Vec::new(),
+            indexed_occurrences: BTreeMap::new(),
             clock_ms: 1_794_880_800_000,
         }
     }
@@ -254,10 +256,69 @@ impl InfinityContextMmu {
         (sanitized, was_redacted)
     }
 
-    /// Ingests a tool output or turn if `(agent, clean_subject, sanitized_artifact_id)` has not
-    /// already been recorded in `self.dag`; otherwise reuses the existing `DagNode::Turn`
-    /// representation without duplicating DAG nodes, HDC observations, or `/dev/shm` broadcasts.
-    /// Returns `(IngestResult, was_newly_ingested)`.
+    /// Ingests or reuses a message at conversation position `occurrence_idx`. If `occurrence_idx`
+    /// was already processed with the exact same `(agent, clean_subject, sanitized_artifact_id)`,
+    /// reuses the cached `IngestResult` without duplicating DAG nodes or `/dev/shm` broadcasts.
+    /// If `occurrence_idx` is a new message position (even if its payload matches an earlier turn
+    /// prior to an intervening state change, e.g. `PASS -> FAIL -> PASS`), executes full ingestion
+    /// so `BiTemporalGraph` functional edges and temporal state are updated accurately.
+    pub fn ingest_or_reuse_at_index(
+        &mut self,
+        occurrence_idx: usize,
+        agent: AgentKind,
+        raw_subject: &str,
+        raw_text: &str,
+        exit_code: Option<i32>,
+        force_anomaly: bool,
+    ) -> (IngestResult, bool) {
+        let clean_subject = Self::sanitize_hook_label(raw_subject, "event");
+        let (sanitized, _) = Self::bound_and_sanitize_raw(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
+        let (aid, _) = ArtifactId::hash_bytes(sanitized.as_bytes());
+        if let Some((prev_agent, prev_subj, prev_aid, prev_res)) =
+            self.indexed_occurrences.get(&occurrence_idx)
+        {
+            if *prev_agent == agent as u8 && prev_subj == &clean_subject && *prev_aid == aid {
+                return (prev_res.clone(), false);
+            }
+            let _ = self.indexed_occurrences.split_off(&occurrence_idx);
+        }
+        let res = self.ingest_payload_for_subagent(
+            agent,
+            raw_subject,
+            raw_text,
+            exit_code,
+            force_anomaly,
+            None,
+        );
+        self.indexed_occurrences.insert(
+            occurrence_idx,
+            (agent as u8, clean_subject, aid, res.clone()),
+        );
+        (res, true)
+    }
+
+    /// Records a carried-forward synthetic/stubbed AHTL frame at `occurrence_idx` so subsequent
+    /// message positions remain aligned across compactions without overwriting an existing raw
+    /// occurrence entry.
+    pub fn record_carried_occurrence(
+        &mut self,
+        occurrence_idx: usize,
+        agent: AgentKind,
+        clean_subject: String,
+        aid: ArtifactId,
+        res: IngestResult,
+    ) {
+        self.indexed_occurrences.entry(occurrence_idx).or_insert((
+            agent as u8,
+            clean_subject,
+            aid,
+            res,
+        ));
+    }
+
+    /// Ingests a tool output or turn if the most recent observation for `clean_subject` in `self`
+    /// does not already match `(aid, exit_code, force_anomaly)`; otherwise reuses the existing
+    /// `DagNode::Turn` representation. Returns `(IngestResult, was_newly_ingested)`.
     pub fn ingest_or_reuse_payload(
         &mut self,
         agent: AgentKind,
@@ -269,8 +330,17 @@ impl InfinityContextMmu {
         let clean_subject = Self::sanitize_hook_label(raw_subject, "event");
         let (sanitized, _) = Self::bound_and_sanitize_raw(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
         let raw_bytes = sanitized.len();
-        let aid = ArtifactId::from_digest(&icx_core::Blake3Digest::hash(sanitized.as_bytes()));
-        if self.cas.get_meta(aid).is_some()
+        let (aid, _) = ArtifactId::hash_bytes(sanitized.as_bytes());
+        let latest_for_subj_matches = self
+            .hdc_events
+            .iter()
+            .rev()
+            .find(|(_, s, _, _)| s == &clean_subject)
+            .is_some_and(|(last_aid, _, last_ec, last_fa)| {
+                *last_aid == aid && *last_ec == exit_code && *last_fa == force_anomaly
+            });
+        if latest_for_subj_matches
+            && self.cas.get_meta(aid).is_some()
             && let Some((ahtl_repr, surprise)) = self.dag.find_turn(agent, &clean_subject, aid)
         {
             return (
@@ -820,9 +890,11 @@ impl InfinityContextMmu {
         self.redacted_artifacts.clear();
         self.hdc_index = HdcAssociativeIndex::new();
         self.hdc_events.clear();
+        self.indexed_occurrences.clear();
         if let Some(st) = persisted_state {
             self.clock_ms = 1_794_880_800_000_u64.max(st.clock_ms).max(max_graph_ms);
             self.dag = st.dag;
+            self.dag.rebuild_turn_index();
             self.epochs = st.epochs.unwrap_or_else(|| {
                 CacheEpochController::new(ICX_AHTL_LEGEND, EpochControllerConfig::default())
             });

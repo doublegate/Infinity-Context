@@ -1256,9 +1256,130 @@ unprefixed_secret = {unpref_sec}
             compacted_2[1].content.contains("│folded_msgs=4⟫"),
             "second compaction must carry forward all 3 prior epoch AHTL frames plus 1 new turn"
         );
-        //Also verify `on_turn_complete` and `select_context` on `pruned_msgs` (which contains a `⟪ICX:STUB│` message)
+        // Also verify `on_turn_complete` and `select_context` on `pruned_msgs` (which contains a `⟪ICX:STUB│` message)
         assert_eq!(HermesAdapter::on_turn_complete(&pruned_msgs, &mut mmu), 0);
         let _ = HermesAdapter::select_context(&pruned_msgs, 1, 1, &mut mmu);
+
+        // Verify `PASS -> FAIL -> PASS` temporal supersession in `on_turn_complete` and
+        // `ingest_or_reuse_payload` when a later message repeats an earlier passing output
+        let mut pfp_mmu = InfinityContextMmu::default();
+        let pass_out =
+            "running 5 tests\ntest case_1 ... ok\ntest result: ok. 5 passed; 0 failed;\n";
+        let fail_out = "running 5 tests\nthread 'main' panicked at src/lib.rs:10:1: boom\ntest result: FAILED. 4 passed; 1 failed;\n";
+        let mut pfp_msgs = vec![
+            HermesMessage {
+                role: "tool".into(),
+                content: pass_out.into(),
+                tool_call_id: Some("c1".into()),
+                name: Some("cargo_test".into()),
+            },
+            HermesMessage {
+                role: "tool".into(),
+                content: fail_out.into(),
+                tool_call_id: Some("c2".into()),
+                name: Some("cargo_test".into()),
+            },
+        ];
+        assert_eq!(HermesAdapter::on_turn_complete(&pfp_msgs, &mut pfp_mmu), 2);
+        assert!(pfp_mmu.graph.edges().iter().any(|e| {
+            e.source_entity == "cargo_test"
+                && e.relation == "status"
+                && e.target_entity == "FAIL"
+                && e.t_invalid.is_none()
+        }));
+        // Append the identical `pass_out` again at message index 2
+        pfp_msgs.push(HermesMessage {
+            role: "tool".into(),
+            content: pass_out.into(),
+            tool_call_id: Some("c3".into()),
+            name: Some("cargo_test".into()),
+        });
+        assert_eq!(HermesAdapter::on_turn_complete(&pfp_msgs, &mut pfp_mmu), 1);
+        assert!(pfp_mmu.graph.edges().iter().any(|e| {
+            e.source_entity == "cargo_test"
+                && e.relation == "status"
+                && e.target_entity == "PASS"
+                && e.t_invalid.is_none()
+        }));
+        // Direct `ingest_or_reuse_payload` also distinguishes `PASS -> FAIL -> PASS` while
+        // deduplicating consecutive identical observations
+        let (res_a, new_a) = pfp_mmu.ingest_or_reuse_payload(
+            AgentKind::Hermes,
+            "direct_tool",
+            pass_out,
+            Some(0),
+            false,
+        );
+        assert!(new_a);
+        let (_, new_a_dup) = pfp_mmu.ingest_or_reuse_payload(
+            AgentKind::Hermes,
+            "direct_tool",
+            pass_out,
+            Some(0),
+            false,
+        );
+        assert!(!new_a_dup);
+        let (_, new_b) = pfp_mmu.ingest_or_reuse_payload(
+            AgentKind::Hermes,
+            "direct_tool",
+            fail_out,
+            Some(1),
+            true,
+        );
+        assert!(new_b);
+        let (_, new_c) = pfp_mmu.ingest_or_reuse_payload(
+            AgentKind::Hermes,
+            "direct_tool",
+            pass_out,
+            Some(0),
+            false,
+        );
+        assert!(new_c);
+
+        // Verify `HermesMessage` deserialization with `null`, content-part arrays, and objects,
+        // and verify `parse_messages` propagates deserialization errors on invalid `messages`
+        let multimodal_req = serde_json::json!({
+            "messages": [
+                {"role": "assistant", "content": null},
+                {"role": "user", "content": ["line_a", {"type": "text", "text": "line_b"}, {"raw": 1}, 42]},
+                {"role": "tool", "content": {"status": "ok"}}
+            ],
+            "protect_first_n": 1,
+            "protect_last_n": 2
+        })
+        .to_string();
+        let mm_out =
+            HermesAdapter::handle_hook("select_context", &multimodal_req, &mut pfp_mmu).unwrap();
+        assert!(mm_out.contains("line_b"));
+        assert!(
+            HermesAdapter::handle_hook(
+                "select_context",
+                r#"{"messages":"not_an_array"}"#,
+                &mut pfp_mmu
+            )
+            .is_err()
+        );
+
+        // Verify `read_transcript_step` rejects directories and recovers a trailing record > 256 KiB
+        let big_tp_dir = std::env::temp_dir().join(format!(
+            "icx_agy_big_tp_{}_{}",
+            std::process::id(),
+            mmu.clock_ms()
+        ));
+        std::fs::create_dir_all(&big_tp_dir).unwrap();
+        assert_eq!(
+            AntigravityAdapter::read_transcript_step(&big_tp_dir, None),
+            None
+        );
+        let big_tp_file = big_tp_dir.join("big_tail.jsonl");
+        let big_record = format!(
+            "{{\"step_index\":0,\"content\":\"early\"}}\n{{\"step_index\":1,\"content\":\"{}\"}}\n",
+            "B".repeat(300_000)
+        );
+        std::fs::write(&big_tp_file, &big_record).unwrap();
+        let recovered_big = AntigravityAdapter::read_transcript_step(&big_tp_file, None).unwrap();
+        assert_eq!(recovered_big.len(), 300_000);
+        let _ = std::fs::remove_dir_all(&big_tp_dir);
         // Also verify `CodexRolloutTailer` skips `mcp__icx__icx` rollout items
         let rollout_pager_path = std::env::temp_dir().join(format!(
             "icx_rollout_pager_{}_{}.jsonl",
@@ -1396,13 +1517,15 @@ unprefixed_secret = {unpref_sec}
         let mut with_epoch = vec![
             HermesMessage {
                 role: "system".into(),
-                content: "head".into(),
+                content: String::new(),
                 tool_call_id: None,
                 name: None,
             },
             HermesMessage {
                 role: "system".into(),
-                content: "⟪ICX:HERMES_EPOCH│folded_msgs=1⟫\n⟦Δ:src/lib.rs⊢⊕fn:init⟧".into(),
+                content:
+                    "⟪ICX:HERMES_EPOCH│folded_msgs=2⟫\n\n⟦Δ:src/lib.rs⊢⊕fn:init⟧\nplain_carried_line"
+                        .into(),
                 tool_call_id: None,
                 name: Some("icx_cache_epoch".into()),
             },
@@ -1427,6 +1550,55 @@ unprefixed_secret = {unpref_sec}
         ];
         let sel_epoch = HermesAdapter::select_context(&with_epoch, 1, 2, &mut empty_mmu);
         assert!(sel_epoch[1].content.contains("⟦Δ:src/lib.rs⊢⊕fn:init⟧"));
+        assert!(sel_epoch[1].content.contains("plain_carried_line"));
+        // Also test `select_context` when middle slice contains only an `mcp__icx__icx` pager message
+        let only_pager_mid = vec![
+            HermesMessage {
+                role: "system".into(),
+                content: "head".into(),
+                tool_call_id: None,
+                name: None,
+            },
+            HermesMessage {
+                role: "tool".into(),
+                content: "pager body".into(),
+                tool_call_id: Some("p1".into()),
+                name: Some("mcp__icx__icx".into()),
+            },
+            HermesMessage {
+                role: "user".into(),
+                content: "tail".into(),
+                tool_call_id: None,
+                name: None,
+            },
+        ];
+        let sel_pager_only = HermesAdapter::select_context(&only_pager_mid, 1, 1, &mut empty_mmu);
+        assert_eq!(sel_pager_only[1].name.as_deref(), Some("mcp__icx__icx"));
+        // Also test `rebuild_turn_index` after deserializing a `MerkleContextDag`
+        let dag_json = serde_json::to_string(&pfp_mmu.dag).unwrap();
+        let mut deser_dag: icx_core::dag::MerkleContextDag =
+            serde_json::from_str(&dag_json).unwrap();
+        assert!(
+            deser_dag
+                .find_turn(AgentKind::Hermes, "direct_tool", res_a.artifact_id)
+                .is_some()
+        );
+        deser_dag.rebuild_turn_index();
+        assert!(
+            deser_dag
+                .find_turn(AgentKind::Hermes, "direct_tool", res_a.artifact_id)
+                .is_some()
+        );
+        // Also test rewind/branch replacement at an existing `occurrence_idx` in `ingest_or_reuse_at_index`
+        let (_, rewound) = pfp_mmu.ingest_or_reuse_at_index(
+            0,
+            AgentKind::Hermes,
+            "rewound_tool",
+            "new branch payload at index 0",
+            None,
+            false,
+        );
+        assert!(rewound);
         let _ = HermesAdapter::compress(&with_epoch, None, &mut empty_mmu);
         let _ = HermesAdapter::on_turn_complete(&with_epoch, &mut empty_mmu);
         let _ = HermesAdapter::on_pre_compress(&with_epoch, &mut empty_mmu);

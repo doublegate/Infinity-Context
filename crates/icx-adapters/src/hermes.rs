@@ -11,10 +11,43 @@ use serde_json::{Value, json};
 /// (`ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md` §2.4).
 pub const PRE_COMPRESS_CHECKPOINT_API_VERSION: u32 = 2;
 
+fn deserialize_hermes_content<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let val = Option::<Value>::deserialize(deserializer)?.unwrap_or(Value::Null);
+    match val {
+        Value::Null => Ok(String::new()),
+        Value::String(s) => Ok(s),
+        Value::Array(parts) => {
+            let mut lines = Vec::with_capacity(parts.len());
+            for part in parts {
+                match part {
+                    Value::String(s) => lines.push(s),
+                    Value::Object(ref obj) => {
+                        if let Some(txt) = ["text", "content", "output"]
+                            .into_iter()
+                            .find_map(|k| obj.get(k).and_then(Value::as_str))
+                        {
+                            lines.push(txt.to_owned());
+                        } else {
+                            lines.push(part.to_string());
+                        }
+                    }
+                    other => lines.push(other.to_string()),
+                }
+            }
+            Ok(lines.join("\n"))
+        }
+        other => Ok(other.to_string()),
+    }
+}
+
 /// OpenAI-compatible message entry passed by Hermes's `ContextEngine.select_context()`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HermesMessage {
     pub role: String,
+    #[serde(default, deserialize_with = "deserialize_hermes_content")]
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
@@ -57,15 +90,37 @@ impl HermesAdapter {
         msg.content.starts_with("⟪ICX:STUB│")
     }
 
+    fn sanitize_embedded_ahtl_line(trimmed: &str) -> String {
+        if let Some(inner) = trimmed.strip_prefix('⟦').and_then(|s| s.strip_suffix('⟧')) {
+            let mut out = String::with_capacity(trimmed.len());
+            out.push('⟦');
+            let mut seg_start = 0usize;
+            for (idx, ch) in inner.char_indices() {
+                if matches!(ch, '⊢' | '⋮' | '↦' | '│') {
+                    out.push_str(&icx_codec::SecretRedactor::sanitize(&inner[seg_start..idx]));
+                    out.push(ch);
+                    seg_start = idx + ch.len_utf8();
+                }
+            }
+            out.push_str(&icx_codec::SecretRedactor::sanitize(&inner[seg_start..]));
+            out.push('⟧');
+            out
+        } else {
+            InfinityContextMmu::bound_and_sanitize_raw(trimmed, icx_core::ICX_MAX_INGEST_BYTES).0
+        }
+    }
+
     fn extract_embedded_ahtl_lines(
         msg: &HermesMessage,
         out: &mut Vec<String>,
+        occurrence_idx: &mut usize,
         mmu: &mut InfinityContextMmu,
     ) {
         for line in msg.content.lines().skip(1) {
             let trimmed = line.trim();
             if !trimmed.is_empty() {
-                let (aid, _) = mmu.cas.put_bytes(trimmed.as_bytes());
+                let sanitized_line = Self::sanitize_embedded_ahtl_line(trimmed);
+                let (aid, _) = mmu.cas.put_bytes(sanitized_line.as_bytes());
                 if mmu
                     .dag
                     .find_turn(AgentKind::Hermes, "carried_epoch", aid)
@@ -73,7 +128,7 @@ impl HermesAdapter {
                     && !mmu.dag.trunk_nodes().iter().any(|&tid| {
                         mmu.dag
                             .get_node(tid)
-                            .is_some_and(|n| n.ahtl_representation() == trimmed)
+                            .is_some_and(|n| n.ahtl_representation() == sanitized_line)
                     })
                 {
                     mmu.epochs.record_turn(
@@ -81,13 +136,43 @@ impl HermesAdapter {
                         AgentKind::Hermes,
                         "carried_epoch",
                         aid,
-                        trimmed.to_owned(),
+                        sanitized_line.clone(),
                         0.5,
-                        (trimmed.len() / 4).max(1),
+                        (sanitized_line.len() / 4).max(1),
                     );
                 }
-                out.push(trimmed.to_owned());
+                mmu.record_carried_occurrence(
+                    *occurrence_idx,
+                    AgentKind::Hermes,
+                    "carried_epoch".to_owned(),
+                    aid,
+                    crate::mmu::IngestResult {
+                        artifact_id: aid,
+                        raw_bytes: sanitized_line.len(),
+                        compressed_ahtl: sanitized_line.clone(),
+                        surprise: 0.5,
+                        was_virtualized: sanitized_line.len() >= mmu.tool_virtualize_threshold,
+                    },
+                );
+                *occurrence_idx += 1;
+                out.push(sanitized_line);
             }
+        }
+    }
+
+    fn count_occurrence_advance(msg: &HermesMessage) -> usize {
+        if Self::is_synthetic_tail_slot(msg) || msg.content.trim().is_empty() {
+            0
+        } else if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
+            msg.content
+                .lines()
+                .skip(1)
+                .filter(|l| !l.trim().is_empty())
+                .count()
+        } else {
+            usize::from(!InfinityContextMmu::is_icx_pager_tool(
+                Self::message_subject(msg),
+            ))
         }
     }
 
@@ -141,7 +226,9 @@ impl HermesAdapter {
                 .saturating_add(protect_last_n)
                 .saturating_add(2),
         );
+        let mut occurrence_idx = 0usize;
         for &msg in &cleaned[..head_end] {
+            occurrence_idx += Self::count_occurrence_advance(msg);
             selected.push(msg.clone());
         }
 
@@ -149,7 +236,7 @@ impl HermesAdapter {
         let mut preserved_pager_msgs = Vec::new();
         for &msg in &cleaned[head_end..tail_start] {
             if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
-                Self::extract_embedded_ahtl_lines(msg, &mut middle_ahtl, mmu);
+                Self::extract_embedded_ahtl_lines(msg, &mut middle_ahtl, &mut occurrence_idx, mmu);
                 continue;
             }
             let subj = Self::message_subject(msg);
@@ -157,8 +244,15 @@ impl HermesAdapter {
                 preserved_pager_msgs.push(msg.clone());
                 continue;
             }
-            let (res, _) =
-                mmu.ingest_or_reuse_payload(AgentKind::Hermes, subj, &msg.content, None, false);
+            let (res, _) = mmu.ingest_or_reuse_at_index(
+                occurrence_idx,
+                AgentKind::Hermes,
+                subj,
+                &msg.content,
+                None,
+                false,
+            );
+            occurrence_idx += 1;
             middle_ahtl.push(res.compressed_ahtl);
         }
 
@@ -210,6 +304,7 @@ impl HermesAdapter {
         let mut out = Vec::with_capacity(total);
         let mut n_pruned = 0usize;
 
+        let mut occurrence_idx = 0usize;
         for (idx, msg) in messages.iter().enumerate() {
             let is_tool = msg.role == "tool" || msg.tool_call_id.is_some();
             let subj = Self::message_subject(msg);
@@ -219,8 +314,15 @@ impl HermesAdapter {
                 && !Self::is_stubbed_message(msg)
                 && msg.content.len() >= mmu.tool_virtualize_threshold
             {
-                let (res, _) =
-                    mmu.ingest_or_reuse_payload(AgentKind::Hermes, subj, &msg.content, None, false);
+                let (res, _) = mmu.ingest_or_reuse_at_index(
+                    occurrence_idx,
+                    AgentKind::Hermes,
+                    subj,
+                    &msg.content,
+                    None,
+                    false,
+                );
+                occurrence_idx += 1;
                 let mut stubbed = msg.clone();
                 stubbed.content = format!(
                     "⟪ICX:STUB│{}│bytes={}│Use `icx` MCP tool (op=deref/slice/grep) to inspect full output⟫\n{}",
@@ -229,6 +331,7 @@ impl HermesAdapter {
                 out.push(stubbed);
                 n_pruned += 1;
             } else {
+                occurrence_idx += Self::count_occurrence_advance(msg);
                 out.push(msg.clone());
             }
         }
@@ -261,11 +364,12 @@ impl HermesAdapter {
             }
         }
 
+        let mut occurrence_idx: usize = head.iter().map(Self::count_occurrence_advance).sum();
         let mut ahtl_frames = Vec::new();
         let mut preserved_pager_msgs = Vec::new();
         for msg in &body_msgs {
             if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
-                Self::extract_embedded_ahtl_lines(msg, &mut ahtl_frames, mmu);
+                Self::extract_embedded_ahtl_lines(msg, &mut ahtl_frames, &mut occurrence_idx, mmu);
                 continue;
             }
             let subj = Self::message_subject(msg);
@@ -273,8 +377,15 @@ impl HermesAdapter {
                 preserved_pager_msgs.push((*msg).clone());
                 continue;
             }
-            let (res, _) =
-                mmu.ingest_or_reuse_payload(AgentKind::Hermes, subj, &msg.content, None, false);
+            let (res, _) = mmu.ingest_or_reuse_at_index(
+                occurrence_idx,
+                AgentKind::Hermes,
+                subj,
+                &msg.content,
+                None,
+                false,
+            );
+            occurrence_idx += 1;
             ahtl_frames.push(res.compressed_ahtl);
         }
 
@@ -318,23 +429,33 @@ impl HermesAdapter {
 
     /// Implements `ContextEngine.on_turn_complete(messages)`:
     /// Indexes any non-synthetic, non-stubbed, non-pager messages from `messages` that have not
-    /// yet been recorded in `mmu`, returning the count of newly ingested messages.
+    /// yet been recorded at their conversation position in `mmu`, returning the count of newly
+    /// ingested messages.
     pub fn on_turn_complete(messages: &[HermesMessage], mmu: &mut InfinityContextMmu) -> usize {
         let mut newly_ingested = 0usize;
+        let mut occurrence_idx = 0usize;
         for msg in messages {
-            if Self::is_synthetic_tail_slot(msg)
-                || Self::is_synthetic_cache_epoch(msg)
-                || Self::is_stubbed_message(msg)
-                || msg.content.trim().is_empty()
-            {
+            if Self::is_synthetic_tail_slot(msg) || msg.content.trim().is_empty() {
+                continue;
+            }
+            if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
+                let mut sink = Vec::new();
+                Self::extract_embedded_ahtl_lines(msg, &mut sink, &mut occurrence_idx, mmu);
                 continue;
             }
             let subj = Self::message_subject(msg);
             if InfinityContextMmu::is_icx_pager_tool(subj) {
                 continue;
             }
-            let (_, was_new) =
-                mmu.ingest_or_reuse_payload(AgentKind::Hermes, subj, &msg.content, None, false);
+            let (_, was_new) = mmu.ingest_or_reuse_at_index(
+                occurrence_idx,
+                AgentKind::Hermes,
+                subj,
+                &msg.content,
+                None,
+                false,
+            );
+            occurrence_idx += 1;
             if was_new {
                 newly_ingested += 1;
             }
@@ -346,20 +467,28 @@ impl HermesAdapter {
     /// (`PRE_COMPRESS_CHECKPOINT_API_VERSION = 2` fail-closed pre-compression evidence handoff).
     pub fn on_pre_compress(messages: &[HermesMessage], mmu: &mut InfinityContextMmu) -> String {
         let mut ahtl_frames = Vec::new();
+        let mut occurrence_idx = 0usize;
         for msg in messages {
             if Self::is_synthetic_tail_slot(msg) || msg.content.trim().is_empty() {
                 continue;
             }
             if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
-                Self::extract_embedded_ahtl_lines(msg, &mut ahtl_frames, mmu);
+                Self::extract_embedded_ahtl_lines(msg, &mut ahtl_frames, &mut occurrence_idx, mmu);
                 continue;
             }
             let subj = Self::message_subject(msg);
             if InfinityContextMmu::is_icx_pager_tool(subj) {
                 continue;
             }
-            let (res, _) =
-                mmu.ingest_or_reuse_payload(AgentKind::Hermes, subj, &msg.content, None, false);
+            let (res, _) = mmu.ingest_or_reuse_at_index(
+                occurrence_idx,
+                AgentKind::Hermes,
+                subj,
+                &msg.content,
+                None,
+                false,
+            );
+            occurrence_idx += 1;
             ahtl_frames.push(res.compressed_ahtl);
         }
         let ep_id = mmu.force_rollover_and_sync_dag_root();
@@ -375,15 +504,13 @@ impl HermesAdapter {
         )
     }
 
-    fn parse_messages(payload: &Value) -> Vec<HermesMessage> {
+    fn parse_messages(payload: &Value) -> Result<Vec<HermesMessage>, serde_json::Error> {
         for key in ["messages", "request_messages", "requestMessages"] {
-            if let Some(arr) = payload.get(key)
-                && let Ok(msgs) = serde_json::from_value::<Vec<HermesMessage>>(arr.clone())
-            {
-                return msgs;
+            if let Some(val) = payload.get(key).filter(|v| !v.is_null()) {
+                return serde_json::from_value::<Vec<HermesMessage>>(val.clone());
             }
         }
-        Vec::new()
+        Ok(Vec::new())
     }
 
     /// Handles a Hermes hook or `ContextEngine` / `MemoryProvider` JSON RPC payload.
@@ -400,7 +527,7 @@ impl HermesAdapter {
 
         let response = match event_name {
             "select_context" | "select-context" => {
-                let msgs = Self::parse_messages(&payload);
+                let msgs = Self::parse_messages(&payload)?;
                 let first_n = payload
                     .get("protect_first_n")
                     .or_else(|| payload.get("protectFirstN"))
@@ -419,7 +546,7 @@ impl HermesAdapter {
                 })
             }
             "prune_tool_results_only" | "prune-tool-results-only" => {
-                let msgs = Self::parse_messages(&payload);
+                let msgs = Self::parse_messages(&payload)?;
                 let last_n = payload
                     .get("protect_last_n")
                     .or_else(|| payload.get("protectLastN"))
@@ -433,7 +560,7 @@ impl HermesAdapter {
                 })
             }
             "compress" | "PreCompact" | "pre-compact" => {
-                let msgs = Self::parse_messages(&payload);
+                let msgs = Self::parse_messages(&payload)?;
                 let focus_topic = payload
                     .get("focus_topic")
                     .or_else(|| payload.get("focusTopic"))
@@ -444,14 +571,14 @@ impl HermesAdapter {
                 })
             }
             "on_turn_complete" | "on-turn-complete" | "PostToolUse" | "post-tool-use" => {
-                let msgs = Self::parse_messages(&payload);
+                let msgs = Self::parse_messages(&payload)?;
                 let count = Self::on_turn_complete(&msgs, mmu);
                 json!({
                     "ingested_count": count
                 })
             }
             "on_pre_compress" | "on-pre-compress" => {
-                let msgs = Self::parse_messages(&payload);
+                let msgs = Self::parse_messages(&payload)?;
                 let checkpoint = Self::on_pre_compress(&msgs, mmu);
                 json!({
                     "checkpoint_version": PRE_COMPRESS_CHECKPOINT_API_VERSION,
