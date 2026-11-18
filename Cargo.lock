@@ -60,7 +60,7 @@ checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 
 [[package]]
 name = "icx-adapters"
-version = "0.5.0"
+version = "1.0.0"
 dependencies = [
  "icx-bus",
  "icx-codec",
@@ -74,7 +74,7 @@ dependencies = [
 
 [[package]]
 name = "icx-bus"
-version = "0.5.0"
+version = "1.0.0"
 dependencies = [
  "icx-core",
  "serde",
@@ -83,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "icx-cli"
-version = "0.5.0"
+version = "1.0.0"
 dependencies = [
  "icx-adapters",
  "icx-bus",
@@ -98,7 +98,7 @@ dependencies = [
 
 [[package]]
 name = "icx-codec"
-version = "0.5.0"
+version = "1.0.0"
 dependencies = [
  "icx-core",
  "serde",
@@ -107,7 +107,7 @@ dependencies = [
 
 [[package]]
 name = "icx-core"
-version = "0.5.0"
+version = "1.0.0"
 dependencies = [
  "blake3",
  "serde",
@@ -117,7 +117,7 @@ dependencies = [
 
 [[package]]
 name = "icx-hdc"
-version = "0.5.0"
+version = "1.0.0"
 dependencies = [
  "blake3",
  "icx-core",
@@ -126,7 +126,7 @@ dependencies = [
 
 [[package]]
 name = "icx-proxy"
-version = "0.5.0"
+version = "1.0.0"
 dependencies = [
  "icx-adapters",
  "icx-codec",
@@ -137,7 +137,7 @@ dependencies = [
 
 [[package]]
 name = "icx-store"
-version = "0.5.0"
+version = "1.0.0"
 dependencies = [
  "icx-core",
  "serde",

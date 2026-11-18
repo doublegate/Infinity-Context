@@ -58,14 +58,8 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
             run_status(tail);
             Ok(())
         }
-        "doctor" => {
-            run_doctor();
-            Ok(())
-        }
-        "benchmark" => {
-            run_benchmark();
-            Ok(())
-        }
+        "doctor" => run_doctor(tail),
+        "benchmark" => run_benchmark(),
         _ => {
             print_help();
             Ok(())
@@ -104,10 +98,10 @@ Subcommands:",
       Parse and inspect an AHTL Holographic Packet's clauses and Braille-256 sketch
   status [--dir <PATH>]
       Print Infinity-Context MMU status and schema overview
-  doctor
-      Inspect local agent installations (claude, codex, agy, hermes) and verify readiness
+  doctor [--dir <PATH>]
+      Inspect local agent installations (claude, codex, agy, hermes), /dev/shm, and workspace integrity
   benchmark
-      Execute the end-to-end SLO benchmark suite (Compression, HDC, Fractal, PPR, Prefix-Cache, Seqlock)"
+      Execute the end-to-end 9-SLO benchmark suite (HDC, Fractal, PPR, AHTL, FastCDC, Seqlock, Hook, NIH)"
     );
 }
 
@@ -670,61 +664,351 @@ fn run_status(args: &[String]) {
     println!("{status}");
 }
 
-fn run_doctor() {
+fn is_executable_file(path: &Path) -> bool {
+    let Ok(meta) = path.metadata() else {
+        return false;
+    };
+    if !meta.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        meta.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn find_executable_in_path(bin_name: &str) -> Option<PathBuf> {
+    let path_var = env::var_os("PATH")?;
+    for dir in env::split_paths(&path_var) {
+        let candidate = dir.join(bin_name);
+        if is_executable_file(&candidate) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+static DOCTOR_PROBE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn is_dir_writable(dir: &Path) -> bool {
+    if !dir.is_dir() {
+        return false;
+    }
+    let seq = DOCTOR_PROBE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let probe_path = dir.join(format!(".icx_doctor_probe_{}_{seq}", std::process::id()));
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let Ok(f) = opts.open(&probe_path) else {
+        return false;
+    };
+    drop(f);
+    let _ = fs::remove_file(&probe_path);
+    true
+}
+
+fn parse_doctor_dir_flag(args: &[String]) -> Result<Option<&str>, String> {
+    let mut dir_str: Option<&str> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--dir" => {
+                if i + 1 >= args.len() {
+                    return Err("icx doctor error: missing value for --dir".into());
+                }
+                dir_str = Some(args[i + 1].as_str());
+                i += 2;
+            }
+            unknown => {
+                return Err(format!(
+                    "icx doctor error: unknown option `{unknown}` (expected `--dir <PATH>`)"
+                ));
+            }
+        }
+    }
+    Ok(dir_str)
+}
+
+fn run_doctor(args: &[String]) -> Result<(), String> {
+    let explicit_dir = parse_doctor_dir_flag(args)?;
     println!("=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===");
-    let home = env::var("HOME").unwrap_or_else(|_| "/home/parobek".into());
+    let home = env::var("HOME").unwrap_or_else(|_| ".".into());
+    let resolve_bin = |default_subpath: &str, bin_name: &str| -> String {
+        let primary = format!("{home}/{default_subpath}");
+        if is_executable_file(Path::new(&primary)) {
+            return primary;
+        }
+        find_executable_in_path(bin_name).map_or(primary, |p| p.display().to_string())
+    };
     let probes = [
-        ("Claude Code Binary", format!("{home}/.local/bin/claude")),
-        ("Claude Settings", format!("{home}/.claude/settings.json")),
-        ("OpenAI Codex Binary", format!("{home}/.local/bin/codex")),
-        ("Codex Hooks Config", format!("{home}/.codex/hooks.json")),
+        (
+            "Claude Code Binary",
+            resolve_bin(".local/bin/claude", "claude"),
+            true,
+        ),
+        (
+            "Claude Settings",
+            format!("{home}/.claude/settings.json"),
+            false,
+        ),
+        (
+            "OpenAI Codex Binary",
+            resolve_bin(".local/bin/codex", "codex"),
+            true,
+        ),
+        (
+            "Codex Hooks Config",
+            format!("{home}/.codex/hooks.json"),
+            false,
+        ),
         (
             "Codex State SQLite",
             format!("{home}/.codex/state_5.sqlite"),
+            false,
         ),
-        ("Antigravity CLI (agy)", format!("{home}/.local/bin/agy")),
+        (
+            "Antigravity CLI (agy)",
+            resolve_bin(".local/bin/agy", "agy"),
+            true,
+        ),
         (
             "Antigravity Hooks",
             format!("{home}/.gemini/config/hooks.json"),
+            false,
         ),
         (
             "Hermes Agent Source",
             format!("{home}/.hermes/hermes-agent/agent/context_engine.py"),
+            false,
         ),
-        ("HTTPS Proxy Transport (curl)", "/usr/bin/curl".into()),
-        ("POSIX Shared Memory (/dev/shm)", "/dev/shm".into()),
+        (
+            "HTTPS Proxy Transport (curl)",
+            find_executable_in_path("curl")
+                .map_or_else(|| "/usr/bin/curl".into(), |p| p.display().to_string()),
+            true,
+        ),
     ];
 
-    for (label, path) in probes {
-        let exists = Path::new(&path).exists();
+    for (label, path, require_exec) in probes {
+        let p = Path::new(&path);
+        let exists = if require_exec {
+            is_executable_file(p)
+        } else {
+            p.is_file()
+        };
         let status = if exists { "DETECTED" } else { "ABSENT" };
         println!("  [{status:8}] {label:32} -> {path}");
     }
-    println!("Doctor status: READY");
+
+    let shm_dir = Path::new("/dev/shm");
+    let shm_writable = is_dir_writable(shm_dir);
+    let shm_status = if shm_writable {
+        "DETECTED"
+    } else if shm_dir.is_dir() {
+        "READONLY"
+    } else {
+        "ABSENT"
+    };
+    println!(
+        "  [{shm_status:8}] {:32} -> /dev/shm (writable={shm_writable})",
+        "POSIX Shared Memory (/dev/shm)"
+    );
+
+    let mut doctor_status = if shm_writable { "READY" } else { "DEGRADED" };
+    let mut doctor_errs: Vec<String> = Vec::new();
+    if !shm_writable {
+        doctor_errs.push("icx doctor error: /dev/shm is absent or not writable".into());
+    }
+    let ws_dir = resolve_workspace_dir(explicit_dir);
+    let is_initialized = ws_dir.join("cas_store.json").exists()
+        || ws_dir.join("mmu_state.json").exists()
+        || ws_dir.join("bitemporal_graph.json").exists();
+    if ws_dir.exists() && is_initialized {
+        let mut mmu = InfinityContextMmu::default();
+        // Note: `InfinityContextMmu::load_workspace_dir` acquires `cas_store.lock` + `WORKSPACE_IO_LOCK`
+        // before reading `cas_store.json`, `bitemporal_graph.json`, and `mmu_state.json`.
+        match mmu.load_workspace_dir(&ws_dir) {
+            Ok(()) => match mmu.dag.verify_all_merkle_integrity_with_cas(Some(&mmu.cas)) {
+                Ok(nodes) => {
+                    let artifacts = mmu.cas.artifact_count();
+                    println!(
+                        "  [VERIFIED] {:32} -> {} (cas_artifacts={artifacts}, dag_nodes={nodes}, graph_edges={})",
+                        "Workspace Storage & Merkle-DAG",
+                        ws_dir.display(),
+                        mmu.graph.edges().len()
+                    );
+                }
+                Err(e) => {
+                    doctor_status = "CORRUPT";
+                    println!(
+                        "  [CORRUPT ] {:32} -> {} ({e})",
+                        "Workspace Storage & Merkle-DAG",
+                        ws_dir.display()
+                    );
+                    doctor_errs.push(format!(
+                        "icx doctor error: workspace {} is corrupt: {e}",
+                        ws_dir.display()
+                    ));
+                }
+            },
+            Err(
+                e @ (icx_core::IcxError::IntegrityViolation(_)
+                | icx_core::IcxError::ArtifactNotFound(_)),
+            ) => {
+                doctor_status = "CORRUPT";
+                println!(
+                    "  [CORRUPT ] {:32} -> {} ({e})",
+                    "Workspace Storage & Merkle-DAG",
+                    ws_dir.display()
+                );
+                doctor_errs.push(format!(
+                    "icx doctor error: workspace {} is corrupt: {e}",
+                    ws_dir.display()
+                ));
+            }
+            Err(e) => {
+                if doctor_status != "CORRUPT" {
+                    doctor_status = "DEGRADED";
+                }
+                println!(
+                    "  [WARNING ] {:32} -> {} ({e})",
+                    "Workspace Storage & Merkle-DAG",
+                    ws_dir.display()
+                );
+                doctor_errs.push(format!(
+                    "icx doctor error: workspace {} failed to load: {e}",
+                    ws_dir.display()
+                ));
+            }
+        }
+    } else if ws_dir.exists() && explicit_dir.is_some() {
+        doctor_status = "DEGRADED";
+        println!(
+            "  [ABSENT  ] {:32} -> {} (uninitialized)",
+            "Workspace Storage & Merkle-DAG",
+            ws_dir.display()
+        );
+        doctor_errs.push(format!(
+            "icx doctor error: workspace directory {} is uninitialized",
+            ws_dir.display()
+        ));
+    } else if explicit_dir.is_some() {
+        doctor_status = "DEGRADED";
+        println!(
+            "  [ABSENT  ] {:32} -> {} (not found)",
+            "Workspace Storage & Merkle-DAG",
+            ws_dir.display()
+        );
+        doctor_errs.push(format!(
+            "icx doctor error: workspace directory {} does not exist",
+            ws_dir.display()
+        ));
+    }
+
+    println!("Doctor status: {doctor_status}");
+    if !doctor_errs.is_empty() {
+        return Err(doctor_errs.join("; "));
+    }
+    Ok(())
 }
 
-fn run_benchmark() {
-    println!("=== Infinity-Context (icx) SLO & Accuracy Benchmark Suite ===");
+fn check_slo(passed: bool, label: &str, measured: &str, failures: &mut Vec<String>) {
+    let status = if passed { "PASS" } else { "FAIL" };
+    println!("  [{status}] {label}: {measured}");
+    if !passed {
+        failures.push(format!("{label} ({measured})"));
+    }
+}
 
-    // 1. 10,240-bit HDC Bind + Hamming Scan Benchmark
-    let t0 = Instant::now();
+fn run_benchmark() -> Result<(), String> {
+    println!("=== Infinity-Context (icx) SLO & Accuracy Benchmark Suite ===");
+    // Note: Under debug/coverage (`cfg!(debug_assertions)`) builds, compiler optimizations are
+    // disabled (`opt-level = 0`) and LLVM coverage instrumentation is injected (`100x` allowance);
+    // on shared virtualized CI runners (`CI=true` / `GITHUB_ACTIONS=true`), wall-clock ceilings
+    // allow a `3x` VM jitter factor while dedicated workstations enforce the raw `1.0x` ceilings
+    // from `docs/performance.md` §1.
+    let is_ci = env::var_os("CI").is_some() || env::var_os("GITHUB_ACTIONS").is_some();
+    let scale = if cfg!(debug_assertions) {
+        100.0
+    } else if is_ci {
+        3.0
+    } else {
+        1.0
+    };
+    let mut failures = Vec::new();
+
+    // 1. 10,240-bit HDC Bind (^) + Permute Latency Benchmark (ceiling: <= 100 ns)
+    let hv_a = Hypervector::from_seed("bench", "role_key");
+    let hv_b = Hypervector::from_seed("bench", "filler_val");
+    let t_bind = Instant::now();
+    let mut hv_acc = hv_a;
+    for shift in 0..1_000usize {
+        hv_acc = std::hint::black_box((hv_acc ^ hv_b).permute(shift & 63));
+    }
+    let bind_ns = (t_bind.elapsed().as_nanos() as f64) / 1_000.0;
+    assert_ne!(hv_acc.popcount(), 0);
+    check_slo(
+        bind_ns <= 100.0 * scale,
+        "10,240-bit HDC Bind (^) + Permute",
+        &format!("{bind_ns:.2} ns / op (1,000 ops)"),
+        &mut failures,
+    );
+
+    // 2. 10,240-bit HDC Hamming Scan Benchmark (ceiling: <= 150 us / 1,000 nodes)
     let query_hv = Hypervector::from_seed("bench", "query_target");
     let candidates: Vec<Hypervector> = (0..1_000)
         .map(|i| Hypervector::from_seed("bench", &format!("cand_{i}")))
         .collect();
+    let t0 = Instant::now();
     let mut min_dist = u32::MAX;
     for c in &candidates {
-        min_dist = min_dist.min(query_hv.hamming_distance(c));
+        min_dist = min_dist.min(query_hv.hamming_distance_simd(c));
     }
-    let hdc_elapsed = t0.elapsed();
-    let per_10k_us = (hdc_elapsed.as_secs_f64() * 10.0) * 1_000_000.0;
-    println!(
-        "  [PASS] 10,240-bit HDC Hamming Scan: {:.2} us / 1,000 nodes ({:.2} us / 10k nodes, min_dist={min_dist})",
-        hdc_elapsed.as_secs_f64() * 1_000_000.0,
-        per_10k_us
+    let hdc_us = t0.elapsed().as_secs_f64() * 1_000_000.0;
+    let per_10k_us = hdc_us * 10.0;
+    check_slo(
+        hdc_us <= 150.0 * scale,
+        "10,240-bit HDC Hamming Scan      ",
+        &format!(
+            "{hdc_us:.2} us / 1,000 nodes ({per_10k_us:.2} us / 10k nodes, min_dist={min_dist})"
+        ),
+        &mut failures,
     );
 
-    // 1b. Two-Stage HdcAssociativeIndex & CSR BiTemporalGraph PPR Benchmark
+    // 3. Fractal IFS Trajectory Suffix Match Benchmark (ceiling: <= 50 ns / pair)
+    let mut traj_a = icx_hdc::fractal::FractalCoord::default();
+    let mut traj_b = icx_hdc::fractal::FractalCoord::default()
+        .step(&Hypervector::from_seed("bench", "divergent_prefix"));
+    for step in ["edit", "compile", "test", "fail", "fix", "verify"] {
+        let step_hv = Hypervector::from_seed("crates/icx-core/src/dag.rs", step);
+        traj_a = traj_a.step(&step_hv);
+        traj_b = traj_b.step(&step_hv);
+    }
+    let t_ifs = Instant::now();
+    let mut shared_depth = 0u32;
+    for _ in 0..1_000 {
+        shared_depth = std::hint::black_box(
+            std::hint::black_box(&traj_a).shared_suffix_depth(std::hint::black_box(&traj_b)),
+        );
+    }
+    let ifs_ns = (t_ifs.elapsed().as_nanos() as f64) / 1_000.0;
+    check_slo(
+        shared_depth >= 6 && ifs_ns <= 50.0 * scale,
+        "Fractal IFS Suffix Match         ",
+        &format!("{ifs_ns:.2} ns / pair (shared_depth={shared_depth})"),
+        &mut failures,
+    );
+
+    // 4. Two-Stage HdcAssociativeIndex & CSR BiTemporalGraph PPR Benchmark
     let mut bench_idx = icx_hdc::HdcAssociativeIndex::new();
     for i in 0..250u64 {
         let _ = bench_idx.observe_event(
@@ -756,13 +1040,16 @@ fn run_benchmark() {
     let ppr_hits = bench_graph.personalized_pagerank(&["mod:m_0"], None, 0.15, 8, 5);
     let ppr_us = t_ppr.elapsed().as_secs_f64() * 1_000_000.0;
     assert_ne!(ppr_hits.len(), 0);
-    println!(
-        "  [PASS] Two-Stage HDC + CSR PPR:     {idx_us:.2} us (two-stage query), {ppr_us:.2} us (201-node CSR PPR)"
+    check_slo(
+        idx_us <= 200.0 * scale && ppr_us <= 400.0 * scale,
+        "Two-Stage HDC + CSR PPR          ",
+        &format!("{idx_us:.2} us (two-stage query), {ppr_us:.2} us (201-node CSR PPR)"),
+        &mut failures,
     );
 
-    // 2. AHTL Log Compression Ratio & Latency Benchmark
-    let mut log_fixture = String::from("running 400 tests\n");
-    for i in 0..399 {
+    // 5. AHTL Log Compression Ratio & Latency Benchmark (ceiling: <= 400 us, ratio >= 10x)
+    let mut log_fixture = String::from("running 1200 tests\n");
+    for i in 0..1_199 {
         log_fixture.push_str(&format!(
             "test crate_core::module_{i}::test_case_{i:04} ... ok\n"
         ));
@@ -772,21 +1059,102 @@ fn run_benchmark() {
         "thread 'crate_core::mmu::test_epoch_seal' panicked at crates/icx-core/src/epoch.rs:142:9: assertion failed\n",
     );
 
-    let t1 = Instant::now();
     let (id, _) = ArtifactId::hash_bytes(log_fixture.as_bytes());
-    let pkt =
-        StructuralSkeletonizer::compress_to_packet("cargo_test", &log_fixture, Some(id), [0x42; 8]);
+    let t1 = Instant::now();
+    let pkt = StructuralSkeletonizer::compress_sanitized_to_packet(
+        "cargo_test",
+        &log_fixture,
+        Some(id),
+        [0x42; 8],
+    );
     let rendered = pkt.render();
-    let codec_elapsed = t1.elapsed();
+    let codec_us = t1.elapsed().as_secs_f64() * 1_000_000.0;
     let ratio = (log_fixture.len() as f64) / (rendered.len() as f64);
-    println!(
-        "  [PASS] AHTL Compression Ratio:      {ratio:.1}x ({} B -> {} B in {:.2} us)",
-        log_fixture.len(),
-        rendered.len(),
-        codec_elapsed.as_secs_f64() * 1_000_000.0
+    check_slo(
+        ratio >= 10.0 && codec_us <= 400.0 * scale,
+        "AHTL Compression Ratio           ",
+        &format!(
+            "{ratio:.1}x ({} B -> {} B in {codec_us:.2} us)",
+            log_fixture.len(),
+            rendered.len()
+        ),
+        &mut failures,
     );
 
-    // 3. Multi-Turn Prefix-Cache Hit Ratio & Lossless Needle-in-a-Haystack Benchmark
+    // 6. FastCDC + BLAKE3 CAS Ingest (64 KB) Benchmark (release ceiling: <= 250 us)
+    let mut cas_bench = icx_core::cas::CasStore::new();
+    let cas_payload_64k = "pub fn fastcdc_kernel_step(x: u64) -> u64 { x.wrapping_mul(6364136223846793005).wrapping_add(1) }\n".repeat(660);
+    let t_cas = Instant::now();
+    let (cas_aid, _) = cas_bench
+        .put_bytes_checked(cas_payload_64k.as_bytes())
+        .expect("64 KB CAS ingest succeeds");
+    let cas_us = t_cas.elapsed().as_secs_f64() * 1_000_000.0;
+    assert_eq!(
+        cas_bench.deref_bytes(cas_aid).unwrap().len(),
+        cas_payload_64k.len()
+    );
+    check_slo(
+        cas_us <= 250.0 * scale,
+        "FastCDC + BLAKE3 CAS Ingest (64K)",
+        &format!(
+            "{cas_us:.2} us ({} B across {} chunks)",
+            cas_payload_64k.len(),
+            cas_bench.unique_chunk_count()
+        ),
+        &mut failures,
+    );
+
+    // 7. In-Process Atomic Seqlock Broadcast Latency Benchmark (release ceiling: <= 5,000 ns)
+    let bench_bus = icx_bus::SeqlockTelemetryBus::new_in_memory();
+    let t3 = Instant::now();
+    for seq_i in 0..1_000u64 {
+        bench_bus.publish(
+            AgentKind::ClaudeCode,
+            ArtifactId(seq_i),
+            0x4943_585F_574F_524B,
+            128,
+            [seq_i; 4],
+            [0; 16],
+            "⟦Θ:bench@seqlock⊢✓ok⟧",
+            seq_i,
+        );
+    }
+    let bus_ns_per_op = (t3.elapsed().as_nanos() as f64) / 1_000.0;
+    check_slo(
+        bus_ns_per_op <= 5_000.0 * scale,
+        "Atomic Seqlock Broadcast         ",
+        &format!("{bus_ns_per_op:.1} ns / slot (1,000 publishes)"),
+        &mut failures,
+    );
+
+    // 8. Full Synchronous Hook Round-Trip (`ClaudeCodeAdapter::handle_hook`) Benchmark (release ceiling: <= 1,000 us)
+    let hook_cfg = EpochControllerConfig::anthropic_default();
+    let mut hook_mmu =
+        InfinityContextMmu::new(hook_cfg, icx_bus::SeqlockTelemetryBus::new_in_memory());
+    let hook_payload = format!(
+        "running 24 tests\n{}test crate_core::mmu::test_epoch_seal ... FAILED\n",
+        "test crate_core::suite::verify_invariant ... ok\n".repeat(23)
+    );
+    let hook_stdin = serde_json::json!({
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Bash",
+        "tool_input": {"command": "cargo test --workspace"},
+        "tool_response": &hook_payload
+    })
+    .to_string();
+    let t_hook = Instant::now();
+    let hook_out =
+        ClaudeCodeAdapter::handle_hook("PostToolUse", &hook_stdin, &mut hook_mmu).unwrap();
+    let hook_us = t_hook.elapsed().as_secs_f64() * 1_000_000.0;
+    assert!(hook_out.contains("updatedToolOutput"));
+    check_slo(
+        hook_us <= 1_000.0 * scale,
+        "Full Synchronous Hook Round-Trip ",
+        &format!("{hook_us:.2} us (PostToolUse virtualization)"),
+        &mut failures,
+    );
+
+    // 9. Multi-Turn Prefix-Cache Hit Ratio & Lossless Needle-in-a-Haystack Benchmark
     let t2 = Instant::now();
     let epoch_cfg = EpochControllerConfig {
         epoch_rollover_tokens: 1000,
@@ -795,7 +1163,7 @@ fn run_benchmark() {
     };
     let mut mmu = InfinityContextMmu::new(epoch_cfg, icx_bus::SeqlockTelemetryBus::new_in_memory());
     mmu.epochs = CacheEpochController::new(
-        "⟪ICX:PINNED_HEAD│system=infinity-context-mmu-v1│cache_breakpoint=0⟫\n".repeat(200),
+        "⟪ICX:PINNED_HEAD│system=infinity-context-mmu-v1│cache_breakpoint=0⟫\n".repeat(300),
         epoch_cfg,
     );
 
@@ -836,31 +1204,25 @@ fn run_benchmark() {
 
     let avg_cache_hit = hit_ratios.iter().sum::<f64>() / (hit_ratios.len() as f64) * 100.0;
     let sim_elapsed = t2.elapsed();
-    println!(
-        "  [PASS] 50-Turn NIH + Cache-Epoch:   {avg_cache_hit:.2}% prefix cache hit rate, 100% lossless passkey recovery ({:.2} ms)",
-        sim_elapsed.as_secs_f64() * 1_000.0
+    check_slo(
+        avg_cache_hit >= 90.0,
+        "50-Turn NIH + Cache-Epoch        ",
+        &format!(
+            "{avg_cache_hit:.2}% prefix cache hit rate, 100% lossless passkey recovery ({:.2} ms)",
+            sim_elapsed.as_secs_f64() * 1_000.0
+        ),
+        &mut failures,
     );
 
-    // 4. In-Process Atomic Seqlock Broadcast Latency Benchmark
-    let bench_bus = icx_bus::SeqlockTelemetryBus::new_in_memory();
-    let t3 = Instant::now();
-    for seq_i in 0..1_000u64 {
-        bench_bus.publish(
-            AgentKind::ClaudeCode,
-            ArtifactId(seq_i),
-            0x4943_585F_574F_524B,
-            128,
-            [seq_i; 4],
-            [0; 16],
-            "⟦Θ:bench@seqlock⊢✓ok⟧",
-            seq_i,
-        );
+    if !failures.is_empty() {
+        return Err(format!(
+            "icx benchmark error: {} SLO gate(s) failed: {}",
+            failures.len(),
+            failures.join("; ")
+        ));
     }
-    let bus_ns_per_op = (t3.elapsed().as_nanos() as f64) / 1_000.0;
-    println!(
-        "  [PASS] Atomic Seqlock Broadcast:    {bus_ns_per_op:.1} ns / slot (1,000 publishes)"
-    );
     println!("All Infinity-Context SLO gates PASSED.");
+    Ok(())
 }
 
 #[cfg(test)]
@@ -990,6 +1352,105 @@ mod tests {
             &tmp_dir,
         )
         .unwrap();
+        assert!(find_executable_in_path("__nonexistent_icx_test_binary__").is_none());
+        assert!(!is_executable_file(&tmp_dir));
+        assert!(!is_executable_file(&sample_file));
+        assert!(!is_dir_writable(&sample_file));
+        // Verify `icx doctor --dir <PATH>` against a valid initialized workspace
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "doctor".into(),
+                "--dir".into(),
+                dir_arg.clone(),
+            ],
+            io::Cursor::new(""),
+        )
+        .unwrap();
+        // Verify `[CORRUPT ]` branch of `icx doctor --dir <PATH>` when a DAG node's digest is tampered
+        let tampered_ws = tmp_dir.join("tampered_dag_ws");
+        init_workspace_dir(&tampered_ws).unwrap();
+        let _ = encode_payload_into_workspace("src/t.rs", "pub fn t() {}\n", &tampered_ws).unwrap();
+        let mmu_json_path = tampered_ws.join("mmu_state.json");
+        let mut mmu_val: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&mmu_json_path).unwrap()).unwrap();
+        if let Some(nodes) = mmu_val
+            .get_mut("dag")
+            .and_then(|d| d.get_mut("nodes"))
+            .and_then(serde_json::Value::as_object_mut)
+            && let Some((_, first_node)) = nodes.iter_mut().next()
+            && let Some(turn_obj) = first_node.get_mut("Turn")
+            && let Some(arr) = turn_obj
+                .get_mut("digest")
+                .and_then(serde_json::Value::as_array_mut)
+            && let Some(b0) = arr.first_mut()
+        {
+            *b0 = serde_json::json!(255);
+        }
+        fs::write(&mmu_json_path, serde_json::to_string(&mmu_val).unwrap()).unwrap();
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "doctor".into(),
+                    "--dir".into(),
+                    tampered_ws.to_string_lossy().into_owned(),
+                ],
+                io::Cursor::new(""),
+            )
+            .is_err()
+        );
+        // Verify `icx doctor --dir <PATH>` fails closed when `cas_store.json` is deleted while
+        // `mmu_state.json` still references DAG turn artifacts, or when `--dir` does not exist
+        let missing_cas_ws = tmp_dir.join("missing_cas_ws");
+        init_workspace_dir(&missing_cas_ws).unwrap();
+        let _ =
+            encode_payload_into_workspace("src/m.rs", "pub fn m() {}\n", &missing_cas_ws).unwrap();
+        fs::remove_file(missing_cas_ws.join("cas_store.json")).unwrap();
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "doctor".into(),
+                    "--dir".into(),
+                    missing_cas_ws.to_string_lossy().into_owned(),
+                ],
+                io::Cursor::new(""),
+            )
+            .is_err()
+        );
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "doctor".into(),
+                    "--dir".into(),
+                    tmp_dir
+                        .join("no_such_doctor_dir")
+                        .to_string_lossy()
+                        .into_owned(),
+                ],
+                io::Cursor::new(""),
+            )
+            .is_err()
+        );
+        assert!(
+            dispatch_cli_args(
+                &["icx".into(), "doctor".into(), "--dir".into()],
+                io::Cursor::new(""),
+            )
+            .is_err()
+        );
+        assert!(
+            dispatch_cli_args(
+                &["icx".into(), "doctor".into(), "--unknown".into()],
+                io::Cursor::new(""),
+            )
+            .is_err()
+        );
+        let mut fail_vec = Vec::new();
+        check_slo(false, "synthetic_gate", "9999 us", &mut fail_vec);
+        assert_eq!(fail_vec.len(), 1);
         dispatch_cli_args(
             &["icx".into(), "decode-ahtl".into(), pkt_str.clone()],
             io::Cursor::new(""),
@@ -1190,10 +1651,39 @@ mod tests {
         )
         .unwrap();
 
-        // Test execute_hook fail-open behavior when workspace state file is corrupted
+        // Test execute_hook fail-open behavior when workspace state file is corrupted,
+        // and verify `icx doctor` reports uninitialized directory when no state files exist
+        let uninit_ws = tmp_dir.join("uninit_ws");
+        fs::create_dir_all(&uninit_ws).unwrap();
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "doctor".into(),
+                    "--dir".into(),
+                    uninit_ws.to_string_lossy().into_owned(),
+                ],
+                io::Cursor::new(""),
+            )
+            .is_err()
+        );
+        assert!(!uninit_ws.join("cas_store.lock").exists());
+
         let corrupt_ws = tmp_dir.join("corrupt_ws");
         fs::create_dir_all(&corrupt_ws).unwrap();
         fs::write(corrupt_ws.join("mmu_state.json"), "{corrupt_json").unwrap();
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "doctor".into(),
+                    "--dir".into(),
+                    corrupt_ws.to_string_lossy().into_owned(),
+                ],
+                io::Cursor::new(""),
+            )
+            .is_err()
+        );
         let corrupt_hook_out = execute_hook(
             &[
                 "--agent".into(),

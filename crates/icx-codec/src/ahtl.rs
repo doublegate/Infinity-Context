@@ -113,9 +113,15 @@ impl AhtlClause {
 
     /// Renders this clause into its compact AHTL token representation.
     pub fn render(&self) -> String {
+        let escaped_key = escape_clause_key_with_op(&self.key, self.op == ClauseOp::Neutral);
         let base = match &self.value {
-            Some(v) => format!("{}{}:{}", self.op.prefix_str(), self.key, v),
-            None => format!("{}{}", self.op.prefix_str(), self.key),
+            Some(v) => format!(
+                "{}{}:{}",
+                self.op.prefix_str(),
+                escaped_key,
+                escape_clause_val(v)
+            ),
+            None => format!("{}{}", self.op.prefix_str(), escaped_key),
         };
         match &self.implies {
             Some(effect) => format!("{base}⇒{}", effect.render()),
@@ -142,19 +148,128 @@ impl AhtlClause {
         if let Some((k, v)) = rest.split_once(':') {
             Self {
                 op,
-                key: k.to_owned(),
-                value: Some(v.to_owned()),
+                key: unescape_clause_field(k),
+                value: Some(unescape_clause_field(v)),
                 implies,
             }
         } else {
             Self {
                 op,
-                key: rest.to_owned(),
+                key: unescape_clause_field(rest),
                 value: None,
                 implies,
             }
         }
     }
+}
+
+/// Bijectively escapes `%`, `⊢`, `⋮`, `⇒`, `↦`, `⟦`, `⟧`, `\n`, `\r` (and, when `is_key` is
+/// `true`, `:` plus leading clause operator glyphs `⊕`, `⊖`, `¬`, `!`, `✓` when `escape_leading_op`
+/// is `true`) inside a clause key or value.
+fn escape_clause_field(s: &str, is_key: bool, escape_leading_op: bool) -> String {
+    let starts_with_op = is_key
+        && escape_leading_op
+        && matches!(s.chars().next(), Some('⊕' | '⊖' | '¬' | '!' | '✓'));
+    if !starts_with_op
+        && !s.chars().any(|c| {
+            matches!(c, '%' | '⊢' | '⋮' | '⇒' | '↦' | '⟦' | '⟧' | '\n' | '\r')
+                || (is_key && c == ':')
+        })
+    {
+        return s.to_owned();
+    }
+    let mut out = String::with_capacity(s.len() + 16);
+    for (idx, ch) in s.chars().enumerate() {
+        if is_key && escape_leading_op && idx == 0 {
+            match ch {
+                '⊕' => {
+                    out.push_str("%E2%8A%95");
+                    continue;
+                }
+                '⊖' => {
+                    out.push_str("%E2%8A%96");
+                    continue;
+                }
+                '¬' => {
+                    out.push_str("%C2%AC");
+                    continue;
+                }
+                '!' => {
+                    out.push_str("%21");
+                    continue;
+                }
+                '✓' => {
+                    out.push_str("%E2%9C%93");
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        match ch {
+            '%' => out.push_str("%25"),
+            ':' if is_key => out.push_str("%3A"),
+            '⊢' => out.push_str("%E2%8A%A2"),
+            '⋮' => out.push_str("%E2%8B%AE"),
+            '⇒' => out.push_str("%E2%87%92"),
+            '↦' => out.push_str("%E2%86%A6"),
+            '⟦' => out.push_str("%E2%9F%A6"),
+            '⟧' => out.push_str("%E2%9F%A7"),
+            '\n' => out.push_str("%0A"),
+            '\r' => out.push_str("%0D"),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+#[inline]
+fn escape_clause_key_with_op(s: &str, escape_leading_op: bool) -> String {
+    escape_clause_field(s, true, escape_leading_op)
+}
+
+#[inline]
+fn escape_clause_val(s: &str) -> String {
+    escape_clause_field(s, false, false)
+}
+
+/// Single-pass left-to-right inverse of `escape_clause_key_with_op` and `escape_clause_val`.
+fn unescape_clause_field(s: &str) -> String {
+    const ESCAPE_TABLE: &[(&str, char)] = &[
+        ("%25", '%'),
+        ("%3A", ':'),
+        ("%21", '!'),
+        ("%C2%AC", '¬'),
+        ("%E2%8A%95", '⊕'),
+        ("%E2%8A%96", '⊖'),
+        ("%E2%9C%93", '✓'),
+        ("%E2%8A%A2", '⊢'),
+        ("%E2%8B%AE", '⋮'),
+        ("%E2%87%92", '⇒'),
+        ("%E2%86%A6", '↦'),
+        ("%E2%9F%A6", '⟦'),
+        ("%E2%9F%A7", '⟧'),
+        ("%0A", '\n'),
+        ("%0D", '\r'),
+    ];
+    if !s.contains('%') {
+        return s.to_owned();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    'outer: while !rest.is_empty() {
+        for &(tok, decoded) in ESCAPE_TABLE {
+            if let Some(after) = rest.strip_prefix(tok) {
+                out.push(decoded);
+                rest = after;
+                continue 'outer;
+            }
+        }
+        if let Some(ch) = rest.chars().next() {
+            out.push(ch);
+            rest = &rest[ch.len_utf8()..];
+        }
+    }
+    out
 }
 
 /// Bijectively escapes `%` (`%25`), `#L` (`%23L`), `⟦` (`%E2%9F%A6`), `⟧` (`%E2%9F%A7`),
@@ -1145,5 +1260,39 @@ mod tests {
         assert_eq!(tv2_pkt.render(), expected_tv2);
         let parsed_tv2 = AhtlWirePacketV1::parse(expected_tv2).unwrap();
         assert_eq!(parsed_tv2.render(), expected_tv2);
+
+        // Verify programmatic `AhtlClause` bijective escaping for keys and values containing
+        // `:`, `⋮`, `⇒`, `↦`, `⟦`, `⟧`, `%`, `\n`, and `\r`.
+        let tricky_clause = AhtlClause::new(
+            ClauseOp::Anomaly,
+            "ns::key:with⋮delim⇒and↦ptr⟦x⟧%25\n\r",
+            Some("val:with⋮delim⇒and↦ptr⟦y⟧%3A\n\r".into()),
+        )
+        .with_implication(AhtlClause::new(ClauseOp::Verified, "effect:key⋮ok", None));
+        let tricky_pkt = AhtlPacket::new(
+            PacketKind::Invariant,
+            "subj:test#L1-2",
+            Some((1, 2)),
+            vec![tricky_clause.clone()],
+            Some(tv_id),
+            [0x55; 8],
+        );
+        let tricky_rendered = tricky_pkt.render();
+        let tricky_reparsed = AhtlPacket::parse(&tricky_rendered).expect("parse tricky clause pkt");
+        assert_eq!(tricky_reparsed, tricky_pkt);
+        assert_eq!(tricky_reparsed.clauses[0], tricky_clause);
+        assert_eq!(
+            AhtlClause::parse("⊕key_with_unrecognized_%99_percent:val_%ZZ_raw"),
+            AhtlClause::new(
+                ClauseOp::Added,
+                "key_with_unrecognized_%99_percent",
+                Some("val_%ZZ_raw".into())
+            )
+        );
+        for op_lead in ["⊕lead", "⊖lead", "¬lead", "!lead", "✓lead"] {
+            let neutral_op_clause = AhtlClause::new(ClauseOp::Neutral, op_lead, Some("v".into()));
+            let rendered_neutral = neutral_op_clause.render();
+            assert_eq!(AhtlClause::parse(&rendered_neutral), neutral_op_clause);
+        }
     }
 }

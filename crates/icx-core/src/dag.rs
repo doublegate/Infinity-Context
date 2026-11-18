@@ -859,20 +859,80 @@ impl MerkleContextDag {
         Ok(folded_epoch)
     }
 
+    /// Cryptographically recomputes and verifies the domain-separated BLAKE3 Merkle digest of every
+    /// node stored in `self.nodes` in $O(V + E)$ time using a memoized `verified` set, and when
+    /// `cas` is `Some(...)`, first runs `cas.verify_all_integrity()` and then verifies that every
+    /// `Turn`'s `raw_artifact` and every `ToolArtifact`'s `chunk_ids` exist in `cas`, returning the
+    /// total number of verified DAG nodes.
+    pub fn verify_all_merkle_integrity_with_cas(
+        &self,
+        cas: Option<&crate::cas::CasStore>,
+    ) -> Result<usize, IcxError> {
+        if let Some(store) = cas {
+            store.verify_all_integrity()?;
+        }
+        let mut verified = std::collections::BTreeSet::new();
+        let mut ancestors = Vec::new();
+        for (&id, node) in &self.nodes {
+            if let Some(store) = cas {
+                match node {
+                    DagNode::Turn { raw_artifact, .. } => {
+                        let Some(meta) = store.get_meta(*raw_artifact) else {
+                            return Err(IcxError::ArtifactNotFound(*raw_artifact));
+                        };
+                        for &cid in &meta.chunk_ids {
+                            if !store.has_chunk(cid) {
+                                return Err(IcxError::ArtifactNotFound(cid));
+                            }
+                        }
+                    }
+                    DagNode::ToolArtifact(tool) => {
+                        let Some(meta) = store.get_meta(tool.raw_artifact) else {
+                            return Err(IcxError::ArtifactNotFound(tool.raw_artifact));
+                        };
+                        if meta.full_digest != tool.full_digest || meta.chunk_ids != tool.chunks {
+                            return Err(IcxError::IntegrityViolation(tool.raw_artifact));
+                        }
+                        for &cid in &tool.chunks {
+                            if !store.has_chunk(cid) {
+                                return Err(IcxError::ArtifactNotFound(cid));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            self.verify_merkle_integrity_with_ancestors(id, &mut ancestors, &mut verified)?;
+        }
+        Ok(self.nodes.len())
+    }
+
+    /// Cryptographically recomputes and verifies the domain-separated BLAKE3 Merkle digest of every
+    /// node stored in `self.nodes` in $O(V + E)$ time using a memoized `verified` set, returning the
+    /// total number of verified DAG nodes.
+    pub fn verify_all_merkle_integrity(&self) -> Result<usize, IcxError> {
+        self.verify_all_merkle_integrity_with_cas(None)
+    }
+
     /// Cryptographically recomputes and verifies the domain-separated BLAKE3 Merkle digest of `id`
     /// and (recursively) all of its descendant DAG nodes.
     pub fn verify_merkle_integrity(&self, id: ArtifactId) -> Result<bool, IcxError> {
         let mut ancestors = Vec::new();
-        self.verify_merkle_integrity_with_ancestors(id, &mut ancestors)
+        let mut verified = std::collections::BTreeSet::new();
+        self.verify_merkle_integrity_with_ancestors(id, &mut ancestors, &mut verified)
     }
 
     fn verify_merkle_integrity_with_ancestors(
         &self,
         id: ArtifactId,
         ancestors: &mut Vec<ArtifactId>,
+        verified: &mut std::collections::BTreeSet<ArtifactId>,
     ) -> Result<bool, IcxError> {
         if ancestors.contains(&id) {
             return Err(IcxError::IntegrityViolation(id));
+        }
+        if verified.contains(&id) {
+            return Ok(true);
         }
         let node = self.nodes.get(&id).ok_or(IcxError::ArtifactNotFound(id))?;
         ancestors.push(id);
@@ -944,7 +1004,7 @@ impl MerkleContextDag {
                 hasher.update(&(child_turns.len() as u64).to_be_bytes());
                 let mut expected_saved = 0usize;
                 for &tid in child_turns {
-                    self.verify_merkle_integrity_with_ancestors(tid, ancestors)?;
+                    self.verify_merkle_integrity_with_ancestors(tid, ancestors, verified)?;
                     let child = self
                         .nodes
                         .get(&tid)
@@ -976,7 +1036,7 @@ impl MerkleContextDag {
                 ahtl_frame,
             } => {
                 for &cid in child_nodes {
-                    self.verify_merkle_integrity_with_ancestors(cid, ancestors)?;
+                    self.verify_merkle_integrity_with_ancestors(cid, ancestors, verified)?;
                 }
                 let is_l4_folded = ahtl_frame
                     .lines()
@@ -1045,6 +1105,9 @@ impl MerkleContextDag {
             }
         };
         ancestors.pop();
+        if res.is_ok() {
+            verified.insert(id);
+        }
         res
     }
 
@@ -1221,6 +1284,23 @@ mod tests {
         assert!(l4_deref.contains("ep=0001"));
         let l4_slice = dag.deref_node_lines(folded_l4.id(), 1, 2).unwrap();
         assert!(l4_slice.contains("folded=2"));
+
+        // Verify `verify_all_merkle_integrity_with_cas` succeeds when CAS contains all referenced
+        // artifacts/chunks and fails closed when a ToolArtifact's raw_artifact is missing
+        let mut cas = crate::cas::CasStore::new();
+        let _ = cas.put_bytes(b"tool chunk payload\n");
+        let _ = cas.put_bytes(b"fix step 1");
+        let _ = cas.put_bytes(b"fix step 2");
+        assert_eq!(
+            dag.verify_all_merkle_integrity_with_cas(Some(&cas))
+                .unwrap(),
+            dag.node_count()
+        );
+        let empty_cas = crate::cas::CasStore::new();
+        assert!(matches!(
+            dag.verify_all_merkle_integrity_with_cas(Some(&empty_cas)),
+            Err(IcxError::ArtifactNotFound(_))
+        ));
 
         // Corrupt a leaf turn digest and verify recursive Merkle check fails closed
         dag.corrupt_node_digest_for_test(t1);

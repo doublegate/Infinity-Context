@@ -4,9 +4,9 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 
 ## Status
 
-- **Current Version:** `v0.5.0` (`Phase 0` `v0.1.0`, `Phase 1` `v0.2.0`, `Phase 2` `v0.3.0`, `Phase 3` `v0.4.0`, and `Phase 4` `v0.5.0` All Complete)
-- **Current Phase:** Phase 4 Complete (`ClaudeCodeAdapter`, `CodexAdapter` + `CodexRolloutTailer`, `AntigravityAdapter`, `HermesAdapter`, Single-Tool Polymorphic `McpPagerServer` (`icx`), `WireProxyTransformer` + `icx proxy`, and [`docs/deployment-and-agent-integration-guide.md`](../docs/deployment-and-agent-integration-guide.md) All Green) — **Ready to start Phase 5 (`v1.0.0`)**
-- **Active Workspace:** 8 Rust crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`) — `std`-based, permanently `unsafe_code = "forbid"` (`0` `unsafe` blocks), Rust Edition `2024` / MSRV `1.100`, `>= 95%` Codecov line coverage (`97.48%` measured)
+- **Current Version:** `v1.0.0` (`Phase 0` `v0.1.0`, `Phase 1` `v0.2.0`, `Phase 2` `v0.3.0`, `Phase 3` `v0.4.0`, `Phase 4` `v0.5.0`, and `Phase 5` `v1.0.0` All Complete)
+- **Current Phase:** Phase 5 Complete (`v1.0.0` Production Release — All 5 Phases, 15 Sprints, and Tickets `T-11-001` through `T-52-002` Completed & Verified)
+- **Active Workspace:** 8 Rust crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`) — `std`-based, permanently `unsafe_code = "forbid"` (`0` `unsafe` blocks), Rust Edition `2024` / MSRV `1.100`, `>= 95%` Codecov line coverage (`97.5%+` measured)
 
 ---
 
@@ -69,14 +69,14 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 
 ---
 
-### Phase 5 — Long-Horizon Verification, Benchmarks & Production Packaging
-**Goal:** Verify Infinity-Context on multi-million-token Needle-in-a-Haystack / OOLONG simulations, validate `>= 94%` prompt prefix-cache hit ratios, and ship the `icx` CLI (`doctor`, `benchmark`, `status`, systemd user service).  
+### Phase 5 — Long-Horizon Verification, Benchmarks & Production Packaging (COMPLETED — `v1.0.0`)
+**Goal:** Verify Infinity-Context on multi-million-token Needle-in-a-Haystack / OOLONG simulations, validate `>= 94%` prompt prefix-cache hit ratios, close all AHTL exactness items, and ship the `v1.0.0` `icx` CLI (`doctor`, `benchmark`, `status`, `proxy`, systemd user service).  
 **Exit Criterion:** 100% pass rate on multi-million-token passkey retrieval and multi-agent chaos tests; `icx benchmark` and `icx doctor` report all SLOs green.  
 **Estimated Duration:** 2 weeks  
 
-- [Phase 5 Overview](phase-5-verification-benchmarks-and-release/overview.md)
-  - [Sprint 1 — Multi-Million-Token Needle-in-a-Haystack & Prefix-Cache Simulator](phase-5-verification-benchmarks-and-release/sprint-1-nih-and-prefix-cache-sim.md)
-  - [Sprint 2 — CLI Tooling, `icx doctor`, `icx benchmark` & Release Packaging](phase-5-verification-benchmarks-and-release/sprint-2-cli-doctor-and-packaging.md)
+- [Phase 5 Overview](phase-5-verification-benchmarks-and-release/overview.md) · [Phase 5 Implementation Plan](phase-5-verification-benchmarks-and-release/phase_5_implementation_plan.md)
+  - [Sprint 1 — Multi-Million-Token Needle-in-a-Haystack & Prefix-Cache Simulator (COMPLETED)](phase-5-verification-benchmarks-and-release/sprint-1-nih-and-prefix-cache-sim.md)
+  - [Sprint 2 — CLI Tooling, `icx doctor`, `icx benchmark` & Release Packaging (COMPLETED)](phase-5-verification-benchmarks-and-release/sprint-2-cli-doctor-and-packaging.md)
 
 ---
 

@@ -13,7 +13,7 @@ SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commerci
 
 ## 1. Workspace Crate Topology & Ownership Matrix
 
-The **Infinity-Context (`icx`)** workspace (`v0.3.0`) is structured as an 8-crate strictly acyclic Directed Acyclic Graph (`DAG`) in Rust (`edition = "2024"`, `rust-version = "1.100"`, `unsafe_code = "forbid"` permanently enforced across all 8 workspace crates with zero `unsafe` blocks anywhere in the repository):
+The **Infinity-Context (`icx`)** workspace (`v1.0.0`) is structured as an 8-crate strictly acyclic Directed Acyclic Graph (`DAG`) in Rust (`edition = "2024"`, `rust-version = "1.100"`, `unsafe_code = "forbid"` permanently enforced across all 8 workspace crates with zero `unsafe` blocks anywhere in the repository):
 
 | Crate | Layer | Key Exported Types | Normative Responsibility in `AHTL v1.0` |
 | :--- | :---: | :--- | :--- |
@@ -36,115 +36,124 @@ The **Infinity-Context (`icx`)** workspace (`v0.3.0`) is structured as an 8-crat
 
 ### 2.1 Profile A (`AhtlWirePacketV1`) & Profile B (`AhtlPacket`) Dual-Profile Codec
 
-In `v0.3.0`, `crates/icx-codec/src/ahtl.rs` implements both **Profile B** (`AhtlPacket` with 8-Braille `ChannelBHologram` sketches and `#icx:<16-hex>` / `#icx:<12-hex>` handles) and **Profile A** (`AhtlWirePacketV1` carrying `#icx:<12-hex>`, `fc:<64-hex>`, `hv:<16-hex>`, `<Braille-64>`, and `<Skeleton>`), unified under `WirePacket`, `EpochHeader`, `AhtlStream`, and the `ContextCodec` trait:
+In `v1.0.0`, `crates/icx-codec/src/ahtl.rs` implements both **Profile B** (`AhtlPacket` with 8-Braille `ChannelBHologram` sketches and `#icx:<16-hex>` / `#icx:<12-hex>` handles) and **Profile A** (`AhtlWirePacketV1` carrying `cas_handle: ArtifactId`, `compact_48bit_handle: bool`, `slice_hint: Option<String>`, `fractal_coord_hex: String`, `hdc_digest_hex: String`, `braille_spectrum: [u8; 64]`, and `skeleton_body: String`), unified under `WirePacket`, `EpochHeader`, `AhtlStream`, and the `ContextCodec` trait:
 
 ```rust
-use crate::braille::{braille_to_byte, byte_to_braille, decode_braille_sketch, encode_braille_sketch};
+use crate::braille::{decode_braille_64, encode_braille_64};
 use icx_core::ArtifactId;
-use serde::{Deserialize, Serialize};
 
-/// Profile A: Canonical 5-Field Extended AHTL v1.0 Wire Packet:
-/// `⟦AHTL v1│#icx:<12-hex>│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧`
-/// (Note: Serializes directly via `.render()` / `.parse()`; `[u8; 64]` omits default Serde derive
-/// on Serde 1.0 unless paired with `serde_big_array` or a custom 64-byte visitor.)
+/// Profile A — Canonical 6-Section `AHTL v1.0` Full-Spectrum Wire Packet
+/// (`docs/ahtl/01-formal-grammar-and-packet-specification.md` §1.1):
+/// `⟦AHTL v1│#icx:<12|16-hex>((<slice_hint>))?│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AhtlWirePacketV1 {
-    /// 48-bit (12-hex) or 64-bit (16-hex) BLAKE3 CAS handle
-    pub handle_hex: String,
-    /// 256-bit Fractal IFS Chaos-Game coordinate (`[i16; 16]` Q1.14 / Q15)
-    pub fractal_q15: [i16; 16],
-    /// 64-bit rotational XOR parity digest of the 10,240-bit Hypervector
-    pub hv_digest: u64,
-    /// 512-bit (64-byte) spectral band sketch rendered as 64 Unicode Braille glyphs
-    pub spectral_braille_64: [u8; 64],
-    /// Domain-skeletonized AST / diagnostic clause string
-    pub skeleton: String,
+    pub cas_handle: ArtifactId,
+    pub compact_48bit_handle: bool,
+    pub slice_hint: Option<String>,
+    pub fractal_coord_hex: String,
+    pub hdc_digest_hex: String,
+    pub braille_spectrum: [u8; 64],
+    pub skeleton_body: String,
 }
 
 impl AhtlWirePacketV1 {
-    /// Serializes this Profile A packet into its canonical UTF-8 wire representation.
-    pub fn render(&self) -> String {
-        use core::fmt::Write;
-        let mut out = String::with_capacity(384 + self.skeleton.len());
-        out.push_str("⟦AHTL v1│#icx:");
-        out.push_str(self.handle_hex.trim_start_matches("#icx:"));
-        out.push_str("│fc:");
-        for &coord in &self.fractal_q15 {
-            let _ = write!(out, "{:04x}", coord as u16);
+    /// Formats the pure CAS handle string (`#icx:<12-hex>` or `#icx:<16-hex>`), preserving
+    /// handle width for `CasStore::resolve_handle`.
+    pub fn cas_handle_string(&self) -> String {
+        if self.compact_48bit_handle {
+            self.cas_handle.to_short_handle()
+        } else {
+            self.cas_handle.to_string()
         }
-        let _ = write!(out, "│hv:{:016x}│", self.hv_digest);
-        for &b in &self.spectral_braille_64 {
-            out.push(byte_to_braille(b));
-        }
-        out.push('│');
-        out.push_str(&self.skeleton);
-        out.push('⟧');
-        out
     }
 
-    /// Parses a Profile A wire string back into an `AhtlWirePacketV1`.
-    pub fn parse(encoded: &str) -> Result<Self, crate::ahtl::CodecError> {
+    /// Renders the canonical 6-section Profile A wire packet:
+    /// `⟦AHTL v1│#icx:<12|16-hex>((<slice_hint>))?│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧`
+    pub fn render(&self) -> String {
+        let mut handle_field = self.cas_handle_string();
+        if let Some(hint) = &self.slice_hint {
+            if !hint.is_empty() {
+                handle_field.push('(');
+                handle_field.push_str(hint);
+                handle_field.push(')');
+            }
+        }
+        format!(
+            "⟦AHTL v1│{}│fc:{}│hv:{}│{}│{}⟧",
+            handle_field,
+            self.fractal_coord_hex,
+            self.hdc_digest_hex,
+            encode_braille_64(&self.braille_spectrum),
+            self.skeleton_body
+        )
+    }
+
+    /// Parses a canonical 6-section Profile A wire packet (`⟦AHTL v1│...⟧`).
+    pub fn parse(input: &str) -> Result<Self, crate::ahtl::CodecError> {
         use crate::ahtl::CodecError;
-        let inner = encoded
+        let inner = input
             .trim()
-            .strip_prefix("⟦AHTL v1│")
+            .strip_prefix('⟦')
             .and_then(|s| s.strip_suffix('⟧'))
             .ok_or(CodecError::MissingDelimiters)?;
 
-        let mut parts = inner.splitn(5, '│');
-        let icx_part = parts.next().ok_or(CodecError::MalformedSubject)?;
-        let fc_part = parts.next().ok_or(CodecError::MalformedSubject)?;
-        let hv_part = parts.next().ok_or(CodecError::MalformedSubject)?;
-        let braille_part = parts.next().ok_or(CodecError::MalformedBrailleSketch)?;
-        let skeleton_part = parts.next().ok_or(CodecError::MalformedSubject)?;
-
-        let handle_hex = icx_part
-            .strip_prefix("#icx:")
-            .ok_or_else(|| CodecError::MalformedHandle(icx_part.to_owned()))?;
-        if (handle_hex.len() != 12 && handle_hex.len() != 16)
-            || !handle_hex.bytes().all(|b| b.is_ascii_hexdigit())
-        {
-            return Err(CodecError::MalformedHandle(icx_part.to_owned()));
+        let mut parts = inner.splitn(6, '│');
+        let magic = parts.next().ok_or(CodecError::UnknownPacketKind)?;
+        if magic != "AHTL v1" {
+            return Err(CodecError::UnknownPacketKind);
         }
 
-        let fc_hex = fc_part
-            .strip_prefix("fc:")
-            .filter(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()))
-            .ok_or_else(|| CodecError::MalformedFractalCoord(fc_part.to_owned()))?;
-        let mut fractal_q15 = [0i16; 16];
-        for i in 0..16 {
-            let word = u16::from_str_radix(&fc_hex[i * 4..i * 4 + 4], 16)
-                .map_err(|_| CodecError::MalformedFractalCoord(fc_part.to_owned()))?;
-            fractal_q15[i] = word as i16;
-        }
-
-        let hv_hex = hv_part
-            .strip_prefix("hv:")
-            .filter(|h| h.len() == 16 && h.bytes().all(|b| b.is_ascii_hexdigit()))
-            .ok_or_else(|| CodecError::MalformedHdcDigest(hv_part.to_owned()))?;
-        let hv_digest = u64::from_str_radix(hv_hex, 16)
-            .map_err(|_| CodecError::MalformedHdcDigest(hv_part.to_owned()))?;
-
-        let mut spectral_braille_64 = [0u8; 64];
-        let mut count = 0usize;
-        for ch in braille_part.chars() {
-            if count >= 64 {
-                return Err(CodecError::MalformedBrailleSketch);
+        let handle_field = parts
+            .next()
+            .ok_or_else(|| CodecError::MalformedHandle(String::new()))?;
+        let (handle_raw, slice_hint) = if let Some(with_hint) = handle_field.strip_suffix(')') {
+            let (h_part, hint_part) = with_hint
+                .split_once('(')
+                .ok_or_else(|| CodecError::MalformedHandle(handle_field.to_owned()))?;
+            if hint_part.is_empty() {
+                return Err(CodecError::MalformedHandle(handle_field.to_owned()));
             }
-            spectral_braille_64[count] =
-                braille_to_byte(ch).ok_or(CodecError::MalformedBrailleSketch)?;
-            count += 1;
+            (h_part, Some(hint_part.to_owned()))
+        } else {
+            (handle_field, None)
+        };
+        let hex_part = handle_raw
+            .strip_prefix("#icx:")
+            .ok_or_else(|| CodecError::MalformedHandle(handle_raw.to_owned()))?;
+        let compact_48bit_handle = hex_part.len() == 12;
+        let (cas_handle, _) = ArtifactId::parse_prefix_range(handle_raw)
+            .map_err(|_| CodecError::MalformedHandle(handle_raw.to_owned()))?;
+
+        let fc_raw = parts.next().ok_or(CodecError::MalformedFractalCoord)?;
+        let fc_hex = fc_raw
+            .strip_prefix("fc:")
+            .ok_or(CodecError::MalformedFractalCoord)?;
+        if fc_hex.len() != 64 || !fc_hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(CodecError::MalformedFractalCoord);
         }
-        if count != 64 {
-            return Err(CodecError::MalformedBrailleSketch);
+
+        let hv_raw = parts.next().ok_or(CodecError::MalformedHdcDigest)?;
+        let hv_hex = hv_raw
+            .strip_prefix("hv:")
+            .ok_or(CodecError::MalformedHdcDigest)?;
+        if hv_hex.len() != 16 || !hv_hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(CodecError::MalformedHdcDigest);
         }
+
+        let braille_raw = parts.next().ok_or(CodecError::MalformedBrailleSketch)?;
+        let braille_spectrum =
+            decode_braille_64(braille_raw).ok_or(CodecError::MalformedBrailleSketch)?;
+
+        let skeleton_body = parts.next().ok_or(CodecError::MalformedSubject)?.to_owned();
 
         Ok(Self {
-            handle_hex: handle_hex.to_ascii_lowercase(),
-            fractal_q15,
-            hv_digest,
-            spectral_braille_64,
-            skeleton: skeleton_part.to_owned(),
+            cas_handle,
+            compact_48bit_handle,
+            slice_hint,
+            fractal_coord_hex: fc_hex.to_ascii_lowercase(),
+            hdc_digest_hex: hv_hex.to_ascii_lowercase(),
+            braille_spectrum,
+            skeleton_body,
         })
     }
 }

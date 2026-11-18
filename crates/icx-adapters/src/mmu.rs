@@ -398,17 +398,65 @@ impl InfinityContextMmu {
         (res, true)
     }
 
-    /// Returns `true` if `occurrence_idx` is already recorded for `AgentKind::Hermes` in
+    /// Returns `true` if `occurrence_idx` is already recorded for `agent` in
     /// `self.agent_occurrences` or `self.indexed_occurrences`.
     #[inline]
-    pub fn has_indexed_occurrence(&self, occurrence_idx: usize) -> bool {
+    pub fn has_indexed_occurrence_for(&self, agent: AgentKind, occurrence_idx: usize) -> bool {
         self.agent_occurrences
-            .get(&(AgentKind::Hermes as u8))
+            .get(&(agent as u8))
             .is_some_and(|m| m.contains_key(&occurrence_idx))
             || self
                 .indexed_occurrences
                 .get(&occurrence_idx)
-                .is_some_and(|e| e.0 == AgentKind::Hermes as u8)
+                .is_some_and(|e| e.0 == agent as u8)
+    }
+
+    /// Returns `true` if `occurrence_idx` is already recorded for `AgentKind::Hermes` in
+    /// `self.agent_occurrences` or `self.indexed_occurrences`.
+    #[inline]
+    pub fn has_indexed_occurrence(&self, occurrence_idx: usize) -> bool {
+        self.has_indexed_occurrence_for(AgentKind::Hermes, occurrence_idx)
+    }
+
+    /// Returns the occurrence record for `agent` at `occurrence_idx` matching `sanitized_aid` from
+    /// either `self.agent_occurrences` / `self.agent_reordered_occurrences` or
+    /// `self.indexed_occurrences` / `self.reordered_occurrences`.
+    #[must_use]
+    pub fn get_occurrence_record_for(
+        &self,
+        agent: AgentKind,
+        occurrence_idx: usize,
+        sanitized_aid: Option<ArtifactId>,
+    ) -> Option<IndexedOccurrenceRecord> {
+        let agent_idx_opt = self
+            .agent_occurrences
+            .get(&(agent as u8))
+            .and_then(|m| m.get(&occurrence_idx));
+        let agent_ro_opt = self
+            .agent_reordered_occurrences
+            .get(&(agent as u8))
+            .and_then(|m| m.get(&occurrence_idx));
+        let legacy_idx_opt = self
+            .indexed_occurrences
+            .get(&occurrence_idx)
+            .filter(|e| e.0 == agent as u8);
+        let legacy_ro_opt = self
+            .reordered_occurrences
+            .get(&occurrence_idx)
+            .filter(|e| e.0 == agent as u8);
+        if let Some(target_aid) = sanitized_aid
+            && let Some(matched) = [agent_idx_opt, agent_ro_opt, legacy_idx_opt, legacy_ro_opt]
+                .into_iter()
+                .flatten()
+                .find(|entry| entry.2 == target_aid)
+        {
+            return Some(matched.clone());
+        }
+        agent_idx_opt
+            .or(agent_ro_opt)
+            .or(legacy_idx_opt)
+            .or(legacy_ro_opt)
+            .cloned()
     }
 
     /// Returns the occurrence record at `occurrence_idx` matching `sanitized_aid` from either
@@ -420,28 +468,7 @@ impl InfinityContextMmu {
         occurrence_idx: usize,
         sanitized_aid: Option<ArtifactId>,
     ) -> Option<IndexedOccurrenceRecord> {
-        let hermes_idx_opt = self
-            .agent_occurrences
-            .get(&(AgentKind::Hermes as u8))
-            .and_then(|m| m.get(&occurrence_idx));
-        let hermes_ro_opt = self
-            .agent_reordered_occurrences
-            .get(&(AgentKind::Hermes as u8))
-            .and_then(|m| m.get(&occurrence_idx));
-        let idx_opt = hermes_idx_opt.or_else(|| self.indexed_occurrences.get(&occurrence_idx));
-        let ro_opt = hermes_ro_opt.or_else(|| self.reordered_occurrences.get(&occurrence_idx));
-        if let Some(target_aid) = sanitized_aid {
-            if let Some(matched) = hermes_idx_opt
-                .into_iter()
-                .chain(hermes_ro_opt)
-                .chain(self.indexed_occurrences.get(&occurrence_idx))
-                .chain(self.reordered_occurrences.get(&occurrence_idx))
-                .find(|entry| entry.2 == target_aid)
-            {
-                return Some(matched.clone());
-            }
-        }
-        idx_opt.or(ro_opt).cloned()
+        self.get_occurrence_record_for(AgentKind::Hermes, occurrence_idx, sanitized_aid)
     }
 
     /// Records a reordered outbound-view occurrence at `occurrence_idx` without mutating the
@@ -555,7 +582,10 @@ impl InfinityContextMmu {
             Self::bound_and_sanitize_raw(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
         let was_redacted = body_redacted || subject != raw_subject.trim();
         let raw_bytes = sanitized.len();
-        let (artifact_id, _) = self.cas.put_bytes(sanitized.as_bytes());
+        let (artifact_id, _) = self
+            .cas
+            .put_bytes_checked(sanitized.as_bytes())
+            .unwrap_or_else(|_| self.cas.put_bytes(sanitized.as_bytes()));
 
         let mut receipt = self.hdc_index.observe_event_with_exit_code(
             artifact_id,
@@ -775,31 +805,7 @@ impl InfinityContextMmu {
         let seeds: Vec<&str> = query
             .split_whitespace()
             .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '_'))
-            .filter(|w| {
-                w.len() >= 3
-                    && !matches!(
-                        w.to_ascii_lowercase().as_str(),
-                        "what"
-                            | "where"
-                            | "when"
-                            | "which"
-                            | "who"
-                            | "why"
-                            | "how"
-                            | "the"
-                            | "and"
-                            | "for"
-                            | "with"
-                            | "from"
-                            | "that"
-                            | "this"
-                            | "into"
-                            | "failed"
-                            | "broke"
-                            | "check"
-                            | "investigate"
-                    )
-            })
+            .filter(|w| w.len() >= 3 && !Self::is_ppr_stop_word(w))
             .take(4)
             .collect();
         if !seeds.is_empty() {
@@ -817,6 +823,32 @@ impl InfinityContextMmu {
         }
 
         lines.join("\n")
+    }
+
+    #[inline]
+    fn is_ppr_stop_word(w: &str) -> bool {
+        const STOP_WORDS: &[&str] = &[
+            "what",
+            "where",
+            "when",
+            "which",
+            "who",
+            "why",
+            "how",
+            "the",
+            "and",
+            "for",
+            "with",
+            "from",
+            "that",
+            "this",
+            "into",
+            "failed",
+            "broke",
+            "check",
+            "investigate",
+        ];
+        STOP_WORDS.iter().any(|&sw| w.eq_ignore_ascii_case(sw))
     }
 
     /// Assembles the complete 4-zone Prefix-Cache-Locked window for `agent` and `query`.
