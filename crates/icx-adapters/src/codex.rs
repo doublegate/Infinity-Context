@@ -102,19 +102,19 @@ impl CodexAdapter {
                     None => String::new(),
                 };
                 let exit_code = InfinityContextMmu::extract_exit_code(&payload);
-                let res = mmu.ingest_payload_with_exit_code(
+                let explicit_sub_id = ["subagent_id", "agent_id"]
+                    .into_iter()
+                    .find_map(|k| payload.get(k).and_then(Value::as_str))
+                    .map(str::to_owned);
+                let effective_sub_id = explicit_sub_id.or_else(|| mmu.single_active_subagent_id());
+                let res = mmu.ingest_payload_for_subagent(
                     AgentKind::Codex,
                     tool_name,
                     &raw_output,
                     exit_code,
                     false,
+                    effective_sub_id.as_deref(),
                 );
-                if let Some(sub_id) = ["subagent_id", "agent_id"]
-                    .into_iter()
-                    .find_map(|k| payload.get(k).and_then(Value::as_str))
-                {
-                    mmu.record_subagent_step(sub_id, tool_name, &res);
-                }
                 let mut hso = json!({
                     "hookEventName": "PostToolUse",
                     "additionalContext": res.compressed_ahtl
@@ -177,7 +177,9 @@ impl CodexAdapter {
                     "systemMessage": folded_msg
                 })
             }
-            "PreCompact" | "pre-compact" | "PostCompact" | "post-compact" => {
+            "PreCompact" | "pre-compact" | "PostCompact" | "post-compact" | "SessionEnd"
+            | "session-end" => {
+                mmu.fold_all_open_subagents(AgentKind::Codex, "session_end");
                 let _ = mmu.epochs.maybe_rollover(&mut mmu.dag);
                 let win = mmu.assemble_prompt_window(AgentKind::Codex, "compact_checkpoint");
                 json!({
@@ -235,27 +237,20 @@ impl CodexRolloutTailer {
 
     /// Polls `path` from its last committed byte offset (resetting to `0` if the file was
     /// truncated, rotated, or rewritten in-place), ingesting newly appended complete JSONL lines
-    /// into `mmu` and advancing the stored bookmark.
+    /// into `mmu` and advancing the stored bookmark using a single open file descriptor.
     pub fn poll_file(
         &mut self,
         path: &Path,
         mmu: &mut InfinityContextMmu,
     ) -> Result<usize, io::Error> {
-        let mut start_offset = 0u64;
-        if let Some(bm) = self.bookmarks.get(path)
-            && bm.offset > 0
-        {
-            let mut f = File::open(path)?;
-            let flen = f.metadata()?.len();
-            if flen >= bm.offset
-                && Self::compute_prefix_digest(&mut f, bm.offset)? == bm.prefix_digest
-            {
-                start_offset = bm.offset;
-            }
-        }
-        let (next_offset, count) = Self::ingest_rollout_jsonl_since(path, start_offset, mmu)?;
-        let mut f = File::open(path)?;
-        let prefix_digest = Self::compute_prefix_digest(&mut f, next_offset)?;
+        let prev_bm = self.bookmarks.get(path).copied();
+        let (start_offset, expected_prefix) = match prev_bm {
+            Some(bm) if bm.offset > 0 => (bm.offset, Some(bm.prefix_digest)),
+            _ => (0, None),
+        };
+        let file = File::open(path)?;
+        let (next_offset, count, prefix_digest) =
+            Self::ingest_from_open_file(file, start_offset, expected_prefix, mmu)?;
         self.bookmarks.insert(
             path.to_path_buf(),
             RolloutBookmark {
@@ -275,16 +270,34 @@ impl CodexRolloutTailer {
         byte_offset: u64,
         mmu: &mut InfinityContextMmu,
     ) -> Result<(u64, usize), io::Error> {
+        let file = File::open(path)?;
+        let (committed, ingested, _) = Self::ingest_from_open_file(file, byte_offset, None, mmu)?;
+        Ok((committed, ingested))
+    }
+
+    fn ingest_from_open_file(
+        mut file: File,
+        byte_offset: u64,
+        expected_prefix: Option<icx_core::Blake3Digest>,
+        mmu: &mut InfinityContextMmu,
+    ) -> Result<(u64, usize, icx_core::Blake3Digest), io::Error> {
         use std::io::Read;
-        let mut file = File::open(path)?;
         let file_len = file.metadata()?.len();
         let mut committed = if byte_offset == 0 || file_len < byte_offset {
             0
         } else {
-            file.seek(SeekFrom::Start(byte_offset - 1))?;
-            let mut prev = [0u8; 1];
-            file.read_exact(&mut prev)?;
-            if prev[0] == b'\n' { byte_offset } else { 0 }
+            let prefix_ok = match expected_prefix {
+                Some(exp) => Self::compute_prefix_digest(&mut file, byte_offset)? == exp,
+                None => true,
+            };
+            if prefix_ok {
+                file.seek(SeekFrom::Start(byte_offset - 1))?;
+                let mut prev = [0u8; 1];
+                file.read_exact(&mut prev)?;
+                if prev[0] == b'\n' { byte_offset } else { 0 }
+            } else {
+                0
+            }
         };
         file.seek(SeekFrom::Start(committed))?;
         let mut reader = BufReader::new(file);
@@ -317,7 +330,9 @@ impl CodexRolloutTailer {
                 ingested += 1;
             }
         }
-        Ok((committed, ingested))
+        let mut file = reader.into_inner();
+        let prefix_digest = Self::compute_prefix_digest(&mut file, committed)?;
+        Ok((committed, ingested, prefix_digest))
     }
 
     fn non_empty_body_value(v: &Value) -> Option<String> {

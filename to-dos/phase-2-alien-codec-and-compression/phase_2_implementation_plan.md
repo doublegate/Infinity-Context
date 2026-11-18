@@ -1,6 +1,6 @@
 # Phase 2 Implementation Plan: Alien Holographic Token Lattice (`AHTL`) & Structural Skeletonizers
 
-**Target Workspace:** `/home/parobek/Code/OSS_Public-Projects/Infinity-Context`  
+**Target Workspace:** `./` (Repository Root)  
 **Phase Scope:** `Phase 2` (`Sprint 2.1` through `Sprint 2.3`, Tickets `T-21-001`..`T-23-001`)  
 **Complete `docs/ahtl/` & `docs/` Specification Inventory Analyzed:**
 - [docs/ahtl/README.md](../../docs/ahtl/README.md) — Master Specification Overview & Dual-Profile Architecture (`Profile A` vs. `Profile B`)

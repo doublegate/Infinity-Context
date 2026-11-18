@@ -579,6 +579,21 @@ unprefixed_secret = {unpref_sec}
             .handle_hook_event("SubagentStop", r#"{"summary":"done_sub_1"}"#, &mut mmu)
             .unwrap();
         assert!(claude_sub_stop.contains("ICX:SUBAGENT_FOLDED"));
+        let _ = claude_trait
+            .handle_hook_event(
+                "SubagentStart",
+                r#"{"subagent_id":"sub-zero-steps"}"#,
+                &mut mmu,
+            )
+            .unwrap();
+        let stop_zero = claude_trait
+            .handle_hook_event(
+                "SubagentStop",
+                r#"{"subagent_id":"sub-zero-steps","summary":"no_tool_calls"}"#,
+                &mut mmu,
+            )
+            .unwrap();
+        assert!(stop_zero.contains("ICX:SUBAGENT_FOLDED"));
         let claude_sub_stop_empty = claude_trait
             .handle_hook_event(
                 "SubagentStop",
@@ -630,7 +645,8 @@ unprefixed_secret = {unpref_sec}
             .unwrap();
         assert!(codex_sub_stop_empty.contains("ICX:SUBAGENT_STOP"));
 
-        // Verify overlapping subagents and ID-keyed subagent branch folding
+        // Verify overlapping subagents and ID-keyed subagent branch folding without parent trunk duplication
+        let nodes_before_subs = mmu.dag.node_count();
         let _ = claude_trait
             .handle_hook_event("SubagentStart", r#"{"subagent_id":"sub-A"}"#, &mut mmu)
             .unwrap();
@@ -661,7 +677,9 @@ unprefixed_secret = {unpref_sec}
                 &mut mmu,
             )
             .unwrap();
-        // Stopping sub-A out-of-order folds sub-A while sub-B stays open
+        // While sub-A and sub-B are still running, neither step has been appended to the parent DAG trunk
+        assert_eq!(mmu.dag.node_count(), nodes_before_subs);
+        // Stopping sub-A out-of-order appends its 1 child turn + 1 folded L2 branch node (2 nodes total)
         let stop_a = claude_trait
             .handle_hook_event(
                 "SubagentStop",
@@ -670,14 +688,13 @@ unprefixed_secret = {unpref_sec}
             )
             .unwrap();
         assert!(stop_a.contains("ICX:SUBAGENT_FOLDED"));
-        let stop_b = claude_trait
-            .handle_hook_event(
-                "SubagentStop",
-                r#"{"subagent_id":"sub-B","summary":"done B"}"#,
-                &mut mmu,
-            )
+        assert_eq!(mmu.dag.node_count(), nodes_before_subs + 2);
+        // Stopping sub-B via Codex session-end folds any remaining open subagents
+        let session_end_out = codex_trait
+            .handle_hook_event("session-end", "{}", &mut mmu)
             .unwrap();
-        assert!(stop_b.contains("ICX:SUBAGENT_FOLDED"));
+        assert!(session_end_out.contains("continue"));
+        assert_eq!(mmu.dag.node_count(), nodes_before_subs + 4);
 
         // Verify Clear-State Functional Supersession (failing suite -> passing suite supersedes fail & status)
         let _ = mmu.ingest_payload_with_exit_code(
@@ -735,7 +752,16 @@ unprefixed_secret = {unpref_sec}
             Some("0")
         );
 
-        // Verify redaction tracking (`is_artifact_redacted`) and workspace load/save round-trip
+        // Verify redaction tracking (`is_artifact_redacted`), `bound_and_sanitize_raw`, and workspace load/save round-trip
+        let (bounded_s, _) =
+            InfinityContextMmu::bound_and_sanitize_raw("line1\n⟪⟦⟧⟫éééééééééééé", 12);
+        assert!(bounded_s.starts_with("line1"));
+        let expanding_tok = format!("{}{}é", "sk-", "1234567890ab");
+        let (bounded_utf8, _) = InfinityContextMmu::bound_and_sanitize_raw(&expanding_tok, 24);
+        assert_ne!(bounded_utf8, "");
+        let (bounded_raw_utf8, _) =
+            InfinityContextMmu::bound_and_sanitize_raw("⟪⟦⟧⟫éééééééééééé", 5);
+        assert_ne!(bounded_raw_utf8, "");
         let synthetic_secret = format!(
             "OPENAI_API_KEY={}{}",
             "sk-proj-", "1234567890abcdefghijklmnop"

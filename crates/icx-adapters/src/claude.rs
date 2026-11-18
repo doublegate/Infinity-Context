@@ -88,19 +88,19 @@ impl ClaudeCodeAdapter {
                 };
 
                 let exit_code = InfinityContextMmu::extract_exit_code(&payload);
-                let res = mmu.ingest_payload_with_exit_code(
+                let explicit_sub_id = ["subagent_id", "agent_id"]
+                    .into_iter()
+                    .find_map(|k| payload.get(k).and_then(Value::as_str))
+                    .map(str::to_owned);
+                let effective_sub_id = explicit_sub_id.or_else(|| mmu.single_active_subagent_id());
+                let res = mmu.ingest_payload_for_subagent(
                     AgentKind::ClaudeCode,
                     tool_name,
                     &raw_output,
                     exit_code,
                     false,
+                    effective_sub_id.as_deref(),
                 );
-                if let Some(sub_id) = ["subagent_id", "agent_id"]
-                    .into_iter()
-                    .find_map(|k| payload.get(k).and_then(Value::as_str))
-                {
-                    mmu.record_subagent_step(sub_id, tool_name, &res);
-                }
                 if res.was_virtualized {
                     let total_lines = mmu
                         .cas

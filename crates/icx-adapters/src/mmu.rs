@@ -133,13 +133,17 @@ impl InfinityContextMmu {
         exit_code: Option<i32>,
         force_anomaly: bool,
     ) -> IngestResult {
-        self.clock_ms += 10;
-        let bounded_raw = if raw_text.len() > icx_core::ICX_MAX_INGEST_BYTES {
-            let mut bound = icx_core::ICX_MAX_INGEST_BYTES;
+        self.ingest_payload_for_subagent(agent, subject, raw_text, exit_code, force_anomaly, None)
+    }
+
+    /// Bounds `raw_text` to `max_bytes` (backing up to a valid UTF-8 and newline boundary when
+    /// possible), applies `SecretRedactor::sanitize`, and re-bounds post-sanitization output.
+    pub fn bound_and_sanitize_raw(raw_text: &str, max_bytes: usize) -> (String, bool) {
+        let bounded_raw = if raw_text.len() > max_bytes {
+            let mut bound = max_bytes;
             while !raw_text.is_char_boundary(bound) {
                 bound -= 1;
             }
-            // Prefer cutting at a newline near the cap so trailing secrets are not split mid-line.
             let search_floor = bound.saturating_sub(4096);
             if let Some(rel_nl) = raw_text.as_bytes()[search_floor..bound]
                 .iter()
@@ -153,13 +157,35 @@ impl InfinityContextMmu {
         };
         let mut sanitized = SecretRedactor::sanitize(bounded_raw);
         let was_redacted = bounded_raw.lines().ne(sanitized.lines());
-        if sanitized.len() > icx_core::ICX_MAX_INGEST_BYTES {
-            let mut bound = icx_core::ICX_MAX_INGEST_BYTES;
+        if sanitized.len() > max_bytes {
+            let mut bound = max_bytes;
             while !sanitized.is_char_boundary(bound) {
                 bound -= 1;
             }
             sanitized.truncate(bound);
         }
+        (sanitized, was_redacted)
+    }
+
+    /// Ingests a tool output or turn with an optional process `exit_code` and optional
+    /// `subagent_id` scope. When `subagent_id` is `Some(...)`, the turn is buffered inside that
+    /// subagent's isolated trajectory branch rather than being appended directly onto the parent's
+    /// active epoch window.
+    pub fn ingest_payload_for_subagent(
+        &mut self,
+        agent: AgentKind,
+        raw_subject: &str,
+        raw_text: &str,
+        exit_code: Option<i32>,
+        force_anomaly: bool,
+        subagent_id: Option<&str>,
+    ) -> IngestResult {
+        self.clock_ms += 10;
+        let clean_subject = Self::sanitize_hook_label(raw_subject, "event");
+        let subject = clean_subject.as_str();
+        let (sanitized, body_redacted) =
+            Self::bound_and_sanitize_raw(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
+        let was_redacted = body_redacted || subject != raw_subject.trim();
         let raw_bytes = sanitized.len();
         let (artifact_id, _) = self.cas.put_bytes(sanitized.as_bytes());
 
@@ -204,28 +230,26 @@ impl InfinityContextMmu {
             if clause.op == icx_codec::ClauseOp::Anomaly {
                 saw_anomaly_clause = true;
             }
-            let Some(val) = clause.value.as_deref() else {
-                continue;
-            };
-            let key = clause.key.as_str();
-            if key.trim().is_empty() || val.trim().is_empty() {
-                continue;
+            if let Some(val) = clause.value.as_deref().filter(|v| !v.trim().is_empty())
+                && !clause.key.trim().is_empty()
+            {
+                let key = clause.key.as_str();
+                saw_pass |= key == "pass";
+                saw_fail |= key == "fail";
+                let is_functional = matches!(
+                    key,
+                    "status" | "test_status" | "return_type" | "fail" | "pass" | "exit_code"
+                );
+                self.graph.upsert_edge(
+                    subject,
+                    key,
+                    val,
+                    is_functional,
+                    self.clock_ms,
+                    artifact_id,
+                    edge_weight,
+                );
             }
-            saw_pass |= key == "pass";
-            saw_fail |= key == "fail";
-            let is_functional = matches!(
-                key,
-                "status" | "test_status" | "return_type" | "fail" | "pass" | "exit_code"
-            );
-            self.graph.upsert_edge(
-                subject,
-                key,
-                val,
-                is_functional,
-                self.clock_ms,
-                artifact_id,
-                edge_weight,
-            );
         }
         // Clear-state functional supersession: non-zero exit codes, force_anomaly, or any
         // diagnostic anomaly/failure clause take strict precedence and record `status = FAIL`;
@@ -264,17 +288,31 @@ impl InfinityContextMmu {
         }
 
         let est_tokens = (raw_bytes / 4).max(1);
-        self.epochs.record_turn(
-            &mut self.dag,
-            agent,
-            subject,
-            artifact_id,
-            ahtl_rendered.clone(),
-            receipt.verdict.momentum_surprise,
-            est_tokens,
-        );
-        if let Some(last_ep) = self.epochs.sealed_epochs().last() {
-            self.bus.set_global_dag_root(last_ep.digest().0);
+        if let Some(raw_sub_id) = subagent_id {
+            let clean_sub_id = Self::sanitize_hook_label(raw_sub_id, "subagent");
+            self.subagent_branches
+                .entry(clean_sub_id)
+                .or_default()
+                .push((
+                    clean_subject.clone(),
+                    artifact_id,
+                    ahtl_rendered.clone(),
+                    receipt.verdict.momentum_surprise,
+                    est_tokens,
+                ));
+        } else {
+            self.epochs.record_turn(
+                &mut self.dag,
+                agent,
+                subject,
+                artifact_id,
+                ahtl_rendered.clone(),
+                receipt.verdict.momentum_surprise,
+                est_tokens,
+            );
+            if let Some(last_ep) = self.epochs.sealed_epochs().last() {
+                self.bus.set_global_dag_root(last_ep.digest().0);
+            }
         }
 
         // Broadcast onto cross-agent Seqlock ring
@@ -373,7 +411,7 @@ impl InfinityContextMmu {
                 .graph
                 .personalized_pagerank(&seeds, None, 0.15, 6, top_k);
             for node in ppr_nodes {
-                if let Some(&prov) = node.provenance_artifacts.first() {
+                for &prov in node.provenance_artifacts.iter().take(1) {
                     lines.push(format!(
                         "⟦Ω:PPR_GRAPH⊢entity={}⋮score={:.3}↦{}⟧",
                         node.entity, node.score, prov
@@ -451,14 +489,23 @@ impl InfinityContextMmu {
         self.redacted_artifacts.contains(&id)
     }
 
-    /// Sanitizes a subagent identifier or summary string through `SecretRedactor::sanitize` and
-    /// strips frame-breaking pipe/newline characters.
+    /// Sanitizes a subject, subagent identifier, or summary string through `SecretRedactor::sanitize`
+    /// and strips frame-breaking AHTL delimiters and newline characters.
     pub fn sanitize_hook_label(raw: &str, fallback: &str) -> String {
         let s = SecretRedactor::sanitize(raw)
-            .replace(['│', '\n', '\r'], " ")
+            .replace(['│', '\n', '\r', '⟦', '⟧', '⟪', '⟫', '⊢'], " ")
             .trim()
             .to_owned();
         if s.is_empty() { fallback.to_owned() } else { s }
+    }
+
+    /// Returns the sole open subagent ID when exactly one subagent scope is active.
+    pub fn single_active_subagent_id(&self) -> Option<String> {
+        if self.subagent_branches.len() == 1 {
+            self.subagent_branches.keys().next().cloned()
+        } else {
+            None
+        }
     }
 
     /// Opens an ID-keyed subagent trajectory scope (`SubagentStart`), isolating concurrent
@@ -469,19 +516,11 @@ impl InfinityContextMmu {
         clean_id
     }
 
-    /// Records a tool or turn event into an active subagent trajectory if `raw_subagent_id`
-    /// matches an open subagent scope.
-    pub fn record_subagent_step(&mut self, raw_subagent_id: &str, role: &str, res: &IngestResult) {
-        let clean_id = Self::sanitize_hook_label(raw_subagent_id, "subagent");
-        if let Some(steps) = self.subagent_branches.get_mut(&clean_id) {
-            let est_tokens = (res.raw_bytes / 4).max(1);
-            steps.push((
-                role.to_owned(),
-                res.artifact_id,
-                res.compressed_ahtl.clone(),
-                res.surprise,
-                est_tokens,
-            ));
+    /// Folds any remaining open subagent trajectory scopes (e.g., on `Stop` or `SessionEnd`).
+    pub fn fold_all_open_subagents(&mut self, agent: AgentKind, reason: &str) {
+        let keys: Vec<String> = self.subagent_branches.keys().cloned().collect();
+        for key in keys {
+            let _ = self.finish_subagent(agent, Some(&key), reason);
         }
     }
 
@@ -497,10 +536,7 @@ impl InfinityContextMmu {
         let clean_summary = Self::sanitize_hook_label(raw_summary, "subagent_completed");
         let target_key = match raw_subagent_id {
             Some(id) => Some(Self::sanitize_hook_label(id, "subagent")),
-            None if self.subagent_branches.len() == 1 => {
-                self.subagent_branches.keys().next().cloned()
-            }
-            None => None,
+            None => self.single_active_subagent_id(),
         };
         if let Some((clean_id, steps)) =
             target_key.and_then(|k| self.subagent_branches.remove_entry(&k))
@@ -535,31 +571,51 @@ impl InfinityContextMmu {
     }
 
     /// Loads persisted `CasStore`, `BiTemporalGraph`, `redacted_artifacts`, and shared-memory
-    /// `SeqlockTelemetryBus` state from `icx_dir`.
+    /// `SeqlockTelemetryBus` state from `icx_dir` atomically (only mutating `self` after all
+    /// components succeed).
     pub fn load_workspace_dir(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
         let cas_path = icx_dir.join("cas_store.json");
-        if cas_path.exists() {
-            self.cas = CasStore::load_from_dir(icx_dir)?;
-        }
+        let new_cas = if cas_path.exists() {
+            Some(CasStore::load_from_dir(icx_dir)?)
+        } else {
+            None
+        };
         let graph_path = icx_dir.join("bitemporal_graph.json");
-        if graph_path.exists() {
-            self.graph = BiTemporalGraph::load_from_dir(icx_dir)?;
+        let new_graph = if graph_path.exists() {
+            Some(BiTemporalGraph::load_from_dir(icx_dir)?)
+        } else {
+            None
+        };
+        let redacted_path = icx_dir.join("redacted_artifacts.json");
+        let raw_redacted: Option<Vec<u64>> = if redacted_path.exists() {
+            let bytes = std::fs::read(&redacted_path).map_err(Self::map_io_err)?;
+            Some(serde_json::from_slice(&bytes).map_err(Self::map_io_err)?)
+        } else {
+            None
+        };
+        let shm_path = icx_dir.join("icx-fabric-v1.shm");
+        let new_bus = if shm_path.exists() {
+            Some(SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(Self::map_io_err)?)
+        } else {
+            None
+        };
+
+        if let Some(cas) = new_cas {
+            self.cas = cas;
+        }
+        if let Some(graph) = new_graph {
+            self.graph = graph;
         }
         self.redacted_artifacts.clear();
-        let redacted_path = icx_dir.join("redacted_artifacts.json");
-        if redacted_path.exists() {
-            let bytes = std::fs::read(&redacted_path).map_err(Self::map_io_err)?;
-            let ids: Vec<u64> = serde_json::from_slice(&bytes).map_err(Self::map_io_err)?;
+        if let Some(ids) = raw_redacted {
             self.redacted_artifacts.extend(
                 ids.into_iter()
                     .map(ArtifactId)
                     .filter(|&aid| self.cas.get_meta(aid).is_some()),
             );
         }
-        let shm_path = icx_dir.join("icx-fabric-v1.shm");
-        if shm_path.exists() {
-            self.bus =
-                SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(Self::map_io_err)?;
+        if let Some(bus) = new_bus {
+            self.bus = bus;
         }
         Ok(())
     }
@@ -570,6 +626,24 @@ impl InfinityContextMmu {
         self.graph.save_to_dir(icx_dir)?;
         let redacted_ids: Vec<u64> = self.redacted_artifacts.iter().map(|id| id.0).collect();
         let bytes = serde_json::to_vec(&redacted_ids).map_err(Self::map_io_err)?;
-        std::fs::write(icx_dir.join("redacted_artifacts.json"), bytes).map_err(Self::map_io_err)
+        let final_path = icx_dir.join("redacted_artifacts.json");
+        let tmp_path = icx_dir.join(format!(
+            "redacted_artifacts.json.tmp.{}",
+            std::process::id()
+        ));
+        {
+            use std::io::Write;
+            let mut opts = std::fs::OpenOptions::new();
+            opts.write(true).create(true).truncate(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                opts.mode(0o600);
+            }
+            let mut file = opts.open(&tmp_path).map_err(Self::map_io_err)?;
+            file.write_all(&bytes).map_err(Self::map_io_err)?;
+            file.sync_all().map_err(Self::map_io_err)?;
+        }
+        std::fs::rename(&tmp_path, &final_path).map_err(Self::map_io_err)
     }
 }
