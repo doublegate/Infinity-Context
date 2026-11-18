@@ -330,13 +330,13 @@ impl McpPagerServer {
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
                 {
-                    let subj = args
+                    let raw_subj = args
                         .get("id")
                         .and_then(Value::as_str)
-                        .map(str::trim)
-                        .filter(|s| !s.is_empty())
                         .unwrap_or("xagent_broadcast");
-                    let res = mmu.ingest_payload(AgentKind::GenericMcp, subj, broadcast_q, false);
+                    let subj =
+                        InfinityContextMmu::sanitize_hook_label(raw_subj, "xagent_broadcast");
+                    let res = mmu.ingest_payload(AgentKind::GenericMcp, &subj, broadcast_q, false);
                     return (
                         format!(
                             "⟪ICX:XAGENT_PUBLISHED│{}│seq={}⟫\n{}",

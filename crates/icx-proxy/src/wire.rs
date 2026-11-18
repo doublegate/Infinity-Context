@@ -8,7 +8,7 @@ use icx_core::AgentKind;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::io::{self, BufRead, BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -1190,23 +1190,49 @@ impl WireProxyTransformer {
         mmu: &InfinityContextMmu,
         writer: &mut W,
     ) -> io::Result<()> {
+        let mut cloned = mmu.clone();
+        let shared = std::sync::Mutex::new(&mut cloned);
         let mut committed = false;
         Self::relay_upstream_response_with_eof(
             up_reader,
             false,
             body_already_dechunked,
-            mmu,
+            &shared,
             writer,
             &mut committed,
             || Ok(()),
         )
     }
 
+    fn transform_sse_line_shared(
+        line: &str,
+        state: &mut SsePendingState,
+        shared_mmu: &std::sync::Mutex<&mut InfinityContextMmu>,
+        allow_holdback: bool,
+        line_idx: usize,
+    ) -> String {
+        if line.starts_with("event:") {
+            state.current_event = Some(line.to_owned());
+            return line.to_owned();
+        }
+        if line.trim().is_empty() {
+            state.current_event = None;
+            return line.to_owned();
+        }
+        if state.is_empty() && !Self::might_contain_deref_marker(line) {
+            return line.to_owned();
+        }
+        let guard = shared_mmu
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Self::transform_sse_line_stateful(line, state, &guard, allow_holdback, line_idx)
+    }
+
     fn relay_upstream_response_with_eof<R: BufRead, W: Write, F: FnOnce() -> io::Result<()>>(
         up_reader: &mut R,
         is_head: bool,
         body_already_dechunked: bool,
-        mmu: &InfinityContextMmu,
+        shared_mmu: &std::sync::Mutex<&mut InfinityContextMmu>,
         writer: &mut W,
         headers_committed: &mut bool,
         verify_eof: F,
@@ -1318,10 +1344,10 @@ impl WireProxyTransformer {
                         if Self::is_sse_done_line(&raw_line) {
                             Self::flush_sse_pending(&mut sse_pending, writer)?;
                         }
-                        let transformed_line = Self::transform_sse_line_stateful(
+                        let transformed_line = Self::transform_sse_line_shared(
                             &raw_line,
                             &mut sse_pending,
-                            mmu,
+                            shared_mmu,
                             true,
                             0,
                         );
@@ -1333,10 +1359,10 @@ impl WireProxyTransformer {
                 if !pending_bytes.is_empty() {
                     let trimmed_bytes = pending_bytes.strip_suffix(b"\r").unwrap_or(&pending_bytes);
                     let raw_line = String::from_utf8_lossy(trimmed_bytes);
-                    let transformed_line = Self::transform_sse_line_stateful(
+                    let transformed_line = Self::transform_sse_line_shared(
                         &raw_line,
                         &mut sse_pending,
-                        mmu,
+                        shared_mmu,
                         false,
                         0,
                     );
@@ -1366,10 +1392,10 @@ impl WireProxyTransformer {
                     if Self::is_sse_done_line(trimmed) {
                         Self::flush_sse_pending(&mut sse_pending, writer)?;
                     }
-                    let transformed_line = Self::transform_sse_line_stateful(
+                    let transformed_line = Self::transform_sse_line_shared(
                         trimmed,
                         &mut sse_pending,
-                        mmu,
+                        shared_mmu,
                         has_nl,
                         0,
                     );
@@ -1422,9 +1448,16 @@ impl WireProxyTransformer {
         }
         verify_eof()?;
         let expanded_opt = if is_textual_content {
-            std::str::from_utf8(&resp_bytes)
-                .ok()
-                .map(|s| Self::expand_json_or_text_body(s, mmu))
+            std::str::from_utf8(&resp_bytes).ok().map(|s| {
+                if Self::might_contain_deref_marker(s) {
+                    let guard = shared_mmu
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    Self::expand_json_or_text_body(s, &guard)
+                } else {
+                    s.to_owned()
+                }
+            })
         } else {
             None
         };
@@ -1521,14 +1554,20 @@ impl WireProxyTransformer {
         stripped_path: &str,
         client_headers: &[(String, String)],
         transformed_body: &str,
-        mmu: &InfinityContextMmu,
+        shared_mmu: &std::sync::Mutex<&mut InfinityContextMmu>,
         writer: &mut W,
         headers_committed: &mut bool,
     ) -> io::Result<()> {
         let (connect_addr, host_header, target_path) =
             Self::parse_http_upstream_endpoint(upstream_base, stripped_path);
 
-        let mut upstream = TcpStream::connect(&connect_addr)?;
+        let sock_addr = connect_addr.to_socket_addrs()?.next().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::AddrNotAvailable,
+                "failed to resolve upstream HTTP address",
+            )
+        })?;
+        let mut upstream = TcpStream::connect_timeout(&sock_addr, Duration::from_secs(10))?;
         let _ = upstream.set_read_timeout(Some(Duration::from_secs(30)));
         let _ = upstream.set_write_timeout(Some(Duration::from_secs(30)));
 
@@ -1574,7 +1613,7 @@ impl WireProxyTransformer {
             &mut up_reader,
             is_head,
             false,
-            mmu,
+            shared_mmu,
             writer,
             headers_committed,
             || Ok(()),
@@ -1616,7 +1655,7 @@ impl WireProxyTransformer {
         stripped_path: &str,
         client_headers: &[(String, String)],
         transformed_body: &str,
-        mmu: &InfinityContextMmu,
+        shared_mmu: &std::sync::Mutex<&mut InfinityContextMmu>,
         writer: &mut W,
         headers_committed: &mut bool,
     ) -> io::Result<()> {
@@ -1745,7 +1784,7 @@ impl WireProxyTransformer {
                 &mut up_reader,
                 is_head,
                 true,
-                mmu,
+                shared_mmu,
                 writer,
                 headers_committed,
                 || {
@@ -1932,7 +1971,7 @@ impl WireProxyTransformer {
 
         // Execute the local workspace read-modify-write under the exclusive lock and release both
         // the workspace lock and the in-memory MMU mutex BEFORE any upstream network round-trip.
-        let (transformed_res, resolved_provider, mmu_snapshot) = {
+        let (transformed_res, resolved_provider) = {
             let mut mmu_guard = shared_mmu
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -1998,8 +2037,7 @@ impl WireProxyTransformer {
                 drop(g);
                 save_res.map_err(|e| io::Error::other(e.to_string()))?;
             }
-            let snapshot = (*mmu).clone();
-            (transformed_res, resolved_provider, snapshot)
+            (transformed_res, resolved_provider)
         };
 
         let transformed = match transformed_res {
@@ -2049,7 +2087,7 @@ impl WireProxyTransformer {
                     &stripped_path,
                     &client_headers,
                     &transformed,
-                    &mmu_snapshot,
+                    shared_mmu,
                     &mut writer,
                     &mut headers_committed,
                 )
@@ -2060,7 +2098,7 @@ impl WireProxyTransformer {
                     &stripped_path,
                     &client_headers,
                     &transformed,
-                    &mmu_snapshot,
+                    shared_mmu,
                     &mut writer,
                     &mut headers_committed,
                 )

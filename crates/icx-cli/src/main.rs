@@ -322,7 +322,11 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
         drop(lock_guard);
         return Ok(out);
     }
-    dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)
+    if is_session_start {
+        dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)
+    } else {
+        Ok(non_replacing_hook_response(agent))
+    }
 }
 
 fn mcp_tool_error_response(req_line: &str, err_msg: &str) -> serde_json::Value {

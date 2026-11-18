@@ -813,7 +813,7 @@ When configuring instruction files for Dual-Stack Mode B, place `icx` operationa
 | `icx` (`op: "grep"`) | `icx` MCP | Cold storage regex (`< 500 us`) | Run regex/literal search `q` across a specific `#icx:<hex>` artifact or across all cold artifacts in `.icx/cas_store.json`. |
 | `icx` (`op: "recall"`) | `icx` MCP | Associative/graph query (`< 250 us`) | Query 10,240-bit HDC Hamming similarity + 16-D Fractal trajectory suffix + 6-step HippoRAG `PersonalizedPageRank` over functional graph edges. |
 | `icx` (`op: "fold"` / `"expand"`) | `icx` MCP | Sub-task boundary (`< 100 us`) | Call `q: "begin:<label>"` before an iterative debug/test loop, `q: "<outcome_summary>"` afterward to fold into an `L2` `SubTrajectoryBranch` handle, and `deref`/`slice` on the branch handle to expand child turns. |
-| `icx` (`op: "xagent"`) | `icx` MCP | Live telepathy poll (`< 100 us`) | Inspect the latest 10 live cross-agent AHTL frames (`⟦Θ:<agent>@<subj>⊢...⟧`) published to `/dev/shm/icx-fabric-v1` by concurrent agents on the same machine. |
+| `icx` (`op: "xagent"`) | `icx` MCP | Live telepathy poll or broadcast (`< 100 us`) | Poll the latest `k` (`1..=256`, default `10`) live cross-agent AHTL frames (`⟦Θ:<agent>@<subj>⊢...⟧`) from `/dev/shm/icx-fabric-v1` (when `q` is omitted) or broadcast a new telepathy frame (`q` non-empty, optional subject `id`). |
 | `icx` (`op: "status"`) | `icx` MCP | MMU telemetry (`< 50 us`) | Check `cas_artifacts`, `unique_chunks`, `dag_nodes`, `sealed_epochs`, `hdc_entries`, `graph_edges`, and `shm_seq`. |
 | `ai-memory-retrieval` | `ai-memory` Skill | Pre-design / catch-up (`memory_query`, `memory_read_page`, `memory_briefing`) | Query human-curated project rules (`_rules/`), ADRs (`decisions/`), known pitfalls (`gotchas/`), or recover a cut-off session's observations (`memory_read_session_observations` with `order: "desc"`). |
 | `ai-memory-durable-pages` | `ai-memory` Skill | Explicit user request (`memory_write_page`, `memory_delete_page`, `memory_restore_page`) | Persist vetted architectural decisions (`decisions/<slug>.md`, `pinned: true`), project conventions (`_rules/<slug>.md`), or cross-project operator preferences (`scope: "profile"`). |
@@ -1155,7 +1155,7 @@ printf '%s\n' \
   '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"icx","arguments":{"op":"fold","q":"smoke_loop_resolved"}}}' \
   '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"icx","arguments":{"op":"recall","q":"cargo test panic"}}}' \
   '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"icx","arguments":{"op":"xagent"}}}' \
-  | icx mcp-serve
+  | icx mcp-serve --dir .icx
 ```
 
 To also test `deref`, `slice`, and `grep` against a workspace file stored in `.icx/`:
