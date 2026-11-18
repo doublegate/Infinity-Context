@@ -258,7 +258,7 @@ impl InfinityContextMmu {
         } else {
             bounded_raw == sanitized || bounded_raw.lines().eq(sanitized.split('\n'))
         };
-        let mut was_redacted = !is_unredacted;
+        let mut was_redacted = raw_text.len() > max_bytes || !is_unredacted;
         if sanitized.len() > max_bytes {
             was_redacted = true;
             let mut bound = max_bytes;

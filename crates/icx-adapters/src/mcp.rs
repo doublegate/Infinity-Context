@@ -51,6 +51,29 @@ impl McpPagerServer {
         Self::tool_schema().to_string().len().div_ceil(4)
     }
 
+    /// Returns `true` if a JSON-RPC 2.0 request line mutates persistent MMU state (`fold`,
+    /// `recall`, or `xagent` with a non-empty `q` broadcast).
+    #[must_use]
+    pub fn is_mutating_request(request_json: &str) -> bool {
+        let Ok(req) = serde_json::from_str::<Value>(request_json) else {
+            return false;
+        };
+        if req.get("method").and_then(Value::as_str) != Some("tools/call") {
+            return false;
+        }
+        let Some(args) = req.get("params").and_then(|p| p.get("arguments")) else {
+            return false;
+        };
+        match args.get("op").and_then(Value::as_str).unwrap_or("status") {
+            "fold" | "recall" => true,
+            "xagent" => args
+                .get("q")
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.trim().is_empty()),
+            _ => false,
+        }
+    }
+
     pub(crate) fn format_error(err: &IcxError) -> String {
         match err {
             IcxError::AmbiguousHandlePrefix(p) => {

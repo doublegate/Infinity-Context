@@ -826,8 +826,8 @@ When configuring instruction files for Dual-Stack Mode B, place `icx` operationa
 
 | Resource Type | Infinity-Context (`icx` `v1.0.0`) | `ai-memory` Daemon & Bridge | Conflict Status |
 | :--- | :--- | :--- | :--- |
-| **Loopback HTTP Port** | `127.0.0.1:49380` / `127.0.0.1:8787` (`icx-proxy`) | `127.0.0.1:49375` (`axum` REST + MCP server) | **Zero conflict** (distinct ports). |
-| **Unix Domain Socket** | `/run/user/$UID/icx-proxy.sock` | N/A (`ai-memory mcp-bridge` proxies `stdio` -> `127.0.0.1:49375`) | **Zero conflict**. |
+| **Loopback HTTP Port** | `127.0.0.1:49380` / `127.0.0.1:8787` (`icx proxy`) | `127.0.0.1:49375` (`axum` REST + MCP server) | **Zero conflict** (distinct ports). |
+| **MCP Stdio Transport** | `icx mcp-serve` (`stdio` JSON-RPC 2.0) | `ai-memory mcp-bridge` (`stdio` -> `127.0.0.1:49375`) | **Zero conflict** (independent processes). |
 | **POSIX Shared Memory** | `/dev/shm/icx-fabric-v1` & `.icx/icx-fabric-v1.shm` (`1,048,640` bytes, `mode 0600`) | None | **Zero conflict**. |
 | **Workspace / Local Storage** | `<repo>/.icx/` (`cas_store.json`, `bitemporal_graph.json`, `mmu_state.json`, `cas_store.lock`) | `~/.local/share/ai-memory/` (`memory.sqlite`, `wiki/<workspace>/<project>/*.md`) + optional `<repo>/.ai-memory.toml` | **Zero conflict** (disjoint paths). |
 | **MCP Server Registration** | `"icx"` (`icx mcp-serve` -> single tool `icx`) | `"ai-memory"` (`ai-memory mcp-bridge` -> `memory_*` tools) | **Zero conflict** (disjoint namespaces). |
@@ -888,7 +888,7 @@ Google Antigravity CLI (`agy`) stores trajectories in `~/.gemini/antigravity-cli
    - On `PostInvocation`, if `forceContinue: true` is present in the hook payload, `AntigravityAdapter` sets `"terminationBehavior": "force_continue"`.
 2. **`PreToolUse` `overwrite` & `PostToolUse` `transcriptPath` Tailing:**
    - `PreToolUse` supports returning `{"decision": "allow", "overwrite": {...}}` when command arguments need bounding.
-   - On `PostToolUse`, `agy` frequently passes metadata (`toolCall`, `stepIdx`, `transcriptPath`) without duplicating a multi-megabyte `toolResponse` on hook `stdin`. `AntigravityAdapter::read_transcript_step` automatically seeks to the last `256 KiB` of `transcriptPath` (`transcript_full.jsonl`), locates `stepIdx`, ingests the full output into `.icx/cas_store.json`, and publishes the telepathy event to `/dev/shm`.
+   - On `PostToolUse`, `agy` frequently passes metadata (`toolCall`, `stepIdx`, `transcriptPath`) without duplicating a multi-megabyte `toolResponse` on hook `stdin`. `AntigravityAdapter::read_transcript_step` automatically seeks to the last `512 KiB` of `transcriptPath` (`transcript_full.jsonl`), locates `stepIdx`, ingests the full output into `.icx/cas_store.json`, and publishes the telepathy event to `/dev/shm`.
 3. **`SubagentStart` / `SubagentStop` & Infinite-Horizon `Stop` Rollover:**
    - Subagents launched via `invoke_subagent` are isolated in `mmu.subagent_branches` on `SubagentStart` and folded into a single `L2` `⟪ICX:SUBAGENT_FOLDED│#icx:...⟫` node on `SubagentStop`.
    - When a long-running `agy` session hits `terminationReason == "MAX_TOKEN_BUDGET_EXCEEDED"` or `"MAX_INVOCATIONS"` (and `!continuationActive`), `AntigravityAdapter` folds open subagents, seals the current epoch (`force_rollover_and_sync_dag_root()`), and returns `{"decision": "continue", "reason": "⟪ICX:EPOCH_FOLDED│#icx:...⟫"}` so marathon executions continue seamlessly.
