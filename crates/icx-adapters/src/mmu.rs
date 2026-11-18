@@ -45,6 +45,10 @@ struct PersistedMmuState {
     redacted_ids: Vec<u64>,
     #[serde(default)]
     subagent_branches: BTreeMap<String, Vec<SubagentStep>>,
+    #[serde(default)]
+    dag: MerkleContextDag,
+    #[serde(default)]
+    epochs: Option<CacheEpochController>,
 }
 
 /// The central Virtual Context Memory Management Unit (`MMU`).
@@ -89,6 +93,43 @@ impl InfinityContextMmu {
             redacted_artifacts: BTreeSet::new(),
             subagent_branches: BTreeMap::new(),
             clock_ms: 1_794_880_800_000,
+        }
+    }
+
+    /// Extracts a command-scoped subject (`"<tool_name>:<command>"`) from a hook JSON payload
+    /// when a command/target input is present so distinct commands sharing a tool name (e.g.
+    /// `Bash`) do not overwrite each other's functional graph state.
+    pub fn extract_hook_subject(payload: &serde_json::Value, default_tool: &str) -> String {
+        let tool_name = payload
+            .get("tool_name")
+            .or_else(|| payload.get("toolName"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(default_tool);
+        let cmd_opt = ["tool_input", "toolInput", "input"]
+            .into_iter()
+            .find_map(|container| {
+                payload.get(container).and_then(|obj| {
+                    ["command", "cmd"]
+                        .into_iter()
+                        .find_map(|k| obj.get(k).and_then(serde_json::Value::as_str))
+                })
+            })
+            .or_else(|| {
+                ["command", "cmd"]
+                    .into_iter()
+                    .find_map(|k| payload.get(k).and_then(serde_json::Value::as_str))
+            })
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        match cmd_opt {
+            Some(cmd) => {
+                let mut end = cmd.len().min(64);
+                while !cmd.is_char_boundary(end) {
+                    end -= 1;
+                }
+                format!("{tool_name}:{}", &cmd[..end])
+            }
+            None => tool_name.to_owned(),
         }
     }
 
@@ -268,7 +309,8 @@ impl InfinityContextMmu {
         }
         // Clear-state functional supersession: non-zero exit codes, force_anomaly, or any
         // diagnostic anomaly/failure clause take strict precedence and record `status = FAIL`;
-        // only clean passing runs (`saw_pass` or `exit_code == Some(0)`) supersede prior failures.
+        // only clean passing test-suite runs (`saw_pass` without failure) supersede `fail -> 0`
+        // and `status -> PASS` so unrelated non-test commands cannot erase an active test failure.
         let has_failure =
             force_anomaly || exit_code.is_some_and(|c| c != 0) || saw_fail || saw_anomaly_clause;
         if has_failure {
@@ -281,7 +323,7 @@ impl InfinityContextMmu {
                 artifact_id,
                 edge_weight,
             );
-        } else if saw_pass || exit_code == Some(0) {
+        } else if saw_pass {
             self.graph.upsert_edge(
                 subject,
                 "fail",
@@ -689,6 +731,10 @@ impl InfinityContextMmu {
         self.redacted_artifacts.clear();
         if let Some(st) = persisted_state {
             self.clock_ms = self.clock_ms.max(st.clock_ms).max(max_graph_ms);
+            self.dag = st.dag;
+            if let Some(epochs) = st.epochs {
+                self.epochs = epochs;
+            }
             self.subagent_branches = st
                 .subagent_branches
                 .into_iter()
@@ -753,6 +799,8 @@ impl InfinityContextMmu {
             clock_ms: self.clock_ms,
             redacted_ids,
             subagent_branches: self.subagent_branches.clone(),
+            dag: self.dag.clone(),
+            epochs: Some(self.epochs.clone()),
         };
         let state_bytes = serde_json::to_vec(&state).map_err(Self::map_io_err)?;
         Self::write_atomic_file(icx_dir, "mmu_state.json", &state_bytes)

@@ -81,6 +81,7 @@ impl ClaudeCodeAdapter {
                     .get("tool_name")
                     .and_then(Value::as_str)
                     .unwrap_or("Tool");
+                let subject = InfinityContextMmu::extract_hook_subject(&payload, "Tool");
                 let raw_output = match payload.get("tool_response").filter(|v| !v.is_null()) {
                     Some(Value::String(s)) => s.clone(),
                     Some(other) => other.to_string(),
@@ -94,7 +95,7 @@ impl ClaudeCodeAdapter {
                     .map(str::to_owned);
                 let res = mmu.ingest_payload_for_subagent(
                     AgentKind::ClaudeCode,
-                    tool_name,
+                    &subject,
                     &raw_output,
                     exit_code,
                     false,

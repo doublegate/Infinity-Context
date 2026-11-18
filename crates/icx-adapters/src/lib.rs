@@ -752,6 +752,29 @@ unprefixed_secret = {unpref_sec}
                 .map(|e| e.target_entity.as_str()),
             Some("FAIL")
         );
+        // Non-test housekeeping run with exit_code == Some(0) (`saw_pass == false`) does NOT clear an active test failure
+        let _ = mmu.ingest_payload_with_exit_code(
+            AgentKind::ClaudeCode,
+            "suite_supersede",
+            "housekeeping echo ok",
+            Some(0),
+            false,
+        );
+        assert_eq!(
+            mmu.graph
+                .query_edges_from("suite_supersede", None)
+                .iter()
+                .find(|e| e.relation == "status")
+                .map(|e| e.target_entity.as_str()),
+            Some("FAIL")
+        );
+        assert_eq!(
+            InfinityContextMmu::extract_hook_subject(
+                &serde_json::json!({"tool_name": "Bash", "tool_input": {"command": "cargo test"}}),
+                "Bash"
+            ),
+            "Bash:cargo test"
+        );
         let _ = mmu.ingest_payload_with_exit_code(
             AgentKind::ClaudeCode,
             "suite_supersede",
@@ -815,6 +838,7 @@ unprefixed_secret = {unpref_sec}
         mmu.save_workspace_dir(&ws_dir).unwrap();
         loaded_mmu.load_workspace_dir(&ws_dir).unwrap();
         assert_eq!(loaded_mmu.cas.artifact_count(), mmu.cas.artifact_count());
+        assert_eq!(loaded_mmu.dag.node_count(), mmu.dag.node_count());
         assert_eq!(
             loaded_mmu.graph.active_edge_count(),
             mmu.graph.active_edge_count()
