@@ -582,6 +582,19 @@ unprefixed_secret = {unpref_sec}
             .unwrap();
         assert!(claude_mcp_post.contains("updatedMCPToolOutput"));
         assert!(claude_mcp_post.contains("lines=1..60"));
+        // Own MCP pager tool (`mcp__icx__icx`) is exempt from PostToolUse output replacement
+        let claude_pager_post = claude_trait
+            .handle_hook_event(
+                "PostToolUse",
+                &serde_json::json!({
+                    "tool_name": "mcp__icx__icx",
+                    "tool_response": "dereferenced line\n".repeat(60)
+                })
+                .to_string(),
+                &mut mmu,
+            )
+            .unwrap();
+        assert_eq!(claude_pager_post, "{}");
         assert_eq!(mmu.dag.node_count(), parent_nodes_before + 1);
         // Tagged subagent PostToolUse is buffered in sub-1's branch
         let _ = claude_trait
@@ -662,6 +675,18 @@ unprefixed_secret = {unpref_sec}
             )
             .unwrap();
         assert!(codex_mcp_post.contains("updatedMCPToolOutput"));
+        let codex_pager_post = codex_trait
+            .handle_hook_event(
+                "post-tool-use",
+                &serde_json::json!({
+                    "tool_name": "mcp__icx__icx",
+                    "tool_response": "dereferenced line\n".repeat(60)
+                })
+                .to_string(),
+                &mut mmu,
+            )
+            .unwrap();
+        assert!(!codex_pager_post.contains("updatedMCPToolOutput"));
         let _ = codex_trait
             .handle_hook_event("pre-compact", "{}", &mut mmu)
             .unwrap();

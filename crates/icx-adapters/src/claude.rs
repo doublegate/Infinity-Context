@@ -85,52 +85,57 @@ impl ClaudeCodeAdapter {
             "PostToolUse" | "post-tool-use" => {
                 let tool_name = payload
                     .get("tool_name")
+                    .or_else(|| payload.get("toolName"))
                     .and_then(Value::as_str)
                     .unwrap_or("Tool");
-                let subject = InfinityContextMmu::extract_hook_subject(&payload, "Tool");
-                let raw_output = match payload.get("tool_response").filter(|v| !v.is_null()) {
-                    Some(Value::String(s)) => s.clone(),
-                    Some(other) => other.to_string(),
-                    None => String::new(),
-                };
-
-                let exit_code = InfinityContextMmu::extract_exit_code(&payload);
-                let explicit_sub_id = ["subagent_id", "agent_id"]
-                    .into_iter()
-                    .find_map(|k| payload.get(k).and_then(Value::as_str))
-                    .map(str::to_owned);
-                let res = mmu.ingest_payload_for_subagent(
-                    AgentKind::ClaudeCode,
-                    &subject,
-                    &raw_output,
-                    exit_code,
-                    false,
-                    explicit_sub_id.as_deref(),
-                );
-                if res.was_virtualized {
-                    let total_lines = mmu
-                        .cas
-                        .get_meta(res.artifact_id)
-                        .map_or(1, |m| m.total_lines.max(1));
-                    let stub = format!(
-                        "⟪ICX:STUB│{}│raw={}B→{}B│lines=1..{total_lines}⟫\n{}",
-                        res.artifact_id,
-                        res.raw_bytes,
-                        res.compressed_ahtl.len(),
-                        res.compressed_ahtl
-                    );
-                    let mut hso = json!({
-                        "hookEventName": "PostToolUse",
-                        "updatedToolOutput": stub
-                    });
-                    if tool_name.starts_with("mcp__") {
-                        hso["updatedMCPToolOutput"] = Value::String(stub);
-                    }
-                    json!({
-                        "hookSpecificOutput": hso
-                    })
-                } else {
+                if InfinityContextMmu::is_icx_pager_tool(tool_name) {
                     json!({})
+                } else {
+                    let subject = InfinityContextMmu::extract_hook_subject(&payload, "Tool");
+                    let raw_output = match payload.get("tool_response").filter(|v| !v.is_null()) {
+                        Some(Value::String(s)) => s.clone(),
+                        Some(other) => other.to_string(),
+                        None => String::new(),
+                    };
+
+                    let exit_code = InfinityContextMmu::extract_exit_code(&payload);
+                    let explicit_sub_id = ["subagent_id", "agent_id"]
+                        .into_iter()
+                        .find_map(|k| payload.get(k).and_then(Value::as_str))
+                        .map(str::to_owned);
+                    let res = mmu.ingest_payload_for_subagent(
+                        AgentKind::ClaudeCode,
+                        &subject,
+                        &raw_output,
+                        exit_code,
+                        false,
+                        explicit_sub_id.as_deref(),
+                    );
+                    if res.was_virtualized {
+                        let total_lines = mmu
+                            .cas
+                            .get_meta(res.artifact_id)
+                            .map_or(1, |m| m.total_lines.max(1));
+                        let stub = format!(
+                            "⟪ICX:STUB│{}│raw={}B→{}B│lines=1..{total_lines}⟫\n{}",
+                            res.artifact_id,
+                            res.raw_bytes,
+                            res.compressed_ahtl.len(),
+                            res.compressed_ahtl
+                        );
+                        let mut hso = json!({
+                            "hookEventName": "PostToolUse",
+                            "updatedToolOutput": stub
+                        });
+                        if tool_name.starts_with("mcp__") {
+                            hso["updatedMCPToolOutput"] = Value::String(stub);
+                        }
+                        json!({
+                            "hookSpecificOutput": hso
+                        })
+                    } else {
+                        json!({})
+                    }
                 }
             }
             "SubagentStart" | "subagent-start" => {

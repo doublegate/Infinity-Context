@@ -101,6 +101,18 @@ impl InfinityContextMmu {
         }
     }
 
+    /// Returns `true` if `tool_name` refers to Infinity-Context's own MCP pager tool (`icx` /
+    /// `mcp__*__icx`), whose dereferenced pages must pass through to the model without
+    /// re-virtualization in `PostToolUse`.
+    pub fn is_icx_pager_tool(tool_name: &str) -> bool {
+        let t = tool_name.trim();
+        t.eq_ignore_ascii_case("icx")
+            || t.ends_with("__icx")
+            || t.starts_with("mcp__icx__")
+            || t.starts_with("mcp__infinity_context")
+            || t.starts_with("mcp__infinity-context")
+    }
+
     /// Extracts a command-scoped subject (`"<tool_name>:<command>"`) from a hook JSON payload
     /// when a command/target input is present so distinct commands sharing a tool name (e.g.
     /// `Bash`) do not overwrite each other's functional graph state.
@@ -787,6 +799,7 @@ impl InfinityContextMmu {
                 CacheEpochController::new(ICX_AHTL_LEGEND, EpochControllerConfig::default());
             self.subagent_branches.clear();
         }
+        self.sync_global_dag_root();
         Ok(())
     }
 
