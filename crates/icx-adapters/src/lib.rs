@@ -2176,4 +2176,304 @@ unprefixed_secret = {unpref_sec}
         assert!(locked_count >= 2);
         let _ = std::fs::remove_dir_all(&lock_test_dir);
     }
+
+    #[test]
+    fn sprint_5_1_500_turn_two_million_token_nih_oolong_and_prefix_cache_simulation() {
+        use icx_bus::SeqlockTelemetryBus;
+        use icx_core::ArtifactId;
+        use icx_core::epoch::EpochControllerConfig;
+
+        let epoch_cfg = EpochControllerConfig {
+            epoch_rollover_tokens: 4_096,
+            protect_last_n_turns: 4,
+            tail_slot_max_tokens: 512,
+        };
+        let mut mmu = InfinityContextMmu::new(epoch_cfg, SeqlockTelemetryBus::new_in_memory());
+        mmu.epochs = icx_core::epoch::CacheEpochController::new(
+            "⟪ICX:PINNED_HEAD│system=infinity-context-mmu-v1│cache_breakpoint=0⟫\n".repeat(450),
+            epoch_cfg,
+        );
+
+        let shared_filler = "test crate_core::suite::verify_invariant_case ... ok\n".repeat(320);
+
+        let planted_specs: [(usize, &str, &str); 4] = [
+            (
+                3,
+                "crates/icx-core/src/passkey_turn_003.rs",
+                "PASSKEY_ALPHA_003_F9A1",
+            ),
+            (
+                47,
+                "crates/icx-hdc/src/passkey_turn_047.rs",
+                "PASSKEY_BETA_047_C3D8",
+            ),
+            (
+                189,
+                "crates/icx-codec/src/passkey_turn_189.rs",
+                "PASSKEY_GAMMA_189_7E4B",
+            ),
+            (
+                412,
+                "crates/icx-proxy/src/passkey_turn_412.rs",
+                "PASSKEY_DELTA_412_B19C",
+            ),
+        ];
+        let mut planted_handles = [ArtifactId(0); 4];
+        let mut total_raw_bytes = 0usize;
+        let mut prev_prefix = String::new();
+        let mut hit_ratios = Vec::with_capacity(500);
+
+        for turn in 0..500usize {
+            let planted_opt = planted_specs.iter().enumerate().find(|(_, s)| s.0 == turn);
+            let (subject, payload, is_anomaly) = if let Some((_, &(_, subj, passkey))) = planted_opt
+            {
+                let body = format!(
+                    "pub fn verify_passkey_{turn}() {{\n    // {passkey}\n    panic!(\"diagnostic_needle {passkey} at turn {turn}\");\n}}\n{shared_filler}"
+                );
+                (subj.to_owned(), body, true)
+            } else {
+                let body = format!(
+                    "pub fn turn_driver_{turn:04}() -> usize {{ {turn} }}\n{shared_filler}"
+                );
+                (
+                    format!("crates/icx-bench/src/turn_{turn:04}.rs"),
+                    body,
+                    false,
+                )
+            };
+
+            total_raw_bytes += payload.len();
+            let prev_epochs = mmu.epochs.sealed_epoch_count();
+            let res = mmu.ingest_payload_with_exit_code(
+                AgentKind::ClaudeCode,
+                &subject,
+                &payload,
+                Some(i32::from(is_anomaly)),
+                is_anomaly,
+            );
+            if let Some((p_idx, _)) = planted_opt {
+                planted_handles[p_idx] = res.artifact_id;
+            }
+
+            if mmu.epochs.zone1_compressed_tokens() > 20_480 {
+                let _ = mmu.epochs.retarget_budget(&mut mmu.dag, 12_288);
+            }
+            let win = mmu.assemble_prompt_window(AgentKind::ClaudeCode, "verify_passkey");
+            let active_tokens =
+                ((win.total_cached_prefix_bytes + win.total_uncached_tail_bytes) / 4).max(1);
+            assert!(
+                active_tokens < 32_768,
+                "active window ({active_tokens} tokens) must remain under 32,768 ceiling at turn {turn}"
+            );
+            if !prev_prefix.is_empty() && win.sealed_epochs.len() == prev_epochs {
+                hit_ratios.push(win.prefix_cache_hit_ratio(&prev_prefix));
+            }
+            prev_prefix = win.deterministic_prefix();
+        }
+
+        // > 8 MB raw bytes (> 2,000,000 raw BPE tokens at 4 B/token)
+        assert!(
+            total_raw_bytes > 8_000_000,
+            "expected > 8 MB (> 2M tokens) raw trajectory, got {total_raw_bytes} B"
+        );
+        let avg_hit_ratio = hit_ratios.iter().sum::<f64>() / (hit_ratios.len() as f64);
+        assert!(
+            avg_hit_ratio >= 0.94,
+            "500-turn prefix-cache hit ratio ({:.2}%) must be >= 94.0%",
+            avg_hit_ratio * 100.0
+        );
+
+        // Verify all 4 planted passkeys are retrieved via associative recall and losslessly dereferenced
+        for (idx, &(_turn, subj, passkey)) in planted_specs.iter().enumerate() {
+            let handle = planted_handles[idx];
+            let hits = mmu
+                .hdc_index
+                .query_associative(&format!("{subj} {passkey}"), 5);
+            assert!(
+                hits.iter().any(|h| h.artifact_id == handle),
+                "associative recall must recover planted handle {handle} for {passkey}"
+            );
+            let tail = mmu.build_ephemeral_tail_slot(
+                AgentKind::ClaudeCode,
+                &format!("What failed in `{subj}` ({passkey})?"),
+                5,
+            );
+            assert!(
+                tail.contains(&handle.to_string()),
+                "punctuation-stripped tail slot query must include {handle}"
+            );
+            let sliced = mmu.deref_lines(handle, 1, 3).unwrap();
+            assert!(sliced.contains(passkey));
+            let full = mmu.deref_text(handle).unwrap();
+            assert!(full.contains(passkey));
+        }
+
+        // Verify per-agent occurrence table isolation between ClaudeCode and Hermes
+        let (c_res1, c_new1) = mmu.ingest_or_reuse_at_index(
+            0,
+            AgentKind::ClaudeCode,
+            "claude_turn_0",
+            "fn claude_zero() {}\n",
+            None,
+            false,
+        );
+        assert!(c_new1);
+        assert!(
+            !mmu.has_indexed_occurrence(0),
+            "ClaudeCode occurrence 0 must not mark Hermes occurrence 0 as indexed"
+        );
+        let (h_res1, h_new1) = mmu.ingest_or_reuse_at_index(
+            0,
+            AgentKind::Hermes,
+            "hermes_turn_0",
+            "fn hermes_zero() {}\n",
+            None,
+            false,
+        );
+        assert!(h_new1);
+        assert!(mmu.has_indexed_occurrence(0));
+        let (c_res2, c_new2) = mmu.ingest_or_reuse_at_index(
+            0,
+            AgentKind::ClaudeCode,
+            "claude_turn_0",
+            "fn claude_zero() {}\n",
+            None,
+            false,
+        );
+        assert!(
+            !c_new2,
+            "Hermes occurrence 0 must not invalidate ClaudeCode occurrence 0"
+        );
+        assert_eq!(c_res1.artifact_id, c_res2.artifact_id);
+        let hermes_rec = mmu.get_occurrence_record(0, None).unwrap();
+        assert_eq!(hermes_rec.0, AgentKind::Hermes as u8);
+        assert_eq!(hermes_rec.2, h_res1.artifact_id);
+
+        assert_eq!(
+            mmu.cas.verify_all_integrity().unwrap(),
+            mmu.cas.artifact_count()
+        );
+    }
+
+    #[test]
+    fn sprint_5_1_four_agent_shared_shm_telepathy_and_sub_100us_propagation() {
+        use icx_bus::SeqlockTelemetryBus;
+        use icx_core::epoch::EpochControllerConfig;
+
+        let tmp_dir =
+            std::env::temp_dir().join(format!("icx_sprint_5_1_telepathy_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+        let shm_path = tmp_dir.join("icx-fabric-v1.shm");
+
+        let epoch_cfg = EpochControllerConfig::default();
+        let mut claude_mmu = InfinityContextMmu::new(
+            epoch_cfg,
+            SeqlockTelemetryBus::open_shared_file(&shm_path).unwrap(),
+        );
+        claude_mmu.save_workspace_dir(&tmp_dir).unwrap();
+        claude_mmu.load_workspace_dir(&tmp_dir).unwrap();
+        let mut agy_mmu = InfinityContextMmu::new(
+            epoch_cfg,
+            SeqlockTelemetryBus::open_shared_file(&shm_path).unwrap(),
+        );
+        let mut codex_mmu = InfinityContextMmu::new(
+            epoch_cfg,
+            SeqlockTelemetryBus::open_shared_file(&shm_path).unwrap(),
+        );
+        let mut hermes_mmu = InfinityContextMmu::new(
+            epoch_cfg,
+            SeqlockTelemetryBus::open_shared_file(&shm_path).unwrap(),
+        );
+
+        let panic_log = "running 12 tests\ntest engine::mmu::test_telepathy_page_fault ... FAILED\nthread 'engine::mmu::test_telepathy_page_fault' panicked at crates/icx-core/src/cas.rs:215:9: TELEPATHY_PASSKEY_778899\n".repeat(8);
+        let post_tool_json = serde_json::json!({
+            "tool_name": "Bash",
+            "tool_input": { "command": "cargo test --workspace" },
+            "tool_response": panic_log,
+            "exit_code": 101
+        })
+        .to_string();
+
+        let claude_out =
+            ClaudeCodeAdapter::handle_hook("PostToolUse", &post_tool_json, &mut claude_mmu)
+                .unwrap();
+        assert!(claude_out.contains("⟪ICX:STUB│#icx:"));
+        claude_mmu.save_workspace_dir(&tmp_dir).unwrap();
+
+        // Measure cross-agent shared-file Seqlock poll latency (< 100 us best-of-3 warm sample)
+        let mut events = Vec::new();
+        let mut min_poll_us = f64::MAX;
+        for _ in 0..3 {
+            let t0 = std::time::Instant::now();
+            events = agy_mmu
+                .bus
+                .poll_workspace_since(0, claude_mmu.workspace_hash);
+            min_poll_us = min_poll_us.min(t0.elapsed().as_secs_f64() * 1_000_000.0);
+        }
+        assert!(
+            min_poll_us < 100.0,
+            "shared-file seqlock poll took {min_poll_us:.2} us (expected < 100 us)"
+        );
+        let published_aid = events
+            .last()
+            .expect("telepathy event published")
+            .artifact_id;
+
+        // Antigravity CLI, Codex CLI, and Hermes Agent load workspace & receive the telepathy frame
+        agy_mmu.load_workspace_dir(&tmp_dir).unwrap();
+        codex_mmu.load_workspace_dir(&tmp_dir).unwrap();
+        hermes_mmu.load_workspace_dir(&tmp_dir).unwrap();
+
+        let agy_hook = AntigravityAdapter::handle_hook(
+            "PreInvocation",
+            r#"{"prompt":"investigate test_telepathy_page_fault"}"#,
+            &mut agy_mmu,
+        )
+        .unwrap();
+        assert!(agy_hook.contains("⟦Θ:claude-code@Bash:cargo test --workspace⊢"));
+
+        let codex_hook = CodexAdapter::handle_hook(
+            "UserPromptSubmit",
+            r#"{"prompt":"investigate test_telepathy_page_fault"}"#,
+            &mut codex_mmu,
+        )
+        .unwrap();
+        assert!(codex_hook.contains("⟦Θ:claude-code@Bash:cargo test --workspace⊢"));
+
+        let hermes_msgs = vec![
+            hermes::HermesMessage {
+                role: "system".into(),
+                content: "sys".into(),
+                tool_call_id: None,
+                name: None,
+            },
+            hermes::HermesMessage {
+                role: "user".into(),
+                content: "investigate test_telepathy_page_fault".into(),
+                tool_call_id: None,
+                name: None,
+            },
+        ];
+        let hermes_sel = HermesAdapter::select_context(&hermes_msgs, 1, 1, &mut hermes_mmu);
+        assert!(
+            hermes_sel
+                .last()
+                .unwrap()
+                .content
+                .contains("⟦Θ:claude-code@Bash:cargo test --workspace⊢")
+        );
+
+        // Lossless dereference via McpPagerServer across agents
+        let deref_out = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "deref",
+                "id": published_aid.to_string()
+            }),
+            &mut agy_mmu,
+        );
+        assert_eq!(deref_out, panic_log.trim_end_matches('\n'));
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
 }

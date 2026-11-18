@@ -1448,15 +1448,13 @@ impl WireProxyTransformer {
         }
         verify_eof()?;
         let expanded_opt = if is_textual_content {
-            std::str::from_utf8(&resp_bytes).ok().map(|s| {
-                if Self::might_contain_deref_marker(s) {
+            std::str::from_utf8(&resp_bytes).ok().and_then(|s| {
+                Self::might_contain_deref_marker(s).then(|| {
                     let guard = shared_mmu
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
                     Self::expand_json_or_text_body(s, &guard)
-                } else {
-                    s.to_owned()
-                }
+                })
             })
         } else {
             None
