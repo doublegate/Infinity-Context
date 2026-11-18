@@ -253,8 +253,8 @@ impl InfinityContextMmu {
             raw_text
         };
         let mut sanitized = SecretRedactor::sanitize(bounded_raw);
-        let is_unredacted = if bounded_raw.is_empty() {
-            sanitized.is_empty()
+        let is_unredacted = if sanitized.is_empty() {
+            bounded_raw.lines().next().is_none()
         } else {
             bounded_raw == sanitized || bounded_raw.lines().eq(sanitized.split('\n'))
         };
@@ -764,10 +764,41 @@ impl InfinityContextMmu {
         self.cas.grep_cold(id, pattern, max_matches)
     }
 
-    /// Returns `true` if pre-CAS secret redaction or delimiter escaping modified `id` during ingestion.
+    /// Returns `true` if `id` is stored directly in the `L0` Content-Addressed Storage (`CasStore`).
     #[inline]
+    pub fn is_cas_artifact(&self, id: ArtifactId) -> bool {
+        self.cas.get_meta(id).is_some()
+    }
+
+    /// Returns `true` if pre-CAS secret redaction or delimiter escaping modified `id` (or any
+    /// descendant `L0` CAS artifact of a `MerkleContextDag` node `id`) during ingestion.
     pub fn is_artifact_redacted(&self, id: ArtifactId) -> bool {
-        self.redacted_artifacts.contains(&id)
+        if self.redacted_artifacts.contains(&id) {
+            return true;
+        }
+        let mut stack = vec![id];
+        let mut visited = BTreeSet::new();
+        while let Some(cur) = stack.pop() {
+            if !visited.insert(cur) {
+                continue;
+            }
+            if self.redacted_artifacts.contains(&cur) {
+                return true;
+            }
+            if let Some(node) = self.dag.get_node(cur) {
+                match node {
+                    icx_core::dag::DagNode::Turn { raw_artifact, .. } => stack.push(*raw_artifact),
+                    icx_core::dag::DagNode::ToolArtifact(tn) => stack.push(tn.raw_artifact),
+                    icx_core::dag::DagNode::SubTrajectoryBranch { child_turns, .. } => {
+                        stack.extend(child_turns.iter().copied());
+                    }
+                    icx_core::dag::DagNode::CacheEpoch { child_nodes, .. } => {
+                        stack.extend(child_nodes.iter().copied());
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Returns the number of artifacts in `self` that had pre-CAS secret redaction or delimiter

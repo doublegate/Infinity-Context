@@ -52,11 +52,11 @@ impl McpPagerServer {
     }
 
     /// Returns `true` if a JSON-RPC 2.0 request line requires reading or mutating persistent MMU
-    /// workspace state (`id` is present and `method == "tools/call"`).
+    /// workspace state (`id` is present and non-null, and `method == "tools/call"`).
     #[must_use]
     pub fn requires_workspace_state(request_json: &str) -> bool {
         serde_json::from_str::<Value>(request_json).is_ok_and(|req| {
-            req.get("id").is_some()
+            !req.get("id").is_none_or(Value::is_null)
                 && req.get("method").and_then(Value::as_str) == Some("tools/call")
                 && req
                     .get("params")
@@ -73,7 +73,7 @@ impl McpPagerServer {
         let Ok(req) = serde_json::from_str::<Value>(request_json) else {
             return false;
         };
-        if req.get("id").is_none()
+        if req.get("id").is_none_or(Value::is_null)
             || req.get("method").and_then(Value::as_str) != Some("tools/call")
         {
             return false;
@@ -111,9 +111,14 @@ impl McpPagerServer {
             .and_then(Value::as_bool)
             .unwrap_or(false);
         let is_redacted = mmu.is_artifact_redacted(aid);
+        let exactness = if mmu.is_cas_artifact(aid) {
+            "post_sanitization_cas"
+        } else {
+            "merkle_dag_representation"
+        };
         if want_prov || is_redacted {
             format!(
-                "⟪ICX:PROVENANCE│id={aid}│redacted={is_redacted}│exactness=post_sanitization_cas⟫\n{text}"
+                "⟪ICX:PROVENANCE│id={aid}│redacted={is_redacted}│exactness={exactness}⟫\n{text}"
             )
         } else {
             text
@@ -133,7 +138,7 @@ impl McpPagerServer {
             }
         };
 
-        let has_id = req.get("id").is_some();
+        let has_id = !req.get("id").is_none_or(Value::is_null);
         let id = req.get("id").cloned().unwrap_or(Value::Null);
         let method = req.get("method").and_then(Value::as_str).unwrap_or("");
 

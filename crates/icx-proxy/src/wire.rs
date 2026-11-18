@@ -353,9 +353,12 @@ impl WireProxyTransformer {
         mmu: &InfinityContextMmu,
     ) -> String {
         if mmu.is_artifact_redacted(aid) {
-            format!(
-                "⟪ICX:PROVENANCE│id={aid}│redacted=true│exactness=post_sanitization_cas⟫\n{text}"
-            )
+            let exactness = if mmu.is_cas_artifact(aid) {
+                "post_sanitization_cas"
+            } else {
+                "merkle_dag_representation"
+            };
+            format!("⟪ICX:PROVENANCE│id={aid}│redacted=true│exactness={exactness}⟫\n{text}")
         } else {
             text
         }
@@ -624,17 +627,26 @@ impl WireProxyTransformer {
         for seg in path {
             cur = match cur {
                 Value::Object(map) => {
-                    for (k, v) in map.iter_mut() {
-                        if k != seg
-                            && matches!(
+                    map.retain(|k, _| {
+                        k == seg
+                            || matches!(
                                 k.as_str(),
-                                "text" | "content" | "delta" | "output" | "reasoning_content"
+                                "type"
+                                    | "role"
+                                    | "id"
+                                    | "item_id"
+                                    | "response_id"
+                                    | "model"
+                                    | "object"
+                                    | "created"
+                                    | "index"
+                                    | "output_index"
+                                    | "content_index"
+                                    | "summary_index"
+                                    | "candidateIndex"
+                                    | "sequence_number"
                             )
-                            && v.is_string()
-                        {
-                            *v = Value::String(String::new());
-                        }
-                    }
+                    });
                     match map.get_mut(seg) {
                         Some(v) => v,
                         None => return,
@@ -1541,12 +1553,19 @@ impl WireProxyTransformer {
         if !has_content_type && !transformed_body.is_empty() {
             write!(upstream, "Content-Type: application/json\r\n")?;
         }
-        write!(
-            upstream,
-            "Content-Length: {}\r\nConnection: close\r\n\r\n{}",
-            transformed_body.len(),
-            transformed_body
-        )?;
+        let is_bodyless_get_or_head = (safe_method.eq_ignore_ascii_case("GET")
+            || safe_method.eq_ignore_ascii_case("HEAD"))
+            && transformed_body.is_empty();
+        if is_bodyless_get_or_head {
+            write!(upstream, "Connection: close\r\n\r\n")?;
+        } else {
+            write!(
+                upstream,
+                "Content-Length: {}\r\nConnection: close\r\n\r\n{}",
+                transformed_body.len(),
+                transformed_body
+            )?;
+        }
         upstream.flush()?;
 
         let mut up_reader = BufReader::new(upstream);
@@ -1792,11 +1811,30 @@ impl WireProxyTransformer {
     /// workspace lock before any upstream network round-trip).
     pub fn handle_http_request_with_config<R: Read, W: Write>(
         reader: R,
-        mut writer: W,
+        writer: W,
         default_provider: Option<ProviderFormat>,
         upstream_override: Option<&str>,
         workspace_dir: Option<&Path>,
         mmu: &mut InfinityContextMmu,
+    ) -> io::Result<()> {
+        let shared_mmu = std::sync::Mutex::new(mmu);
+        Self::handle_http_request_concurrent(
+            reader,
+            writer,
+            default_provider,
+            upstream_override,
+            workspace_dir,
+            &shared_mmu,
+        )
+    }
+
+    fn handle_http_request_concurrent<R: Read, W: Write>(
+        reader: R,
+        mut writer: W,
+        default_provider: Option<ProviderFormat>,
+        upstream_override: Option<&str>,
+        workspace_dir: Option<&Path>,
+        shared_mmu: &std::sync::Mutex<&mut InfinityContextMmu>,
     ) -> io::Result<()> {
         let mut buf_reader = BufReader::new(reader);
         let mut request_line = String::new();
@@ -1892,67 +1930,77 @@ impl WireProxyTransformer {
         }
         let body_str = String::from_utf8_lossy(&body_bytes).into_owned();
 
-        // Execute the local workspace read-modify-write under the exclusive lock and release the
-        // lock BEFORE performing any upstream network round-trip.
-        let ws_opt = workspace_dir.filter(|p| p.exists());
-        let lock_guard = match ws_opt {
-            Some(p) => {
-                let g = InfinityContextMmu::acquire_workspace_lock(p)
-                    .map_err(|e| io::Error::other(e.to_string()))?;
-                mmu.load_workspace_dir_unlocked(p)
-                    .map_err(|e| io::Error::other(e.to_string()))?;
-                Some((p, g))
-            }
-            None => None,
-        };
-
-        if method.eq_ignore_ascii_case("GET") && path.starts_with("/health") {
-            let resp_body = format!(
-                "{{\"status\":\"ok\",\"cas_artifacts\":{},\"sealed_epochs\":{}}}",
-                mmu.cas.artifact_count(),
-                mmu.epochs.sealed_epoch_count()
-            );
-            drop(lock_guard);
-            write!(
-                writer,
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                resp_body.len(),
-                resp_body
-            )?;
-            return writer.flush();
-        }
-
-        if path.starts_with("/sse-expand") {
-            let expanded = Self::transform_sse_chunk(&body_str, mmu);
-            drop(lock_guard);
-            write!(
-                writer,
-                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                expanded.len(),
-                expanded
-            )?;
-            return writer.flush();
-        }
-
-        let resolved_provider = Self::resolve_provider(default_provider, path, &body_str);
-        let is_bodyless_get_or_head = (method.eq_ignore_ascii_case("GET")
-            || method.eq_ignore_ascii_case("HEAD"))
-            && body_str.trim().is_empty();
-        let transformed_res = if is_bodyless_get_or_head {
-            Ok(String::new())
-        } else {
-            Self::transform_for_provider(Some(resolved_provider), path, &body_str, mmu)
-        };
-
-        if let Some((p, g)) = lock_guard {
-            let save_res = if transformed_res.is_ok() && !is_bodyless_get_or_head {
-                mmu.save_workspace_dir_unlocked(p)
-            } else {
-                Ok(())
+        // Execute the local workspace read-modify-write under the exclusive lock and release both
+        // the workspace lock and the in-memory MMU mutex BEFORE any upstream network round-trip.
+        let (transformed_res, resolved_provider, mmu_snapshot) = {
+            let mut mmu_guard = shared_mmu
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mmu: &mut InfinityContextMmu = &mut mmu_guard;
+            let ws_opt = workspace_dir.filter(|p| p.exists());
+            let lock_guard = match ws_opt {
+                Some(p) => {
+                    let g = InfinityContextMmu::acquire_workspace_lock(p)
+                        .map_err(|e| io::Error::other(e.to_string()))?;
+                    mmu.load_workspace_dir_unlocked(p)
+                        .map_err(|e| io::Error::other(e.to_string()))?;
+                    Some((p, g))
+                }
+                None => None,
             };
-            drop(g);
-            save_res.map_err(|e| io::Error::other(e.to_string()))?;
-        }
+
+            if method.eq_ignore_ascii_case("GET") && path.starts_with("/health") {
+                let resp_body = format!(
+                    "{{\"status\":\"ok\",\"cas_artifacts\":{},\"sealed_epochs\":{}}}",
+                    mmu.cas.artifact_count(),
+                    mmu.epochs.sealed_epoch_count()
+                );
+                drop(lock_guard);
+                drop(mmu_guard);
+                write!(
+                    writer,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    resp_body.len(),
+                    resp_body
+                )?;
+                return writer.flush();
+            }
+
+            if path.starts_with("/sse-expand") {
+                let expanded = Self::transform_sse_chunk(&body_str, mmu);
+                drop(lock_guard);
+                drop(mmu_guard);
+                write!(
+                    writer,
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    expanded.len(),
+                    expanded
+                )?;
+                return writer.flush();
+            }
+
+            let resolved_provider = Self::resolve_provider(default_provider, path, &body_str);
+            let is_bodyless_get_or_head = (method.eq_ignore_ascii_case("GET")
+                || method.eq_ignore_ascii_case("HEAD"))
+                && body_str.trim().is_empty();
+            let transformed_res = if is_bodyless_get_or_head {
+                Ok(String::new())
+            } else {
+                Self::transform_for_provider(Some(resolved_provider), path, &body_str, mmu)
+            };
+
+            if let Some((p, g)) = lock_guard {
+                let save_res = if transformed_res.is_ok() && !is_bodyless_get_or_head {
+                    mmu.save_workspace_dir_unlocked(p)
+                } else {
+                    Ok(())
+                };
+                drop(g);
+                save_res.map_err(|e| io::Error::other(e.to_string()))?;
+            }
+            let snapshot = (*mmu).clone();
+            (transformed_res, resolved_provider, snapshot)
+        };
 
         let transformed = match transformed_res {
             Ok(t) => t,
@@ -2001,7 +2049,7 @@ impl WireProxyTransformer {
                     &stripped_path,
                     &client_headers,
                     &transformed,
-                    mmu,
+                    &mmu_snapshot,
                     &mut writer,
                     &mut headers_committed,
                 )
@@ -2012,7 +2060,7 @@ impl WireProxyTransformer {
                     &stripped_path,
                     &client_headers,
                     &transformed,
-                    mmu,
+                    &mmu_snapshot,
                     &mut writer,
                     &mut headers_committed,
                 )
@@ -2060,8 +2108,8 @@ impl WireProxyTransformer {
         )
     }
 
-    /// Serves HTTP/1.1 requests on `listener` with optional `upstream_override` and transactional
-    /// `workspace_dir` persistence on each request.
+    /// Serves HTTP/1.1 requests concurrently on `listener` with optional `upstream_override` and
+    /// transactional `workspace_dir` persistence on each request.
     pub fn serve_http_listener_with_config(
         listener: &TcpListener,
         default_provider: Option<ProviderFormat>,
@@ -2073,30 +2121,46 @@ impl WireProxyTransformer {
         if max_requests == Some(0) {
             return Ok(0);
         }
-        let mut served = 0usize;
-        for stream_res in listener.incoming() {
-            let Ok(mut stream) = stream_res else {
-                continue;
-            };
-            let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
-            let _ = stream.set_write_timeout(Some(Duration::from_secs(30)));
-            let Ok(reader) = stream.try_clone() else {
-                continue;
-            };
-            let _ = Self::handle_http_request_with_config(
-                reader,
-                &mut stream,
-                default_provider,
-                upstream_override,
-                workspace_dir,
-                mmu,
-            );
-            served += 1;
-            if max_requests.is_some_and(|max| served >= max) {
-                break;
+        let shared_mmu = std::sync::Mutex::new(mmu);
+        let shared_mmu_ref = &shared_mmu;
+        std::thread::scope(|scope| {
+            let mut served = 0usize;
+            let mut active_handles: Vec<std::thread::ScopedJoinHandle<'_, ()>> = Vec::new();
+            for stream_res in listener.incoming() {
+                active_handles.retain(|h| !h.is_finished());
+                if active_handles.len() >= 64 {
+                    let oldest = active_handles.remove(0);
+                    let _ = oldest.join();
+                }
+                let Ok(mut stream) = stream_res else {
+                    continue;
+                };
+                let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
+                let _ = stream.set_write_timeout(Some(Duration::from_secs(30)));
+                let Ok(reader) = stream.try_clone() else {
+                    continue;
+                };
+                let handle = scope.spawn(move || {
+                    let _ = Self::handle_http_request_concurrent(
+                        reader,
+                        &mut stream,
+                        default_provider,
+                        upstream_override,
+                        workspace_dir,
+                        shared_mmu_ref,
+                    );
+                });
+                active_handles.push(handle);
+                served += 1;
+                if max_requests.is_some_and(|max| served >= max) {
+                    break;
+                }
             }
-        }
-        Ok(served)
+            for h in active_handles {
+                let _ = h.join();
+            }
+            Ok(served)
+        })
     }
 
     fn collect_openai_pager_call_ids(items: &[Value]) -> BTreeSet<String> {
@@ -3423,6 +3487,38 @@ mod tests {
         let residual_out = WireProxyTransformer::transform_sse_chunk(residual_resp_sse, &mmu);
         assert!(residual_out.contains("\"item_id\":\"msg_99\""));
         assert!(residual_out.contains("⟪!icx:deref("));
+
+        // Residual flush strips sibling `tool_calls` array on flush_sse_pending
+        let mut tc_template = serde_json::json!({
+            "id": "chatcmpl-1",
+            "object": "chat.completion.chunk",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "role": "assistant",
+                    "content": "hold",
+                    "tool_calls": [{"index": 0, "function": {"arguments": "{}"}}]
+                },
+                "finish_reason": null
+            }]
+        });
+        WireProxyTransformer::set_json_string_at_path(
+            &mut tc_template,
+            &[
+                "choices".into(),
+                "0".into(),
+                "delta".into(),
+                "content".into(),
+            ],
+            "flushed".into(),
+        );
+        assert!(
+            tc_template["choices"][0]["delta"]
+                .get("tool_calls")
+                .is_none()
+        );
+        assert_eq!(tc_template["choices"][0]["delta"]["content"], "flushed");
+        assert_eq!(tc_template["choices"][0]["delta"]["role"], "assistant");
 
         // Gemini `functionResponse` oversized output virtualization
         let big_fr = "fn gemini_tool_payload() {}\n".repeat(100);

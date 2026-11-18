@@ -247,6 +247,13 @@ fn dispatch_agent_hook(
     }
 }
 
+fn non_replacing_hook_response(agent: AgentKind) -> String {
+    match agent {
+        AgentKind::AntigravityCli => r#"{"injectSteps":[],"terminationBehavior":""}"#.to_owned(),
+        _ => r#"{"continue":true}"#.to_owned(),
+    }
+}
+
 fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::Error> {
     let mut agent_str = "claude-code";
     let mut event_str = "SessionStart";
@@ -272,26 +279,45 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
 
     let mut mmu = InfinityContextMmu::default();
     let agent = AgentKind::parse_agent(agent_str);
+    let is_session_start = event_str.eq_ignore_ascii_case("SessionStart")
+        || event_str.eq_ignore_ascii_case("session-start");
     let ws_dir = resolve_workspace_dir(dir_str);
-    if ws_dir.exists()
-        && let Ok(lock_guard) = InfinityContextMmu::acquire_workspace_lock(&ws_dir)
-    {
-        let loaded_ok = match mmu.load_workspace_dir_unlocked(&ws_dir) {
-            Ok(()) => true,
-            Err(err) => {
-                eprintln!(
-                    "icx hook warning: failed to load workspace state from {}: {err}",
-                    ws_dir.display()
-                );
-                false
-            }
+    if ws_dir.exists() {
+        let Ok(lock_guard) = InfinityContextMmu::acquire_workspace_lock(&ws_dir) else {
+            eprintln!(
+                "icx hook warning: failed to acquire workspace lock in {}",
+                ws_dir.display()
+            );
+            return if is_session_start {
+                dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)
+            } else {
+                Ok(non_replacing_hook_response(agent))
+            };
         };
+        if let Err(err) = mmu.load_workspace_dir_unlocked(&ws_dir) {
+            eprintln!(
+                "icx hook warning: failed to load workspace state from {}: {err}",
+                ws_dir.display()
+            );
+            drop(lock_guard);
+            return if is_session_start {
+                dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)
+            } else {
+                Ok(non_replacing_hook_response(agent))
+            };
+        }
         let out = dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)?;
-        if loaded_ok && let Err(err) = mmu.save_workspace_dir_unlocked(&ws_dir) {
+        if let Err(err) = mmu.save_workspace_dir_unlocked(&ws_dir) {
             eprintln!(
                 "icx hook warning: failed to save workspace state to {}: {err}",
                 ws_dir.display()
             );
+            drop(lock_guard);
+            return if is_session_start {
+                Ok(out)
+            } else {
+                Ok(non_replacing_hook_response(agent))
+            };
         }
         drop(lock_guard);
         return Ok(out);
@@ -1178,6 +1204,35 @@ mod tests {
         assert_eq!(
             fs::read_to_string(corrupt_ws.join("mmu_state.json")).unwrap(),
             "{corrupt_json"
+        );
+        let corrupt_post_tool = execute_hook(
+            &[
+                "--agent".into(),
+                "claude".into(),
+                "--event".into(),
+                "PostToolUse".into(),
+                "--dir".into(),
+                corrupt_ws.to_string_lossy().into_owned(),
+            ],
+            r#"{"tool_name":"Bash","tool_response":"big output"}"#,
+        )
+        .unwrap();
+        assert_eq!(corrupt_post_tool, r#"{"continue":true}"#);
+        let corrupt_agy_post_tool = execute_hook(
+            &[
+                "--agent".into(),
+                "agy".into(),
+                "--event".into(),
+                "PostToolUse".into(),
+                "--dir".into(),
+                corrupt_ws.to_string_lossy().into_owned(),
+            ],
+            r#"{"toolName":"bash","toolOutput":"big output"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            corrupt_agy_post_tool,
+            r#"{"injectSteps":[],"terminationBehavior":""}"#
         );
 
         // Test acquire_workspace_lock error when cas_store.lock is a directory
