@@ -2318,7 +2318,11 @@ unprefixed_secret = {unpref_sec}
             false,
         );
         assert!(c_new1);
-        let (_, h_new1) = mmu.ingest_or_reuse_at_index(
+        assert!(
+            !mmu.has_indexed_occurrence(0),
+            "ClaudeCode occurrence 0 must not mark Hermes occurrence 0 as indexed"
+        );
+        let (h_res1, h_new1) = mmu.ingest_or_reuse_at_index(
             0,
             AgentKind::Hermes,
             "hermes_turn_0",
@@ -2327,6 +2331,7 @@ unprefixed_secret = {unpref_sec}
             false,
         );
         assert!(h_new1);
+        assert!(mmu.has_indexed_occurrence(0));
         let (c_res2, c_new2) = mmu.ingest_or_reuse_at_index(
             0,
             AgentKind::ClaudeCode,
@@ -2340,6 +2345,9 @@ unprefixed_secret = {unpref_sec}
             "Hermes occurrence 0 must not invalidate ClaudeCode occurrence 0"
         );
         assert_eq!(c_res1.artifact_id, c_res2.artifact_id);
+        let hermes_rec = mmu.get_occurrence_record(0, None).unwrap();
+        assert_eq!(hermes_rec.0, AgentKind::Hermes as u8);
+        assert_eq!(hermes_rec.2, h_res1.artifact_id);
 
         assert_eq!(
             mmu.cas.verify_all_integrity().unwrap(),
@@ -2393,15 +2401,19 @@ unprefixed_secret = {unpref_sec}
         assert!(claude_out.contains("⟪ICX:STUB│#icx:"));
         claude_mmu.save_workspace_dir(&tmp_dir).unwrap();
 
-        // Measure cross-agent shared-file Seqlock poll latency (< 100 us)
-        let t0 = std::time::Instant::now();
-        let events = agy_mmu
-            .bus
-            .poll_workspace_since(0, claude_mmu.workspace_hash);
-        let poll_us = t0.elapsed().as_secs_f64() * 1_000_000.0;
+        // Measure cross-agent shared-file Seqlock poll latency (< 100 us best-of-3 warm sample)
+        let mut events = Vec::new();
+        let mut min_poll_us = f64::MAX;
+        for _ in 0..3 {
+            let t0 = std::time::Instant::now();
+            events = agy_mmu
+                .bus
+                .poll_workspace_since(0, claude_mmu.workspace_hash);
+            min_poll_us = min_poll_us.min(t0.elapsed().as_secs_f64() * 1_000_000.0);
+        }
         assert!(
-            poll_us < 500.0,
-            "shared-file seqlock poll took {poll_us:.2} us"
+            min_poll_us < 100.0,
+            "shared-file seqlock poll took {min_poll_us:.2} us (expected < 100 us)"
         );
         let published_aid = events
             .last()

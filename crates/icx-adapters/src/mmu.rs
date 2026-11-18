@@ -62,6 +62,8 @@ struct PersistedMmuState {
     reordered_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     #[serde(default)]
     agent_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
+    #[serde(default)]
+    agent_reordered_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
 }
 
 /// The central Virtual Context Memory Management Unit (`MMU`).
@@ -82,6 +84,7 @@ pub struct InfinityContextMmu {
     indexed_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     reordered_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     agent_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
+    agent_reordered_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
     clock_ms: u64,
 }
 
@@ -113,6 +116,7 @@ impl InfinityContextMmu {
             indexed_occurrences: BTreeMap::new(),
             reordered_occurrences: BTreeMap::new(),
             agent_occurrences: BTreeMap::new(),
+            agent_reordered_occurrences: BTreeMap::new(),
             clock_ms: 1_794_880_800_000,
         }
     }
@@ -320,6 +324,18 @@ impl InfinityContextMmu {
         {
             return (prev_res.clone(), false);
         }
+        if let Some((prev_agent, prev_subj, prev_aid, prev_ec, prev_fa, prev_res)) = self
+            .agent_reordered_occurrences
+            .get(&(agent as u8))
+            .and_then(|m| m.get(&occurrence_idx))
+            && *prev_agent == agent as u8
+            && prev_subj == &clean_subject
+            && *prev_aid == aid
+            && *prev_ec == exit_code
+            && *prev_fa == force_anomaly
+        {
+            return (prev_res.clone(), false);
+        }
         if let Some((prev_agent, prev_subj, prev_aid, prev_ec, prev_fa, prev_res)) =
             self.indexed_occurrences.get(&occurrence_idx)
         {
@@ -344,6 +360,11 @@ impl InfinityContextMmu {
         }
         let agent_map = self.agent_occurrences.entry(agent as u8).or_default();
         let _ = agent_map.split_off(&occurrence_idx);
+        let agent_ro_map = self
+            .agent_reordered_occurrences
+            .entry(agent as u8)
+            .or_default();
+        let _ = agent_ro_map.split_off(&occurrence_idx);
         Self::truncate_agent_suffix(&mut self.indexed_occurrences, occurrence_idx, agent as u8);
         Self::truncate_agent_suffix(&mut self.reordered_occurrences, occurrence_idx, agent as u8);
         let res = self.ingest_payload_for_subagent(
@@ -366,31 +387,55 @@ impl InfinityContextMmu {
             .entry(agent as u8)
             .or_default()
             .insert(occurrence_idx, record.clone());
-        self.indexed_occurrences.insert(occurrence_idx, record);
+        if agent == AgentKind::Hermes
+            || self
+                .indexed_occurrences
+                .get(&occurrence_idx)
+                .is_none_or(|e| e.0 == agent as u8)
+        {
+            self.indexed_occurrences.insert(occurrence_idx, record);
+        }
         (res, true)
     }
 
-    /// Returns `true` if `occurrence_idx` is already recorded in `self.indexed_occurrences`.
+    /// Returns `true` if `occurrence_idx` is already recorded for `AgentKind::Hermes` in
+    /// `self.agent_occurrences` or `self.indexed_occurrences`.
     #[inline]
     pub fn has_indexed_occurrence(&self, occurrence_idx: usize) -> bool {
-        self.indexed_occurrences.contains_key(&occurrence_idx)
+        self.agent_occurrences
+            .get(&(AgentKind::Hermes as u8))
+            .is_some_and(|m| m.contains_key(&occurrence_idx))
+            || self
+                .indexed_occurrences
+                .get(&occurrence_idx)
+                .is_some_and(|e| e.0 == AgentKind::Hermes as u8)
     }
 
     /// Returns the occurrence record at `occurrence_idx` matching `sanitized_aid` from either
-    /// `self.indexed_occurrences` or `self.reordered_occurrences`, falling back to the canonical
-    /// entry at `occurrence_idx`.
+    /// `self.agent_occurrences` / `self.agent_reordered_occurrences` (preferring
+    /// `AgentKind::Hermes`) or `self.indexed_occurrences` / `self.reordered_occurrences`.
     #[must_use]
     pub fn get_occurrence_record(
         &self,
         occurrence_idx: usize,
         sanitized_aid: Option<ArtifactId>,
     ) -> Option<IndexedOccurrenceRecord> {
-        let idx_opt = self.indexed_occurrences.get(&occurrence_idx);
-        let ro_opt = self.reordered_occurrences.get(&occurrence_idx);
+        let hermes_idx_opt = self
+            .agent_occurrences
+            .get(&(AgentKind::Hermes as u8))
+            .and_then(|m| m.get(&occurrence_idx));
+        let hermes_ro_opt = self
+            .agent_reordered_occurrences
+            .get(&(AgentKind::Hermes as u8))
+            .and_then(|m| m.get(&occurrence_idx));
+        let idx_opt = hermes_idx_opt.or_else(|| self.indexed_occurrences.get(&occurrence_idx));
+        let ro_opt = hermes_ro_opt.or_else(|| self.reordered_occurrences.get(&occurrence_idx));
         if let Some(target_aid) = sanitized_aid {
-            if let Some(matched) = idx_opt
+            if let Some(matched) = hermes_idx_opt
                 .into_iter()
-                .chain(ro_opt)
+                .chain(hermes_ro_opt)
+                .chain(self.indexed_occurrences.get(&occurrence_idx))
+                .chain(self.reordered_occurrences.get(&occurrence_idx))
                 .find(|entry| entry.2 == target_aid)
             {
                 return Some(matched.clone());
@@ -406,12 +451,16 @@ impl InfinityContextMmu {
         occurrence_idx: usize,
         entry: IndexedOccurrenceRecord,
     ) {
+        self.agent_reordered_occurrences
+            .entry(entry.0)
+            .or_default()
+            .insert(occurrence_idx, entry.clone());
         self.reordered_occurrences.insert(occurrence_idx, entry);
     }
 
     /// Records a carried-forward synthetic/stubbed AHTL frame at `occurrence_idx` so subsequent
     /// message positions remain aligned across compactions without overwriting an existing raw
-    /// occurrence entry.
+    /// occurrence entry for the same agent.
     pub fn record_carried_occurrence(
         &mut self,
         occurrence_idx: usize,
@@ -420,14 +469,19 @@ impl InfinityContextMmu {
         aid: ArtifactId,
         res: IngestResult,
     ) {
-        self.indexed_occurrences.entry(occurrence_idx).or_insert((
-            agent as u8,
-            clean_subject,
-            aid,
-            None,
-            false,
-            res,
-        ));
+        let record = (agent as u8, clean_subject, aid, None, false, res);
+        self.agent_occurrences
+            .entry(agent as u8)
+            .or_default()
+            .entry(occurrence_idx)
+            .or_insert_with(|| record.clone());
+        if self
+            .indexed_occurrences
+            .get(&occurrence_idx)
+            .is_none_or(|e| e.0 != agent as u8)
+        {
+            self.indexed_occurrences.insert(occurrence_idx, record);
+        }
     }
 
     /// Ingests a tool output or turn if the most recent observation for `clean_subject` in `self`
@@ -720,12 +774,32 @@ impl InfinityContextMmu {
         // 3. Bi-Temporal Personalized PageRank multi-hop walk
         let seeds: Vec<&str> = query
             .split_whitespace()
-            .map(|w| {
-                w.trim_matches(|c: char| {
-                    !c.is_alphanumeric() && c != '_' && c != ':' && c != '/' && c != '-' && c != '.'
-                })
+            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '_'))
+            .filter(|w| {
+                w.len() >= 3
+                    && !matches!(
+                        w.to_ascii_lowercase().as_str(),
+                        "what"
+                            | "where"
+                            | "when"
+                            | "which"
+                            | "who"
+                            | "why"
+                            | "how"
+                            | "the"
+                            | "and"
+                            | "for"
+                            | "with"
+                            | "from"
+                            | "that"
+                            | "this"
+                            | "into"
+                            | "failed"
+                            | "broke"
+                            | "check"
+                            | "investigate"
+                    )
             })
-            .filter(|w| w.len() >= 3)
             .take(4)
             .collect();
         if !seeds.is_empty() {
@@ -1072,6 +1146,7 @@ impl InfinityContextMmu {
         self.indexed_occurrences.clear();
         self.reordered_occurrences.clear();
         self.agent_occurrences.clear();
+        self.agent_reordered_occurrences.clear();
         if let Some(st) = persisted_state {
             self.clock_ms = 1_794_880_800_000_u64.max(st.clock_ms).max(max_graph_ms);
             self.dag = st.dag;
@@ -1127,6 +1202,17 @@ impl InfinityContextMmu {
                 .collect();
             self.agent_occurrences = st
                 .agent_occurrences
+                .into_iter()
+                .map(|(agent_id, occs)| {
+                    let valid = occs
+                        .into_iter()
+                        .filter(|(_, (_, _, aid, _, _, _))| self.cas.get_meta(*aid).is_some())
+                        .collect();
+                    (agent_id, valid)
+                })
+                .collect();
+            self.agent_reordered_occurrences = st
+                .agent_reordered_occurrences
                 .into_iter()
                 .map(|(agent_id, occs)| {
                     let valid = occs
@@ -1193,6 +1279,7 @@ impl InfinityContextMmu {
             indexed_occurrences: self.indexed_occurrences.clone(),
             reordered_occurrences: self.reordered_occurrences.clone(),
             agent_occurrences: self.agent_occurrences.clone(),
+            agent_reordered_occurrences: self.agent_reordered_occurrences.clone(),
         };
         let state_bytes = serde_json::to_vec(&state).map_err(Self::map_io_err)?;
         Self::write_atomic_file(icx_dir, "mmu_state.json", &state_bytes)

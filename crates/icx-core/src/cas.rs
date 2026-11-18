@@ -126,7 +126,7 @@ impl CasStore {
     }
 
     /// Ingests raw bytes with the 64 MiB STRIDE DoS bound check and full 256-bit BLAKE3 digest
-    /// collision verification on 64-bit `ArtifactId` hits.
+    /// collision verification on both top-level 64-bit `ArtifactId` and `L0` chunk hits.
     pub fn put_bytes_checked(
         &mut self,
         raw: &[u8],
@@ -139,10 +139,20 @@ impl CasStore {
             }
             return Ok((artifact_id, full_digest));
         }
-        Ok(self.put_bytes(raw))
+        let spans = chunk_bytes_with_lines(raw, self.chunk_config);
+        for span in &spans {
+            let slice = &raw[span.offset..span.offset + span.len];
+            let (cid, cdigest) = ArtifactId::hash_bytes(slice);
+            if let Some((existing_cdigest, _)) = self.chunks.get(&cid)
+                && *existing_cdigest != cdigest
+            {
+                return Err(IcxError::AmbiguousHandlePrefix(cid.to_string()));
+            }
+        }
+        Ok(self.put_bytes_precomputed(raw, artifact_id, full_digest, spans))
     }
 
-    /// Verifies the 256-bit cryptographic BLAKE3 digest of every stored chunk and every
+    /// Verifies the 256-bit cryptographic BLAKE3 digest of every stored chunk once and every
     /// reassembled top-level artifact in `self`, returning the number of verified artifacts
     /// (or failing closed with `Err(IcxError::IntegrityViolation)` on any mismatch).
     pub fn verify_all_integrity(&self) -> Result<usize, IcxError> {
@@ -151,8 +161,18 @@ impl CasStore {
                 return Err(IcxError::IntegrityViolation(cid));
             }
         }
-        for &aid in self.artifacts.keys() {
-            let _ = self.deref_bytes(aid)?;
+        for (&aid, meta) in &self.artifacts {
+            let mut out = Vec::with_capacity(meta.total_bytes);
+            for &cid in &meta.chunk_ids {
+                let (_, bytes) = self
+                    .chunks
+                    .get(&cid)
+                    .ok_or(IcxError::ArtifactNotFound(aid))?;
+                out.extend_from_slice(bytes);
+            }
+            if Blake3Digest::hash(&out) != meta.full_digest {
+                return Err(IcxError::IntegrityViolation(aid));
+            }
         }
         Ok(self.artifacts.len())
     }
@@ -166,20 +186,29 @@ impl CasStore {
             raw
         };
         let (artifact_id, full_digest) = ArtifactId::hash_bytes(raw);
-        if self.artifacts.contains_key(&artifact_id) {
+        if let Some(existing) = self.artifacts.get(&artifact_id)
+            && existing.full_digest == full_digest
+        {
             return (artifact_id, full_digest);
         }
-
         let spans = chunk_bytes_with_lines(raw, self.chunk_config);
+        self.put_bytes_precomputed(raw, artifact_id, full_digest, spans)
+    }
+
+    fn put_bytes_precomputed(
+        &mut self,
+        raw: &[u8],
+        artifact_id: ArtifactId,
+        full_digest: Blake3Digest,
+        spans: Vec<crate::chunker::ChunkLineSpan>,
+    ) -> (ArtifactId, Blake3Digest) {
         let mut chunk_ids = Vec::with_capacity(spans.len());
         let mut line_index = Vec::with_capacity(spans.len());
 
         for span in spans {
             let slice = &raw[span.offset..span.offset + span.len];
             let (cid, cdigest) = ArtifactId::hash_bytes(slice);
-            self.chunks
-                .entry(cid)
-                .or_insert_with(|| (cdigest, slice.to_vec()));
+            self.chunks.insert(cid, (cdigest, slice.to_vec()));
             chunk_ids.push(cid);
             line_index.push(LineIndexEntry {
                 start_line: span.start_line,
