@@ -237,9 +237,16 @@ impl CodexRolloutTailer {
     fn compute_prefix_digest(file: &mut File, len: u64) -> io::Result<icx_core::Blake3Digest> {
         use std::io::Read;
         file.seek(SeekFrom::Start(0))?;
-        let cap = (len as usize).min(65_536);
-        let mut buf = vec![0u8; cap];
+        let head_cap = (len as usize).min(65_536);
+        let mut buf = vec![0u8; head_cap];
         file.read_exact(&mut buf)?;
+        if len > 65_536 {
+            let tail_start = len - 4096;
+            file.seek(SeekFrom::Start(tail_start))?;
+            let mut tail_buf = [0u8; 4096];
+            file.read_exact(&mut tail_buf)?;
+            buf.extend_from_slice(&tail_buf);
+        }
         Ok(icx_core::Blake3Digest::hash(&buf))
     }
 
@@ -293,18 +300,11 @@ impl CodexRolloutTailer {
     ) -> Result<(u64, usize, Option<icx_core::Blake3Digest>), io::Error> {
         use std::io::Read;
         let file_len = file.metadata()?.len();
-        let mut verified_64k_digest = None;
         let mut committed = if byte_offset == 0 || file_len < byte_offset {
             0
         } else {
             let prefix_ok = match expected_prefix {
-                Some(exp) => {
-                    let actual = Self::compute_prefix_digest(&mut file, byte_offset)?;
-                    if actual == exp && byte_offset >= 65_536 {
-                        verified_64k_digest = Some(actual);
-                    }
-                    actual == exp
-                }
+                Some(exp) => Self::compute_prefix_digest(&mut file, byte_offset)? == exp,
                 None => true,
             };
             if prefix_ok {
@@ -349,13 +349,11 @@ impl CodexRolloutTailer {
                 ingested += 1;
             }
         }
-        let prefix_digest = if !need_prefix_digest {
-            None
-        } else if let Some(reused) = verified_64k_digest.filter(|_| committed >= 65_536) {
-            Some(reused)
-        } else {
+        let prefix_digest = if need_prefix_digest {
             let mut file = reader.into_inner();
             Some(Self::compute_prefix_digest(&mut file, committed)?)
+        } else {
+            None
         };
         Ok((committed, ingested, prefix_digest))
     }

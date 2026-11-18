@@ -809,6 +809,9 @@ unprefixed_secret = {unpref_sec}
         let _ = std::fs::remove_file(ws_dir.join("icx-fabric-v1.shm"));
         let _ = icx_bus::SeqlockTelemetryBus::open_shared_file(ws_dir.join("icx-fabric-v1.shm"))
             .unwrap();
+        let _ = claude_trait
+            .handle_hook_event("SessionEnd", "{}", &mut mmu)
+            .unwrap();
         mmu.save_workspace_dir(&ws_dir).unwrap();
         loaded_mmu.load_workspace_dir(&ws_dir).unwrap();
         assert_eq!(loaded_mmu.cas.artifact_count(), mmu.cas.artifact_count());
@@ -816,7 +819,13 @@ unprefixed_secret = {unpref_sec}
             loaded_mmu.graph.active_edge_count(),
             mmu.graph.active_edge_count()
         );
+        assert_eq!(loaded_mmu.clock_ms(), mmu.clock_ms());
         assert!(loaded_mmu.is_artifact_redacted(redacted_res.artifact_id));
+        // Also verify clock_ms fallback from bitemporal_graph.json when mmu_state.json is absent
+        let _ = std::fs::remove_file(ws_dir.join("mmu_state.json"));
+        let mut graph_clock_mmu = InfinityContextMmu::default();
+        graph_clock_mmu.load_workspace_dir(&ws_dir).unwrap();
+        assert_eq!(graph_clock_mmu.clock_ms(), mmu.clock_ms());
 
         // Verify CodexRolloutTailer incremental tailing, empty-array fallthrough, partial-line safety, and rotation reset
         let rollout_path = ws_dir.join("rollout.jsonl");

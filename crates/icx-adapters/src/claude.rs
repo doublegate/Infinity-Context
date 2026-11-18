@@ -167,6 +167,11 @@ impl ClaudeCodeAdapter {
                     "systemMessage": win.deterministic_prefix()
                 })
             }
+            "Stop" | "stop" | "SessionEnd" | "session-end" => {
+                mmu.fold_all_open_subagents(AgentKind::ClaudeCode, "session_end");
+                let _ = mmu.rollover_and_sync_dag_root();
+                json!({})
+            }
             _ => json!({}),
         };
 

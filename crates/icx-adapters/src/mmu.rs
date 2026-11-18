@@ -34,6 +34,14 @@ pub struct IngestResult {
 
 type SubagentStep = (String, ArtifactId, String, f32, usize);
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+struct PersistedMmuState {
+    clock_ms: u64,
+    redacted_ids: Vec<u64>,
+    #[serde(default)]
+    subagent_branches: BTreeMap<String, Vec<SubagentStep>>,
+}
+
 /// The central Virtual Context Memory Management Unit (`MMU`).
 #[derive(Clone, Debug)]
 pub struct InfinityContextMmu {
@@ -487,11 +495,17 @@ impl InfinityContextMmu {
         self.redacted_artifacts.contains(&id)
     }
 
+    /// Returns the current logical ingestion clock timestamp in milliseconds.
+    #[inline]
+    pub const fn clock_ms(&self) -> u64 {
+        self.clock_ms
+    }
+
     /// Sanitizes a subject, subagent identifier, or summary string through `SecretRedactor::sanitize`
     /// and strips frame-breaking AHTL delimiters and newline characters.
     pub fn sanitize_hook_label(raw: &str, fallback: &str) -> String {
         let s = SecretRedactor::sanitize(raw)
-            .replace(['│', '\n', '\r', '⟦', '⟧', '⟪', '⟫', '⊢'], " ")
+            .replace(['│', '\n', '\r', '⟦', '⟧', '⟪', '⟫', '⊢', '⋮', '↦'], " ")
             .trim()
             .to_owned();
         if s.is_empty() { fallback.to_owned() } else { s }
@@ -583,9 +597,9 @@ impl InfinityContextMmu {
         IcxError::Io(err.to_string())
     }
 
-    /// Loads persisted `CasStore`, `BiTemporalGraph`, `redacted_artifacts`, and shared-memory
-    /// `SeqlockTelemetryBus` state from `icx_dir` atomically (only mutating `self` after all
-    /// components succeed).
+    /// Loads persisted `CasStore`, `BiTemporalGraph`, `redacted_artifacts`, `subagent_branches`,
+    /// logical `clock_ms`, and shared-memory `SeqlockTelemetryBus` state from `icx_dir` atomically
+    /// (only mutating `self` after all components succeed).
     pub fn load_workspace_dir(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
         let cas_path = icx_dir.join("cas_store.json");
         let new_cas = if cas_path.exists() {
@@ -596,6 +610,13 @@ impl InfinityContextMmu {
         let graph_path = icx_dir.join("bitemporal_graph.json");
         let new_graph = if graph_path.exists() {
             Some(BiTemporalGraph::load_from_dir(icx_dir)?)
+        } else {
+            None
+        };
+        let state_path = icx_dir.join("mmu_state.json");
+        let persisted_state: Option<PersistedMmuState> = if state_path.exists() {
+            let bytes = std::fs::read(&state_path).map_err(Self::map_io_err)?;
+            Some(serde_json::from_slice(&bytes).map_err(Self::map_io_err)?)
         } else {
             None
         };
@@ -619,7 +640,31 @@ impl InfinityContextMmu {
         if let Some(graph) = new_graph {
             self.graph = graph;
         }
+        let max_graph_ms = self
+            .graph
+            .edges()
+            .iter()
+            .map(|e| {
+                e.t_valid
+                    .max(e.t_invalid.unwrap_or(0))
+                    .max(e.t_tx_start)
+                    .max(e.t_tx_end.unwrap_or(0))
+            })
+            .max()
+            .unwrap_or(0);
         self.redacted_artifacts.clear();
+        if let Some(st) = persisted_state {
+            self.clock_ms = self.clock_ms.max(st.clock_ms).max(max_graph_ms);
+            self.subagent_branches = st.subagent_branches;
+            self.redacted_artifacts.extend(
+                st.redacted_ids
+                    .into_iter()
+                    .map(ArtifactId)
+                    .filter(|&aid| self.cas.get_meta(aid).is_some()),
+            );
+        } else {
+            self.clock_ms = self.clock_ms.max(max_graph_ms);
+        }
         if let Some(ids) = raw_redacted {
             self.redacted_artifacts.extend(
                 ids.into_iter()
@@ -633,17 +678,9 @@ impl InfinityContextMmu {
         Ok(())
     }
 
-    /// Atomically persists `CasStore`, `BiTemporalGraph`, and `redacted_artifacts` state into `icx_dir`.
-    pub fn save_workspace_dir(&self, icx_dir: &Path) -> Result<(), IcxError> {
-        self.cas.save_to_dir(icx_dir)?;
-        self.graph.save_to_dir(icx_dir)?;
-        let redacted_ids: Vec<u64> = self.redacted_artifacts.iter().map(|id| id.0).collect();
-        let bytes = serde_json::to_vec(&redacted_ids).map_err(Self::map_io_err)?;
-        let final_path = icx_dir.join("redacted_artifacts.json");
-        let tmp_path = icx_dir.join(format!(
-            "redacted_artifacts.json.tmp.{}",
-            std::process::id()
-        ));
+    fn write_atomic_file(icx_dir: &Path, filename: &str, bytes: &[u8]) -> Result<(), IcxError> {
+        let final_path = icx_dir.join(filename);
+        let tmp_path = icx_dir.join(format!("{filename}.tmp.{}", std::process::id()));
         {
             use std::io::Write;
             let mut opts = std::fs::OpenOptions::new();
@@ -654,9 +691,26 @@ impl InfinityContextMmu {
                 opts.mode(0o600);
             }
             let mut file = opts.open(&tmp_path).map_err(Self::map_io_err)?;
-            file.write_all(&bytes).map_err(Self::map_io_err)?;
+            file.write_all(bytes).map_err(Self::map_io_err)?;
             file.sync_all().map_err(Self::map_io_err)?;
         }
         std::fs::rename(&tmp_path, &final_path).map_err(Self::map_io_err)
+    }
+
+    /// Atomically persists `CasStore`, `BiTemporalGraph`, `redacted_artifacts`, `subagent_branches`,
+    /// and logical `clock_ms` state into `icx_dir`.
+    pub fn save_workspace_dir(&self, icx_dir: &Path) -> Result<(), IcxError> {
+        self.cas.save_to_dir(icx_dir)?;
+        self.graph.save_to_dir(icx_dir)?;
+        let redacted_ids: Vec<u64> = self.redacted_artifacts.iter().map(|id| id.0).collect();
+        let redacted_bytes = serde_json::to_vec(&redacted_ids).map_err(Self::map_io_err)?;
+        Self::write_atomic_file(icx_dir, "redacted_artifacts.json", &redacted_bytes)?;
+        let state = PersistedMmuState {
+            clock_ms: self.clock_ms,
+            redacted_ids,
+            subagent_branches: self.subagent_branches.clone(),
+        };
+        let state_bytes = serde_json::to_vec(&state).map_err(Self::map_io_err)?;
+        Self::write_atomic_file(icx_dir, "mmu_state.json", &state_bytes)
     }
 }
