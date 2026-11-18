@@ -195,7 +195,7 @@ pub struct MerkleContextDag {
     branch_stack: Vec<OpenBranch>,
     next_ordinal: u64,
     #[serde(skip)]
-    turn_index: BTreeMap<(u8, ArtifactId), ArtifactId>,
+    turn_index: BTreeMap<(u8, ArtifactId, String), ArtifactId>,
 }
 
 impl MerkleContextDag {
@@ -224,54 +224,69 @@ impl MerkleContextDag {
         self.nodes.get(&id)
     }
 
-    /// Rebuilds the in-memory `turn_index` from `self.nodes` after deserialization.
+    /// Rebuilds the in-memory `turn_index` from `self.nodes` after deserialization, selecting the
+    /// highest `ordinal` turn when multiple turns share `(agent, raw_artifact, role)`.
     pub fn rebuild_turn_index(&mut self) {
         self.turn_index.clear();
+        let mut best_ord: BTreeMap<(u8, ArtifactId, String), (u64, ArtifactId)> = BTreeMap::new();
         for (&id, node) in &self.nodes {
             if let DagNode::Turn {
+                ordinal,
                 agent,
+                role,
                 raw_artifact,
                 ..
             } = node
             {
-                self.turn_index.insert((*agent as u8, *raw_artifact), id);
+                let key = (*agent as u8, *raw_artifact, role.clone());
+                if best_ord.get(&key).is_none_or(|(prev, _)| *ordinal >= *prev) {
+                    best_ord.insert(key, (*ordinal, id));
+                }
             }
+        }
+        for (k, (_, id)) in best_ord {
+            self.turn_index.insert(k, id);
         }
     }
 
-    /// Finds an existing `DagNode::Turn` matching `(agent, role, raw_artifact)` in $O(\log N)$ via
-    /// `turn_index` without heap allocation (falling back to a scan for deserialized DAGs) and
-    /// returns `(ahtl_repr, surprise)`.
+    /// Finds the most recent `DagNode::Turn` matching `(agent, role, raw_artifact)` in $O(\log N)$
+    /// via `turn_index` (falling back to a max-ordinal scan for deserialized DAGs) and returns
+    /// `(ahtl_repr, surprise)`.
     pub fn find_turn(
         &self,
         agent: AgentKind,
         role: &str,
         raw_artifact: ArtifactId,
     ) -> Option<(&str, f32)> {
-        if let Some(&tid) = self.turn_index.get(&(agent as u8, raw_artifact))
+        if let Some(&tid) = self
+            .turn_index
+            .get(&(agent as u8, raw_artifact, role.to_owned()))
             && let Some(DagNode::Turn {
-                role: n_role,
                 ahtl_repr,
                 surprise,
                 ..
             }) = self.nodes.get(&tid)
-            && n_role == role
         {
             return Some((ahtl_repr.as_str(), *surprise));
         }
-        self.nodes.values().find_map(|n| match n {
-            DagNode::Turn {
-                agent: n_agent,
-                role: n_role,
-                raw_artifact: n_raw,
-                ahtl_repr,
-                surprise,
-                ..
-            } if *n_agent == agent && n_role == role && *n_raw == raw_artifact => {
-                Some((ahtl_repr.as_str(), *surprise))
-            }
-            _ => None,
-        })
+        self.nodes
+            .values()
+            .filter_map(|n| match n {
+                DagNode::Turn {
+                    ordinal,
+                    agent: n_agent,
+                    role: n_role,
+                    raw_artifact: n_raw,
+                    ahtl_repr,
+                    surprise,
+                    ..
+                } if *n_agent == agent && n_role == role && *n_raw == raw_artifact => {
+                    Some((*ordinal, ahtl_repr.as_str(), *surprise))
+                }
+                _ => None,
+            })
+            .max_by_key(|(ord, _, _)| *ord)
+            .map(|(_, repr, surp)| (repr, surp))
     }
 
     /// Resolves either a full 64-bit handle (`#icx:<16-hex>`) or a compact 48-bit Profile A prefix
@@ -447,7 +462,8 @@ impl MerkleContextDag {
             surprise,
             token_estimate,
         };
-        self.turn_index.insert((agent as u8, raw_artifact), id);
+        self.turn_index
+            .insert((agent as u8, raw_artifact, role.to_owned()), id);
         self.nodes.insert(id, node);
         self.record_node_in_active_scope(id);
         id

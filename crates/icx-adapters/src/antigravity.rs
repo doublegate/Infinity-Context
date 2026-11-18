@@ -127,7 +127,7 @@ impl AntigravityAdapter {
             .into_iter()
             .find_map(|k| val.get(k).and_then(Self::non_empty_json_value));
 
-            if target_step_idx == Some(step_idx) {
+            if target_step_idx == Some(step_idx) && body.is_some() {
                 return body;
             }
             if let Some(b) = body {
@@ -153,13 +153,13 @@ impl AntigravityAdapter {
             return None;
         }
         let file_len = meta.len();
-        let mut max_lines = target_step_idx
+        let max_lines = target_step_idx
             .and_then(|t| usize::try_from(t).ok())
             .map(|t| {
                 t.saturating_add(1024)
                     .clamp(MAX_TRANSCRIPT_SCAN_LINES, 1_000_000)
             })
-            .unwrap_or(MAX_TRANSCRIPT_SCAN_LINES);
+            .unwrap_or(1_000_000);
 
         if target_step_idx.is_none() && file_len > TRANSCRIPT_TAIL_WINDOW_BYTES {
             let start = file_len - TRANSCRIPT_TAIL_WINDOW_BYTES;
@@ -176,7 +176,6 @@ impl AntigravityAdapter {
             }
             file = r.into_inner();
             file.seek(SeekFrom::Start(0)).ok()?;
-            max_lines = 1_000_000;
         }
 
         let mut reader = BufReader::new(file);

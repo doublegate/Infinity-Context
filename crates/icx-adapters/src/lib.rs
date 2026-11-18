@@ -1408,13 +1408,73 @@ unprefixed_secret = {unpref_sec}
             HermesAdapter::on_turn_complete(&empty_mid_msgs, &mut empty_mid_mmu),
             3
         );
-        let _ = HermesAdapter::select_context(&empty_mid_msgs, 1, 1, &mut empty_mid_mmu);
-        assert!(empty_mid_mmu.graph.edges().iter().any(|e| {
+        // Save and reload `empty_mid_mmu` to verify `indexed_occurrences` is persisted and
+        // selecting with 1 protected head and tail does NOT replay the middle failure over `PASS`
+        let reload_dir = std::env::temp_dir().join(format!(
+            "icx_hermes_reload_{}_{}",
+            std::process::id(),
+            mmu.clock_ms()
+        ));
+        empty_mid_mmu.save_workspace_dir(&reload_dir).unwrap();
+        let mut reloaded_mmu = InfinityContextMmu::default();
+        reloaded_mmu.load_workspace_dir(&reload_dir).unwrap();
+        let _ = HermesAdapter::select_context(&empty_mid_msgs, 1, 1, &mut reloaded_mmu);
+        assert!(reloaded_mmu.graph.edges().iter().any(|e| {
             e.source_entity == "cargo_test"
                 && e.relation == "status"
                 && e.target_entity == "PASS"
                 && e.t_invalid.is_none()
         }));
+        let _ = std::fs::remove_dir_all(&reload_dir);
+
+        // Verify assistant `tool_calls` + sibling `role == "tool"` group preservation when a
+        // pager result (`mcp__icx__icx`) is in the middle slice
+        let group_req = serde_json::json!({
+            "messages": [
+                {"role": "system", "content": "head"},
+                {"role": "user", "content": "middle user turn"},
+                {"role": "assistant", "content": null, "tool_calls": [{"id": "c_icx"}, {"id": "c_sib"}]},
+                {"role": "tool", "tool_call_id": "c_icx", "name": "mcp__icx__icx", "content": "page_data"},
+                {"role": "tool", "tool_call_id": "c_sib", "name": "bash", "content": "sibling_out"},
+                {"role": "user", "content": "tail"}
+            ],
+            "protect_first_n": 1,
+            "protect_last_n": 1
+        })
+        .to_string();
+        let group_sel =
+            HermesAdapter::handle_hook("select_context", &group_req, &mut reloaded_mmu).unwrap();
+        let group_val: Value = serde_json::from_str(&group_sel).unwrap();
+        let group_msgs = group_val["messages"].as_array().unwrap();
+        assert!(
+            group_msgs
+                .iter()
+                .any(|m| m["role"] == "assistant" && m["tool_calls"].is_array())
+        );
+        assert!(group_msgs.iter().any(|m| m["tool_call_id"] == "c_icx"));
+        assert!(group_msgs.iter().any(|m| m["tool_call_id"] == "c_sib"));
+        // Short window via `handle_hook("select_context")` and carrying a stub into an MMU whose
+        // `indexed_occurrences` was cleared (while `cas` and `dag` retain the artifact)
+        let _ = HermesAdapter::handle_hook(
+            "select_context",
+            r#"{"messages":[{"role":"user","content":"short"}]}"#,
+            &mut reloaded_mmu,
+        )
+        .unwrap();
+        let mut stub_carry_mmu = InfinityContextMmu::default();
+        let (stub_only, _) =
+            HermesAdapter::prune_tool_results_only(&hermes_msgs, 1, &mut stub_carry_mmu);
+        // Rewind index 0 so `indexed_occurrences` splits off index 1 (`stub_only[1]`) while
+        // `stub_carry_mmu.cas` and `stub_carry_mmu.dag` still hold `stub_only[1]`'s artifact
+        let _ = stub_carry_mmu.ingest_or_reuse_at_index(
+            0,
+            AgentKind::Hermes,
+            "system",
+            "updated system prompt",
+            None,
+            false,
+        );
+        let _ = HermesAdapter::on_turn_complete(&stub_only[1..2], &mut stub_carry_mmu);
 
         // Verify `read_transcript_step` rejects directories, handles targeted step with empty
         // output, and recovers a trailing record > 256 KiB

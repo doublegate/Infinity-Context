@@ -39,6 +39,7 @@ pub struct IngestResult {
 
 type SubagentStep = (String, ArtifactId, String, f32, usize);
 type HdcEventRecord = (ArtifactId, String, Option<i32>, bool);
+type IndexedOccurrenceRecord = (u8, String, ArtifactId, Option<i32>, bool, IngestResult);
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct PersistedMmuState {
@@ -54,6 +55,8 @@ struct PersistedMmuState {
     hdc_events: Vec<HdcEventRecord>,
     #[serde(default)]
     agent_read_cursors: BTreeMap<u8, u64>,
+    #[serde(default)]
+    indexed_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
 }
 
 /// The central Virtual Context Memory Management Unit (`MMU`).
@@ -71,7 +74,7 @@ pub struct InfinityContextMmu {
     redacted_artifacts: BTreeSet<ArtifactId>,
     subagent_branches: BTreeMap<String, Vec<SubagentStep>>,
     hdc_events: Vec<HdcEventRecord>,
-    indexed_occurrences: BTreeMap<usize, (u8, String, ArtifactId, IngestResult)>,
+    indexed_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     clock_ms: u64,
 }
 
@@ -274,10 +277,15 @@ impl InfinityContextMmu {
         let clean_subject = Self::sanitize_hook_label(raw_subject, "event");
         let (sanitized, _) = Self::bound_and_sanitize_raw(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
         let (aid, _) = ArtifactId::hash_bytes(sanitized.as_bytes());
-        if let Some((prev_agent, prev_subj, prev_aid, prev_res)) =
+        if let Some((prev_agent, prev_subj, prev_aid, prev_ec, prev_fa, prev_res)) =
             self.indexed_occurrences.get(&occurrence_idx)
         {
-            if *prev_agent == agent as u8 && prev_subj == &clean_subject && *prev_aid == aid {
+            if *prev_agent == agent as u8
+                && prev_subj == &clean_subject
+                && *prev_aid == aid
+                && *prev_ec == exit_code
+                && *prev_fa == force_anomaly
+            {
                 return (prev_res.clone(), false);
             }
             let _ = self.indexed_occurrences.split_off(&occurrence_idx);
@@ -292,7 +300,14 @@ impl InfinityContextMmu {
         );
         self.indexed_occurrences.insert(
             occurrence_idx,
-            (agent as u8, clean_subject, aid, res.clone()),
+            (
+                agent as u8,
+                clean_subject,
+                aid,
+                exit_code,
+                force_anomaly,
+                res.clone(),
+            ),
         );
         (res, true)
     }
@@ -318,6 +333,8 @@ impl InfinityContextMmu {
             agent as u8,
             clean_subject,
             aid,
+            None,
+            false,
             res,
         ));
     }
@@ -946,6 +963,11 @@ impl InfinityContextMmu {
                 .into_iter()
                 .map(|(k, v)| (k, v.min(bus_seq)))
                 .collect();
+            self.indexed_occurrences = st
+                .indexed_occurrences
+                .into_iter()
+                .filter(|(_, (_, _, aid, _, _, _))| self.cas.get_meta(*aid).is_some())
+                .collect();
         } else {
             self.clock_ms = 1_794_880_800_000_u64.max(max_graph_ms);
             self.dag = MerkleContextDag::new();
@@ -979,8 +1001,8 @@ impl InfinityContextMmu {
 
     /// Atomically persists `CasStore`, `BiTemporalGraph`, `MerkleContextDag`,
     /// `CacheEpochController`, `HdcAssociativeIndex` events, `redacted_artifacts`,
-    /// `subagent_branches`, `agent_read_cursors`, and logical `clock_ms` state into `icx_dir`
-    /// under an exclusive workspace lock.
+    /// `subagent_branches`, `agent_read_cursors`, `indexed_occurrences`, and logical `clock_ms`
+    /// state into `icx_dir` under an exclusive workspace lock.
     pub fn save_workspace_dir(&self, icx_dir: &Path) -> Result<(), IcxError> {
         let _lock = Self::acquire_workspace_lock(icx_dir)?;
         self.cas.save_to_dir(icx_dir)?;
@@ -994,6 +1016,7 @@ impl InfinityContextMmu {
             epochs: Some(self.epochs.clone()),
             hdc_events: self.hdc_events.clone(),
             agent_read_cursors: self.agent_read_cursors.clone(),
+            indexed_occurrences: self.indexed_occurrences.clone(),
         };
         let state_bytes = serde_json::to_vec(&state).map_err(Self::map_io_err)?;
         Self::write_atomic_file(icx_dir, "mmu_state.json", &state_bytes)
