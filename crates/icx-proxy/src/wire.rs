@@ -574,12 +574,22 @@ impl WireProxyTransformer {
     }
 
     fn extract_stream_index_tag(map: &serde_json::Map<String, Value>) -> String {
-        for key in ["index", "output_index", "content_index", "candidateIndex"] {
+        let mut tag = String::new();
+        for key in [
+            "index",
+            "output_index",
+            "content_index",
+            "summary_index",
+            "candidateIndex",
+        ] {
             if let Some(n) = map.get(key).and_then(Value::as_u64) {
-                return format!("[{key}={n}]");
+                tag.push_str(&format!("[{key}={n}]"));
             }
         }
-        String::new()
+        if let Some(id) = map.get("item_id").and_then(Value::as_str) {
+            tag.push_str(&format!("[item_id={id}]"));
+        }
+        tag
     }
 
     fn set_json_string_at_path(root: &mut Value, path: &[String], new_val: String) {
@@ -740,9 +750,15 @@ impl WireProxyTransformer {
         trimmed
             .strip_prefix("data:")
             .is_some_and(|rest| rest.trim() == "[DONE]")
-            || trimmed
-                .strip_prefix("event:")
-                .is_some_and(|rest| matches!(rest.trim(), "content_block_stop" | "message_stop"))
+            || trimmed.strip_prefix("event:").is_some_and(|rest| {
+                matches!(
+                    rest.trim(),
+                    "content_block_stop"
+                        | "message_stop"
+                        | "response.output_text.done"
+                        | "response.completed"
+                )
+            })
     }
 
     fn transform_sse_line_stateful(
@@ -1202,7 +1218,13 @@ impl WireProxyTransformer {
                     }
                 }
             }
-            if !status_trimmed.contains(" 100 ")
+            let status_code = status_trimmed
+                .split_whitespace()
+                .nth(1)
+                .and_then(|s| s.parse::<u16>().ok())
+                .unwrap_or(200);
+            let is_interim_1xx = (100..200).contains(&status_code) && status_code != 101;
+            if !is_interim_1xx
                 && !status_trimmed
                     .to_ascii_lowercase()
                     .contains("connection established")
@@ -1547,6 +1569,7 @@ impl WireProxyTransformer {
             "-sS",
             "-i",
             "-N",
+            "--globoff",
             "--suppress-connect-headers",
             "--http1.1",
             "--connect-timeout",

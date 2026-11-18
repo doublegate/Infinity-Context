@@ -312,21 +312,35 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
             continue;
         }
         let resp = if ws_dir.exists() && McpPagerServer::requires_workspace_state(&req_line) {
-            let lock_guard = acquire_workspace_lock(&ws_dir)?;
-            mmu.load_workspace_dir_unlocked(&ws_dir)
-                .map_err(|e| format!("mcp-serve load error: {e}"))?;
-            let r = McpPagerServer::handle_jsonrpc(&req_line, &mut mmu);
-            let is_err = r
-                .get("result")
-                .and_then(|res| res.get("isError"))
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false);
-            if McpPagerServer::is_mutating_request(&req_line) && !is_err {
-                mmu.save_workspace_dir_unlocked(&ws_dir)
-                    .map_err(|e| format!("mcp-serve save error: {e}"))?;
+            match acquire_workspace_lock(&ws_dir) {
+                Ok(lock_guard) => match mmu.load_workspace_dir_unlocked(&ws_dir) {
+                    Ok(()) => {
+                        let r = McpPagerServer::handle_jsonrpc(&req_line, &mut mmu);
+                        let is_err = r
+                            .get("result")
+                            .and_then(|res| res.get("isError"))
+                            .and_then(serde_json::Value::as_bool)
+                            .unwrap_or(false);
+                        if McpPagerServer::is_mutating_request(&req_line)
+                            && !is_err
+                            && let Err(e) = mmu.save_workspace_dir_unlocked(&ws_dir)
+                        {
+                            eprintln!("icx mcp-serve warning: save error: {e}");
+                        }
+                        drop(lock_guard);
+                        r
+                    }
+                    Err(e) => {
+                        eprintln!("icx mcp-serve warning: load error: {e}");
+                        drop(lock_guard);
+                        McpPagerServer::handle_jsonrpc(&req_line, &mut mmu)
+                    }
+                },
+                Err(e) => {
+                    eprintln!("icx mcp-serve warning: lock error: {e}");
+                    McpPagerServer::handle_jsonrpc(&req_line, &mut mmu)
+                }
             }
-            drop(lock_guard);
-            r
         } else {
             McpPagerServer::handle_jsonrpc(&req_line, &mut mmu)
         };
