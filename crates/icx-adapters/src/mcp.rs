@@ -52,17 +52,13 @@ impl McpPagerServer {
     }
 
     /// Returns `true` if a JSON-RPC 2.0 request line requires reading or mutating persistent MMU
-    /// workspace state (`method == "tools/call"`).
+    /// workspace state (`id` is present and `method == "tools/call"`).
     #[must_use]
     pub fn requires_workspace_state(request_json: &str) -> bool {
-        serde_json::from_str::<Value>(request_json)
-            .ok()
-            .and_then(|req| {
-                req.get("method")
-                    .and_then(Value::as_str)
-                    .map(|m| m == "tools/call")
-            })
-            .unwrap_or(false)
+        serde_json::from_str::<Value>(request_json).is_ok_and(|req| {
+            req.get("id").is_some()
+                && req.get("method").and_then(Value::as_str) == Some("tools/call")
+        })
     }
 
     /// Returns `true` if a JSON-RPC 2.0 request line mutates persistent MMU state (`fold`,
@@ -72,7 +68,9 @@ impl McpPagerServer {
         let Ok(req) = serde_json::from_str::<Value>(request_json) else {
             return false;
         };
-        if req.get("method").and_then(Value::as_str) != Some("tools/call") {
+        if req.get("id").is_none()
+            || req.get("method").and_then(Value::as_str) != Some("tools/call")
+        {
             return false;
         }
         let Some(args) = req.get("params").and_then(|p| p.get("arguments")) else {

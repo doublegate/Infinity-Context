@@ -711,7 +711,7 @@ sequenceDiagram
           },
           {
             "type": "command",
-            "command": "/home/parobek/.local/lib/ai-memory/ai-memory hook claude-code UserPromptSubmit"
+            "command": "$HOME/.local/lib/ai-memory/ai-memory hook claude-code UserPromptSubmit"
           }
         ]
       }
@@ -731,7 +731,7 @@ sequenceDiagram
         "hooks": [
           {
             "type": "command",
-            "command": "/home/parobek/.local/lib/ai-memory/ai-memory hook claude-code PostToolUse"
+            "command": "$HOME/.local/lib/ai-memory/ai-memory hook claude-code PostToolUse"
           }
         ]
       }
@@ -746,7 +746,7 @@ sequenceDiagram
           },
           {
             "type": "command",
-            "command": "/home/parobek/.local/lib/ai-memory/ai-memory hook claude-code PreCompact"
+            "command": "$HOME/.local/lib/ai-memory/ai-memory hook claude-code PreCompact"
           }
         ]
       }
@@ -772,7 +772,7 @@ sequenceDiagram
           },
           {
             "type": "command",
-            "command": "/home/parobek/.local/lib/ai-memory/ai-memory hook claude-code SessionEnd"
+            "command": "$HOME/.local/lib/ai-memory/ai-memory hook claude-code SessionEnd"
           }
         ]
       }

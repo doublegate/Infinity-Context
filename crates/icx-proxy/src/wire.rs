@@ -658,13 +658,11 @@ impl WireProxyTransformer {
                     let child_key = format!("{stream_key_prefix}{obj_tag}.{k}");
                     json_path.push(k.clone());
                     if let Value::String(s) = v {
-                        let is_text_key =
-                            matches!(k.as_str(), "text" | "content" | "delta" | "output");
                         let has_pending = state
                             .streams
                             .get(&child_key)
                             .is_some_and(|e| !e.pending.is_empty());
-                        if (is_text_key && has_pending) || s.contains('⟪') {
+                        if has_pending || s.contains('⟪') {
                             let entry = state.streams.entry(child_key).or_default();
                             *s = Self::expand_text_with_pending(
                                 s,
@@ -990,10 +988,27 @@ impl WireProxyTransformer {
         mmu: &InfinityContextMmu,
         writer: &mut W,
     ) -> io::Result<()> {
+        Self::relay_upstream_response_with_eof(
+            up_reader,
+            body_already_dechunked,
+            mmu,
+            writer,
+            || Ok(()),
+        )
+    }
+
+    fn relay_upstream_response_with_eof<R: BufRead, W: Write, F: FnOnce() -> io::Result<()>>(
+        up_reader: &mut R,
+        body_already_dechunked: bool,
+        mmu: &InfinityContextMmu,
+        writer: &mut W,
+        verify_eof: F,
+    ) -> io::Result<()> {
         let mut status_trimmed;
         let mut resp_headers = Vec::new();
         let mut is_sse;
         let mut is_chunked;
+        let mut declared_content_length: Option<usize>;
 
         loop {
             let mut status_line = String::new();
@@ -1007,6 +1022,7 @@ impl WireProxyTransformer {
             resp_headers.clear();
             is_sse = false;
             is_chunked = false;
+            declared_content_length = None;
             loop {
                 let mut hline = String::new();
                 let n = up_reader.read_line(&mut hline)?;
@@ -1025,6 +1041,8 @@ impl WireProxyTransformer {
                         && hv_trim.to_ascii_lowercase().contains("chunked")
                     {
                         is_chunked = true;
+                    } else if hk_trim.eq_ignore_ascii_case("content-length") {
+                        declared_content_length = hv_trim.parse::<usize>().ok();
                     }
                     if !Self::is_hop_by_hop_or_internal_header(hk_trim) {
                         resp_headers.push((hk_trim.to_owned(), hv_trim.to_owned()));
@@ -1116,7 +1134,7 @@ impl WireProxyTransformer {
                 }
                 Self::flush_sse_pending(&mut sse_pending, writer)?;
             }
-            return Ok(());
+            return verify_eof();
         }
 
         let mut resp_bytes = Vec::new();
@@ -1137,7 +1155,16 @@ impl WireProxyTransformer {
                     "upstream HTTP response exceeds 64 MiB limit",
                 ));
             }
+            if let Some(expected_len) = declared_content_length
+                && resp_bytes.len() < expected_len
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "upstream HTTP response truncated before declared Content-Length",
+                ));
+            }
         }
+        verify_eof()?;
         let resp_str = String::from_utf8_lossy(&resp_bytes);
         let final_body = Self::expand_json_or_text_body(&resp_str, mmu);
 
@@ -1356,19 +1383,35 @@ impl WireProxyTransformer {
         } else {
             Ok(())
         };
+        let mut waited = false;
         let relay_res = match write_res {
             Ok(()) => match child.stdout.take() {
                 Some(child_out) => {
                     let mut up_reader = BufReader::new(child_out);
-                    Self::relay_upstream_response(&mut up_reader, true, mmu, writer)
+                    Self::relay_upstream_response_with_eof(
+                        &mut up_reader,
+                        true,
+                        mmu,
+                        writer,
+                        || {
+                            waited = true;
+                            let status = child.wait()?;
+                            if !status.success() {
+                                return Err(io::Error::other(format!("curl exited with {status}")));
+                            }
+                            Ok(())
+                        },
+                    )
                 }
                 None => Err(io::Error::other("missing curl stdout")),
             },
             Err(e) => Err(e),
         };
-        let status = child.wait()?;
-        if relay_res.is_err() && !status.success() {
-            return Err(io::Error::other(format!("curl exited with {status}")));
+        if !waited {
+            let status = child.wait()?;
+            if !status.success() {
+                return Err(io::Error::other(format!("curl exited with {status}")));
+            }
         }
         relay_res
     }
