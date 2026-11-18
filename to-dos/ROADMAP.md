@@ -63,8 +63,8 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 **Estimated Duration:** 3 weeks  
 
 - [Phase 4 Overview](phase-4-cross-agent-interception/overview.md) · [Phase 4 Implementation Plan](phase-4-cross-agent-interception/phase_4_implementation_plan.md)
-  - [Sprint 1 — Claude Code & OpenAI Codex Hook & WAL Adapters](phase-4-cross-agent-interception/sprint-1-claude-and-codex-adapters.md)
-  - [Sprint 2 — Antigravity CLI (`agy`) & Hermes ContextEngine Adapters](phase-4-cross-agent-interception/sprint-2-agy-and-hermes-adapters.md)
+  - [Sprint 1 — Claude Code & OpenAI Codex Hook & WAL Adapters (COMPLETED)](phase-4-cross-agent-interception/sprint-1-claude-and-codex-adapters.md)
+  - [Sprint 2 — Antigravity CLI (`agy`) & Hermes ContextEngine Adapters (COMPLETED)](phase-4-cross-agent-interception/sprint-2-agy-and-hermes-adapters.md)
   - [Sprint 3 — Single-Tool Polymorphic MCP Pager & Cache-Epoch Wire Proxy](phase-4-cross-agent-interception/sprint-3-mcp-pager-and-wire-proxy.md)
 
 ---

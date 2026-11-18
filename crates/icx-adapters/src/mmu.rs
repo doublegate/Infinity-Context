@@ -39,6 +39,8 @@ pub struct IngestResult {
 
 type SubagentStep = (String, ArtifactId, String, f32, usize);
 type HdcEventRecord = (ArtifactId, String, Option<i32>, bool);
+/// Indexed occurrence record stored per conversation slot `(agent_u8, clean_subject, artifact_id, exit_code, force_anomaly, ingest_result)`.
+pub type IndexedOccurrenceRecord = (u8, String, ArtifactId, Option<i32>, bool, IngestResult);
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct PersistedMmuState {
@@ -52,6 +54,12 @@ struct PersistedMmuState {
     epochs: Option<CacheEpochController>,
     #[serde(default)]
     hdc_events: Vec<HdcEventRecord>,
+    #[serde(default)]
+    agent_read_cursors: BTreeMap<u8, u64>,
+    #[serde(default)]
+    indexed_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
+    #[serde(default)]
+    reordered_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
 }
 
 /// The central Virtual Context Memory Management Unit (`MMU`).
@@ -69,6 +77,8 @@ pub struct InfinityContextMmu {
     redacted_artifacts: BTreeSet<ArtifactId>,
     subagent_branches: BTreeMap<String, Vec<SubagentStep>>,
     hdc_events: Vec<HdcEventRecord>,
+    indexed_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
+    reordered_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     clock_ms: u64,
 }
 
@@ -97,6 +107,8 @@ impl InfinityContextMmu {
             redacted_artifacts: BTreeSet::new(),
             subagent_branches: BTreeMap::new(),
             hdc_events: Vec::new(),
+            indexed_occurrences: BTreeMap::new(),
+            reordered_occurrences: BTreeMap::new(),
             clock_ms: 1_794_880_800_000,
         }
     }
@@ -120,19 +132,30 @@ impl InfinityContextMmu {
         let tool_name = payload
             .get("tool_name")
             .or_else(|| payload.get("toolName"))
+            .or_else(|| payload.get("toolCall").and_then(|tc| tc.get("name")))
             .and_then(serde_json::Value::as_str)
             .unwrap_or(default_tool);
         let cmd_opt = ["tool_input", "toolInput", "input"]
             .into_iter()
             .find_map(|container| {
                 payload.get(container).and_then(|obj| {
-                    ["command", "cmd"]
+                    ["command", "cmd", "CommandLine"]
                         .into_iter()
                         .find_map(|k| obj.get(k).and_then(serde_json::Value::as_str))
                 })
             })
             .or_else(|| {
-                ["command", "cmd"]
+                payload
+                    .get("toolCall")
+                    .and_then(|tc| tc.get("args"))
+                    .and_then(|args| {
+                        ["command", "cmd", "CommandLine"]
+                            .into_iter()
+                            .find_map(|k| args.get(k).and_then(serde_json::Value::as_str))
+                    })
+            })
+            .or_else(|| {
+                ["command", "cmd", "CommandLine"]
                     .into_iter()
                     .find_map(|k| payload.get(k).and_then(serde_json::Value::as_str))
             })
@@ -241,6 +264,181 @@ impl InfinityContextMmu {
         (sanitized, was_redacted)
     }
 
+    /// Ingests or reuses a message at conversation position `occurrence_idx`. If `occurrence_idx`
+    /// was already processed with the exact same `(agent, clean_subject, sanitized_artifact_id)`,
+    /// reuses the cached `IngestResult` without duplicating DAG nodes or `/dev/shm` broadcasts.
+    /// If `occurrence_idx` is a new message position (even if its payload matches an earlier turn
+    /// prior to an intervening state change, e.g. `PASS -> FAIL -> PASS`), executes full ingestion
+    /// so `BiTemporalGraph` functional edges and temporal state are updated accurately.
+    pub fn ingest_or_reuse_at_index(
+        &mut self,
+        occurrence_idx: usize,
+        agent: AgentKind,
+        raw_subject: &str,
+        raw_text: &str,
+        exit_code: Option<i32>,
+        force_anomaly: bool,
+    ) -> (IngestResult, bool) {
+        let clean_subject = Self::sanitize_hook_label(raw_subject, "event");
+        let (sanitized, _) = Self::bound_and_sanitize_raw(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
+        let (aid, _) = ArtifactId::hash_bytes(sanitized.as_bytes());
+        if let Some((prev_agent, prev_subj, prev_aid, prev_ec, prev_fa, prev_res)) =
+            self.indexed_occurrences.get(&occurrence_idx)
+        {
+            if *prev_agent == agent as u8
+                && prev_subj == &clean_subject
+                && *prev_aid == aid
+                && *prev_ec == exit_code
+                && *prev_fa == force_anomaly
+            {
+                return (prev_res.clone(), false);
+            }
+        }
+        if let Some((prev_agent, prev_subj, prev_aid, prev_ec, prev_fa, prev_res)) =
+            self.reordered_occurrences.get(&occurrence_idx)
+            && *prev_agent == agent as u8
+            && prev_subj == &clean_subject
+            && *prev_aid == aid
+            && *prev_ec == exit_code
+            && *prev_fa == force_anomaly
+        {
+            return (prev_res.clone(), false);
+        }
+        let _ = self.indexed_occurrences.split_off(&occurrence_idx);
+        let _ = self.reordered_occurrences.split_off(&occurrence_idx);
+        let res = self.ingest_payload_for_subagent(
+            agent,
+            raw_subject,
+            raw_text,
+            exit_code,
+            force_anomaly,
+            None,
+        );
+        self.indexed_occurrences.insert(
+            occurrence_idx,
+            (
+                agent as u8,
+                clean_subject,
+                aid,
+                exit_code,
+                force_anomaly,
+                res.clone(),
+            ),
+        );
+        (res, true)
+    }
+
+    /// Returns `true` if `occurrence_idx` is already recorded in `self.indexed_occurrences`.
+    #[inline]
+    pub fn has_indexed_occurrence(&self, occurrence_idx: usize) -> bool {
+        self.indexed_occurrences.contains_key(&occurrence_idx)
+    }
+
+    /// Returns the occurrence record at `occurrence_idx` matching `sanitized_aid` from either
+    /// `self.indexed_occurrences` or `self.reordered_occurrences`, falling back to the canonical
+    /// entry at `occurrence_idx`.
+    #[must_use]
+    pub fn get_occurrence_record(
+        &self,
+        occurrence_idx: usize,
+        sanitized_aid: Option<ArtifactId>,
+    ) -> Option<IndexedOccurrenceRecord> {
+        let idx_opt = self.indexed_occurrences.get(&occurrence_idx);
+        let ro_opt = self.reordered_occurrences.get(&occurrence_idx);
+        if let Some(target_aid) = sanitized_aid {
+            if let Some(matched) = idx_opt
+                .into_iter()
+                .chain(ro_opt)
+                .find(|entry| entry.2 == target_aid)
+            {
+                return Some(matched.clone());
+            }
+        }
+        idx_opt.or(ro_opt).cloned()
+    }
+
+    /// Records a reordered outbound-view occurrence at `occurrence_idx` without mutating the
+    /// canonical `self.indexed_occurrences` table.
+    pub fn set_reordered_occurrence(
+        &mut self,
+        occurrence_idx: usize,
+        entry: IndexedOccurrenceRecord,
+    ) {
+        self.reordered_occurrences.insert(occurrence_idx, entry);
+    }
+
+    /// Records a carried-forward synthetic/stubbed AHTL frame at `occurrence_idx` so subsequent
+    /// message positions remain aligned across compactions without overwriting an existing raw
+    /// occurrence entry.
+    pub fn record_carried_occurrence(
+        &mut self,
+        occurrence_idx: usize,
+        agent: AgentKind,
+        clean_subject: String,
+        aid: ArtifactId,
+        res: IngestResult,
+    ) {
+        self.indexed_occurrences.entry(occurrence_idx).or_insert((
+            agent as u8,
+            clean_subject,
+            aid,
+            None,
+            false,
+            res,
+        ));
+    }
+
+    /// Ingests a tool output or turn if the most recent observation for `clean_subject` in `self`
+    /// does not already match `(aid, exit_code, force_anomaly)`; otherwise reuses the existing
+    /// `DagNode::Turn` representation. Returns `(IngestResult, was_newly_ingested)`.
+    pub fn ingest_or_reuse_payload(
+        &mut self,
+        agent: AgentKind,
+        raw_subject: &str,
+        raw_text: &str,
+        exit_code: Option<i32>,
+        force_anomaly: bool,
+    ) -> (IngestResult, bool) {
+        let clean_subject = Self::sanitize_hook_label(raw_subject, "event");
+        let (sanitized, _) = Self::bound_and_sanitize_raw(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
+        let raw_bytes = sanitized.len();
+        let (aid, _) = ArtifactId::hash_bytes(sanitized.as_bytes());
+        let latest_for_subj_matches = self
+            .hdc_events
+            .iter()
+            .rev()
+            .find(|(_, s, _, _)| s == &clean_subject)
+            .is_some_and(|(last_aid, _, last_ec, last_fa)| {
+                *last_aid == aid && *last_ec == exit_code && *last_fa == force_anomaly
+            });
+        if latest_for_subj_matches
+            && self.cas.get_meta(aid).is_some()
+            && let Some((ahtl_repr, surprise)) = self.dag.find_turn(agent, &clean_subject, aid)
+        {
+            return (
+                IngestResult {
+                    artifact_id: aid,
+                    raw_bytes,
+                    compressed_ahtl: ahtl_repr.to_owned(),
+                    surprise,
+                    was_virtualized: raw_bytes >= self.tool_virtualize_threshold,
+                },
+                false,
+            );
+        }
+        (
+            self.ingest_payload_for_subagent(
+                agent,
+                raw_subject,
+                raw_text,
+                exit_code,
+                force_anomaly,
+                None,
+            ),
+            true,
+        )
+    }
+
     /// Ingests a tool output or turn with an optional process `exit_code` and optional
     /// `subagent_id` scope. When `subagent_id` is `Some(...)`, the turn is buffered inside that
     /// subagent's isolated trajectory branch rather than being appended directly onto the parent's
@@ -313,7 +511,7 @@ impl InfinityContextMmu {
             {
                 let key = clause.key.as_str();
                 saw_pass |= key == "pass";
-                saw_fail |= key == "fail";
+                saw_fail |= key == "fail" && val.trim() != "0";
                 let is_functional = matches!(
                     key,
                     "status" | "test_status" | "return_type" | "fail" | "pass" | "exit_code"
@@ -621,6 +819,20 @@ impl InfinityContextMmu {
         ep
     }
 
+    /// Forces sealing the active epoch (via `maybe_rollover` or `force_seal_active_epoch`) and
+    /// synchronizes `global_dag_root` on `self.bus` (using the returned `L3`/`L4` epoch digest).
+    pub fn force_rollover_and_sync_dag_root(&mut self) -> Option<ArtifactId> {
+        let ep = self.epochs.force_seal_active_epoch(&mut self.dag);
+        if let Some(id) = ep
+            && let Some(node) = self.dag.get_node(id)
+        {
+            self.bus.set_global_dag_root(node.digest().0);
+        } else {
+            self.sync_global_dag_root();
+        }
+        ep
+    }
+
     /// Completes and folds the trajectory belonging to `raw_subagent_id` (`SubagentStop`),
     /// sanitizing `raw_summary` through `SecretRedactor::sanitize` before committing the `L2`
     /// `SubTrajectoryBranch` node to `MerkleContextDag`.
@@ -756,9 +968,12 @@ impl InfinityContextMmu {
         self.redacted_artifacts.clear();
         self.hdc_index = HdcAssociativeIndex::new();
         self.hdc_events.clear();
+        self.indexed_occurrences.clear();
+        self.reordered_occurrences.clear();
         if let Some(st) = persisted_state {
             self.clock_ms = 1_794_880_800_000_u64.max(st.clock_ms).max(max_graph_ms);
             self.dag = st.dag;
+            self.dag.rebuild_turn_index();
             self.epochs = st.epochs.unwrap_or_else(|| {
                 CacheEpochController::new(ICX_AHTL_LEGEND, EpochControllerConfig::default())
             });
@@ -792,6 +1007,22 @@ impl InfinityContextMmu {
                     .map(ArtifactId)
                     .filter(|&aid| self.cas.get_meta(aid).is_some()),
             );
+            let bus_seq = self.bus.write_sequence();
+            self.agent_read_cursors = st
+                .agent_read_cursors
+                .into_iter()
+                .map(|(k, v)| (k, v.min(bus_seq)))
+                .collect();
+            self.indexed_occurrences = st
+                .indexed_occurrences
+                .into_iter()
+                .filter(|(_, (_, _, aid, _, _, _))| self.cas.get_meta(*aid).is_some())
+                .collect();
+            self.reordered_occurrences = st
+                .reordered_occurrences
+                .into_iter()
+                .filter(|(_, (_, _, aid, _, _, _))| self.cas.get_meta(*aid).is_some())
+                .collect();
         } else {
             self.clock_ms = 1_794_880_800_000_u64.max(max_graph_ms);
             self.dag = MerkleContextDag::new();
@@ -825,8 +1056,8 @@ impl InfinityContextMmu {
 
     /// Atomically persists `CasStore`, `BiTemporalGraph`, `MerkleContextDag`,
     /// `CacheEpochController`, `HdcAssociativeIndex` events, `redacted_artifacts`,
-    /// `subagent_branches`, and logical `clock_ms` state into `icx_dir` under an exclusive
-    /// workspace lock.
+    /// `subagent_branches`, `agent_read_cursors`, `indexed_occurrences`, and logical `clock_ms`
+    /// state into `icx_dir` under an exclusive workspace lock.
     pub fn save_workspace_dir(&self, icx_dir: &Path) -> Result<(), IcxError> {
         let _lock = Self::acquire_workspace_lock(icx_dir)?;
         self.cas.save_to_dir(icx_dir)?;
@@ -839,6 +1070,9 @@ impl InfinityContextMmu {
             dag: self.dag.clone(),
             epochs: Some(self.epochs.clone()),
             hdc_events: self.hdc_events.clone(),
+            agent_read_cursors: self.agent_read_cursors.clone(),
+            indexed_occurrences: self.indexed_occurrences.clone(),
+            reordered_occurrences: self.reordered_occurrences.clone(),
         };
         let state_bytes = serde_json::to_vec(&state).map_err(Self::map_io_err)?;
         Self::write_atomic_file(icx_dir, "mmu_state.json", &state_bytes)

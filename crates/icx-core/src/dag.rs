@@ -187,6 +187,8 @@ struct OpenBranch {
     turn_ids: Vec<ArtifactId>,
 }
 
+type TurnIndexEntry = (String, u64, ArtifactId);
+
 /// Hierarchical Lossless Context Management (`LCM`) Merkle-DAG.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct MerkleContextDag {
@@ -194,6 +196,8 @@ pub struct MerkleContextDag {
     trunk_order: Vec<ArtifactId>,
     branch_stack: Vec<OpenBranch>,
     next_ordinal: u64,
+    #[serde(skip)]
+    turn_index: BTreeMap<(u8, ArtifactId), Vec<TurnIndexEntry>>,
 }
 
 impl MerkleContextDag {
@@ -220,6 +224,92 @@ impl MerkleContextDag {
     /// Looks up a `DagNode` by its `ArtifactId`.
     pub fn get_node(&self, id: ArtifactId) -> Option<&DagNode> {
         self.nodes.get(&id)
+    }
+
+    /// Rebuilds the in-memory `turn_index` from `self.nodes` after deserialization.
+    pub fn rebuild_turn_index(&mut self) {
+        self.turn_index.clear();
+        for (&id, node) in &self.nodes {
+            if let DagNode::Turn {
+                ordinal,
+                agent,
+                role,
+                raw_artifact,
+                ..
+            } = node
+            {
+                self.turn_index
+                    .entry((*agent as u8, *raw_artifact))
+                    .or_default()
+                    .push((role.clone(), *ordinal, id));
+            }
+        }
+        for bucket in self.turn_index.values_mut() {
+            bucket.sort_by_key(|(_, ord, _)| *ord);
+        }
+    }
+
+    /// Finds the most recent `DagNode::Turn` matching `(agent, raw_artifact)` regardless of `role`,
+    /// returning `(role, ahtl_repr, surprise)`.
+    pub fn find_turn_any_role(
+        &self,
+        agent: AgentKind,
+        raw_artifact: ArtifactId,
+    ) -> Option<(&str, &str, f32)> {
+        if let Some(entries) = self.turn_index.get(&(agent as u8, raw_artifact))
+            && let Some((_, _, tid)) = entries.iter().max_by_key(|(_, ord, _)| *ord)
+            && let Some(DagNode::Turn {
+                role,
+                ahtl_repr,
+                surprise,
+                ..
+            }) = self.nodes.get(tid)
+        {
+            return Some((role.as_str(), ahtl_repr.as_str(), *surprise));
+        }
+        None
+    }
+
+    /// Finds the most recent `DagNode::Turn` matching `(agent, role, raw_artifact)` in $O(\log N)$
+    /// via `turn_index` without heap allocation (falling back to a max-ordinal scan for
+    /// deserialized DAGs) and returns `(ahtl_repr, surprise)`.
+    pub fn find_turn(
+        &self,
+        agent: AgentKind,
+        role: &str,
+        raw_artifact: ArtifactId,
+    ) -> Option<(&str, f32)> {
+        if let Some(entries) = self.turn_index.get(&(agent as u8, raw_artifact))
+            && let Some((_, _, tid)) = entries
+                .iter()
+                .filter(|(r, _, _)| r == role)
+                .max_by_key(|(_, ord, _)| *ord)
+            && let Some(DagNode::Turn {
+                ahtl_repr,
+                surprise,
+                ..
+            }) = self.nodes.get(tid)
+        {
+            return Some((ahtl_repr.as_str(), *surprise));
+        }
+        self.nodes
+            .values()
+            .filter_map(|n| match n {
+                DagNode::Turn {
+                    ordinal,
+                    agent: n_agent,
+                    role: n_role,
+                    raw_artifact: n_raw,
+                    ahtl_repr,
+                    surprise,
+                    ..
+                } if *n_agent == agent && n_role == role && *n_raw == raw_artifact => {
+                    Some((*ordinal, ahtl_repr.as_str(), *surprise))
+                }
+                _ => None,
+            })
+            .max_by_key(|(ord, _, _)| *ord)
+            .map(|(_, repr, surp)| (repr, surp))
     }
 
     /// Resolves either a full 64-bit handle (`#icx:<16-hex>`) or a compact 48-bit Profile A prefix
@@ -395,6 +485,10 @@ impl MerkleContextDag {
             surprise,
             token_estimate,
         };
+        self.turn_index
+            .entry((agent as u8, raw_artifact))
+            .or_default()
+            .push((role.to_owned(), ordinal, id));
         self.nodes.insert(id, node);
         self.record_node_in_active_scope(id);
         id
