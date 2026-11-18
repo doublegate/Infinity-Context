@@ -131,16 +131,19 @@ impl WireProxyTransformer {
             }
 
             // Append Ephemeral Tail Slot to the final message (stripping any prior tail slot)
-            let last_query = messages
-                .last()
-                .and_then(Self::extract_item_text)
-                .map(Self::strip_existing_tail_slot)
-                .filter(|s| !s.is_empty())
-                .unwrap_or("anthropic_turn")
-                .to_owned();
-            let tail_slot = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, &last_query, 3);
-            if let Some(last_msg) = messages.last_mut() {
-                Self::append_tail_to_item(last_msg, &tail_slot, "text");
+            if !messages.is_empty() {
+                let last_query = messages
+                    .last()
+                    .and_then(Self::extract_item_text)
+                    .map(Self::strip_existing_tail_slot)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("anthropic_turn")
+                    .to_owned();
+                let tail_slot =
+                    mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, &last_query, 3);
+                if let Some(last_msg) = messages.last_mut() {
+                    Self::append_tail_to_item(last_msg, &tail_slot, "text");
+                }
             }
         }
 
@@ -1125,6 +1128,7 @@ impl WireProxyTransformer {
         let mut committed = false;
         Self::relay_upstream_response_with_eof(
             up_reader,
+            false,
             body_already_dechunked,
             mmu,
             writer,
@@ -1135,6 +1139,7 @@ impl WireProxyTransformer {
 
     fn relay_upstream_response_with_eof<R: BufRead, W: Write, F: FnOnce() -> io::Result<()>>(
         up_reader: &mut R,
+        is_head: bool,
         body_already_dechunked: bool,
         mmu: &InfinityContextMmu,
         writer: &mut W,
@@ -1145,6 +1150,7 @@ impl WireProxyTransformer {
         let mut resp_headers = Vec::new();
         let mut is_sse;
         let mut is_chunked;
+        let mut is_textual_content;
         let mut declared_content_length: Option<usize>;
 
         loop {
@@ -1159,6 +1165,7 @@ impl WireProxyTransformer {
             resp_headers.clear();
             is_sse = false;
             is_chunked = false;
+            is_textual_content = true;
             declared_content_length = None;
             for _ in 0..256 {
                 let mut hline = String::new();
@@ -1169,10 +1176,15 @@ impl WireProxyTransformer {
                 if let Some((hk, hv)) = hline.split_once(':') {
                     let hk_trim = hk.trim();
                     let hv_trim = hv.trim();
-                    if hk_trim.eq_ignore_ascii_case("content-type")
-                        && hv_trim.to_ascii_lowercase().contains("text/event-stream")
-                    {
-                        is_sse = true;
+                    if hk_trim.eq_ignore_ascii_case("content-type") {
+                        let ct = hv_trim.to_ascii_lowercase();
+                        if ct.contains("text/event-stream") {
+                            is_sse = true;
+                        }
+                        is_textual_content = ct.contains("json")
+                            || ct.starts_with("text/")
+                            || ct.contains("javascript")
+                            || ct.contains("xml");
                     } else if !body_already_dechunked
                         && hk_trim.eq_ignore_ascii_case("transfer-encoding")
                         && hv_trim.to_ascii_lowercase().contains("chunked")
@@ -1193,6 +1205,22 @@ impl WireProxyTransformer {
             {
                 break;
             }
+        }
+
+        let status_has_no_body =
+            is_head || status_trimmed.contains(" 204 ") || status_trimmed.contains(" 304 ");
+        if status_has_no_body {
+            verify_eof()?;
+            *headers_committed = true;
+            write!(writer, "{status_trimmed}\r\n")?;
+            for (hk, hv) in &resp_headers {
+                write!(writer, "{hk}: {hv}\r\n")?;
+            }
+            if let Some(cl) = declared_content_length {
+                write!(writer, "Content-Length: {cl}\r\n")?;
+            }
+            write!(writer, "Connection: close\r\n\r\n")?;
+            return writer.flush();
         }
 
         if is_sse {
@@ -1314,8 +1342,17 @@ impl WireProxyTransformer {
             }
         }
         verify_eof()?;
-        let resp_str = String::from_utf8_lossy(&resp_bytes);
-        let final_body = Self::expand_json_or_text_body(&resp_str, mmu);
+        let expanded_opt = if is_textual_content {
+            std::str::from_utf8(&resp_bytes)
+                .ok()
+                .map(|s| Self::expand_json_or_text_body(s, mmu))
+        } else {
+            None
+        };
+        let out_bytes: &[u8] = match expanded_opt {
+            Some(ref s) => s.as_bytes(),
+            None => &resp_bytes,
+        };
 
         *headers_committed = true;
         write!(writer, "{status_trimmed}\r\n")?;
@@ -1324,10 +1361,10 @@ impl WireProxyTransformer {
         }
         write!(
             writer,
-            "Content-Length: {}\r\nConnection: close\r\n\r\n{}",
-            final_body.len(),
-            final_body
+            "Content-Length: {}\r\nConnection: close\r\n\r\n",
+            out_bytes.len()
         )?;
+        writer.write_all(out_bytes)?;
         writer.flush()
     }
 
@@ -1442,8 +1479,10 @@ impl WireProxyTransformer {
         upstream.flush()?;
 
         let mut up_reader = BufReader::new(upstream);
+        let is_head = safe_method.eq_ignore_ascii_case("HEAD");
         Self::relay_upstream_response_with_eof(
             &mut up_reader,
+            is_head,
             false,
             mmu,
             writer,
@@ -1491,11 +1530,13 @@ impl WireProxyTransformer {
         writer: &mut W,
         headers_committed: &mut bool,
     ) -> io::Result<()> {
+        static CURL_HDR_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let safe_method = if Self::is_valid_http_token(method) {
             method
         } else {
             "POST"
         };
+        let is_head = safe_method.eq_ignore_ascii_case("HEAD");
         let full_url = Self::join_upstream_base_and_route(upstream_base, stripped_path);
         let mut cmd = Command::new("curl");
         cmd.args([
@@ -1517,7 +1558,11 @@ impl WireProxyTransformer {
             "-X",
             safe_method,
         ]);
+        if is_head {
+            cmd.arg("--head");
+        }
         let mut has_content_type = false;
+        let mut header_file_buf = String::new();
         for (k, v) in client_headers {
             if Self::is_hop_by_hop_or_internal_header(k)
                 || !Self::is_valid_http_token(k)
@@ -1528,10 +1573,30 @@ impl WireProxyTransformer {
             if k.eq_ignore_ascii_case("content-type") {
                 has_content_type = true;
             }
-            cmd.args(["-H", &format!("{k}: {v}")]);
+            header_file_buf.push_str(k);
+            header_file_buf.push_str(": ");
+            header_file_buf.push_str(v);
+            header_file_buf.push('\n');
         }
         if !has_content_type && !transformed_body.is_empty() {
-            cmd.args(["-H", "Content-Type: application/json"]);
+            header_file_buf.push_str("Content-Type: application/json\n");
+        }
+        let hdr_file_path = std::env::temp_dir().join(format!(
+            "icx_curl_hdr_{}_{}.tmp",
+            std::process::id(),
+            CURL_HDR_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        if !header_file_buf.is_empty() {
+            let mut opts = std::fs::OpenOptions::new();
+            opts.write(true).create(true).truncate(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                opts.mode(0o600);
+            }
+            let mut f = opts.open(&hdr_file_path)?;
+            f.write_all(header_file_buf.as_bytes())?;
+            cmd.args(["-H", &format!("@{}", hdr_file_path.display())]);
         }
         if !transformed_body.is_empty() {
             cmd.args(["--data-binary", "@-"]);
@@ -1541,10 +1606,18 @@ impl WireProxyTransformer {
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
 
-        let mut child = cmd.spawn()?;
+        let spawn_res = cmd.spawn();
+        let mut child = match spawn_res {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = std::fs::remove_file(&hdr_file_path);
+                return Err(e);
+            }
+        };
         let child_in_opt = child.stdin.take();
         let Some(child_out) = child.stdout.take() else {
             let _ = child.wait();
+            let _ = std::fs::remove_file(&hdr_file_path);
             return Err(io::Error::other("missing curl stdout"));
         };
         let mut waited = false;
@@ -1558,6 +1631,7 @@ impl WireProxyTransformer {
             let mut up_reader = BufReader::new(child_out);
             let r = Self::relay_upstream_response_with_eof(
                 &mut up_reader,
+                is_head,
                 true,
                 mmu,
                 writer,
@@ -1579,12 +1653,18 @@ impl WireProxyTransformer {
                 Err(e) => Err(write_res.err().unwrap_or(e)),
             }
         });
-        if !waited {
-            let status = child.wait()?;
-            if !status.success() {
-                return Err(io::Error::other(format!("curl exited with {status}")));
+        let wait_res = if waited {
+            Ok(())
+        } else {
+            let status = child.wait();
+            match status {
+                Ok(st) if !st.success() => Err(io::Error::other(format!("curl exited with {st}"))),
+                Ok(_) => Ok(()),
+                Err(e) => Err(e),
             }
-        }
+        };
+        let _ = std::fs::remove_file(&hdr_file_path);
+        wait_res?;
         relay_res
     }
 

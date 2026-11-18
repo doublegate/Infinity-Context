@@ -82,7 +82,7 @@ impl McpPagerServer {
             return false;
         };
         match args.get("op").and_then(Value::as_str).unwrap_or("status") {
-            "fold" | "recall" => true,
+            "fold" => true,
             "xagent" => args
                 .get("q")
                 .and_then(Value::as_str)

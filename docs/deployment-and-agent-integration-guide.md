@@ -1108,6 +1108,7 @@ Expected output:
   [DETECTED] Antigravity CLI (agy)            -> /home/parobek/.local/bin/agy
   [DETECTED] Antigravity Hooks                -> /home/parobek/.gemini/config/hooks.json
   [DETECTED] Hermes Agent Source              -> /home/parobek/.hermes/hermes-agent/agent/context_engine.py
+  [DETECTED] HTTPS Proxy Transport (curl)     -> /usr/bin/curl
   [DETECTED] POSIX Shared Memory (/dev/shm)   -> /dev/shm
 Doctor status: READY
 ⟪ICX:STATUS│cas_artifacts=0│redacted_artifacts=0│unique_chunks=0│dag_nodes=0│sealed_epochs=0│hdc_entries=0│graph_edges=0│shm_seq=0⟫
