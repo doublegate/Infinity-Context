@@ -1241,12 +1241,12 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h/Code/OSS_Public-Projects/Infinity-Context
-ExecStartPre=/usr/bin/env icx init --dir %h/.local/share/icx/global-mmu
-ExecStart=/usr/bin/env icx proxy --listen 127.0.0.1:49380 --dir %h/.local/share/icx/global-mmu
+ExecStartPre=/usr/bin/env icx init --dir .icx
+ExecStart=/usr/bin/env icx proxy --listen 127.0.0.1:49380 --dir .icx
 Restart=on-failure
 RestartSec=2s
 Environment="RUST_LOG=info"
-Environment="ICX_DIR=%h/.local/share/icx/global-mmu"
+Environment="ICX_DIR=.icx"
 Environment="ICX_PROXY_BIND=127.0.0.1:49380"
 Environment="ICX_SHM_PATH=/dev/shm/icx-fabric-v1"
 NoNewPrivileges=true
@@ -1255,6 +1255,8 @@ PrivateTmp=false
 [Install]
 WantedBy=default.target
 ```
+
+> **Note:** Ensure `icx proxy`, `icx hook`, and `icx mcp-serve` operating on the same repository point to the same `--dir` / `ICX_DIR` (e.g., `.icx` inside `WorkingDirectory`) so `#icx:<16-hex>` CAS handles and `workspace_hash` `/dev/shm` filters match across all three surfaces.
 
 Enable and verify the service:
 

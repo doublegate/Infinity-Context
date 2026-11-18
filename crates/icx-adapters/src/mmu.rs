@@ -832,7 +832,7 @@ impl InfinityContextMmu {
         ep
     }
 
-    /// Forces sealing the active epoch (via `maybe_rollover` or `force_seal_active_epoch`) and
+    /// Forces sealing the active epoch via `CacheEpochController::force_seal_active_epoch` and
     /// synchronizes `global_dag_root` on `self.bus` (using the returned `L3`/`L4` epoch digest).
     pub fn force_rollover_and_sync_dag_root(&mut self) -> Option<ArtifactId> {
         let ep = self.epochs.force_seal_active_epoch(&mut self.dag);

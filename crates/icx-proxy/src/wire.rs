@@ -736,9 +736,13 @@ impl WireProxyTransformer {
     }
 
     fn is_sse_done_line(line: &str) -> bool {
-        line.trim()
+        let trimmed = line.trim();
+        trimmed
             .strip_prefix("data:")
             .is_some_and(|rest| rest.trim() == "[DONE]")
+            || trimmed
+                .strip_prefix("event:")
+                .is_some_and(|rest| matches!(rest.trim(), "content_block_stop" | "message_stop"))
     }
 
     fn transform_sse_line_stateful(
@@ -1427,6 +1431,14 @@ impl WireProxyTransformer {
         )
     }
 
+    fn sanitize_http_method(method: &str) -> &str {
+        if Self::is_valid_http_token(method) {
+            method
+        } else {
+            "POST"
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn forward_http_upstream<W: Write>(
         method: &str,
@@ -1445,11 +1457,7 @@ impl WireProxyTransformer {
         let _ = upstream.set_read_timeout(Some(Duration::from_secs(30)));
         let _ = upstream.set_write_timeout(Some(Duration::from_secs(30)));
 
-        let safe_method = if Self::is_valid_http_token(method) {
-            method
-        } else {
-            "POST"
-        };
+        let safe_method = Self::sanitize_http_method(method);
         write!(
             upstream,
             "{safe_method} {target_path} HTTP/1.1\r\nHost: {host_header}\r\nAccept-Encoding: identity\r\n"
@@ -1531,11 +1539,7 @@ impl WireProxyTransformer {
         headers_committed: &mut bool,
     ) -> io::Result<()> {
         static CURL_HDR_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let safe_method = if Self::is_valid_http_token(method) {
-            method
-        } else {
-            "POST"
-        };
+        let safe_method = Self::sanitize_http_method(method);
         let is_head = safe_method.eq_ignore_ascii_case("HEAD");
         let full_url = Self::join_upstream_base_and_route(upstream_base, stripped_path);
         let mut cmd = Command::new("curl");
@@ -1746,6 +1750,7 @@ impl WireProxyTransformer {
         let mut content_length = 0usize;
         let mut payload_too_large = false;
         let mut req_is_chunked = false;
+        let mut expects_100_continue = false;
         let mut client_headers: Vec<(String, String)> = Vec::new();
         let mut header_upstream: Option<String> = None;
         let mut transform_only = path.starts_with("/transform");
@@ -1769,6 +1774,10 @@ impl WireProxyTransformer {
                     && v_trim.to_ascii_lowercase().contains("chunked")
                 {
                     req_is_chunked = true;
+                } else if k_trim.eq_ignore_ascii_case("expect")
+                    && v_trim.to_ascii_lowercase().contains("100-continue")
+                {
+                    expects_100_continue = true;
                 } else if k_trim.eq_ignore_ascii_case("x-icx-upstream") && !v_trim.is_empty() {
                     header_upstream = Some(v_trim.to_owned());
                 } else if k_trim.eq_ignore_ascii_case("x-icx-transform-only") {
@@ -1790,6 +1799,11 @@ impl WireProxyTransformer {
 
         if payload_too_large {
             return Self::write_payload_too_large(&mut writer);
+        }
+
+        if expects_100_continue && (req_is_chunked || content_length > 0) {
+            write!(writer, "HTTP/1.1 100 Continue\r\n\r\n")?;
+            writer.flush()?;
         }
 
         let mut body_bytes = Vec::new();

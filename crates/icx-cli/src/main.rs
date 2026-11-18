@@ -148,7 +148,7 @@ fn resolve_workspace_dir(cli_dir: Option<&str>) -> PathBuf {
     PathBuf::from(".icx")
 }
 
-fn run_init(args: &[String]) -> Result<(), String> {
+fn parse_dir_flag(args: &[String]) -> Option<&str> {
     let mut dir_str: Option<&str> = None;
     let mut i = 0;
     while i < args.len() {
@@ -159,7 +159,11 @@ fn run_init(args: &[String]) -> Result<(), String> {
             i += 1;
         }
     }
-    let icx_dir = resolve_workspace_dir(dir_str);
+    dir_str
+}
+
+fn run_init(args: &[String]) -> Result<(), String> {
+    let icx_dir = resolve_workspace_dir(parse_dir_flag(args));
     init_workspace_dir(&icx_dir).map_err(|e| format!("icx init error: {e}"))?;
     println!("⟪ICX:INIT│dir={}│status=READY⟫", icx_dir.display());
     Ok(())
@@ -300,18 +304,8 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
     reader: R,
     mut writer: W,
 ) -> Result<(), String> {
-    let mut dir_str: Option<&str> = None;
-    let mut i = 0;
-    while i < args.len() {
-        if args[i] == "--dir" && i + 1 < args.len() {
-            dir_str = Some(args[i + 1].as_str());
-            i += 2;
-        } else {
-            i += 1;
-        }
-    }
     let mut mmu = InfinityContextMmu::default();
-    let ws_dir = resolve_workspace_dir(dir_str);
+    let ws_dir = resolve_workspace_dir(parse_dir_flag(args));
     for line in reader.lines() {
         let Ok(req_line) = line else { break };
         if req_line.trim().is_empty() {
@@ -589,18 +583,8 @@ fn run_decode_ahtl(args: &[String]) -> Result<(), String> {
 }
 
 fn run_status(args: &[String]) {
-    let mut dir_str: Option<&str> = None;
-    let mut i = 0;
-    while i < args.len() {
-        if args[i] == "--dir" && i + 1 < args.len() {
-            dir_str = Some(args[i + 1].as_str());
-            i += 2;
-        } else {
-            i += 1;
-        }
-    }
     let mut mmu = InfinityContextMmu::default();
-    let ws_dir = resolve_workspace_dir(dir_str);
+    let ws_dir = resolve_workspace_dir(parse_dir_flag(args));
     if ws_dir.exists()
         && let Err(err) = mmu.load_workspace_dir(&ws_dir)
     {
