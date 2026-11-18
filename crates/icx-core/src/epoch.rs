@@ -253,9 +253,11 @@ impl CacheEpochController {
         }
         if self.sealed_epochs.len() >= 2 {
             let epoch_ids: Vec<ArtifactId> = self.sealed_epochs.iter().map(DagNode::id).collect();
-            if let Ok(folded) = dag.fold_epochs(&epoch_ids) {
-                return Some(folded.id());
-            }
+            return dag
+                .fold_epochs(&epoch_ids)
+                .ok()
+                .map(|f| f.id())
+                .or_else(|| self.sealed_epochs.last().map(DagNode::id));
         }
         self.sealed_epochs.last().map(DagNode::id)
     }

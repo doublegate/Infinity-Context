@@ -337,7 +337,6 @@ impl HermesAdapter {
                 continue;
             }
             if keep_verbatim {
-                occurrence_idx += Self::count_occurrence_advance(msg);
                 preserved_msgs.push(msg.clone());
                 if let Some(r) = raw_opt {
                     preserved_vals.push(r.clone());
@@ -422,28 +421,27 @@ impl HermesAdapter {
         Self::select_context_core(request_messages, None, protect_first_n, protect_last_n, mmu).0
     }
 
-    /// Implements `ContextEngine.prune_tool_results_only(messages, protect_last_n)`:
-    /// Deterministically trims oversized tool-result messages outside the last `protect_last_n`
-    /// messages into `#icx:<16-hex>` AHTL Holographic Stubs while leaving `icx` MCP pager outputs,
-    /// already-stubbed tool results, and non-tool messages untouched. Returns
-    /// `(messages, n_pruned)`.
-    pub fn prune_tool_results_only(
+    fn prune_tool_results_only_core(
         messages: &[HermesMessage],
+        raw_messages: Option<&[Value]>,
         protect_last_n: usize,
         mmu: &mut InfinityContextMmu,
-    ) -> (Vec<HermesMessage>, usize) {
+    ) -> (Vec<HermesMessage>, Vec<Value>, usize) {
         let total = messages.len();
         let cutoff = total.saturating_sub(protect_last_n);
         let mut out = Vec::with_capacity(total);
+        let mut out_vals = Vec::with_capacity(if raw_messages.is_some() { total } else { 0 });
         let mut n_pruned = 0usize;
 
         let mut occurrence_idx = 0usize;
         for (idx, msg) in messages.iter().enumerate() {
+            let raw_opt = raw_messages.and_then(|r| r.get(idx));
             let is_tool = msg.role == "tool" || msg.tool_call_id.is_some();
             let subj = Self::message_subject(msg);
             if idx < cutoff
                 && is_tool
                 && !InfinityContextMmu::is_icx_pager_tool(subj)
+                && !raw_opt.is_some_and(Self::has_structured_non_text_content)
                 && !Self::is_stubbed_message(msg)
                 && !msg.content.trim().is_empty()
                 && msg.content.len() >= mmu.tool_virtualize_threshold
@@ -462,13 +460,40 @@ impl HermesAdapter {
                     "⟪ICX:STUB│{}│bytes={}│Use `icx` MCP tool (op=deref/slice/grep) to inspect full output⟫\n{}",
                     res.artifact_id, res.raw_bytes, res.compressed_ahtl
                 );
+                if let Some(r) = raw_opt {
+                    let mut rv = r.clone();
+                    if let Some(obj) = rv.as_object_mut() {
+                        obj.insert("content".into(), Value::String(stubbed.content.clone()));
+                    }
+                    out_vals.push(rv);
+                }
                 out.push(stubbed);
                 n_pruned += 1;
             } else {
-                occurrence_idx += Self::count_occurrence_advance(msg);
+                if !raw_opt.is_some_and(Self::has_structured_non_text_content) {
+                    occurrence_idx += Self::count_occurrence_advance(msg);
+                }
+                if let Some(r) = raw_opt {
+                    out_vals.push(r.clone());
+                }
                 out.push(msg.clone());
             }
         }
+        (out, out_vals, n_pruned)
+    }
+
+    /// Implements `ContextEngine.prune_tool_results_only(messages, protect_last_n)`:
+    /// Deterministically trims oversized tool-result messages outside the last `protect_last_n`
+    /// messages into `#icx:<16-hex>` AHTL Holographic Stubs while leaving `icx` MCP pager outputs,
+    /// multimodal messages with non-text content parts, already-stubbed tool results, and non-tool
+    /// messages untouched. Returns `(messages, n_pruned)`.
+    pub fn prune_tool_results_only(
+        messages: &[HermesMessage],
+        protect_last_n: usize,
+        mmu: &mut InfinityContextMmu,
+    ) -> (Vec<HermesMessage>, usize) {
+        let (out, _, n_pruned) =
+            Self::prune_tool_results_only_core(messages, None, protect_last_n, mmu);
         (out, n_pruned)
     }
 
@@ -511,7 +536,6 @@ impl HermesAdapter {
                 continue;
             }
             if keep_verbatim {
-                occurrence_idx += Self::count_occurrence_advance(msg);
                 preserved_msgs.push(msg.clone());
                 if let Some(r) = raw_opt {
                     preserved_vals.push(r.clone());
@@ -729,20 +753,8 @@ impl HermesAdapter {
                     .and_then(Value::as_u64)
                     .map(|n| n as usize)
                     .unwrap_or(2);
-                let (pruned, n_pruned) = Self::prune_tool_results_only(&msgs, last_n, mmu);
-                let out_vals: Vec<Value> = msgs
-                    .iter()
-                    .zip(pruned)
-                    .zip(raw_msgs)
-                    .map(|((orig, pr), mut raw_val)| {
-                        if pr.content != orig.content
-                            && let Some(obj) = raw_val.as_object_mut()
-                        {
-                            obj.insert("content".into(), Value::String(pr.content));
-                        }
-                        raw_val
-                    })
-                    .collect();
+                let (_, out_vals, n_pruned) =
+                    Self::prune_tool_results_only_core(&msgs, Some(&raw_msgs), last_n, mmu);
                 json!({
                     "messages": out_vals,
                     "pruned_count": n_pruned

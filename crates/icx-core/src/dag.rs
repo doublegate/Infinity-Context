@@ -187,6 +187,8 @@ struct OpenBranch {
     turn_ids: Vec<ArtifactId>,
 }
 
+type TurnIndexEntry = (String, u64, ArtifactId);
+
 /// Hierarchical Lossless Context Management (`LCM`) Merkle-DAG.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct MerkleContextDag {
@@ -195,7 +197,7 @@ pub struct MerkleContextDag {
     branch_stack: Vec<OpenBranch>,
     next_ordinal: u64,
     #[serde(skip)]
-    turn_index: BTreeMap<(u8, ArtifactId, String), ArtifactId>,
+    turn_index: BTreeMap<(u8, ArtifactId), Vec<TurnIndexEntry>>,
 }
 
 impl MerkleContextDag {
@@ -224,11 +226,9 @@ impl MerkleContextDag {
         self.nodes.get(&id)
     }
 
-    /// Rebuilds the in-memory `turn_index` from `self.nodes` after deserialization, selecting the
-    /// highest `ordinal` turn when multiple turns share `(agent, raw_artifact, role)`.
+    /// Rebuilds the in-memory `turn_index` from `self.nodes` after deserialization.
     pub fn rebuild_turn_index(&mut self) {
         self.turn_index.clear();
-        let mut best_ord: BTreeMap<(u8, ArtifactId, String), (u64, ArtifactId)> = BTreeMap::new();
         for (&id, node) in &self.nodes {
             if let DagNode::Turn {
                 ordinal,
@@ -238,34 +238,33 @@ impl MerkleContextDag {
                 ..
             } = node
             {
-                let key = (*agent as u8, *raw_artifact, role.clone());
-                if best_ord.get(&key).is_none_or(|(prev, _)| *ordinal >= *prev) {
-                    best_ord.insert(key, (*ordinal, id));
-                }
+                self.turn_index
+                    .entry((*agent as u8, *raw_artifact))
+                    .or_default()
+                    .push((role.clone(), *ordinal, id));
             }
-        }
-        for (k, (_, id)) in best_ord {
-            self.turn_index.insert(k, id);
         }
     }
 
     /// Finds the most recent `DagNode::Turn` matching `(agent, role, raw_artifact)` in $O(\log N)$
-    /// via `turn_index` (falling back to a max-ordinal scan for deserialized DAGs) and returns
-    /// `(ahtl_repr, surprise)`.
+    /// via `turn_index` without heap allocation (falling back to a max-ordinal scan for
+    /// deserialized DAGs) and returns `(ahtl_repr, surprise)`.
     pub fn find_turn(
         &self,
         agent: AgentKind,
         role: &str,
         raw_artifact: ArtifactId,
     ) -> Option<(&str, f32)> {
-        if let Some(&tid) = self
-            .turn_index
-            .get(&(agent as u8, raw_artifact, role.to_owned()))
+        if let Some(entries) = self.turn_index.get(&(agent as u8, raw_artifact))
+            && let Some((_, _, tid)) = entries
+                .iter()
+                .filter(|(r, _, _)| r == role)
+                .max_by_key(|(_, ord, _)| *ord)
             && let Some(DagNode::Turn {
                 ahtl_repr,
                 surprise,
                 ..
-            }) = self.nodes.get(&tid)
+            }) = self.nodes.get(tid)
         {
             return Some((ahtl_repr.as_str(), *surprise));
         }
@@ -463,7 +462,9 @@ impl MerkleContextDag {
             token_estimate,
         };
         self.turn_index
-            .insert((agent as u8, raw_artifact, role.to_owned()), id);
+            .entry((agent as u8, raw_artifact))
+            .or_default()
+            .push((role.to_owned(), ordinal, id));
         self.nodes.insert(id, node);
         self.record_node_in_active_scope(id);
         id

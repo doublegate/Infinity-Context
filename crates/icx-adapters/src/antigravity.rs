@@ -83,15 +83,13 @@ impl AntigravityAdapter {
         let mut valid_step_idx = 0u64;
 
         for _ in 0..max_lines {
-            let Ok((bytes_read, ended_with_nl, was_truncated)) =
+            let (bytes_read, ended_with_nl, was_truncated) =
                 CodexRolloutTailer::read_bounded_jsonl_record(
                     reader,
                     MAX_TRANSCRIPT_RECORD_BYTES,
                     &mut raw_line,
                 )
-            else {
-                break;
-            };
+                .unwrap_or((0, false, false));
             if bytes_read == 0 || !ended_with_nl {
                 break;
             }

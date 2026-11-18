@@ -1474,7 +1474,24 @@ unprefixed_secret = {unpref_sec}
             None,
             false,
         );
-        let _ = HermesAdapter::on_turn_complete(&stub_only[1..2], &mut stub_carry_mmu);
+        let _ = HermesAdapter::on_turn_complete(&stub_only, &mut stub_carry_mmu);
+        // Also verify `prune_tool_results_only` exempts mixed tool results containing non-text parts (`image_url`)
+        let mixed_tool_req = serde_json::json!({
+            "messages": [
+                {"role": "tool", "name": "screenshot", "content": [{"type": "text", "text": "x".repeat(800)}, {"type": "image_url", "image_url": {"url": "https://example.com/s.png"}}]},
+                {"role": "user", "content": "tail"}
+            ],
+            "protect_last_n": 1
+        })
+        .to_string();
+        let mixed_pruned = HermesAdapter::handle_hook(
+            "prune_tool_results_only",
+            &mixed_tool_req,
+            &mut stub_carry_mmu,
+        )
+        .unwrap();
+        assert!(mixed_pruned.contains(r#""pruned_count":0"#));
+        assert!(mixed_pruned.contains("image_url"));
 
         // Verify `read_transcript_step` rejects directories, handles targeted step with empty
         // output, and recovers a trailing record > 256 KiB
@@ -1629,6 +1646,10 @@ unprefixed_secret = {unpref_sec}
         std::fs::write(&tp_trunc, &oversized_tp_line).unwrap();
         assert_eq!(
             AntigravityAdapter::read_transcript_step(&tp_trunc, None).as_deref(),
+            Some("after_truncated")
+        );
+        assert_eq!(
+            AntigravityAdapter::read_transcript_step(&tp_trunc, Some(0)).as_deref(),
             Some("after_truncated")
         );
         let _ = std::fs::remove_file(&tp_trunc);
