@@ -214,9 +214,9 @@ impl CodexAdapter {
     }
 }
 
-/// Per-file bookmark tracking committed byte offset, file identity/mtime metadata, a bounded
-/// $O(1)$ multi-window anchor digest (`<= 16 KiB`), and an incremental running record digest so
-/// unchanged polls complete in $O(1)$ and incremental polls complete in $O(\Delta\text{bytes})$.
+/// Per-file bookmark tracking committed byte offset, pre-read file identity/mtime metadata, and a
+/// bounded $O(1)$ multi-window anchor digest (`<= 16 KiB`) so unchanged polls complete in $O(1)$
+/// and incremental polls complete in $O(\Delta\text{bytes})$.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct RolloutBookmark {
     offset: u64,
@@ -224,7 +224,6 @@ struct RolloutBookmark {
     mtime_nanos: Option<u128>,
     file_id: (u64, u64),
     anchor_digest: icx_core::Blake3Digest,
-    running_digest: icx_core::Blake3Digest,
 }
 
 /// Maximum per-record buffer allocation (`64 MiB + 64 KiB`) before draining the remainder of an
@@ -291,19 +290,6 @@ impl CodexRolloutTailer {
         Ok(icx_core::Blake3Digest::hash(&combined))
     }
 
-    fn step_running_digest(
-        prev: icx_core::Blake3Digest,
-        line_bytes: &[u8],
-        committed: u64,
-    ) -> icx_core::Blake3Digest {
-        let line_hash = icx_core::Blake3Digest::hash(line_bytes);
-        let mut mix = [0u8; 72];
-        mix[0..32].copy_from_slice(&prev.0);
-        mix[32..64].copy_from_slice(&line_hash.0);
-        mix[64..72].copy_from_slice(&committed.to_le_bytes());
-        icx_core::Blake3Digest::hash(&mix)
-    }
-
     /// Polls `path` from its last committed byte offset (resetting to `0` if the file was
     /// truncated, rotated, or rewritten in-place), ingesting newly appended complete JSONL lines
     /// into `mmu` and advancing the stored bookmark in $O(\Delta\text{bytes})$ using a single
@@ -321,7 +307,6 @@ impl CodexRolloutTailer {
         let mtime_nanos = Self::extract_mtime_nanos(&meta);
 
         let mut start_offset = 0u64;
-        let mut start_running = icx_core::Blake3Digest::hash(&[]);
         let mut validated_anchor = None;
 
         if let Some(bm) = self.bookmarks.get(path).copied()
@@ -339,14 +324,13 @@ impl CodexRolloutTailer {
                 file.read_exact(&mut prev)?;
                 if prev[0] == b'\n' {
                     start_offset = bm.offset;
-                    start_running = bm.running_digest;
                     validated_anchor = Some(cur_anchor);
                 }
             }
         }
 
-        let (next_offset, count, mut file, next_running) =
-            Self::ingest_from_validated_offset(file, start_offset, start_running, mmu)?;
+        let (next_offset, count, mut file) =
+            Self::ingest_from_validated_offset(file, start_offset, mmu)?;
         let anchor_digest = if next_offset == start_offset
             && let Some(reused) = validated_anchor
         {
@@ -354,16 +338,16 @@ impl CodexRolloutTailer {
         } else {
             Self::compute_anchor_digest(&mut file, next_offset)?
         };
-        let end_meta = file.metadata()?;
+        // Cache the pre-read file_len and mtime_nanos so any concurrent append during
+        // `ingest_from_validated_offset` causes the next poll's metadata check to miss and read.
         self.bookmarks.insert(
             path.to_path_buf(),
             RolloutBookmark {
                 offset: next_offset,
-                file_len: end_meta.len(),
-                mtime_nanos: Self::extract_mtime_nanos(&end_meta),
-                file_id: Self::extract_file_id(&end_meta),
+                file_len,
+                mtime_nanos,
+                file_id,
                 anchor_digest,
-                running_digest: next_running,
             },
         );
         Ok(count)
@@ -389,12 +373,7 @@ impl CodexRolloutTailer {
             file.read_exact(&mut prev)?;
             if prev[0] == b'\n' { byte_offset } else { 0 }
         };
-        let (committed, ingested, _, _) = Self::ingest_from_validated_offset(
-            file,
-            start_offset,
-            icx_core::Blake3Digest::hash(&[]),
-            mmu,
-        )?;
+        let (committed, ingested, _) = Self::ingest_from_validated_offset(file, start_offset, mmu)?;
         Ok((committed, ingested))
     }
 
@@ -442,9 +421,8 @@ impl CodexRolloutTailer {
     fn ingest_from_validated_offset(
         mut file: File,
         start_offset: u64,
-        mut running_digest: icx_core::Blake3Digest,
         mmu: &mut InfinityContextMmu,
-    ) -> Result<(u64, usize, File, icx_core::Blake3Digest), io::Error> {
+    ) -> Result<(u64, usize, File), io::Error> {
         let mut committed = start_offset;
         file.seek(SeekFrom::Start(committed))?;
         let mut reader = BufReader::new(file);
@@ -463,7 +441,6 @@ impl CodexRolloutTailer {
                 break;
             }
             committed += bytes_read;
-            running_digest = Self::step_running_digest(running_digest, &raw_line, committed);
             let line = String::from_utf8_lossy(&raw_line);
             let trimmed = line.trim();
             if trimmed.is_empty() {
@@ -494,7 +471,7 @@ impl CodexRolloutTailer {
                 ingested += 1;
             }
         }
-        Ok((committed, ingested, reader.into_inner(), running_digest))
+        Ok((committed, ingested, reader.into_inner()))
     }
 
     fn non_empty_body_value(v: &Value) -> Option<String> {
