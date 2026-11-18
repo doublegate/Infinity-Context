@@ -253,8 +253,10 @@ impl InfinityContextMmu {
             raw_text
         };
         let mut sanitized = SecretRedactor::sanitize(bounded_raw);
-        let was_redacted = bounded_raw != sanitized;
+        let mut was_redacted =
+            raw_text.len() > max_bytes || !bounded_raw.lines().eq(sanitized.lines());
         if sanitized.len() > max_bytes {
+            was_redacted = true;
             let mut bound = max_bytes;
             while !sanitized.is_char_boundary(bound) {
                 bound -= 1;
@@ -762,6 +764,13 @@ impl InfinityContextMmu {
     #[inline]
     pub fn is_artifact_redacted(&self, id: ArtifactId) -> bool {
         self.redacted_artifacts.contains(&id)
+    }
+
+    /// Returns the number of artifacts in `self` that had pre-CAS secret redaction or delimiter
+    /// escaping applied.
+    #[inline]
+    pub fn redacted_artifact_count(&self) -> usize {
+        self.redacted_artifacts.len()
     }
 
     /// Returns the current logical ingestion clock timestamp in milliseconds.

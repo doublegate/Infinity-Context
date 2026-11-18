@@ -174,7 +174,8 @@ impl AntigravityAdapter {
                 MAX_TRANSCRIPT_RECORD_BYTES,
                 &mut discard,
             );
-            let (body_opt, saw_step_record) = Self::scan_transcript_reader(&mut r, None, max_lines);
+            let (body_opt, saw_step_record) =
+                Self::scan_transcript_reader(&mut r, None, MAX_TRANSCRIPT_SCAN_LINES);
             if saw_step_record {
                 return body_opt;
             }

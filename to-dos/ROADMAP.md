@@ -4,9 +4,9 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 
 ## Status
 
-- **Current Version:** `v0.4.0` (`Phase 0` `v0.1.0`, `Phase 1` `v0.2.0`, `Phase 2` `v0.3.0`, and `Phase 3` `v0.4.0` All Complete)
-- **Current Phase:** Phase 3 Complete (10,240-Bit `HDC` Engine, Infini-Attention Delta Bundler, Contractive IFS `FractalTrajectoryArchive`, `TitansSurpriseGate`, and `BiTemporalGraph` + `CsrGraphSnapshot` Personalized PageRank All Green) — **Ready to start Phase 4**
-- **Active Workspace:** 8 Rust crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`) — `std`-based, permanently `unsafe_code = "forbid"` (`0` `unsafe` blocks), Rust Edition `2024` / MSRV `1.100`, `>= 95%` Codecov line coverage
+- **Current Version:** `v0.5.0` (`Phase 0` `v0.1.0`, `Phase 1` `v0.2.0`, `Phase 2` `v0.3.0`, `Phase 3` `v0.4.0`, and `Phase 4` `v0.5.0` All Complete)
+- **Current Phase:** Phase 4 Complete (`ClaudeCodeAdapter`, `CodexAdapter` + `CodexRolloutTailer`, `AntigravityAdapter`, `HermesAdapter`, Single-Tool Polymorphic `McpPagerServer` (`icx`), `WireProxyTransformer` + `icx proxy`, and [`docs/deployment-and-agent-integration-guide.md`](../docs/deployment-and-agent-integration-guide.md) All Green) — **Ready to start Phase 5 (`v1.0.0`)**
+- **Active Workspace:** 8 Rust crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`) — `std`-based, permanently `unsafe_code = "forbid"` (`0` `unsafe` blocks), Rust Edition `2024` / MSRV `1.100`, `>= 95%` Codecov line coverage (`97.48%` measured)
 
 ---
 
@@ -57,15 +57,15 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 
 ---
 
-### Phase 4 — Cross-Agent Low-Level Interception, MCP Pager & Wire Proxy
-**Goal:** Wire native lifecycle hook adapters for Claude Code (`2.1.326+`), OpenAI Codex (`0.169.0+`), Antigravity CLI (`agy`), and Hermes Agent, plus the Single-Tool Polymorphic MCP Pager (`icx`), SQLite WAL tailer, and HTTP/2 Cache-Epoch Reverse Proxy.  
+### Phase 4 — Cross-Agent Low-Level Interception, MCP Pager & Wire Proxy (COMPLETED — `v0.5.0`)
+**Goal:** Wire native lifecycle hook adapters for Claude Code (`2.1.326+`), OpenAI Codex (`0.169.0+`), Antigravity CLI (`agy`), and Hermes Agent, plus the Single-Tool Polymorphic MCP Pager (`icx`), SQLite WAL / Rollout JSONL tailer, and HTTP/1.1 & SSE Cache-Epoch Reverse Proxy.  
 **Exit Criterion:** All four agent adapters pass wire-schema conformance tests; `PostToolUse` rewrites bulky tool outputs into AHTL stubs; cross-agent telepathy propagates across harnesses in `< 100 µs`.  
 **Estimated Duration:** 3 weeks  
 
 - [Phase 4 Overview](phase-4-cross-agent-interception/overview.md) · [Phase 4 Implementation Plan](phase-4-cross-agent-interception/phase_4_implementation_plan.md)
   - [Sprint 1 — Claude Code & OpenAI Codex Hook & WAL Adapters (COMPLETED)](phase-4-cross-agent-interception/sprint-1-claude-and-codex-adapters.md)
   - [Sprint 2 — Antigravity CLI (`agy`) & Hermes ContextEngine Adapters (COMPLETED)](phase-4-cross-agent-interception/sprint-2-agy-and-hermes-adapters.md)
-  - [Sprint 3 — Single-Tool Polymorphic MCP Pager & Cache-Epoch Wire Proxy](phase-4-cross-agent-interception/sprint-3-mcp-pager-and-wire-proxy.md)
+  - [Sprint 3 — Single-Tool Polymorphic MCP Pager & Cache-Epoch Wire Proxy (COMPLETED)](phase-4-cross-agent-interception/sprint-3-mcp-pager-and-wire-proxy.md)
 
 ---
 

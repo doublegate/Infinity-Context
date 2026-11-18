@@ -2,4 +2,4 @@
 
 pub mod wire;
 
-pub use wire::WireProxyTransformer;
+pub use wire::{ProviderFormat, WireProxyTransformer};

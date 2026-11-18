@@ -1,16 +1,18 @@
 //! `icx` — Infinity-Context Command-Line Interface & Cross-Agent MMU Entrypoint.
 
 use icx_adapters::{
-    AntigravityAdapter, ClaudeCodeAdapter, CodexAdapter, InfinityContextMmu, McpPagerServer,
+    AntigravityAdapter, ClaudeCodeAdapter, CodexAdapter, HermesAdapter, InfinityContextMmu,
+    McpPagerServer,
 };
 use icx_codec::{AhtlPacket, StructuralSkeletonizer, WirePacket};
 use icx_core::epoch::{CacheEpochController, EpochControllerConfig};
 use icx_core::{AgentKind, ArtifactId};
 use icx_hdc::hv::Hypervector;
-use icx_proxy::WireProxyTransformer;
+use icx_proxy::{ProviderFormat, WireProxyTransformer};
 use std::env;
 use std::fs;
 use std::io::{self, BufRead};
+use std::net::TcpListener;
 use std::path::Path;
 use std::time::Instant;
 
@@ -41,7 +43,8 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
             }
             Ok(())
         }
-        "mcp-serve" => serve_mcp_stream(reader, io::stdout().lock()),
+        "mcp-serve" => serve_mcp_stream(tail, reader, io::stdout().lock()),
+        "proxy" => run_proxy_server(tail),
         "proxy-transform" => {
             let mut stdin_buf = String::new();
             let _ = reader.read_to_string(&mut stdin_buf);
@@ -52,7 +55,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
         "encode-ahtl" => run_encode_ahtl(tail),
         "decode-ahtl" => run_decode_ahtl(tail),
         "status" => {
-            run_status();
+            run_status(tail);
             Ok(())
         }
         "doctor" => {
@@ -87,17 +90,19 @@ Subcommands:",
       Initialize a workspace `.icx/` CAS store and shared-memory Seqlock fabric
   deref <HANDLE> [--lines <START:END>] [--dir <PATH>]
       Dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle from `.icx/`
-  hook --agent <claude-code|codex|agy|hermes> --event <EVENT>
+  hook --agent <claude-code|codex|agy|hermes> --event <EVENT> [--dir <PATH>]
       Execute synchronous <500us lifecycle hook (reads JSON from stdin, writes JSON to stdout)
-  mcp-serve
+  mcp-serve [--dir <PATH>]
       Run the Single-Tool Polymorphic MCP Virtual Pager (`icx`) over stdio (JSON-RPC 2.0)
-  proxy-transform [--provider <anthropic|openai>] [--dir <PATH>]
-      Transform an outbound Anthropic (`/v1/messages`) or OpenAI (`/v1/chat/completions`, `/v1/responses`) JSON request
+  proxy [--listen <HOST:PORT>] [--provider <anthropic|openai|gemini>] [--dir <PATH>] [--max-requests <N>]
+      Run the Cache-Epoch HTTP/1.1 & SSE reverse proxy (default 127.0.0.1:49380)
+  proxy-transform [--provider <anthropic|openai|gemini>] [--dir <PATH>]
+      Transform an outbound Anthropic (`/v1/messages`), OpenAI (`/v1/chat/completions`, `/v1/responses`), or Gemini (`/v1beta/models/*`) JSON request
   encode-ahtl <FILE> [--dir <PATH>]
       Compress a source file, diff, or build log into an AHTL Holographic Packet + BLAKE3 handle
   decode-ahtl <AHTL_STRING>
       Parse and inspect an AHTL Holographic Packet's clauses and Braille-256 sketch
-  status
+  status [--dir <PATH>]
       Print Infinity-Context MMU status and schema overview
   doctor
       Inspect local agent installations (claude, codex, agy, hermes) and verify readiness
@@ -210,6 +215,7 @@ fn run_deref(args: &[String]) -> Result<(), String> {
 fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::Error> {
     let mut agent_str = "claude-code";
     let mut event_str = "SessionStart";
+    let mut dir_str: Option<&str> = None;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -221,23 +227,55 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
                 event_str = &args[i + 1];
                 i += 2;
             }
+            "--dir" if i + 1 < args.len() => {
+                dir_str = Some(args[i + 1].as_str());
+                i += 2;
+            }
             _ => i += 1,
         }
     }
 
     let mut mmu = InfinityContextMmu::default();
-    let agent = AgentKind::parse_agent(agent_str);
-    match agent {
-        AgentKind::Codex => CodexAdapter::handle_hook(event_str, stdin_buf, &mut mmu),
-        AgentKind::AntigravityCli => {
-            AntigravityAdapter::handle_hook(event_str, stdin_buf, &mut mmu)
-        }
-        _ => ClaudeCodeAdapter::handle_hook(event_str, stdin_buf, &mut mmu),
+    let ws_path = dir_str.map(Path::new).filter(|p| p.exists());
+    if let Some(p) = ws_path {
+        let _ = mmu.load_workspace_dir(p);
     }
+    let agent = AgentKind::parse_agent(agent_str);
+    let out = match agent {
+        AgentKind::Codex => CodexAdapter::handle_hook(event_str, stdin_buf, &mut mmu)?,
+        AgentKind::AntigravityCli => {
+            AntigravityAdapter::handle_hook(event_str, stdin_buf, &mut mmu)?
+        }
+        AgentKind::Hermes => HermesAdapter::handle_hook(event_str, stdin_buf, &mut mmu)?,
+        _ => ClaudeCodeAdapter::handle_hook(event_str, stdin_buf, &mut mmu)?,
+    };
+    if let Some(p) = ws_path {
+        let _ = mmu.save_workspace_dir(p);
+    }
+    Ok(out)
 }
 
-fn serve_mcp_stream<R: BufRead, W: io::Write>(reader: R, mut writer: W) -> Result<(), String> {
+fn serve_mcp_stream<R: BufRead, W: io::Write>(
+    args: &[String],
+    reader: R,
+    mut writer: W,
+) -> Result<(), String> {
+    let mut dir_str: Option<&str> = None;
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--dir" && i + 1 < args.len() {
+            dir_str = Some(args[i + 1].as_str());
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
     let mut mmu = InfinityContextMmu::default();
+    let ws_path = dir_str.map(Path::new).filter(|p| p.exists());
+    if let Some(p) = ws_path {
+        mmu.load_workspace_dir(p)
+            .map_err(|e| format!("mcp-serve load error: {e}"))?;
+    }
     for line in reader.lines() {
         let Ok(req_line) = line else { break };
         if req_line.trim().is_empty() {
@@ -249,16 +287,78 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(reader: R, mut writer: W) -> Resul
             .flush()
             .map_err(|e| format!("mcp-serve flush error: {e}"))?;
     }
+    if let Some(p) = ws_path {
+        mmu.save_workspace_dir(p)
+            .map_err(|e| format!("mcp-serve save error: {e}"))?;
+    }
+    Ok(())
+}
+
+fn run_proxy_server(args: &[String]) -> Result<(), String> {
+    let mut listen_addr = "127.0.0.1:49380";
+    let mut provider: Option<ProviderFormat> = None;
+    let mut dir_str: Option<&str> = None;
+    let mut max_requests: Option<usize> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--listen" if i + 1 < args.len() => {
+                listen_addr = &args[i + 1];
+                i += 2;
+            }
+            "--provider" if i + 1 < args.len() => {
+                let raw = &args[i + 1];
+                provider = Some(ProviderFormat::parse_provider(raw).ok_or_else(|| {
+                    format!(
+                        "proxy error: unknown --provider `{raw}` (expected anthropic, openai, or gemini)"
+                    )
+                })?);
+                i += 2;
+            }
+            "--dir" if i + 1 < args.len() => {
+                dir_str = Some(args[i + 1].as_str());
+                i += 2;
+            }
+            "--max-requests" if i + 1 < args.len() => {
+                max_requests = Some(
+                    args[i + 1]
+                        .parse::<usize>()
+                        .map_err(|e| format!("proxy error: invalid --max-requests: {e}"))?,
+                );
+                i += 2;
+            }
+            _ => i += 1,
+        }
+    }
+    let mut mmu = InfinityContextMmu::default();
+    let ws_path = dir_str.map(Path::new).filter(|p| p.exists());
+    if let Some(p) = ws_path {
+        mmu.load_workspace_dir(p)
+            .map_err(|e| format!("proxy load error: {e}"))?;
+    }
+    let listener =
+        TcpListener::bind(listen_addr).map_err(|e| format!("proxy bind `{listen_addr}`: {e}"))?;
+    WireProxyTransformer::serve_http_listener(&listener, provider, max_requests, &mut mmu)
+        .map_err(|e| format!("proxy serve error: {e}"))?;
+    if let Some(p) = ws_path {
+        mmu.save_workspace_dir(p)
+            .map_err(|e| format!("proxy save error: {e}"))?;
+    }
     Ok(())
 }
 
 fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, String> {
-    let mut provider: Option<&str> = None;
+    let mut provider: Option<ProviderFormat> = None;
     let mut dir_str: Option<&str> = None;
     let mut i = 0;
     while i < args.len() {
         if args[i] == "--provider" && i + 1 < args.len() {
-            provider = Some(args[i + 1].as_str());
+            let raw = args[i + 1].as_str();
+            provider = Some(ProviderFormat::parse_provider(raw).ok_or_else(|| {
+                format!(
+                    "proxy-transform error: unknown --provider `{raw}` (expected anthropic, openai, or gemini)"
+                )
+            })?);
             i += 2;
         } else if args[i] == "--dir" && i + 1 < args.len() {
             dir_str = Some(args[i + 1].as_str());
@@ -267,59 +367,18 @@ fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, S
             i += 1;
         }
     }
-    let is_openai = match provider {
-        Some(p) if p.eq_ignore_ascii_case("openai") => true,
-        Some(p) if p.eq_ignore_ascii_case("anthropic") => false,
-        Some(other) => {
-            return Err(format!(
-                "proxy-transform error: unknown --provider `{other}` (expected anthropic or openai)"
-            ));
-        }
-        None => serde_json::from_str::<serde_json::Value>(stdin_buf).is_ok_and(|v| {
-            if v.get("input").is_some() {
-                return true;
-            }
-            v.get("model")
-                .and_then(serde_json::Value::as_str)
-                .is_some_and(|m| {
-                    let lower = m.to_ascii_lowercase();
-                    lower.starts_with("gpt-")
-                        || lower.starts_with("o1")
-                        || lower.starts_with("o3")
-                        || lower.starts_with("o4")
-                        || lower.contains("codex")
-                })
-        }),
-    };
     let mut mmu = InfinityContextMmu::default();
     let icx_dir = Path::new(dir_str.unwrap_or(".icx"));
     let has_workspace = icx_dir.exists();
-    let _guard = if has_workspace {
-        let g = acquire_workspace_lock(icx_dir)?;
-        let shm_path = icx_dir.join("icx-fabric-v1.shm");
-        if shm_path.exists() {
-            mmu.bus = icx_bus::SeqlockTelemetryBus::open_shared_file(&shm_path)
-                .map_err(|e| e.to_string())?;
-        }
-        let cas_path = icx_dir.join("cas_store.json");
-        if cas_path.exists() {
-            mmu.cas = icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;
-        }
-        Some(g)
-    } else {
-        None
-    };
+    if has_workspace {
+        mmu.load_workspace_dir(icx_dir).map_err(|e| e.to_string())?;
+    }
 
-    let out = if is_openai {
-        WireProxyTransformer::transform_openai_request(stdin_buf, &mut mmu)
-            .map_err(|e| format!("proxy-transform error: {e}"))?
-    } else {
-        WireProxyTransformer::transform_anthropic_messages(stdin_buf, &mut mmu)
-            .map_err(|e| format!("proxy-transform error: {e}"))?
-    };
+    let out = WireProxyTransformer::transform_for_provider(provider, "/", stdin_buf, &mut mmu)
+        .map_err(|e| format!("proxy-transform error: {e}"))?;
 
     if has_workspace {
-        mmu.cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
+        mmu.save_workspace_dir(icx_dir).map_err(|e| e.to_string())?;
     }
     Ok(out)
 }
@@ -471,8 +530,21 @@ fn run_decode_ahtl(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn run_status() {
+fn run_status(args: &[String]) {
+    let mut dir_str: Option<&str> = None;
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--dir" && i + 1 < args.len() {
+            dir_str = Some(args[i + 1].as_str());
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
     let mut mmu = InfinityContextMmu::default();
+    if let Some(p) = dir_str.map(Path::new).filter(|p| p.exists()) {
+        let _ = mmu.load_workspace_dir(p);
+    }
     let status = McpPagerServer::execute_icx_op(&serde_json::json!({"op": "status"}), &mut mmu);
     println!("{status}");
 }
@@ -831,8 +903,8 @@ mod tests {
             .is_err()
         );
 
-        // Test hook dispatch for claude-code, codex, agy, and malformed JSON
-        for agent in ["claude-code", "codex", "agy"] {
+        // Test hook dispatch for claude-code, codex, agy, hermes, and malformed JSON
+        for agent in ["claude-code", "codex", "agy", "hermes"] {
             dispatch_cli_args(
                 &[
                     "icx".into(),
@@ -841,6 +913,8 @@ mod tests {
                     agent.into(),
                     "--event".into(),
                     "SessionStart".into(),
+                    "--dir".into(),
+                    dir_arg.clone(),
                     "--ignore".into(),
                 ],
                 io::Cursor::new("{}"),
@@ -848,12 +922,23 @@ mod tests {
             .unwrap();
         }
         dispatch_cli_args(
+            &[
+                "icx".into(),
+                "status".into(),
+                "--dir".into(),
+                dir_arg.clone(),
+                "--ignore".into(),
+            ],
+            io::Cursor::new(""),
+        )
+        .unwrap();
+        dispatch_cli_args(
             &["icx".into(), "hook".into()],
             io::Cursor::new("{malformed_json"),
         )
         .unwrap();
 
-        // Test proxy-transform dispatch (Anthropic default & OpenAI via --provider / model / input auto-detect)
+        // Test proxy-transform dispatch (Anthropic, OpenAI, Gemini) and `icx proxy`
         dispatch_cli_args(
             &[
                 "icx".into(),
@@ -877,6 +962,16 @@ mod tests {
                 "--extra".into(),
             ],
             io::Cursor::new(r#"{"model":"gpt-5","messages":[{"role":"user","content":"hi"}]}"#),
+        )
+        .unwrap();
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "proxy-transform".into(),
+                "--provider".into(),
+                "gemini".into(),
+            ],
+            io::Cursor::new(r#"{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}"#),
         )
         .unwrap();
         dispatch_cli_args(
@@ -904,10 +999,59 @@ mod tests {
             .is_err()
         );
 
-        // Test mcp-serve dispatch
+        // Test `icx proxy` subcommand with `--max-requests 0` and error paths
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "proxy".into(),
+                "--listen".into(),
+                "127.0.0.1:0".into(),
+                "--provider".into(),
+                "anthropic".into(),
+                "--dir".into(),
+                dir_arg.clone(),
+                "--max-requests".into(),
+                "0".into(),
+                "--unused".into(),
+            ],
+            io::Cursor::new(""),
+        )
+        .unwrap();
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "proxy".into(),
+                    "--provider".into(),
+                    "invalid".into()
+                ],
+                io::Cursor::new("")
+            )
+            .is_err()
+        );
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "proxy".into(),
+                    "--max-requests".into(),
+                    "not_a_number".into()
+                ],
+                io::Cursor::new("")
+            )
+            .is_err()
+        );
+
+        // Test mcp-serve dispatch with `--dir`
         let mcp_input = "\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n";
         dispatch_cli_args(
-            &["icx".into(), "mcp-serve".into()],
+            &[
+                "icx".into(),
+                "mcp-serve".into(),
+                "--dir".into(),
+                dir_arg.clone(),
+                "--unused".into(),
+            ],
             io::Cursor::new(mcp_input),
         )
         .unwrap();

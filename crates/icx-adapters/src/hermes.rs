@@ -461,10 +461,12 @@ impl HermesAdapter {
             .collect();
         let total = cleaned.len();
         if total <= protect_first_n.saturating_add(protect_last_n) {
+            let mut occurrence_idx = 0usize;
             let mut out_msgs = Vec::with_capacity(total + 1);
             let mut out_vals =
                 Vec::with_capacity(if raw_messages.is_some() { total + 1 } else { 0 });
             for &(m, r_opt) in &cleaned {
+                Self::sync_message_occurrence(m, r_opt, &mut occurrence_idx, mmu);
                 out_msgs.push(m.clone());
                 if let Some(r) = r_opt {
                     out_vals.push(r.clone());
