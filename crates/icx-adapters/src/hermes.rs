@@ -337,6 +337,18 @@ impl HermesAdapter {
                 continue;
             }
             if keep_verbatim {
+                let subj = Self::message_subject(msg);
+                if !InfinityContextMmu::is_icx_pager_tool(subj) && !msg.content.trim().is_empty() {
+                    let _ = mmu.ingest_or_reuse_at_index(
+                        occurrence_idx,
+                        AgentKind::Hermes,
+                        subj,
+                        &msg.content,
+                        None,
+                        false,
+                    );
+                    occurrence_idx += 1;
+                }
                 preserved_msgs.push(msg.clone());
                 if let Some(r) = raw_opt {
                     preserved_vals.push(r.clone());
@@ -462,17 +474,13 @@ impl HermesAdapter {
                 );
                 if let Some(r) = raw_opt {
                     let mut rv = r.clone();
-                    if let Some(obj) = rv.as_object_mut() {
-                        obj.insert("content".into(), Value::String(stubbed.content.clone()));
-                    }
+                    rv["content"] = Value::String(stubbed.content.clone());
                     out_vals.push(rv);
                 }
                 out.push(stubbed);
                 n_pruned += 1;
             } else {
-                if !raw_opt.is_some_and(Self::has_structured_non_text_content) {
-                    occurrence_idx += Self::count_occurrence_advance(msg);
-                }
+                occurrence_idx += Self::count_occurrence_advance(msg);
                 if let Some(r) = raw_opt {
                     out_vals.push(r.clone());
                 }
@@ -536,6 +544,18 @@ impl HermesAdapter {
                 continue;
             }
             if keep_verbatim {
+                let subj = Self::message_subject(msg);
+                if !InfinityContextMmu::is_icx_pager_tool(subj) && !msg.content.trim().is_empty() {
+                    let _ = mmu.ingest_or_reuse_at_index(
+                        occurrence_idx,
+                        AgentKind::Hermes,
+                        subj,
+                        &msg.content,
+                        None,
+                        false,
+                    );
+                    occurrence_idx += 1;
+                }
                 preserved_msgs.push(msg.clone());
                 if let Some(r) = raw_opt {
                     preserved_vals.push(r.clone());

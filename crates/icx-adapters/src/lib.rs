@@ -1493,6 +1493,32 @@ unprefixed_secret = {unpref_sec}
         assert!(mixed_pruned.contains(r#""pruned_count":0"#));
         assert!(mixed_pruned.contains("image_url"));
 
+        // Verify a preserved mixed image/text user message advances `occurrence_idx` consistently
+        // between `on_turn_complete` and `select_context` so a historical tool failure after the
+        // multimodal turn does not overwrite a protected tail passing turn
+        let mut mm_occ_mmu = InfinityContextMmu::default();
+        let mm_occ_payload = serde_json::json!({
+            "messages": [
+                {"role": "system", "content": "sys"},
+                {"role": "user", "content": [{"type": "text", "text": "inspect image"}, {"type": "image_url", "image_url": {"url": "https://example.com/i.png"}}]},
+                {"role": "tool", "name": "cargo_test", "content": fail_out},
+                {"role": "tool", "name": "cargo_test", "content": pass_out}
+            ],
+            "protect_first_n": 1,
+            "protect_last_n": 1
+        })
+        .to_string();
+        let _ = HermesAdapter::handle_hook("on_turn_complete", &mm_occ_payload, &mut mm_occ_mmu)
+            .unwrap();
+        let _ =
+            HermesAdapter::handle_hook("select_context", &mm_occ_payload, &mut mm_occ_mmu).unwrap();
+        assert!(mm_occ_mmu.graph.edges().iter().any(|e| {
+            e.source_entity == "cargo_test"
+                && e.relation == "status"
+                && e.target_entity == "PASS"
+                && e.t_invalid.is_none()
+        }));
+
         // Verify `read_transcript_step` rejects directories, handles targeted step with empty
         // output, and recovers a trailing record > 256 KiB
         let big_tp_dir = std::env::temp_dir().join(format!(
