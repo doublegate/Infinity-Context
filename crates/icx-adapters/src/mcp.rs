@@ -273,7 +273,7 @@ impl McpPagerServer {
                     .and_then(Value::as_u64)
                     .unwrap_or(10)
                     .clamp(1, 256) as usize;
-                let events = mmu.bus.poll_since(0);
+                let events = mmu.bus.poll_workspace_since(0, mmu.workspace_hash);
                 events
                     .iter()
                     .rev()

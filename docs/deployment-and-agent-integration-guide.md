@@ -1,7 +1,7 @@
 <!--
 SPDX-FileCopyrightText: 2026 Luke R. Parobek
 SPDX-FileCopyrightText: 2026 DoubleGate
-SPDX-License-Identifier: CC-BY-NC-ND-4.0
+SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commercial
 -->
 
 # Deployment & Multi-Agent Integration Guide (`v1.0.0`)

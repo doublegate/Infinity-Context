@@ -145,16 +145,20 @@ impl WireProxyTransformer {
         }
     }
 
-    fn strip_all_cache_control(msg: &mut Value) {
-        if let Some(obj) = msg.as_object_mut() {
-            obj.remove("cache_control");
-            if let Some(Value::Array(blocks)) = obj.get_mut("content") {
-                for block in blocks {
-                    if let Some(b_obj) = block.as_object_mut() {
-                        b_obj.remove("cache_control");
-                    }
+    fn strip_all_cache_control(val: &mut Value) {
+        match val {
+            Value::Object(obj) => {
+                obj.remove("cache_control");
+                for child in obj.values_mut() {
+                    Self::strip_all_cache_control(child);
                 }
             }
+            Value::Array(arr) => {
+                for item in arr {
+                    Self::strip_all_cache_control(item);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -239,20 +243,46 @@ impl WireProxyTransformer {
                             *occ_idx += 1;
                             *t = res.compressed_ahtl;
                         }
-                    } else if let Some(Value::String(c)) = block.get_mut("content") {
-                        if c.starts_with('⟦') || c.starts_with("⟪ICX:") {
-                            *occ_idx += 1;
-                        } else if c.len() >= threshold {
-                            let (res, _) = mmu.ingest_or_reuse_at_index(
-                                *occ_idx,
-                                AgentKind::ClaudeCode,
-                                &block_subj,
-                                c,
-                                None,
-                                false,
-                            );
-                            *occ_idx += 1;
-                            *c = res.compressed_ahtl;
+                    } else if let Some(content_field) = block.get_mut("content") {
+                        match content_field {
+                            Value::String(c) => {
+                                if c.starts_with('⟦') || c.starts_with("⟪ICX:") {
+                                    *occ_idx += 1;
+                                } else if c.len() >= threshold {
+                                    let (res, _) = mmu.ingest_or_reuse_at_index(
+                                        *occ_idx,
+                                        AgentKind::ClaudeCode,
+                                        &block_subj,
+                                        c,
+                                        None,
+                                        false,
+                                    );
+                                    *occ_idx += 1;
+                                    *c = res.compressed_ahtl;
+                                }
+                            }
+                            Value::Array(nested_blocks) => {
+                                for (n_idx, n_block) in nested_blocks.iter_mut().enumerate() {
+                                    if let Some(Value::String(nt)) = n_block.get_mut("text") {
+                                        if nt.starts_with('⟦') || nt.starts_with("⟪ICX:") {
+                                            *occ_idx += 1;
+                                        } else if nt.len() >= threshold {
+                                            let n_subj = format!("{block_subj}_n{n_idx}");
+                                            let (res, _) = mmu.ingest_or_reuse_at_index(
+                                                *occ_idx,
+                                                AgentKind::ClaudeCode,
+                                                &n_subj,
+                                                nt,
+                                                None,
+                                                false,
+                                            );
+                                            *occ_idx += 1;
+                                            *nt = res.compressed_ahtl;
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -615,6 +645,7 @@ impl WireProxyTransformer {
                 | "content-length"
                 | "connection"
                 | "transfer-encoding"
+                | "accept-encoding"
                 | "x-icx-upstream"
                 | "x-icx-transform-only"
         )
@@ -647,6 +678,7 @@ impl WireProxyTransformer {
 
     fn relay_upstream_response<R: BufRead, W: Write>(
         up_reader: &mut R,
+        body_already_dechunked: bool,
         mmu: &InfinityContextMmu,
         writer: &mut W,
     ) -> io::Result<()> {
@@ -680,7 +712,8 @@ impl WireProxyTransformer {
                         && hv_trim.to_ascii_lowercase().contains("text/event-stream")
                     {
                         is_sse = true;
-                    } else if hk_trim.eq_ignore_ascii_case("transfer-encoding")
+                    } else if !body_already_dechunked
+                        && hk_trim.eq_ignore_ascii_case("transfer-encoding")
                         && hv_trim.to_ascii_lowercase().contains("chunked")
                     {
                         is_chunked = true;
@@ -704,20 +737,23 @@ impl WireProxyTransformer {
             writer.flush()?;
 
             if is_chunked {
-                let mut pending = String::new();
+                let mut pending_bytes: Vec<u8> = Vec::new();
                 while let Some(chunk) = Self::read_next_http_chunk(up_reader)? {
-                    pending.push_str(&String::from_utf8_lossy(&chunk));
-                    while let Some(nl_idx) = pending.find('\n') {
-                        let raw_line = pending[..nl_idx].trim_end_matches('\r');
-                        let transformed_line = Self::transform_sse_line(raw_line, mmu);
+                    pending_bytes.extend_from_slice(&chunk);
+                    while let Some(nl_idx) = pending_bytes.iter().position(|&b| b == b'\n') {
+                        let line_bytes = &pending_bytes[..nl_idx];
+                        let trimmed_bytes = line_bytes.strip_suffix(b"\r").unwrap_or(line_bytes);
+                        let raw_line = String::from_utf8_lossy(trimmed_bytes);
+                        let transformed_line = Self::transform_sse_line(&raw_line, mmu);
                         writeln!(writer, "{transformed_line}")?;
                         writer.flush()?;
-                        pending.drain(..=nl_idx);
+                        pending_bytes.drain(..=nl_idx);
                     }
                 }
-                if !pending.is_empty() {
-                    let transformed_line =
-                        Self::transform_sse_line(pending.trim_end_matches('\r'), mmu);
+                if !pending_bytes.is_empty() {
+                    let trimmed_bytes = pending_bytes.strip_suffix(b"\r").unwrap_or(&pending_bytes);
+                    let raw_line = String::from_utf8_lossy(trimmed_bytes);
+                    let transformed_line = Self::transform_sse_line(&raw_line, mmu);
                     write!(writer, "{transformed_line}")?;
                     writer.flush()?;
                 }
@@ -798,7 +834,7 @@ impl WireProxyTransformer {
 
         write!(
             upstream,
-            "{method} {target_path} HTTP/1.1\r\nHost: {host_port}\r\n"
+            "{method} {target_path} HTTP/1.1\r\nHost: {host_port}\r\nAccept-Encoding: identity\r\n"
         )?;
         let mut has_content_type = false;
         for (k, v) in client_headers {
@@ -822,7 +858,7 @@ impl WireProxyTransformer {
         upstream.flush()?;
 
         let mut up_reader = BufReader::new(upstream);
-        Self::relay_upstream_response(&mut up_reader, mmu, writer)
+        Self::relay_upstream_response(&mut up_reader, false, mmu, writer)
     }
 
     fn is_loopback_upstream(url: &str) -> bool {
@@ -862,6 +898,8 @@ impl WireProxyTransformer {
             "120",
             "-H",
             "Expect:",
+            "-H",
+            "Accept-Encoding: identity",
             "-X",
             method,
         ]);
@@ -891,7 +929,7 @@ impl WireProxyTransformer {
             return Err(io::Error::other("missing curl stdout"));
         };
         let mut up_reader = BufReader::new(child_out);
-        let relay_res = Self::relay_upstream_response(&mut up_reader, mmu, writer);
+        let relay_res = Self::relay_upstream_response(&mut up_reader, true, mmu, writer);
         let status = child.wait()?;
         if relay_res.is_err() && !status.success() {
             return Err(io::Error::other(format!("curl exited with {status}")));
@@ -1045,7 +1083,7 @@ impl WireProxyTransformer {
         let env_upstream = std::env::var("ICX_UPSTREAM_URL")
             .ok()
             .filter(|s| !s.trim().is_empty());
-        let allow_header_upstream = matches!(upstream_override, None | Some("auto"));
+        let allow_header_upstream = upstream_override.is_none();
         let effective_upstream: Option<&str> = if transform_only {
             None
         } else if allow_header_upstream
@@ -2261,14 +2299,75 @@ mod tests {
             "https://example.com"
         ));
 
-        // Non-chunked SSE relay via `relay_upstream_response`
+        // Non-chunked SSE relay via `relay_upstream_response` (`body_already_dechunked: true`)
         let mut raw_sse_out = Vec::new();
         let mut raw_sse_in = io::Cursor::new(format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: ⟪!icx:deref({aid},1:1)⟫\n"
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\ndata: ⟪!icx:deref({aid},1:1)⟫\n"
         ));
-        WireProxyTransformer::relay_upstream_response(&mut raw_sse_in, &mmu, &mut raw_sse_out)
-            .unwrap();
+        WireProxyTransformer::relay_upstream_response(
+            &mut raw_sse_in,
+            true,
+            &mmu,
+            &mut raw_sse_out,
+        )
+        .unwrap();
         assert!(String::from_utf8_lossy(&raw_sse_out).contains("line_alpha"));
+
+        // Split multi-byte UTF-8 (`⟪` = 0xE2 0x9F 0xAA) across two HTTP chunks in chunked SSE
+        let full_sse_line = format!("data: ⟪!icx:deref({aid},1:1)⟫\n");
+        let full_bytes = full_sse_line.as_bytes();
+        // Split right after the first byte of `⟪` (index 6 is 0xE2, index 7 is 0x9F)
+        let part1 = &full_bytes[..7];
+        let part2 = &full_bytes[7..];
+        let mut split_chunk_stream = Vec::new();
+        split_chunk_stream.extend_from_slice(
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n",
+        );
+        split_chunk_stream.extend_from_slice(format!("{:x}\r\n", part1.len()).as_bytes());
+        split_chunk_stream.extend_from_slice(part1);
+        split_chunk_stream.extend_from_slice(b"\r\n");
+        split_chunk_stream.extend_from_slice(format!("{:x}\r\n", part2.len()).as_bytes());
+        split_chunk_stream.extend_from_slice(part2);
+        split_chunk_stream.extend_from_slice(b"\r\n0\r\n\r\n");
+        let mut split_out = Vec::new();
+        let mut split_in = io::Cursor::new(split_chunk_stream);
+        WireProxyTransformer::relay_upstream_response(&mut split_in, false, &mmu, &mut split_out)
+            .unwrap();
+        assert!(String::from_utf8_lossy(&split_out).contains("data: line_alpha"));
+
+        // Nested array `content` inside Anthropic `tool_result` block
+        let anth_nested_tr = json!({
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "tu_non_pager",
+                            "content": [{ "type": "text", "text": big_middle, "cache_control": { "type": "ephemeral" } }]
+                        }
+                    ]
+                },
+                { "role": "assistant", "content": "r1" },
+                { "role": "user", "content": "r2" }
+            ]
+        })
+        .to_string();
+        let anth_nested_out: Value = serde_json::from_str(
+            &WireProxyTransformer::transform_anthropic_messages(&anth_nested_tr, &mut mmu).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            anth_nested_out["messages"][0]["content"][0]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .starts_with("⟦Δ:turn_0_b0_n0")
+        );
+        assert!(
+            anth_nested_out["messages"][0]["content"][0]["content"][0]
+                .get("cache_control")
+                .is_none()
+        );
 
         // `upstream_override: Some("none")` and `Some("auto")`
         let mut none_out = Vec::new();
