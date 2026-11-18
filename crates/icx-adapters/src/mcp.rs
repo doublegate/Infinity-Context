@@ -51,6 +51,20 @@ impl McpPagerServer {
         Self::tool_schema().to_string().len().div_ceil(4)
     }
 
+    /// Returns `true` if a JSON-RPC 2.0 request line requires reading or mutating persistent MMU
+    /// workspace state (`method == "tools/call"`).
+    #[must_use]
+    pub fn requires_workspace_state(request_json: &str) -> bool {
+        serde_json::from_str::<Value>(request_json)
+            .ok()
+            .and_then(|req| {
+                req.get("method")
+                    .and_then(Value::as_str)
+                    .map(|m| m == "tools/call")
+            })
+            .unwrap_or(false)
+    }
+
     /// Returns `true` if a JSON-RPC 2.0 request line mutates persistent MMU state (`fold`,
     /// `recall`, or `xagent` with a non-empty `q` broadcast).
     #[must_use]

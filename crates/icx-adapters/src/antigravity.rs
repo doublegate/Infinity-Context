@@ -77,6 +77,7 @@ impl AntigravityAdapter {
         reader: &mut BufReader<File>,
         target_step_idx: Option<u64>,
         max_lines: usize,
+        allow_ordinal_fallback: bool,
     ) -> (Option<String>, bool) {
         let mut raw_line = Vec::new();
         let mut latest_body: Option<String> = None;
@@ -116,10 +117,11 @@ impl AntigravityAdapter {
             saw_step_record = true;
             let fallback_idx = valid_step_idx;
             valid_step_idx += 1;
-            let step_idx = ["step_index", "stepIdx", "idx"]
+            let explicit_step_idx = ["step_index", "stepIdx", "idx"]
                 .into_iter()
-                .find_map(|k| val.get(k).and_then(Value::as_u64))
-                .unwrap_or(fallback_idx);
+                .find_map(|k| val.get(k).and_then(Value::as_u64));
+            let step_idx_opt =
+                explicit_step_idx.or_else(|| allow_ordinal_fallback.then_some(fallback_idx));
             let body = [
                 "content",
                 "output",
@@ -132,7 +134,7 @@ impl AntigravityAdapter {
             .into_iter()
             .find_map(|k| val.get(k).and_then(Self::non_empty_json_value));
 
-            if target_step_idx == Some(step_idx) && body.is_some() {
+            if target_step_idx.is_some() && target_step_idx == step_idx_opt && body.is_some() {
                 return (body, true);
             }
             latest_body = body;
@@ -164,7 +166,7 @@ impl AntigravityAdapter {
             })
             .unwrap_or(1_000_000);
 
-        if target_step_idx.is_none() && file_len > TRANSCRIPT_TAIL_WINDOW_BYTES {
+        if file_len > TRANSCRIPT_TAIL_WINDOW_BYTES {
             let start = file_len - TRANSCRIPT_TAIL_WINDOW_BYTES;
             file.seek(SeekFrom::Start(start)).ok()?;
             let mut r = BufReader::new(file);
@@ -174,9 +176,13 @@ impl AntigravityAdapter {
                 MAX_TRANSCRIPT_RECORD_BYTES,
                 &mut discard,
             );
-            let (body_opt, saw_step_record) =
-                Self::scan_transcript_reader(&mut r, None, MAX_TRANSCRIPT_SCAN_LINES);
-            if saw_step_record {
+            let (body_opt, saw_step_record) = Self::scan_transcript_reader(
+                &mut r,
+                target_step_idx,
+                MAX_TRANSCRIPT_SCAN_LINES,
+                false,
+            );
+            if body_opt.is_some() || (target_step_idx.is_none() && saw_step_record) {
                 return body_opt;
             }
             file = r.into_inner();
@@ -184,7 +190,7 @@ impl AntigravityAdapter {
         }
 
         let mut reader = BufReader::new(file);
-        Self::scan_transcript_reader(&mut reader, target_step_idx, max_lines).0
+        Self::scan_transcript_reader(&mut reader, target_step_idx, max_lines, true).0
     }
 
     /// Handles an Antigravity CLI hook payload (camelCase protojson) and returns the response JSON.

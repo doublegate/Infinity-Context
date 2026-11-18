@@ -56,6 +56,28 @@ impl ProviderFormat {
     }
 }
 
+#[derive(Default, Clone)]
+struct SsePendingEntry {
+    pending: String,
+    template: Option<Value>,
+    json_path: Vec<String>,
+}
+
+#[derive(Default, Clone)]
+struct SsePendingState {
+    streams: std::collections::BTreeMap<String, SsePendingEntry>,
+}
+
+impl SsePendingState {
+    fn is_empty(&self) -> bool {
+        self.streams.values().all(|e| e.pending.is_empty())
+    }
+
+    fn clear(&mut self) {
+        self.streams.clear();
+    }
+}
+
 /// Transforms outbound LLM API requests to enforce Prefix-Cache-Locked Epochs (`arXiv:2610.28577`)
 /// and inject the Ephemeral Tail Slot without invalidating provider KV caches.
 #[derive(Clone, Debug, Default)]
@@ -383,6 +405,13 @@ impl WireProxyTransformer {
                 let fold_end = total - protect_tail;
                 let mut occ_idx = 0usize;
                 for (idx, content_item) in contents[..fold_end].iter_mut().enumerate() {
+                    let role = content_item
+                        .get("role")
+                        .and_then(Value::as_str)
+                        .unwrap_or("user");
+                    if role == "system" || role == "developer" {
+                        continue;
+                    }
                     let item_name = content_item
                         .get("name")
                         .and_then(Value::as_str)
@@ -542,34 +571,123 @@ impl WireProxyTransformer {
         }
     }
 
+    fn extract_stream_index_tag(map: &serde_json::Map<String, Value>) -> String {
+        for key in ["index", "output_index", "content_index", "candidateIndex"] {
+            if let Some(n) = map.get(key).and_then(Value::as_u64) {
+                return format!("[{key}={n}]");
+            }
+        }
+        String::new()
+    }
+
+    fn set_json_string_at_path(root: &mut Value, path: &[String], new_val: String) {
+        let mut cur = root;
+        for seg in path {
+            cur = match cur {
+                Value::Object(map) => match map.get_mut(seg) {
+                    Some(v) => v,
+                    None => return,
+                },
+                Value::Array(arr) => match seg.parse::<usize>().ok().and_then(|i| arr.get_mut(i)) {
+                    Some(v) => v,
+                    None => return,
+                },
+                _ => return,
+            };
+        }
+        *cur = Value::String(new_val);
+    }
+
     fn expand_deref_in_json_value_stateful(
         val: &mut Value,
-        pending: &mut String,
+        stream_key_prefix: &str,
+        json_path: &mut Vec<String>,
+        state: &mut SsePendingState,
         mmu: &InfinityContextMmu,
         allow_holdback: bool,
     ) {
         match val {
             Value::String(s) => {
-                if !pending.is_empty() || s.contains('⟪') {
-                    *s = Self::expand_text_with_pending(s, pending, mmu, allow_holdback);
+                let key = if stream_key_prefix.is_empty() {
+                    "root".to_owned()
+                } else {
+                    stream_key_prefix.to_owned()
+                };
+                let has_pending = state
+                    .streams
+                    .get(&key)
+                    .is_some_and(|e| !e.pending.is_empty());
+                if has_pending || s.contains('⟪') {
+                    let entry = state.streams.entry(key).or_default();
+                    *s = Self::expand_text_with_pending(s, &mut entry.pending, mmu, allow_holdback);
+                    entry.template = None;
+                    if !entry.pending.is_empty() {
+                        entry.json_path.clone_from(json_path);
+                    }
                 }
             }
             Value::Array(arr) => {
-                for item in arr {
-                    Self::expand_deref_in_json_value_stateful(item, pending, mmu, allow_holdback);
+                for (i, item) in arr.iter_mut().enumerate() {
+                    let elem_tag = match item.as_object() {
+                        Some(m) => {
+                            let t = Self::extract_stream_index_tag(m);
+                            if t.is_empty() { format!("[{i}]") } else { t }
+                        }
+                        None => format!("[{i}]"),
+                    };
+                    let child_key = format!("{stream_key_prefix}{elem_tag}");
+                    json_path.push(i.to_string());
+                    Self::expand_deref_in_json_value_stateful(
+                        item,
+                        &child_key,
+                        json_path,
+                        state,
+                        mmu,
+                        allow_holdback,
+                    );
+                    json_path.pop();
                 }
             }
             Value::Object(map) => {
+                let obj_tag = if stream_key_prefix.is_empty() {
+                    Self::extract_stream_index_tag(map)
+                } else {
+                    String::new()
+                };
                 for (k, v) in map.iter_mut() {
+                    let child_key = format!("{stream_key_prefix}{obj_tag}.{k}");
+                    json_path.push(k.clone());
                     if let Value::String(s) = v {
                         let is_text_key =
                             matches!(k.as_str(), "text" | "content" | "delta" | "output");
-                        if (is_text_key && !pending.is_empty()) || s.contains('⟪') {
-                            *s = Self::expand_text_with_pending(s, pending, mmu, allow_holdback);
+                        let has_pending = state
+                            .streams
+                            .get(&child_key)
+                            .is_some_and(|e| !e.pending.is_empty());
+                        if (is_text_key && has_pending) || s.contains('⟪') {
+                            let entry = state.streams.entry(child_key).or_default();
+                            *s = Self::expand_text_with_pending(
+                                s,
+                                &mut entry.pending,
+                                mmu,
+                                allow_holdback,
+                            );
+                            entry.template = None;
+                            if !entry.pending.is_empty() {
+                                entry.json_path.clone_from(json_path);
+                            }
                         }
                     } else {
-                        Self::expand_deref_in_json_value_stateful(v, pending, mmu, allow_holdback);
+                        Self::expand_deref_in_json_value_stateful(
+                            v,
+                            &child_key,
+                            json_path,
+                            state,
+                            mmu,
+                            allow_holdback,
+                        );
                     }
+                    json_path.pop();
                 }
             }
             _ => {}
@@ -578,11 +696,11 @@ impl WireProxyTransformer {
 
     fn transform_sse_line_stateful(
         line: &str,
-        pending: &mut String,
+        state: &mut SsePendingState,
         mmu: &InfinityContextMmu,
         allow_holdback: bool,
     ) -> String {
-        if pending.is_empty() && !line.contains('⟪') {
+        if state.is_empty() && !line.contains('⟪') {
             return line.to_owned();
         }
         if let Some(json_part) = line.strip_prefix("data: ") {
@@ -591,15 +709,28 @@ impl WireProxyTransformer {
                 return line.to_owned();
             }
             if let Ok(mut val) = serde_json::from_str::<Value>(trimmed) {
-                Self::expand_deref_in_json_value_stateful(&mut val, pending, mmu, allow_holdback);
+                let mut json_path = Vec::new();
+                Self::expand_deref_in_json_value_stateful(
+                    &mut val,
+                    "",
+                    &mut json_path,
+                    state,
+                    mmu,
+                    allow_holdback,
+                );
+                for entry in state.streams.values_mut() {
+                    if !entry.pending.is_empty() && entry.template.is_none() {
+                        entry.template = Some(val.clone());
+                    }
+                }
                 if let Ok(re_serialized) = serde_json::to_string(&val) {
                     return format!("data: {re_serialized}");
                 }
             }
-            return format!(
-                "data: {}",
-                Self::expand_text_with_pending(json_part, pending, mmu, allow_holdback)
-            );
+            let entry = state.streams.entry("raw_data".to_owned()).or_default();
+            let out_text =
+                Self::expand_text_with_pending(json_part, &mut entry.pending, mmu, allow_holdback);
+            return format!("data: {out_text}");
         }
         if !line.is_empty()
             && !line.starts_with("event:")
@@ -607,7 +738,8 @@ impl WireProxyTransformer {
             && !line.starts_with("retry:")
             && !line.starts_with(':')
         {
-            return Self::expand_text_with_pending(line, pending, mmu, allow_holdback);
+            let entry = state.streams.entry("raw_line".to_owned()).or_default();
+            return Self::expand_text_with_pending(line, &mut entry.pending, mmu, allow_holdback);
         }
         line.to_owned()
     }
@@ -622,26 +754,26 @@ impl WireProxyTransformer {
         }
         let lines: Vec<&str> = sse_chunk.split('\n').collect();
         let mut out: Vec<String> = Vec::with_capacity(lines.len());
-        let mut pending = String::new();
+        let mut state = SsePendingState::default();
         let mut pending_origin_idx: Option<usize> = None;
 
         for (idx, &line) in lines.iter().enumerate() {
-            let was_empty = pending.is_empty();
-            let transformed = Self::transform_sse_line_stateful(line, &mut pending, mmu, true);
-            if was_empty && !pending.is_empty() {
+            let was_empty = state.is_empty();
+            let transformed = Self::transform_sse_line_stateful(line, &mut state, mmu, true);
+            if was_empty && !state.is_empty() {
                 pending_origin_idx = Some(idx);
-            } else if pending.is_empty() {
+            } else if state.is_empty() {
                 pending_origin_idx = None;
             }
             out.push(transformed);
         }
 
-        if !pending.is_empty()
+        if !state.is_empty()
             && let Some(origin_idx) = pending_origin_idx
         {
-            pending.clear();
+            state.clear();
             for idx in origin_idx..lines.len() {
-                out[idx] = Self::transform_sse_line_stateful(lines[idx], &mut pending, mmu, false);
+                out[idx] = Self::transform_sse_line_stateful(lines[idx], &mut state, mmu, false);
             }
         }
 
@@ -806,15 +938,47 @@ impl WireProxyTransformer {
         Ok(Some(buf))
     }
 
-    fn flush_sse_pending<W: Write>(sse_pending: &mut String, writer: &mut W) -> io::Result<()> {
-        if !sse_pending.is_empty() {
-            let residual = std::mem::take(sse_pending);
-            let fallback = json!({
-                "type": "content_block_delta",
-                "delta": { "type": "text_delta", "text": residual }
-            });
-            writeln!(writer, "data: {fallback}")?;
-            writer.flush()?;
+    fn is_valid_http_token(s: &str) -> bool {
+        !s.is_empty()
+            && s.bytes().all(|b| {
+                b.is_ascii_alphanumeric()
+                    || matches!(
+                        b,
+                        b'!' | b'#'
+                            | b'$'
+                            | b'%'
+                            | b'&'
+                            | b'\''
+                            | b'*'
+                            | b'+'
+                            | b'-'
+                            | b'.'
+                            | b'^'
+                            | b'_'
+                            | b'`'
+                            | b'|'
+                            | b'~'
+                    )
+            })
+    }
+
+    fn flush_sse_pending<W: Write>(
+        sse_pending: &mut SsePendingState,
+        writer: &mut W,
+    ) -> io::Result<()> {
+        for entry in sse_pending.streams.values_mut() {
+            if !entry.pending.is_empty() {
+                let residual = std::mem::take(&mut entry.pending);
+                if let Some(mut template) = entry.template.take() {
+                    Self::set_json_string_at_path(&mut template, &entry.json_path, residual);
+                    if let Ok(serialized) = serde_json::to_string(&template) {
+                        write!(writer, "data: {serialized}\n\n")?;
+                    }
+                } else {
+                    write!(writer, "data: {residual}\n\n")?;
+                }
+                writer.flush()?;
+            }
         }
         Ok(())
     }
@@ -883,12 +1047,13 @@ impl WireProxyTransformer {
             write!(writer, "Connection: close\r\n\r\n")?;
             writer.flush()?;
 
-            let mut sse_pending = String::new();
+            let mut sse_pending = SsePendingState::default();
             if is_chunked {
                 let mut pending_bytes: Vec<u8> = Vec::new();
-                while let Some(chunk) =
-                    Self::read_next_http_chunk(up_reader, Self::MAX_REQUEST_BODY_BYTES)?
-                {
+                while let Some(chunk) = Self::read_next_http_chunk(
+                    up_reader,
+                    Self::MAX_REQUEST_BODY_BYTES.saturating_sub(pending_bytes.len()),
+                )? {
                     pending_bytes.extend_from_slice(&chunk);
                     while let Some(nl_idx) = pending_bytes.iter().position(|&b| b == b'\n') {
                         let line_bytes = &pending_bytes[..nl_idx];
@@ -952,7 +1117,9 @@ impl WireProxyTransformer {
                 resp_bytes.extend_from_slice(&chunk);
             }
         } else {
-            up_reader.read_to_end(&mut resp_bytes)?;
+            up_reader
+                .take(Self::MAX_UPSTREAM_RESPONSE_BYTES as u64)
+                .read_to_end(&mut resp_bytes)?;
         }
         let resp_str = String::from_utf8_lossy(&resp_bytes);
         let final_body = Self::expand_json_or_text_body(&resp_str, mmu);
@@ -1045,13 +1212,21 @@ impl WireProxyTransformer {
         let _ = upstream.set_read_timeout(Some(Duration::from_secs(30)));
         let _ = upstream.set_write_timeout(Some(Duration::from_secs(30)));
 
+        let safe_method = if Self::is_valid_http_token(method) {
+            method
+        } else {
+            "POST"
+        };
         write!(
             upstream,
-            "{method} {target_path} HTTP/1.1\r\nHost: {host_header}\r\nAccept-Encoding: identity\r\n"
+            "{safe_method} {target_path} HTTP/1.1\r\nHost: {host_header}\r\nAccept-Encoding: identity\r\n"
         )?;
         let mut has_content_type = false;
         for (k, v) in client_headers {
-            if Self::is_hop_by_hop_or_internal_header(k) {
+            if Self::is_hop_by_hop_or_internal_header(k)
+                || !Self::is_valid_http_token(k)
+                || v.contains(['\r', '\n', '\0'])
+            {
                 continue;
             }
             if k.eq_ignore_ascii_case("content-type") {
@@ -1111,6 +1286,11 @@ impl WireProxyTransformer {
         mmu: &InfinityContextMmu,
         writer: &mut W,
     ) -> io::Result<()> {
+        let safe_method = if Self::is_valid_http_token(method) {
+            method
+        } else {
+            "POST"
+        };
         let full_url = Self::join_upstream_base_and_route(upstream_base, stripped_path);
         let mut cmd = Command::new("curl");
         cmd.args([
@@ -1128,11 +1308,14 @@ impl WireProxyTransformer {
             "-H",
             "Accept-Encoding: identity",
             "-X",
-            method,
+            safe_method,
         ]);
         let mut has_content_type = false;
         for (k, v) in client_headers {
-            if Self::is_hop_by_hop_or_internal_header(k) {
+            if Self::is_hop_by_hop_or_internal_header(k)
+                || !Self::is_valid_http_token(k)
+                || v.contains(['\r', '\n', '\0'])
+            {
                 continue;
             }
             if k.eq_ignore_ascii_case("content-type") {
@@ -2774,5 +2957,13 @@ mod tests {
         )
         .unwrap();
         assert!(String::from_utf8_lossy(&too_large_chunk_out).contains("413 Payload Too Large"));
+
+        // Interleaved multi-choice OpenAI SSE stream (`index: 0` vs `index: 1`)
+        let multi_choice_sse = format!(
+            "data: {{\"choices\":[{{\"index\":0,\"delta\":{{\"content\":\"c0 ⟪!icx:deref(\"}}}}]}}\ndata: {{\"choices\":[{{\"index\":1,\"delta\":{{\"content\":\"c1 untouched\"}}}}]}}\ndata: {{\"choices\":[{{\"index\":0,\"delta\":{{\"content\":\"{aid},1:1)⟫ end\"}}}}]}}\n"
+        );
+        let multi_choice_out = WireProxyTransformer::transform_sse_chunk(&multi_choice_sse, &mmu);
+        assert!(multi_choice_out.contains("\"content\":\"c1 untouched\""));
+        assert!(multi_choice_out.contains("\"content\":\"line_alpha end\""));
     }
 }

@@ -311,7 +311,7 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
         if req_line.trim().is_empty() {
             continue;
         }
-        let resp = if ws_dir.exists() {
+        let resp = if ws_dir.exists() && McpPagerServer::requires_workspace_state(&req_line) {
             let lock_guard = acquire_workspace_lock(&ws_dir)?;
             mmu.load_workspace_dir_unlocked(&ws_dir)
                 .map_err(|e| format!("mcp-serve load error: {e}"))?;
