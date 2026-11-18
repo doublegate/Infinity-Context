@@ -38,6 +38,7 @@ pub struct IngestResult {
 }
 
 type SubagentStep = (String, ArtifactId, String, f32, usize);
+type HdcEventRecord = (ArtifactId, String, Option<i32>, bool);
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct PersistedMmuState {
@@ -49,6 +50,8 @@ struct PersistedMmuState {
     dag: MerkleContextDag,
     #[serde(default)]
     epochs: Option<CacheEpochController>,
+    #[serde(default)]
+    hdc_events: Vec<HdcEventRecord>,
 }
 
 /// The central Virtual Context Memory Management Unit (`MMU`).
@@ -65,6 +68,7 @@ pub struct InfinityContextMmu {
     agent_read_cursors: BTreeMap<u8, u64>,
     redacted_artifacts: BTreeSet<ArtifactId>,
     subagent_branches: BTreeMap<String, Vec<SubagentStep>>,
+    hdc_events: Vec<HdcEventRecord>,
     clock_ms: u64,
 }
 
@@ -92,6 +96,7 @@ impl InfinityContextMmu {
             agent_read_cursors: BTreeMap::new(),
             redacted_artifacts: BTreeSet::new(),
             subagent_branches: BTreeMap::new(),
+            hdc_events: Vec::new(),
             clock_ms: 1_794_880_800_000,
         }
     }
@@ -250,6 +255,8 @@ impl InfinityContextMmu {
             exit_code,
             force_anomaly,
         );
+        self.hdc_events
+            .push((artifact_id, clean_subject.clone(), exit_code, force_anomaly));
         if was_redacted {
             receipt.hologram_bytes[7] |= icx_codec::FLAG_IS_REDACTED;
         }
@@ -667,13 +674,25 @@ impl InfinityContextMmu {
             opts.mode(0o600);
         }
         let lock_file = opts.open(&lock_path).map_err(Self::map_io_err)?;
-        lock_file.lock().map_err(Self::map_io_err)?;
-        Ok((mem_guard, lock_file))
+        for _ in 0..5_000u32 {
+            match lock_file.try_lock() {
+                Ok(()) => return Ok((mem_guard, lock_file)),
+                Err(std::fs::TryLockError::WouldBlock) => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Err(std::fs::TryLockError::Error(e)) => return Err(Self::map_io_err(e)),
+            }
+        }
+        Err(IcxError::Io(format!(
+            "timed out acquiring workspace lock `{}`",
+            lock_path.display()
+        )))
     }
 
-    /// Loads persisted `CasStore`, `BiTemporalGraph`, `redacted_artifacts`, `subagent_branches`,
-    /// logical `clock_ms`, and shared-memory `SeqlockTelemetryBus` state from `icx_dir` atomically
-    /// under an exclusive workspace lock (only mutating `self` after all components succeed).
+    /// Loads persisted `CasStore`, `BiTemporalGraph`, `MerkleContextDag`, `CacheEpochController`,
+    /// `HdcAssociativeIndex`, `redacted_artifacts`, `subagent_branches`, logical `clock_ms`, and
+    /// shared-memory `SeqlockTelemetryBus` state from `icx_dir` atomically under an exclusive
+    /// workspace lock (only mutating `self` after all components succeed).
     pub fn load_workspace_dir(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
         let _lock = Self::acquire_workspace_lock(icx_dir)?;
         let cas_path = icx_dir.join("cas_store.json");
@@ -691,14 +710,6 @@ impl InfinityContextMmu {
         let state_path = icx_dir.join("mmu_state.json");
         let persisted_state: Option<PersistedMmuState> = if state_path.exists() {
             let bytes = std::fs::read(&state_path).map_err(Self::map_io_err)?;
-            Some(serde_json::from_slice(&bytes).map_err(Self::map_io_err)?)
-        } else {
-            None
-        };
-        let redacted_path = icx_dir.join("redacted_artifacts.json");
-        let raw_redacted: Option<Vec<u64>> = if persisted_state.is_none() && redacted_path.exists()
-        {
-            let bytes = std::fs::read(&redacted_path).map_err(Self::map_io_err)?;
             Some(serde_json::from_slice(&bytes).map_err(Self::map_io_err)?)
         } else {
             None
@@ -729,11 +740,26 @@ impl InfinityContextMmu {
             .max()
             .unwrap_or(0);
         self.redacted_artifacts.clear();
+        self.hdc_index = HdcAssociativeIndex::new();
+        self.hdc_events.clear();
         if let Some(st) = persisted_state {
             self.clock_ms = self.clock_ms.max(st.clock_ms).max(max_graph_ms);
             self.dag = st.dag;
             if let Some(epochs) = st.epochs {
                 self.epochs = epochs;
+            }
+            for (aid, subj, exit_code, force_anomaly) in st.hdc_events {
+                if let Ok(bytes) = self.cas.deref_bytes(aid) {
+                    let content = String::from_utf8_lossy(&bytes);
+                    let _ = self.hdc_index.observe_event_with_exit_code(
+                        aid,
+                        &subj,
+                        &content,
+                        exit_code,
+                        force_anomaly,
+                    );
+                    self.hdc_events.push((aid, subj, exit_code, force_anomaly));
+                }
             }
             self.subagent_branches = st
                 .subagent_branches
@@ -754,13 +780,6 @@ impl InfinityContextMmu {
             );
         } else {
             self.clock_ms = self.clock_ms.max(max_graph_ms);
-        }
-        if let Some(ids) = raw_redacted {
-            self.redacted_artifacts.extend(
-                ids.into_iter()
-                    .map(ArtifactId)
-                    .filter(|&aid| self.cas.get_meta(aid).is_some()),
-            );
         }
         if let Some(bus) = new_bus {
             self.bus = bus;
@@ -788,8 +807,10 @@ impl InfinityContextMmu {
         std::fs::rename(&tmp_path, &final_path).map_err(Self::map_io_err)
     }
 
-    /// Atomically persists `CasStore`, `BiTemporalGraph`, `redacted_artifacts`, `subagent_branches`,
-    /// and logical `clock_ms` state into `icx_dir` under an exclusive workspace lock.
+    /// Atomically persists `CasStore`, `BiTemporalGraph`, `MerkleContextDag`,
+    /// `CacheEpochController`, `HdcAssociativeIndex` events, `redacted_artifacts`,
+    /// `subagent_branches`, and logical `clock_ms` state into `icx_dir` under an exclusive
+    /// workspace lock.
     pub fn save_workspace_dir(&self, icx_dir: &Path) -> Result<(), IcxError> {
         let _lock = Self::acquire_workspace_lock(icx_dir)?;
         self.cas.save_to_dir(icx_dir)?;
@@ -801,6 +822,7 @@ impl InfinityContextMmu {
             subagent_branches: self.subagent_branches.clone(),
             dag: self.dag.clone(),
             epochs: Some(self.epochs.clone()),
+            hdc_events: self.hdc_events.clone(),
         };
         let state_bytes = serde_json::to_vec(&state).map_err(Self::map_io_err)?;
         Self::write_atomic_file(icx_dir, "mmu_state.json", &state_bytes)

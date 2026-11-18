@@ -839,6 +839,7 @@ unprefixed_secret = {unpref_sec}
         loaded_mmu.load_workspace_dir(&ws_dir).unwrap();
         assert_eq!(loaded_mmu.cas.artifact_count(), mmu.cas.artifact_count());
         assert_eq!(loaded_mmu.dag.node_count(), mmu.dag.node_count());
+        assert_eq!(loaded_mmu.hdc_index.len(), mmu.hdc_index.len());
         assert_eq!(
             loaded_mmu.graph.active_edge_count(),
             mmu.graph.active_edge_count()

@@ -115,11 +115,7 @@ impl CodexAdapter {
                     false,
                     explicit_sub_id.as_deref(),
                 );
-                let mut hso = json!({
-                    "hookEventName": "PostToolUse",
-                    "additionalContext": res.compressed_ahtl
-                });
-                if tool_name.starts_with("mcp__") && res.was_virtualized {
+                let hso = if tool_name.starts_with("mcp__") && res.was_virtualized {
                     let total_lines = mmu
                         .cas
                         .get_meta(res.artifact_id)
@@ -131,8 +127,16 @@ impl CodexAdapter {
                         res.compressed_ahtl.len(),
                         res.compressed_ahtl
                     );
-                    hso["updatedMCPToolOutput"] = Value::String(stub);
-                }
+                    json!({
+                        "hookEventName": "PostToolUse",
+                        "updatedMCPToolOutput": stub
+                    })
+                } else {
+                    json!({
+                        "hookEventName": "PostToolUse",
+                        "additionalContext": res.compressed_ahtl
+                    })
+                };
 
                 json!({
                     "continue": true,
