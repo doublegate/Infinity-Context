@@ -127,12 +127,15 @@ impl InfinityContextMmu {
             .map(str::trim)
             .filter(|s| !s.is_empty());
         match cmd_opt {
+            Some(cmd) if cmd.len() <= 64 => format!("{tool_name}:{cmd}"),
             Some(cmd) => {
-                let mut end = cmd.len().min(64);
+                let mut end = 48;
                 while !cmd.is_char_boundary(end) {
                     end -= 1;
                 }
-                format!("{tool_name}:{}", &cmd[..end])
+                let cmd_hash =
+                    ArtifactId::from_digest(&icx_core::Blake3Digest::hash(cmd.as_bytes())).0;
+                format!("{tool_name}:{}#{cmd_hash:016x}", &cmd[..end])
             }
             None => tool_name.to_owned(),
         }
@@ -697,15 +700,15 @@ impl InfinityContextMmu {
         let _lock = Self::acquire_workspace_lock(icx_dir)?;
         let cas_path = icx_dir.join("cas_store.json");
         let new_cas = if cas_path.exists() {
-            Some(CasStore::load_from_dir(icx_dir)?)
+            CasStore::load_from_dir(icx_dir)?
         } else {
-            None
+            CasStore::new()
         };
         let graph_path = icx_dir.join("bitemporal_graph.json");
         let new_graph = if graph_path.exists() {
-            Some(BiTemporalGraph::load_from_dir(icx_dir)?)
+            BiTemporalGraph::load_from_dir(icx_dir)?
         } else {
-            None
+            BiTemporalGraph::new()
         };
         let state_path = icx_dir.join("mmu_state.json");
         let persisted_state: Option<PersistedMmuState> = if state_path.exists() {
@@ -716,17 +719,15 @@ impl InfinityContextMmu {
         };
         let shm_path = icx_dir.join("icx-fabric-v1.shm");
         let new_bus = if shm_path.exists() {
-            Some(SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(Self::map_io_err)?)
+            SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(Self::map_io_err)?
         } else {
-            None
+            SeqlockTelemetryBus::new_in_memory()
         };
 
-        if let Some(cas) = new_cas {
-            self.cas = cas;
-        }
-        if let Some(graph) = new_graph {
-            self.graph = graph;
-        }
+        self.cas = new_cas;
+        self.graph = new_graph;
+        self.bus = new_bus;
+        self.agent_read_cursors.clear();
         let max_graph_ms = self
             .graph
             .edges()
@@ -743,11 +744,11 @@ impl InfinityContextMmu {
         self.hdc_index = HdcAssociativeIndex::new();
         self.hdc_events.clear();
         if let Some(st) = persisted_state {
-            self.clock_ms = self.clock_ms.max(st.clock_ms).max(max_graph_ms);
+            self.clock_ms = 1_794_880_800_000_u64.max(st.clock_ms).max(max_graph_ms);
             self.dag = st.dag;
-            if let Some(epochs) = st.epochs {
-                self.epochs = epochs;
-            }
+            self.epochs = st.epochs.unwrap_or_else(|| {
+                CacheEpochController::new(ICX_AHTL_LEGEND, EpochControllerConfig::default())
+            });
             for (aid, subj, exit_code, force_anomaly) in st.hdc_events {
                 if let Ok(bytes) = self.cas.deref_bytes(aid) {
                     let content = String::from_utf8_lossy(&bytes);
@@ -779,10 +780,11 @@ impl InfinityContextMmu {
                     .filter(|&aid| self.cas.get_meta(aid).is_some()),
             );
         } else {
-            self.clock_ms = self.clock_ms.max(max_graph_ms);
-        }
-        if let Some(bus) = new_bus {
-            self.bus = bus;
+            self.clock_ms = 1_794_880_800_000_u64.max(max_graph_ms);
+            self.dag = MerkleContextDag::new();
+            self.epochs =
+                CacheEpochController::new(ICX_AHTL_LEGEND, EpochControllerConfig::default());
+            self.subagent_branches.clear();
         }
         Ok(())
     }

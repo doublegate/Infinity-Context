@@ -775,6 +775,24 @@ unprefixed_secret = {unpref_sec}
             ),
             "Bash:cargo test"
         );
+        let long_cmd_a = format!(
+            "{} --test suite_a",
+            "cd /workspace/subproject && cargo test".repeat(2)
+        );
+        let long_cmd_b = format!(
+            "{} --test suite_b",
+            "cd /workspace/subproject && cargo test".repeat(2)
+        );
+        assert_ne!(
+            InfinityContextMmu::extract_hook_subject(
+                &serde_json::json!({"tool_name": "Bash", "command": long_cmd_a}),
+                "Bash"
+            ),
+            InfinityContextMmu::extract_hook_subject(
+                &serde_json::json!({"tool_name": "Bash", "command": long_cmd_b}),
+                "Bash"
+            )
+        );
         let _ = mmu.ingest_payload_with_exit_code(
             AgentKind::ClaudeCode,
             "suite_supersede",
