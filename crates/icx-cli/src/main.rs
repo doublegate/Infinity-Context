@@ -499,14 +499,12 @@ fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, S
     let mut mmu = InfinityContextMmu::default();
     let icx_dir = resolve_workspace_dir(dir_str);
     if icx_dir.exists() {
-        let _guard = acquire_workspace_lock(&icx_dir)?;
-        mmu.load_workspace_dir_unlocked(&icx_dir)
-            .map_err(|e| e.to_string())?;
-        let out = WireProxyTransformer::transform_for_provider(provider, "/", stdin_buf, &mut mmu)
-            .map_err(|e| format!("proxy-transform error: {e}"))?;
-        mmu.save_workspace_dir_unlocked(&icx_dir)
-            .map_err(|e| e.to_string())?;
-        return Ok(out);
+        return mmu
+            .with_locked_workspace(&icx_dir, |mmu| {
+                WireProxyTransformer::transform_for_provider(provider, "/", stdin_buf, mmu)
+                    .map_err(icx_adapters::AdapterError::from)
+            })
+            .map_err(|e| format!("proxy-transform error: {e}"));
     }
 
     WireProxyTransformer::transform_for_provider(provider, "/", stdin_buf, &mut mmu)
@@ -549,12 +547,16 @@ fn encode_payload_into_workspace_profile(
         return render_ingested_profile(&mmu, res.compressed_ahtl, profile_a);
     }
 
-    let _guard = acquire_workspace_lock(icx_dir)?;
     let mut mmu = InfinityContextMmu::default();
-    mmu.load_workspace_dir_unlocked(icx_dir)
-        .map_err(|e| e.to_string())?;
-    let res = mmu.ingest_payload(AgentKind::GenericMcp, subject, content, false);
-    mmu.save_workspace_dir_unlocked(icx_dir)
+    let res = mmu
+        .with_locked_workspace(icx_dir, |mmu| {
+            Ok::<_, icx_core::IcxError>(mmu.ingest_payload(
+                AgentKind::GenericMcp,
+                subject,
+                content,
+                false,
+            ))
+        })
         .map_err(|e| e.to_string())?;
     render_ingested_profile(&mmu, res.compressed_ahtl, profile_a)
 }

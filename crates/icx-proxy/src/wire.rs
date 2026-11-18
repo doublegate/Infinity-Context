@@ -520,19 +520,20 @@ impl WireProxyTransformer {
         serde_json::to_string(&root)
     }
 
+    const DEREF_PREFIX: &'static str = "⟪!icx:deref(";
+
     /// Expands any inline `⟪!icx:deref(#icx:<hex>)⟫` or `⟪!icx:deref(#icx:<hex>,start:end)⟫`
     /// directives in `text` against `mmu`.
     #[must_use]
     pub fn expand_inline_deref_directives(text: &str, mmu: &InfinityContextMmu) -> String {
-        const PREFIX: &str = "⟪!icx:deref(";
-        if !text.contains(PREFIX) {
+        if !text.contains(Self::DEREF_PREFIX) {
             return text.to_owned();
         }
         let mut out = String::with_capacity(text.len());
         let mut rest = text;
-        while let Some(start_idx) = rest.find(PREFIX) {
+        while let Some(start_idx) = rest.find(Self::DEREF_PREFIX) {
             out.push_str(&rest[..start_idx]);
-            let after_prefix = &rest[start_idx + PREFIX.len()..];
+            let after_prefix = &rest[start_idx + Self::DEREF_PREFIX.len()..];
             if let Some(end_idx) = after_prefix.find(")⟫") {
                 let inner = after_prefix[..end_idx].trim();
                 let (handle_str, range_opt) = match inner.split_once(',') {
@@ -567,16 +568,15 @@ impl WireProxyTransformer {
     }
 
     fn find_incomplete_deref_start(s: &str) -> Option<usize> {
-        const PREFIX: &str = "⟪!icx:deref(";
         const MAX_INCOMPLETE_DEREF_BYTES: usize = 96;
-        if let Some(open_idx) = s.rfind(PREFIX) {
+        if let Some(open_idx) = s.rfind(Self::DEREF_PREFIX) {
             let tail = &s[open_idx..];
             if !tail.contains(")⟫") && tail.len() <= MAX_INCOMPLETE_DEREF_BYTES {
                 return Some(open_idx);
             }
         }
-        for (byte_idx, _) in PREFIX.char_indices().skip(1) {
-            let sub = &PREFIX[..byte_idx];
+        for (byte_idx, _) in Self::DEREF_PREFIX.char_indices().skip(1) {
+            let sub = &Self::DEREF_PREFIX[..byte_idx];
             if s.ends_with(sub) {
                 return Some(s.len() - sub.len());
             }
@@ -1592,10 +1592,12 @@ impl WireProxyTransformer {
         if !has_content_type && !transformed_body.is_empty() {
             write!(upstream, "Content-Type: application/json\r\n")?;
         }
-        let is_bodyless_get_or_head = (safe_method.eq_ignore_ascii_case("GET")
-            || safe_method.eq_ignore_ascii_case("HEAD"))
+        let is_bodyless_no_cl = (safe_method.eq_ignore_ascii_case("GET")
+            || safe_method.eq_ignore_ascii_case("HEAD")
+            || safe_method.eq_ignore_ascii_case("DELETE")
+            || safe_method.eq_ignore_ascii_case("OPTIONS"))
             && transformed_body.is_empty();
-        if is_bodyless_get_or_head {
+        if is_bodyless_no_cl {
             write!(upstream, "Connection: close\r\n\r\n")?;
         } else {
             write!(
@@ -1660,6 +1662,14 @@ impl WireProxyTransformer {
         headers_committed: &mut bool,
     ) -> io::Result<()> {
         static CURL_HDR_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        struct TempFileGuard(Option<std::path::PathBuf>);
+        impl Drop for TempFileGuard {
+            fn drop(&mut self) {
+                if let Some(ref p) = self.0 {
+                    let _ = std::fs::remove_file(p);
+                }
+            }
+        }
         let safe_method = Self::sanitize_http_method(method);
         let is_head = safe_method.eq_ignore_ascii_case("HEAD");
         let full_url = Self::join_upstream_base_and_route(upstream_base, stripped_path);
@@ -1707,7 +1717,7 @@ impl WireProxyTransformer {
         if !has_content_type && !transformed_body.is_empty() {
             header_file_buf.push_str("Content-Type: application/json\n");
         }
-        let mut hdr_file_path = None;
+        let mut _hdr_guard = TempFileGuard(None);
         if !header_file_buf.is_empty() {
             let mut opts = std::fs::OpenOptions::new();
             opts.write(true).create_new(true);
@@ -1738,12 +1748,9 @@ impl WireProxyTransformer {
                     "failed to allocate exclusive curl header file",
                 )
             })?;
-            if let Err(e) = f.write_all(header_file_buf.as_bytes()) {
-                let _ = std::fs::remove_file(&path);
-                return Err(e);
-            }
+            _hdr_guard = TempFileGuard(Some(path.clone()));
+            f.write_all(header_file_buf.as_bytes())?;
             cmd.args(["-H", &format!("@{}", path.display())]);
-            hdr_file_path = Some(path);
         }
         if !transformed_body.is_empty() {
             cmd.args(["--data-binary", "@-"]);
@@ -1753,22 +1760,10 @@ impl WireProxyTransformer {
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
 
-        let spawn_res = cmd.spawn();
-        let mut child = match spawn_res {
-            Ok(c) => c,
-            Err(e) => {
-                if let Some(ref p) = hdr_file_path {
-                    let _ = std::fs::remove_file(p);
-                }
-                return Err(e);
-            }
-        };
+        let mut child = cmd.spawn()?;
         let child_in_opt = child.stdin.take();
         let Some(child_out) = child.stdout.take() else {
             let _ = child.wait();
-            if let Some(ref p) = hdr_file_path {
-                let _ = std::fs::remove_file(p);
-            }
             return Err(io::Error::other("missing curl stdout"));
         };
         let mut waited = false;
@@ -1814,9 +1809,6 @@ impl WireProxyTransformer {
                 Err(e) => Err(e),
             }
         };
-        if let Some(ref p) = hdr_file_path {
-            let _ = std::fs::remove_file(p);
-        }
         wait_res?;
         relay_res
     }
@@ -2019,17 +2011,15 @@ impl WireProxyTransformer {
             }
 
             let resolved_provider = Self::resolve_provider(default_provider, path, &body_str);
-            let is_bodyless_get_or_head = (method.eq_ignore_ascii_case("GET")
-                || method.eq_ignore_ascii_case("HEAD"))
-                && body_str.trim().is_empty();
-            let transformed_res = if is_bodyless_get_or_head {
+            let is_bodyless = body_str.trim().is_empty();
+            let transformed_res = if is_bodyless {
                 Ok(String::new())
             } else {
                 Self::transform_for_provider(Some(resolved_provider), path, &body_str, mmu)
             };
 
             if let Some((p, g)) = lock_guard {
-                let save_res = if transformed_res.is_ok() && !is_bodyless_get_or_head {
+                let save_res = if transformed_res.is_ok() && !is_bodyless {
                     mmu.save_workspace_dir_unlocked(p)
                 } else {
                     Ok(())
