@@ -141,7 +141,7 @@ impl CasStore {
         }
         let spans = chunk_bytes_with_lines(raw, self.chunk_config);
         let mut precomputed_chunks = Vec::with_capacity(spans.len());
-        let mut batch_chunk_digests = BTreeMap::new();
+        let mut batch_chunk_digests = (spans.len() > 1).then(BTreeMap::new);
         for span in spans {
             let slice = &raw[span.offset..span.offset + span.len];
             let (cid, cdigest) = ArtifactId::hash_bytes(slice);
@@ -150,7 +150,8 @@ impl CasStore {
             {
                 return Err(IcxError::AmbiguousHandlePrefix(cid.to_string()));
             }
-            if let Some(prev_batch_digest) = batch_chunk_digests.insert(cid, cdigest)
+            if let Some(batch_map) = &mut batch_chunk_digests
+                && let Some(prev_batch_digest) = batch_map.insert(cid, cdigest)
                 && prev_batch_digest != cdigest
             {
                 return Err(IcxError::AmbiguousHandlePrefix(cid.to_string()));

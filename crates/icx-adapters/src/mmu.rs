@@ -438,16 +438,18 @@ impl InfinityContextMmu {
             .and_then(|m| m.get(&occurrence_idx));
         let idx_opt = agent_idx_opt.or_else(|| self.indexed_occurrences.get(&occurrence_idx));
         let ro_opt = agent_ro_opt.or_else(|| self.reordered_occurrences.get(&occurrence_idx));
-        if let Some(target_aid) = sanitized_aid {
-            if let Some(matched) = agent_idx_opt
-                .into_iter()
-                .chain(agent_ro_opt)
-                .chain(self.indexed_occurrences.get(&occurrence_idx))
-                .chain(self.reordered_occurrences.get(&occurrence_idx))
-                .find(|entry| entry.2 == target_aid)
-            {
-                return Some(matched.clone());
-            }
+        if let Some(target_aid) = sanitized_aid
+            && let Some(matched) = [
+                agent_idx_opt,
+                agent_ro_opt,
+                self.indexed_occurrences.get(&occurrence_idx),
+                self.reordered_occurrences.get(&occurrence_idx),
+            ]
+            .into_iter()
+            .flatten()
+            .find(|entry| entry.2 == target_aid)
+        {
+            return Some(matched.clone());
         }
         idx_opt.or(ro_opt).cloned()
     }
@@ -495,15 +497,12 @@ impl InfinityContextMmu {
             .or_default()
             .entry(occurrence_idx)
             .or_insert_with(|| record.clone());
-        if agent == AgentKind::Hermes
-            || self
-                .indexed_occurrences
-                .get(&occurrence_idx)
-                .is_none_or(|e| e.0 == agent as u8)
+        if self
+            .indexed_occurrences
+            .get(&occurrence_idx)
+            .is_none_or(|e| e.0 != agent as u8)
         {
-            self.indexed_occurrences
-                .entry(occurrence_idx)
-                .or_insert(record);
+            self.indexed_occurrences.insert(occurrence_idx, record);
         }
     }
 

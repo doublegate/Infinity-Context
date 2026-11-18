@@ -670,15 +670,54 @@ fn run_status(args: &[String]) {
     println!("{status}");
 }
 
+fn is_executable_file(path: &Path) -> bool {
+    let Ok(meta) = path.metadata() else {
+        return false;
+    };
+    if !meta.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        meta.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
 fn find_executable_in_path(bin_name: &str) -> Option<PathBuf> {
     let path_var = env::var_os("PATH")?;
     for dir in env::split_paths(&path_var) {
         let candidate = dir.join(bin_name);
-        if candidate.is_file() {
+        if is_executable_file(&candidate) {
             return Some(candidate);
         }
     }
     None
+}
+
+fn is_dir_writable(dir: &Path) -> bool {
+    if !dir.is_dir() {
+        return false;
+    }
+    let probe_path = dir.join(format!(
+        ".icx_doctor_probe_{}_{}",
+        std::process::id(),
+        Instant::now().elapsed().as_nanos()
+    ));
+    let Ok(f) = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe_path)
+    else {
+        return false;
+    };
+    drop(f);
+    let _ = fs::remove_file(&probe_path);
+    true
 }
 
 fn run_doctor(args: &[String]) {
@@ -714,15 +753,14 @@ fn run_doctor(args: &[String]) {
     }
 
     let shm_dir = Path::new("/dev/shm");
-    let shm_writable = shm_dir
-        .metadata()
-        .is_ok_and(|m| m.is_dir() && !m.permissions().readonly());
+    let shm_writable = is_dir_writable(shm_dir);
     let shm_status = if shm_writable { "DETECTED" } else { "ABSENT" };
     println!(
         "  [{shm_status:8}] {:32} -> /dev/shm (writable={shm_writable})",
         "POSIX Shared Memory (/dev/shm)"
     );
 
+    let mut doctor_status = "READY";
     let ws_dir = resolve_workspace_dir(parse_dir_flag(args));
     if ws_dir.exists() {
         let mut mmu = InfinityContextMmu::default();
@@ -740,6 +778,7 @@ fn run_doctor(args: &[String]) {
                         );
                     }
                     (Err(e), _) | (_, Err(e)) => {
+                        doctor_status = "CORRUPT";
                         println!(
                             "  [CORRUPT ] {:32} -> {} ({e})",
                             "Workspace Storage & Merkle-DAG",
@@ -749,6 +788,7 @@ fn run_doctor(args: &[String]) {
                 }
             }
             Err(e) => {
+                doctor_status = "DEGRADED";
                 println!(
                     "  [WARNING ] {:32} -> {} ({e})",
                     "Workspace Storage & Merkle-DAG",
@@ -758,7 +798,7 @@ fn run_doctor(args: &[String]) {
         }
     }
 
-    println!("Doctor status: READY");
+    println!("Doctor status: {doctor_status}");
 }
 
 fn run_benchmark() {
@@ -806,7 +846,9 @@ fn run_benchmark() {
     let t_ifs = Instant::now();
     let mut shared_depth = 0u32;
     for _ in 0..1_000 {
-        shared_depth = traj_a.shared_suffix_depth(&traj_b);
+        shared_depth = std::hint::black_box(
+            std::hint::black_box(&traj_a).shared_suffix_depth(std::hint::black_box(&traj_b)),
+        );
     }
     let ifs_ns = (t_ifs.elapsed().as_nanos() as f64) / 1_000.0;
     assert!(shared_depth >= 6);
@@ -869,6 +911,7 @@ fn run_benchmark() {
     let rendered = pkt.render();
     let codec_elapsed = t1.elapsed();
     let ratio = (log_fixture.len() as f64) / (rendered.len() as f64);
+    assert!(ratio >= 10.0);
     println!(
         "  [PASS] AHTL Compression Ratio:            {ratio:.1}x ({} B -> {} B in {:.2} us)",
         log_fixture.len(),
@@ -987,6 +1030,7 @@ fn run_benchmark() {
     assert_ne!(grep_hits.len(), 0);
 
     let avg_cache_hit = hit_ratios.iter().sum::<f64>() / (hit_ratios.len() as f64) * 100.0;
+    assert!(avg_cache_hit >= 90.0);
     let sim_elapsed = t2.elapsed();
     println!(
         "  [PASS] 50-Turn NIH + Cache-Epoch:         {avg_cache_hit:.2}% prefix cache hit rate, 100% lossless passkey recovery ({:.2} ms)",
@@ -1123,6 +1167,9 @@ mod tests {
         )
         .unwrap();
         assert!(find_executable_in_path("__nonexistent_icx_test_binary__").is_none());
+        assert!(!is_executable_file(&tmp_dir));
+        assert!(!is_executable_file(&sample_file));
+        assert!(!is_dir_writable(&sample_file));
         // Verify `icx doctor --dir <PATH>` against a valid initialized workspace
         dispatch_cli_args(
             &[

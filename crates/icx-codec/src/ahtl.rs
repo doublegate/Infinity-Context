@@ -163,11 +163,15 @@ impl AhtlClause {
     }
 }
 
-/// Bijectively escapes `%`, `:`, `⋮`, `⇒`, `↦`, `⟦`, `⟧`, `\n`, and `\r` inside a clause key so
-/// programmatic `AhtlClause` instances never collide with key-value `:`, clause `⋮`, causal `⇒`,
-/// dereference `↦`, or packet `⟦...⟧` delimiters.
+/// Bijectively escapes `%`, `:`, `⋮`, `⇒`, `↦`, `⟦`, `⟧`, `\n`, `\r`, and leading clause operator
+/// glyphs (`⊕`, `⊖`, `¬`, `!`, `✓`) inside a clause key so programmatic `AhtlClause` instances
+/// (including `ClauseOp::Neutral` keys starting with an operator character) never collide with
+/// operator prefixes, key-value `:`, clause `⋮`, causal `⇒`, dereference `↦`, or packet `⟦...⟧`
+/// delimiters.
 fn escape_clause_key(s: &str) -> String {
-    if !s.contains('%')
+    let starts_with_op = matches!(s.chars().next(), Some('⊕' | '⊖' | '¬' | '!' | '✓'));
+    if !starts_with_op
+        && !s.contains('%')
         && !s.contains(':')
         && !s.contains('⋮')
         && !s.contains('⇒')
@@ -179,7 +183,8 @@ fn escape_clause_key(s: &str) -> String {
     {
         return s.to_owned();
     }
-    s.replace('%', "%25")
+    let escaped = s
+        .replace('%', "%25")
         .replace(':', "%3A")
         .replace('⋮', "%E2%8B%AE")
         .replace('⇒', "%E2%87%92")
@@ -187,7 +192,16 @@ fn escape_clause_key(s: &str) -> String {
         .replace('⟦', "%E2%9F%A6")
         .replace('⟧', "%E2%9F%A7")
         .replace('\n', "%0A")
-        .replace('\r', "%0D")
+        .replace('\r', "%0D");
+    let mut chars = escaped.chars();
+    match chars.next() {
+        Some('⊕') => format!("%E2%8A%95{}", chars.as_str()),
+        Some('⊖') => format!("%E2%8A%96{}", chars.as_str()),
+        Some('¬') => format!("%C2%AC{}", chars.as_str()),
+        Some('!') => format!("%21{}", chars.as_str()),
+        Some('✓') => format!("%E2%9C%93{}", chars.as_str()),
+        _ => escaped,
+    }
 }
 
 /// Bijectively escapes `%`, `⋮`, `⇒`, `↦`, `⟦`, `⟧`, `\n`, and `\r` inside a clause value.
@@ -217,45 +231,38 @@ fn escape_clause_val(s: &str) -> String {
 
 /// Single-pass left-to-right inverse of `escape_clause_key` and `escape_clause_val`.
 fn unescape_clause_field(s: &str) -> String {
+    const ESCAPE_TABLE: &[(&str, char)] = &[
+        ("%25", '%'),
+        ("%3A", ':'),
+        ("%21", '!'),
+        ("%C2%AC", '¬'),
+        ("%E2%8A%95", '⊕'),
+        ("%E2%8A%96", '⊖'),
+        ("%E2%9C%93", '✓'),
+        ("%E2%8B%AE", '⋮'),
+        ("%E2%87%92", '⇒'),
+        ("%E2%86%A6", '↦'),
+        ("%E2%9F%A6", '⟦'),
+        ("%E2%9F%A7", '⟧'),
+        ("%0A", '\n'),
+        ("%0D", '\r'),
+    ];
     if !s.contains('%') {
         return s.to_owned();
     }
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
-    while !rest.is_empty() {
-        if let Some(after) = rest.strip_prefix("%25") {
-            out.push('%');
-            rest = after;
-        } else if let Some(after) = rest.strip_prefix("%3A") {
-            out.push(':');
-            rest = after;
-        } else if let Some(after) = rest.strip_prefix("%E2%8B%AE") {
-            out.push('⋮');
-            rest = after;
-        } else if let Some(after) = rest.strip_prefix("%E2%87%92") {
-            out.push('⇒');
-            rest = after;
-        } else if let Some(after) = rest.strip_prefix("%E2%86%A6") {
-            out.push('↦');
-            rest = after;
-        } else if let Some(after) = rest.strip_prefix("%E2%9F%A6") {
-            out.push('⟦');
-            rest = after;
-        } else if let Some(after) = rest.strip_prefix("%E2%9F%A7") {
-            out.push('⟧');
-            rest = after;
-        } else if let Some(after) = rest.strip_prefix("%0A") {
-            out.push('\n');
-            rest = after;
-        } else if let Some(after) = rest.strip_prefix("%0D") {
-            out.push('\r');
-            rest = after;
-        } else {
-            let mut chars = rest.chars();
-            if let Some(ch) = chars.next() {
-                out.push(ch);
-                rest = chars.as_str();
+    'outer: while !rest.is_empty() {
+        for &(tok, decoded) in ESCAPE_TABLE {
+            if let Some(after) = rest.strip_prefix(tok) {
+                out.push(decoded);
+                rest = after;
+                continue 'outer;
             }
+        }
+        if let Some(ch) = rest.chars().next() {
+            out.push(ch);
+            rest = &rest[ch.len_utf8()..];
         }
     }
     out
@@ -1278,5 +1285,10 @@ mod tests {
                 Some("val_%ZZ_raw".into())
             )
         );
+        for op_lead in ["⊕lead", "⊖lead", "¬lead", "!lead", "✓lead"] {
+            let neutral_op_clause = AhtlClause::new(ClauseOp::Neutral, op_lead, Some("v".into()));
+            let rendered_neutral = neutral_op_clause.render();
+            assert_eq!(AhtlClause::parse(&rendered_neutral), neutral_op_clause);
+        }
     }
 }
