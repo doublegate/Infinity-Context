@@ -247,6 +247,7 @@ impl CodexRolloutTailer {
             file.read_exact(&mut tail_buf)?;
             buf.extend_from_slice(&tail_buf);
         }
+        buf.extend_from_slice(&len.to_le_bytes());
         Ok(icx_core::Blake3Digest::hash(&buf))
     }
 
@@ -380,12 +381,20 @@ impl CodexRolloutTailer {
             .unwrap_or("rollout_item");
         let subject = ["name", "tool_name", "call_id", "role"]
             .into_iter()
-            .find_map(|k| item.get(k).and_then(Value::as_str))
+            .find_map(|k| {
+                item.get(k)
+                    .and_then(Value::as_str)
+                    .or_else(|| val.get(k).and_then(Value::as_str))
+            })
             .unwrap_or(kind)
             .to_owned();
         let body = ["output", "content", "summary", "text"]
             .into_iter()
-            .find_map(|k| item.get(k).and_then(Self::non_empty_body_value))?;
+            .find_map(|k| {
+                item.get(k)
+                    .and_then(Self::non_empty_body_value)
+                    .or_else(|| val.get(k).and_then(Self::non_empty_body_value))
+            })?;
         let exit_code = InfinityContextMmu::extract_exit_code(item)
             .or_else(|| InfinityContextMmu::extract_exit_code(val));
         Some((subject, body, exit_code))

@@ -14,6 +14,9 @@ use icx_store::BiTemporalGraph;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static MMU_TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Default inline byte threshold above which tool outputs are virtualized into AHTL Holographic Stubs.
 pub const DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES: usize = 512;
@@ -570,6 +573,9 @@ impl InfinityContextMmu {
             self.epochs.begin_branch(&mut self.dag, &clean_id);
             if steps.is_empty() {
                 let (aid, _) = self.cas.put_bytes(clean_summary.as_bytes());
+                if clean_summary != raw_summary.trim() {
+                    self.redacted_artifacts.insert(aid);
+                }
                 let _ = self.dag.append_turn(
                     agent,
                     &clean_id,
@@ -655,7 +661,17 @@ impl InfinityContextMmu {
         self.redacted_artifacts.clear();
         if let Some(st) = persisted_state {
             self.clock_ms = self.clock_ms.max(st.clock_ms).max(max_graph_ms);
-            self.subagent_branches = st.subagent_branches;
+            self.subagent_branches = st
+                .subagent_branches
+                .into_iter()
+                .map(|(k, steps)| {
+                    let valid_steps = steps
+                        .into_iter()
+                        .filter(|(_, aid, _, _, _)| self.cas.get_meta(*aid).is_some())
+                        .collect();
+                    (k, valid_steps)
+                })
+                .collect();
             self.redacted_artifacts.extend(
                 st.redacted_ids
                     .into_iter()
@@ -680,11 +696,12 @@ impl InfinityContextMmu {
 
     fn write_atomic_file(icx_dir: &Path, filename: &str, bytes: &[u8]) -> Result<(), IcxError> {
         let final_path = icx_dir.join(filename);
-        let tmp_path = icx_dir.join(format!("{filename}.tmp.{}", std::process::id()));
+        let seq = MMU_TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp_path = icx_dir.join(format!("{filename}.tmp.{}.{seq}", std::process::id()));
         {
             use std::io::Write;
             let mut opts = std::fs::OpenOptions::new();
-            opts.write(true).create(true).truncate(true);
+            opts.write(true).create_new(true);
             #[cfg(unix)]
             {
                 use std::os::unix::fs::OpenOptionsExt;
