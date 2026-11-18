@@ -328,9 +328,7 @@ impl CodexRolloutTailer {
 
         loop {
             raw_line.clear();
-            let bytes_read = (&mut reader)
-                .take(icx_core::ICX_MAX_INGEST_BYTES as u64 + 4096)
-                .read_until(b'\n', &mut raw_line)?;
+            let bytes_read = reader.read_until(b'\n', &mut raw_line)?;
             if bytes_read == 0 || !raw_line.ends_with(b"\n") {
                 // Stop before decoding or consuming any incomplete trailing line (including
                 // mid-character UTF-8 sequences) still being written.

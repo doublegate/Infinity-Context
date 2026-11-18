@@ -860,7 +860,7 @@ unprefixed_secret = {unpref_sec}
         assert_eq!(c_inc, 1);
         let saved_offset = tailer.offset_for(&rollout_path);
         assert!(saved_offset >= 65_536);
-        // Poll again after completing the trailing UTF-8 sequence to exercise >64 KiB verified_64k_digest reuse
+        // Poll again after completing the trailing UTF-8 sequence on a >64 KiB rollout file
         {
             use std::io::Write;
             let mut f = std::fs::OpenOptions::new()

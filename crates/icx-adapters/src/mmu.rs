@@ -211,6 +211,8 @@ impl InfinityContextMmu {
         );
         if was_redacted {
             receipt.hologram_bytes[7] |= icx_codec::FLAG_IS_REDACTED;
+        }
+        if body_redacted {
             self.redacted_artifacts.insert(artifact_id);
         }
 
