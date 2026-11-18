@@ -367,15 +367,17 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
     }
     let mut mmu = InfinityContextMmu::default();
     let ws_dir = resolve_workspace_dir(dir_str);
-    let ws_opt = ws_dir.exists().then_some(ws_dir.as_path());
-    let effective_upstream = upstream_str.or(Some("auto"));
+    let env_upstream = env::var("ICX_UPSTREAM_URL")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let effective_upstream = upstream_str.or(env_upstream.as_deref()).or(Some("auto"));
     let listener =
         TcpListener::bind(listen_addr).map_err(|e| format!("proxy bind `{listen_addr}`: {e}"))?;
     WireProxyTransformer::serve_http_listener_with_config(
         &listener,
         provider,
         effective_upstream,
-        ws_opt,
+        Some(ws_dir.as_path()),
         max_requests,
         &mut mmu,
     )

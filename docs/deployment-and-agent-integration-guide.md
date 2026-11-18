@@ -1110,7 +1110,7 @@ Expected output:
   [DETECTED] Hermes Agent Source              -> /home/parobek/.hermes/hermes-agent/agent/context_engine.py
   [DETECTED] POSIX Shared Memory (/dev/shm)   -> /dev/shm
 Doctor status: READY
-⟪ICX:STATUS│cas_artifacts=0│unique_chunks=0│dag_nodes=0│sealed_epochs=0│hdc_entries=0│graph_edges=0│shm_seq=0⟫
+⟪ICX:STATUS│cas_artifacts=0│redacted_artifacts=0│unique_chunks=0│dag_nodes=0│sealed_epochs=0│hdc_entries=0│graph_edges=0│shm_seq=0⟫
 ```
 
 #### Test 2: Smoke-Test `PostToolUse` Hook Interception & Secret Redaction
@@ -1215,7 +1215,7 @@ All Infinity-Context SLO gates PASSED.
 | :--- | :--- |
 | `icx init [--dir <PATH>]` | Initializes `<PATH>` (default `.icx`), verifies or creates `cas_store.json` (`mode 0600`), acquires `cas_store.lock`, and initializes the `1,048,640`-byte `icx-fabric-v1.shm` Seqlock ring (`⟪ICX:INIT│dir=.icx│status=READY⟫`). |
 | `icx doctor` | Probes local agent binaries and hook configs (`~/.local/bin/claude`, `~/.claude/settings.json`, `~/.local/bin/codex`, `~/.codex/hooks.json`, `~/.codex/state_5.sqlite`, `~/.local/bin/agy`, `~/.gemini/config/hooks.json`, `~/.hermes/hermes-agent/agent/context_engine.py`, `/dev/shm`) and reports readiness. |
-| `icx status` | Prints a single-line AHTL telemetry frame: `⟪ICX:STATUS│cas_artifacts=<N>│unique_chunks=<N>│dag_nodes=<N>│sealed_epochs=<N>│hdc_entries=<N>│graph_edges=<N>│shm_seq=<N>⟫`. |
+| `icx status [--dir <PATH>]` | Prints a single-line AHTL telemetry frame: `⟪ICX:STATUS│cas_artifacts=<N>│redacted_artifacts=<N>│unique_chunks=<N>│dag_nodes=<N>│sealed_epochs=<N>│hdc_entries=<N>│graph_edges=<N>│shm_seq=<N>⟫`. |
 | `icx benchmark` | Runs the 5-stage hardware SLO verification suite (10,240-bit HDC Hamming scan, Two-Stage HDC + CSR PPR, AHTL compression ratio, 50-turn Needle-in-a-Haystack + Prefix-Cache hit rate, and Atomic Seqlock broadcast latency). |
 | `icx deref <HANDLE> [--lines <START:END>] [--dir <PATH>]` | Losslessly reconstructs the full UTF-8 byte stream or an inclusive 1-based line slice (`START:END`, e.g., `1:50`) for any 64-bit (`#icx:<16-hex>`) or 48-bit (`#icx:<12-hex>`) handle from `<PATH>`. |
 | `icx encode-ahtl <FILE> [--dir <PATH>] [--profile <a\|b>]` | Redacts secrets, ingests `<FILE>` into `<PATH>` (default `.icx`), updates the HDC/Fractal/Bi-Temporal indices, and prints either a **Profile B** dual-channel packet (`⟦Δ:...⟧`, default `--profile b`) or a **Profile A** 6-section canonical wire packet (`⟦AHTL v1│#icx:<12-hex>│fc:<64-hex>│hv:<16-hex>│<64-braille>│...⟧`, `--profile a`). |

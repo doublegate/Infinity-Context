@@ -6,6 +6,7 @@
 use icx_adapters::InfinityContextMmu;
 use icx_core::AgentKind;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
@@ -75,21 +76,35 @@ impl WireProxyTransformer {
         let mut root: Value = serde_json::from_str(body_json)?;
         let protect_tail = 2usize;
 
+        let mut external_breakpoints = Self::count_cache_breakpoints(root.get("system"))
+            + Self::count_cache_breakpoints(root.get("tools"));
+
         if let Some(messages) = root.get_mut("messages").and_then(Value::as_array_mut) {
+            let pager_tool_use_ids = Self::collect_anthropic_pager_tool_use_ids(messages);
             let total = messages.len();
             if total > protect_tail {
                 let fold_end = total - protect_tail;
+                for tail_msg in &messages[fold_end..] {
+                    external_breakpoints += Self::count_cache_breakpoints(Some(tail_msg));
+                }
+                let mut occ_idx = 0usize;
                 for (idx, msg) in messages[..fold_end].iter_mut().enumerate() {
+                    Self::strip_all_cache_control(msg);
                     let role = msg.get("role").and_then(Value::as_str).unwrap_or("");
                     if role != "system" && role != "developer" {
                         let subj = format!("turn_{idx}");
-                        Self::virtualize_anthropic_msg_content(msg, &subj, mmu);
+                        Self::virtualize_anthropic_msg_content(
+                            msg,
+                            &subj,
+                            &pager_tool_use_ids,
+                            &mut occ_idx,
+                            mmu,
+                        );
                     }
                     // Pin Anthropic prompt-cache breakpoint on the last sealed epoch message
-                    if idx + 1 == fold_end {
+                    // only if the 4-breakpoint hardware ceiling has room.
+                    if idx + 1 == fold_end && external_breakpoints < 4 {
                         msg["cache_control"] = json!({ "type": "ephemeral" });
-                    } else if let Some(obj) = msg.as_object_mut() {
-                        obj.remove("cache_control");
                     }
                 }
             }
@@ -99,55 +114,144 @@ impl WireProxyTransformer {
                 .last()
                 .and_then(Self::extract_item_text)
                 .map(Self::strip_existing_tail_slot)
+                .filter(|s| !s.is_empty())
                 .unwrap_or("anthropic_turn")
                 .to_owned();
             let tail_slot = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, &last_query, 3);
             if let Some(last_msg) = messages.last_mut() {
-                Self::append_tail_to_item(last_msg, &tail_slot);
+                Self::append_tail_to_item(last_msg, &tail_slot, "text");
             }
         }
 
         serde_json::to_string(&root)
     }
 
-    fn virtualize_anthropic_msg_content(msg: &mut Value, subj: &str, mmu: &mut InfinityContextMmu) {
-        let threshold = mmu.tool_virtualize_threshold;
-        let Some(content_val) = msg.get_mut("content") else {
-            return;
-        };
-        match content_val {
-            Value::String(s)
-                if s.len() >= threshold && !s.starts_with('⟦') && !s.starts_with("⟪ICX:") =>
-            {
-                let res = mmu.ingest_payload(AgentKind::ClaudeCode, subj, s, false);
-                *s = res.compressed_ahtl;
+    fn count_cache_breakpoints(val: Option<&Value>) -> usize {
+        let Some(v) = val else { return 0 };
+        match v {
+            Value::Object(map) => {
+                let self_bp = usize::from(map.contains_key("cache_control"));
+                let child_bp: usize = map
+                    .values()
+                    .map(|child| Self::count_cache_breakpoints(Some(child)))
+                    .sum();
+                self_bp + child_bp
             }
-            Value::Array(blocks) => {
-                for (b_idx, block) in blocks.iter_mut().enumerate() {
-                    if let Some(obj) = block.as_object_mut() {
-                        obj.remove("cache_control");
+            Value::Array(arr) => arr
+                .iter()
+                .map(|item| Self::count_cache_breakpoints(Some(item)))
+                .sum(),
+            _ => 0,
+        }
+    }
+
+    fn strip_all_cache_control(msg: &mut Value) {
+        if let Some(obj) = msg.as_object_mut() {
+            obj.remove("cache_control");
+            if let Some(Value::Array(blocks)) = obj.get_mut("content") {
+                for block in blocks {
+                    if let Some(b_obj) = block.as_object_mut() {
+                        b_obj.remove("cache_control");
                     }
+                }
+            }
+        }
+    }
+
+    fn collect_anthropic_pager_tool_use_ids(messages: &[Value]) -> BTreeSet<String> {
+        let mut ids = BTreeSet::new();
+        for msg in messages {
+            if let Some(Value::Array(blocks)) = msg.get("content") {
+                for block in blocks {
+                    let b_type = block.get("type").and_then(Value::as_str).unwrap_or("");
                     let b_name = block
                         .get("name")
                         .or_else(|| block.get("tool_name"))
                         .and_then(Value::as_str)
                         .unwrap_or("");
-                    if InfinityContextMmu::is_icx_pager_tool(b_name) {
+                    if b_type == "tool_use"
+                        && InfinityContextMmu::is_icx_pager_tool(b_name)
+                        && let Some(id) = block.get("id").and_then(Value::as_str)
+                    {
+                        ids.insert(id.to_owned());
+                    }
+                }
+            }
+        }
+        ids
+    }
+
+    fn virtualize_anthropic_msg_content(
+        msg: &mut Value,
+        subj: &str,
+        pager_tool_use_ids: &BTreeSet<String>,
+        occ_idx: &mut usize,
+        mmu: &mut InfinityContextMmu,
+    ) {
+        let threshold = mmu.tool_virtualize_threshold;
+        let Some(content_val) = msg.get_mut("content") else {
+            return;
+        };
+        match content_val {
+            Value::String(s) => {
+                if s.starts_with('⟦') || s.starts_with("⟪ICX:") {
+                    *occ_idx += 1;
+                } else if s.len() >= threshold {
+                    let (res, _) = mmu.ingest_or_reuse_at_index(
+                        *occ_idx,
+                        AgentKind::ClaudeCode,
+                        subj,
+                        s,
+                        None,
+                        false,
+                    );
+                    *occ_idx += 1;
+                    *s = res.compressed_ahtl;
+                }
+            }
+            Value::Array(blocks) => {
+                for (b_idx, block) in blocks.iter_mut().enumerate() {
+                    let b_name = block
+                        .get("name")
+                        .or_else(|| block.get("tool_name"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let is_pager_id = block
+                        .get("tool_use_id")
+                        .and_then(Value::as_str)
+                        .is_some_and(|id| pager_tool_use_ids.contains(id));
+                    if InfinityContextMmu::is_icx_pager_tool(b_name) || is_pager_id {
                         continue;
                     }
                     let block_subj = format!("{subj}_b{b_idx}");
                     if let Some(Value::String(t)) = block.get_mut("text") {
-                        if t.len() >= threshold && !t.starts_with('⟦') && !t.starts_with("⟪ICX:")
-                        {
-                            let res =
-                                mmu.ingest_payload(AgentKind::ClaudeCode, &block_subj, t, false);
+                        if t.starts_with('⟦') || t.starts_with("⟪ICX:") {
+                            *occ_idx += 1;
+                        } else if t.len() >= threshold {
+                            let (res, _) = mmu.ingest_or_reuse_at_index(
+                                *occ_idx,
+                                AgentKind::ClaudeCode,
+                                &block_subj,
+                                t,
+                                None,
+                                false,
+                            );
+                            *occ_idx += 1;
                             *t = res.compressed_ahtl;
                         }
                     } else if let Some(Value::String(c)) = block.get_mut("content") {
-                        if c.len() >= threshold && !c.starts_with('⟦') && !c.starts_with("⟪ICX:")
-                        {
-                            let res =
-                                mmu.ingest_payload(AgentKind::ClaudeCode, &block_subj, c, false);
+                        if c.starts_with('⟦') || c.starts_with("⟪ICX:") {
+                            *occ_idx += 1;
+                        } else if c.len() >= threshold {
+                            let (res, _) = mmu.ingest_or_reuse_at_index(
+                                *occ_idx,
+                                AgentKind::ClaudeCode,
+                                &block_subj,
+                                c,
+                                None,
+                                false,
+                            );
+                            *occ_idx += 1;
                             *c = res.compressed_ahtl;
                         }
                     }
@@ -214,11 +318,11 @@ impl WireProxyTransformer {
         let protect_tail = 2usize;
 
         if let Some(messages) = root.get_mut("messages").and_then(Value::as_array_mut) {
-            Self::transform_openai_items(messages, mmu, protect_tail);
+            Self::transform_openai_items(messages, mmu, protect_tail, "text");
         } else if let Some(input_val) = root.get_mut("input") {
             match input_val {
                 Value::Array(items) => {
-                    Self::transform_openai_items(items, mmu, protect_tail);
+                    Self::transform_openai_items(items, mmu, protect_tail, "input_text");
                 }
                 Value::String(prompt_str) => {
                     let base = Self::strip_existing_tail_slot(prompt_str).to_owned();
@@ -247,6 +351,7 @@ impl WireProxyTransformer {
             let total = contents.len();
             if total > protect_tail {
                 let fold_end = total - protect_tail;
+                let mut occ_idx = 0usize;
                 for (idx, content_item) in contents[..fold_end].iter_mut().enumerate() {
                     let item_name = content_item
                         .get("name")
@@ -267,15 +372,22 @@ impl WireProxyTransformer {
                             if InfinityContextMmu::is_icx_pager_tool(part_name) {
                                 continue;
                             }
-                            if let Some(Value::String(t)) = part.get_mut("text")
-                                && t.len() >= threshold
-                                && !t.starts_with('⟦')
-                                && !t.starts_with("⟪ICX:")
-                            {
-                                let subj = format!("gemini_turn_{idx}_p{p_idx}");
-                                let res =
-                                    mmu.ingest_payload(AgentKind::AntigravityCli, &subj, t, false);
-                                *t = res.compressed_ahtl;
+                            if let Some(Value::String(t)) = part.get_mut("text") {
+                                if t.starts_with('⟦') || t.starts_with("⟪ICX:") {
+                                    occ_idx += 1;
+                                } else if t.len() >= threshold {
+                                    let subj = format!("gemini_turn_{idx}_p{p_idx}");
+                                    let (res, _) = mmu.ingest_or_reuse_at_index(
+                                        occ_idx,
+                                        AgentKind::AntigravityCli,
+                                        &subj,
+                                        t,
+                                        None,
+                                        false,
+                                    );
+                                    occ_idx += 1;
+                                    *t = res.compressed_ahtl;
+                                }
                             }
                         }
                     }
@@ -364,6 +476,22 @@ impl WireProxyTransformer {
         out
     }
 
+    fn transform_sse_line(line: &str, mmu: &InfinityContextMmu) -> String {
+        if !line.contains("⟪!icx:deref(") {
+            return line.to_owned();
+        }
+        if let Some(json_part) = line.strip_prefix("data: ") {
+            let trimmed = json_part.trim();
+            if let Ok(mut val) = serde_json::from_str::<Value>(trimmed) {
+                Self::expand_deref_in_json_value(&mut val, mmu);
+                if let Ok(re_serialized) = serde_json::to_string(&val) {
+                    return format!("data: {re_serialized}");
+                }
+            }
+        }
+        Self::expand_inline_deref_directives(line, mmu)
+    }
+
     /// Transforms an inbound Server-Sent Events (`SSE`) chunk, expanding any inline
     /// `⟪!icx:deref(#icx:...)⟫` directives inside `data: {...}` JSON lines or plain text lines.
     #[must_use]
@@ -371,21 +499,27 @@ impl WireProxyTransformer {
         if !sse_chunk.contains("⟪!icx:deref(") {
             return sse_chunk.to_owned();
         }
-        let mut out_lines = Vec::new();
-        for line in sse_chunk.split('\n') {
-            if let Some(json_part) = line.strip_prefix("data: ") {
-                let trimmed = json_part.trim();
-                if let Ok(mut val) = serde_json::from_str::<Value>(trimmed) {
-                    Self::expand_deref_in_json_value(&mut val, mmu);
-                    if let Ok(re_serialized) = serde_json::to_string(&val) {
-                        out_lines.push(format!("data: {re_serialized}"));
-                        continue;
-                    }
-                }
-            }
-            out_lines.push(Self::expand_inline_deref_directives(line, mmu));
+        sse_chunk
+            .split('\n')
+            .map(|line| Self::transform_sse_line(line, mmu))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Expands any inline `⟪!icx:deref(#icx:...)⟫` directives in a JSON or plain-text response
+    /// body, preserving valid JSON string escaping when `body` is a JSON document.
+    #[must_use]
+    pub fn expand_json_or_text_body(body: &str, mmu: &InfinityContextMmu) -> String {
+        if !body.contains("⟪!icx:deref(") {
+            return body.to_owned();
         }
-        out_lines.join("\n")
+        if let Ok(mut val) = serde_json::from_str::<Value>(body) {
+            Self::expand_deref_in_json_value(&mut val, mmu);
+            if let Ok(re_serialized) = serde_json::to_string(&val) {
+                return re_serialized;
+            }
+        }
+        Self::expand_inline_deref_directives(body, mmu)
     }
 
     fn expand_deref_in_json_value(val: &mut Value, mmu: &InfinityContextMmu) {
@@ -486,6 +620,152 @@ impl WireProxyTransformer {
         )
     }
 
+    fn read_next_http_chunk<R: BufRead>(reader: &mut R) -> io::Result<Option<Vec<u8>>> {
+        let mut size_line = String::new();
+        if reader.read_line(&mut size_line)? == 0 {
+            return Ok(None);
+        }
+        let hex_part = size_line.trim().split(';').next().unwrap_or("").trim();
+        let chunk_len = usize::from_str_radix(hex_part, 16)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("chunk size: {e}")))?;
+        if chunk_len == 0 {
+            loop {
+                let mut trailer = String::new();
+                let n = reader.read_line(&mut trailer)?;
+                if n == 0 || trailer == "\r\n" || trailer == "\n" {
+                    break;
+                }
+            }
+            return Ok(None);
+        }
+        let mut buf = vec![0u8; chunk_len];
+        reader.read_exact(&mut buf)?;
+        let mut crlf = String::new();
+        let _ = reader.read_line(&mut crlf);
+        Ok(Some(buf))
+    }
+
+    fn relay_upstream_response<R: BufRead, W: Write>(
+        up_reader: &mut R,
+        mmu: &InfinityContextMmu,
+        writer: &mut W,
+    ) -> io::Result<()> {
+        let mut status_trimmed;
+        let mut resp_headers = Vec::new();
+        let mut is_sse;
+        let mut is_chunked;
+
+        loop {
+            let mut status_line = String::new();
+            if up_reader.read_line(&mut status_line)? == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "empty upstream HTTP response",
+                ));
+            }
+            status_trimmed = status_line.trim_end_matches(&['\r', '\n'][..]).to_owned();
+            resp_headers.clear();
+            is_sse = false;
+            is_chunked = false;
+            loop {
+                let mut hline = String::new();
+                let n = up_reader.read_line(&mut hline)?;
+                if n == 0 || hline == "\r\n" || hline == "\n" {
+                    break;
+                }
+                if let Some((hk, hv)) = hline.split_once(':') {
+                    let hk_trim = hk.trim();
+                    let hv_trim = hv.trim();
+                    if hk_trim.eq_ignore_ascii_case("content-type")
+                        && hv_trim.to_ascii_lowercase().contains("text/event-stream")
+                    {
+                        is_sse = true;
+                    } else if hk_trim.eq_ignore_ascii_case("transfer-encoding")
+                        && hv_trim.to_ascii_lowercase().contains("chunked")
+                    {
+                        is_chunked = true;
+                    }
+                    if !Self::is_hop_by_hop_or_internal_header(hk_trim) {
+                        resp_headers.push((hk_trim.to_owned(), hv_trim.to_owned()));
+                    }
+                }
+            }
+            if !status_trimmed.contains(" 100 ") {
+                break;
+            }
+        }
+
+        if is_sse {
+            write!(writer, "{status_trimmed}\r\n")?;
+            for (hk, hv) in &resp_headers {
+                write!(writer, "{hk}: {hv}\r\n")?;
+            }
+            write!(writer, "Connection: close\r\n\r\n")?;
+            writer.flush()?;
+
+            if is_chunked {
+                let mut pending = String::new();
+                while let Some(chunk) = Self::read_next_http_chunk(up_reader)? {
+                    pending.push_str(&String::from_utf8_lossy(&chunk));
+                    while let Some(nl_idx) = pending.find('\n') {
+                        let raw_line = pending[..nl_idx].trim_end_matches('\r');
+                        let transformed_line = Self::transform_sse_line(raw_line, mmu);
+                        writeln!(writer, "{transformed_line}")?;
+                        writer.flush()?;
+                        pending.drain(..=nl_idx);
+                    }
+                }
+                if !pending.is_empty() {
+                    let transformed_line =
+                        Self::transform_sse_line(pending.trim_end_matches('\r'), mmu);
+                    write!(writer, "{transformed_line}")?;
+                    writer.flush()?;
+                }
+            } else {
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    if up_reader.read_line(&mut line)? == 0 {
+                        break;
+                    }
+                    let has_nl = line.ends_with('\n');
+                    let trimmed = line.trim_end_matches(&['\r', '\n'][..]);
+                    let transformed_line = Self::transform_sse_line(trimmed, mmu);
+                    if has_nl {
+                        writeln!(writer, "{transformed_line}")?;
+                    } else {
+                        write!(writer, "{transformed_line}")?;
+                    }
+                    writer.flush()?;
+                }
+            }
+            return Ok(());
+        }
+
+        let mut resp_bytes = Vec::new();
+        if is_chunked {
+            while let Some(chunk) = Self::read_next_http_chunk(up_reader)? {
+                resp_bytes.extend_from_slice(&chunk);
+            }
+        } else {
+            up_reader.read_to_end(&mut resp_bytes)?;
+        }
+        let resp_str = String::from_utf8_lossy(&resp_bytes);
+        let final_body = Self::expand_json_or_text_body(&resp_str, mmu);
+
+        write!(writer, "{status_trimmed}\r\n")?;
+        for (hk, hv) in &resp_headers {
+            write!(writer, "{hk}: {hv}\r\n")?;
+        }
+        write!(
+            writer,
+            "Content-Length: {}\r\nConnection: close\r\n\r\n{}",
+            final_body.len(),
+            final_body
+        )?;
+        writer.flush()
+    }
+
     fn forward_http_upstream<W: Write>(
         method: &str,
         upstream_base: &str,
@@ -542,55 +822,22 @@ impl WireProxyTransformer {
         upstream.flush()?;
 
         let mut up_reader = BufReader::new(upstream);
-        let mut status_line = String::new();
-        if up_reader.read_line(&mut status_line)? == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "empty upstream HTTP response",
-            ));
-        }
-        let status_trimmed = status_line.trim_end_matches(&['\r', '\n'][..]);
-        let mut resp_headers = Vec::new();
-        let mut is_sse = false;
-        loop {
-            let mut hline = String::new();
-            let n = up_reader.read_line(&mut hline)?;
-            if n == 0 || hline == "\r\n" || hline == "\n" {
-                break;
-            }
-            if let Some((hk, hv)) = hline.split_once(':') {
-                let hk_trim = hk.trim();
-                let hv_trim = hv.trim();
-                if hk_trim.eq_ignore_ascii_case("content-type")
-                    && hv_trim.to_ascii_lowercase().contains("text/event-stream")
-                {
-                    is_sse = true;
-                }
-                if !Self::is_hop_by_hop_or_internal_header(hk_trim) {
-                    resp_headers.push((hk_trim.to_owned(), hv_trim.to_owned()));
-                }
-            }
-        }
-        let mut resp_bytes = Vec::new();
-        up_reader.read_to_end(&mut resp_bytes)?;
-        let resp_str = String::from_utf8_lossy(&resp_bytes);
-        let final_body = if is_sse {
-            Self::transform_sse_chunk(&resp_str, mmu)
-        } else {
-            Self::expand_inline_deref_directives(&resp_str, mmu)
-        };
+        Self::relay_upstream_response(&mut up_reader, mmu, writer)
+    }
 
-        write!(writer, "{status_trimmed}\r\n")?;
-        for (hk, hv) in &resp_headers {
-            write!(writer, "{hk}: {hv}\r\n")?;
-        }
-        write!(
-            writer,
-            "Content-Length: {}\r\nConnection: close\r\n\r\n{}",
-            final_body.len(),
-            final_body
-        )?;
-        writer.flush()
+    fn is_loopback_upstream(url: &str) -> bool {
+        let without_scheme = url
+            .trim()
+            .strip_prefix("http://")
+            .or_else(|| url.trim().strip_prefix("https://"))
+            .unwrap_or_else(|| url.trim());
+        let host_port = without_scheme.split('/').next().unwrap_or("");
+        host_port.starts_with("127.0.0.1:")
+            || host_port == "127.0.0.1"
+            || host_port.starts_with("localhost:")
+            || host_port == "localhost"
+            || host_port.starts_with("[::1]:")
+            || host_port == "[::1]"
     }
 
     fn forward_https_upstream<W: Write>(
@@ -604,7 +851,20 @@ impl WireProxyTransformer {
     ) -> io::Result<()> {
         let full_url = format!("{}{stripped_path}", upstream_base.trim_end_matches('/'));
         let mut cmd = Command::new("curl");
-        cmd.args(["-sS", "-i", "--http1.1", "-X", method]);
+        cmd.args([
+            "-sS",
+            "-i",
+            "-N",
+            "--http1.1",
+            "--connect-timeout",
+            "10",
+            "--max-time",
+            "120",
+            "-H",
+            "Expect:",
+            "-X",
+            method,
+        ]);
         let mut has_content_type = false;
         for (k, v) in client_headers {
             if Self::is_hop_by_hop_or_internal_header(k) {
@@ -618,50 +878,25 @@ impl WireProxyTransformer {
         if !has_content_type {
             cmd.args(["-H", "Content-Type: application/json"]);
         }
-        cmd.args(["--data-binary", "@-", &full_url]);
+        cmd.args(["--data-binary", "@-", "--", &full_url]);
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .stderr(Stdio::null());
 
         let mut child = cmd.spawn()?;
         if let Some(mut child_in) = child.stdin.take() {
             child_in.write_all(transformed_body.as_bytes())?;
         }
-        let output = child.wait_with_output()?;
-        if !output.status.success() {
-            let err_msg = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-            return Err(io::Error::other(format!("curl upstream error: {err_msg}")));
-        }
-        let raw_out = String::from_utf8_lossy(&output.stdout);
-        let (header_block, resp_body) = raw_out
-            .split_once("\r\n\r\n")
-            .or_else(|| raw_out.split_once("\n\n"))
-            .unwrap_or(("HTTP/1.1 200 OK", &raw_out));
-        let is_sse = header_block
-            .to_ascii_lowercase()
-            .contains("text/event-stream");
-        let final_body = if is_sse {
-            Self::transform_sse_chunk(resp_body, mmu)
-        } else {
-            Self::expand_inline_deref_directives(resp_body, mmu)
+        let Some(child_out) = child.stdout.take() else {
+            return Err(io::Error::other("missing curl stdout"));
         };
-        let mut lines = header_block.lines();
-        let status_line = lines.next().unwrap_or("HTTP/1.1 200 OK");
-        write!(writer, "{status_line}\r\n")?;
-        for hline in lines {
-            if let Some((hk, hv)) = hline.split_once(':')
-                && !Self::is_hop_by_hop_or_internal_header(hk)
-            {
-                write!(writer, "{}: {}\r\n", hk.trim(), hv.trim())?;
-            }
+        let mut up_reader = BufReader::new(child_out);
+        let relay_res = Self::relay_upstream_response(&mut up_reader, mmu, writer);
+        let status = child.wait()?;
+        if relay_res.is_err() && !status.success() {
+            return Err(io::Error::other(format!("curl exited with {status}")));
         }
-        write!(
-            writer,
-            "Content-Length: {}\r\nConnection: close\r\n\r\n{}",
-            final_body.len(),
-            final_body
-        )?;
-        writer.flush()
+        relay_res
     }
 
     /// Handles a single HTTP/1.1 request on `reader` and writes an HTTP/1.1 response to `writer`.
@@ -680,7 +915,7 @@ impl WireProxyTransformer {
     /// Handles a single HTTP/1.1 request with optional `upstream_override` (`Some("http://...")`,
     /// `Some("https://...")`, or `Some("auto")` to forward to the provider's default upstream)
     /// and optional `workspace_dir` (reloading and saving `.icx/` transactionally under the
-    /// workspace lock for each request).
+    /// workspace lock before any upstream network round-trip).
     pub fn handle_http_request_with_config<R: Read, W: Write>(
         reader: R,
         mut writer: W,
@@ -699,6 +934,7 @@ impl WireProxyTransformer {
         let path = parts.get(1).copied().unwrap_or("/");
 
         let mut content_length = 0usize;
+        let mut req_is_chunked = false;
         let mut client_headers: Vec<(String, String)> = Vec::new();
         let mut header_upstream: Option<String> = None;
         let mut transform_only = path.starts_with("/transform");
@@ -713,6 +949,10 @@ impl WireProxyTransformer {
                 let v_trim = v.trim();
                 if k_trim.eq_ignore_ascii_case("content-length") {
                     content_length = v_trim.parse::<usize>().unwrap_or(0).min(16 * 1024 * 1024);
+                } else if k_trim.eq_ignore_ascii_case("transfer-encoding")
+                    && v_trim.to_ascii_lowercase().contains("chunked")
+                {
+                    req_is_chunked = true;
                 } else if k_trim.eq_ignore_ascii_case("x-icx-upstream") && !v_trim.is_empty() {
                     header_upstream = Some(v_trim.to_owned());
                 } else if k_trim.eq_ignore_ascii_case("x-icx-transform-only") {
@@ -722,12 +962,22 @@ impl WireProxyTransformer {
             }
         }
 
-        let mut body_bytes = vec![0u8; content_length];
-        if content_length > 0 {
+        let mut body_bytes = Vec::new();
+        if req_is_chunked {
+            while let Some(chunk) = Self::read_next_http_chunk(&mut buf_reader)? {
+                if body_bytes.len().saturating_add(chunk.len()) > 16 * 1024 * 1024 {
+                    break;
+                }
+                body_bytes.extend_from_slice(&chunk);
+            }
+        } else if content_length > 0 {
+            body_bytes.resize(content_length, 0u8);
             buf_reader.read_exact(&mut body_bytes)?;
         }
         let body_str = String::from_utf8_lossy(&body_bytes).into_owned();
 
+        // Execute the local workspace read-modify-write under the exclusive lock and release the
+        // lock BEFORE performing any upstream network round-trip.
         let ws_opt = workspace_dir.filter(|p| p.exists());
         let lock_guard = match ws_opt {
             Some(p) => {
@@ -740,121 +990,125 @@ impl WireProxyTransformer {
             None => None,
         };
 
-        let res = (|| -> io::Result<()> {
-            if method.eq_ignore_ascii_case("GET") && path.starts_with("/health") {
-                let resp_body = format!(
-                    "{{\"status\":\"ok\",\"cas_artifacts\":{},\"sealed_epochs\":{}}}",
-                    mmu.cas.artifact_count(),
-                    mmu.epochs.sealed_epoch_count()
-                );
-                write!(
-                    writer,
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    resp_body.len(),
-                    resp_body
-                )?;
-                return writer.flush();
-            }
-
-            if path.starts_with("/sse-expand") {
-                let expanded = Self::transform_sse_chunk(&body_str, mmu);
-                write!(
-                    writer,
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    expanded.len(),
-                    expanded
-                )?;
-                return writer.flush();
-            }
-
-            let resolved_provider = Self::resolve_provider(default_provider, path, &body_str);
-            let transformed = match Self::transform_for_provider(
-                Some(resolved_provider),
-                path,
-                &body_str,
-                mmu,
-            ) {
-                Ok(t) => t,
-                Err(err) => {
-                    let err_json = json!({ "error": err.to_string() }).to_string();
-                    write!(
-                        writer,
-                        "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                        err_json.len(),
-                        err_json
-                    )?;
-                    return writer.flush();
-                }
-            };
-
-            let env_upstream = std::env::var("ICX_UPSTREAM_URL")
-                .ok()
-                .filter(|s| !s.trim().is_empty());
-            let effective_upstream: Option<&str> = if transform_only {
-                None
-            } else if let Some(ref hu) = header_upstream {
-                Some(hu.as_str())
-            } else if let Some(uo) = upstream_override {
-                match uo {
-                    "none" | "transform-only" => None,
-                    "auto" => Some(resolved_provider.default_upstream_url()),
-                    other => Some(other),
-                }
-            } else {
-                env_upstream.as_deref()
-            };
-
-            if let Some(upstream_base) = effective_upstream {
-                let stripped_path = Self::strip_provider_route_prefix(path);
-                let forward_res = if upstream_base.starts_with("https://") {
-                    Self::forward_https_upstream(
-                        method,
-                        upstream_base,
-                        stripped_path,
-                        &client_headers,
-                        &transformed,
-                        mmu,
-                        &mut writer,
-                    )
-                } else {
-                    Self::forward_http_upstream(
-                        method,
-                        upstream_base,
-                        stripped_path,
-                        &client_headers,
-                        &transformed,
-                        mmu,
-                        &mut writer,
-                    )
-                };
-                if let Err(err) = forward_res {
-                    let err_json =
-                        json!({ "error": format!("upstream gateway error: {err}") }).to_string();
-                    write!(
-                        writer,
-                        "HTTP/1.1 502 Bad Gateway\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                        err_json.len(),
-                        err_json
-                    )?;
-                    return writer.flush();
-                }
-                return Ok(());
-            }
-
+        if method.eq_ignore_ascii_case("GET") && path.starts_with("/health") {
+            let resp_body = format!(
+                "{{\"status\":\"ok\",\"cas_artifacts\":{},\"sealed_epochs\":{}}}",
+                mmu.cas.artifact_count(),
+                mmu.epochs.sealed_epoch_count()
+            );
+            drop(lock_guard);
             write!(
                 writer,
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                transformed.len(),
-                transformed
+                resp_body.len(),
+                resp_body
             )?;
-            writer.flush()
-        })();
-
-        if let Some((p, _g)) = lock_guard {
-            mmu.save_workspace_dir_unlocked(p)
-                .map_err(|e| io::Error::other(e.to_string()))?;
+            return writer.flush();
         }
-        res
+
+        if path.starts_with("/sse-expand") {
+            let expanded = Self::transform_sse_chunk(&body_str, mmu);
+            drop(lock_guard);
+            write!(
+                writer,
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                expanded.len(),
+                expanded
+            )?;
+            return writer.flush();
+        }
+
+        let resolved_provider = Self::resolve_provider(default_provider, path, &body_str);
+        let transformed_res =
+            Self::transform_for_provider(Some(resolved_provider), path, &body_str, mmu);
+
+        if let Some((p, g)) = lock_guard {
+            let save_res = mmu.save_workspace_dir_unlocked(p);
+            drop(g);
+            save_res.map_err(|e| io::Error::other(e.to_string()))?;
+        }
+
+        let transformed = match transformed_res {
+            Ok(t) => t,
+            Err(err) => {
+                let err_json = json!({ "error": err.to_string() }).to_string();
+                write!(
+                    writer,
+                    "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    err_json.len(),
+                    err_json
+                )?;
+                return writer.flush();
+            }
+        };
+
+        let env_upstream = std::env::var("ICX_UPSTREAM_URL")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+        let allow_header_upstream = matches!(upstream_override, None | Some("auto"));
+        let effective_upstream: Option<&str> = if transform_only {
+            None
+        } else if allow_header_upstream
+            && let Some(ref hu) = header_upstream
+            && Self::is_loopback_upstream(hu)
+        {
+            Some(hu.as_str())
+        } else if let Some(uo) = upstream_override {
+            match uo {
+                "none" | "transform-only" => None,
+                "auto" => env_upstream
+                    .as_deref()
+                    .or_else(|| Some(resolved_provider.default_upstream_url())),
+                other => Some(other),
+            }
+        } else {
+            env_upstream.as_deref()
+        };
+
+        if let Some(upstream_base) = effective_upstream {
+            let stripped_path = Self::strip_provider_route_prefix(path);
+            let forward_res = if upstream_base.starts_with("https://") {
+                Self::forward_https_upstream(
+                    method,
+                    upstream_base,
+                    stripped_path,
+                    &client_headers,
+                    &transformed,
+                    mmu,
+                    &mut writer,
+                )
+            } else {
+                Self::forward_http_upstream(
+                    method,
+                    upstream_base,
+                    stripped_path,
+                    &client_headers,
+                    &transformed,
+                    mmu,
+                    &mut writer,
+                )
+            };
+            if let Err(err) = forward_res {
+                let err_json =
+                    json!({ "error": format!("upstream gateway error: {err}") }).to_string();
+                write!(
+                    writer,
+                    "HTTP/1.1 502 Bad Gateway\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    err_json.len(),
+                    err_json
+                )?;
+                return writer.flush();
+            }
+            return Ok(());
+        }
+
+        write!(
+            writer,
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            transformed.len(),
+            transformed
+        )?;
+        writer.flush()
     }
 
     /// Serves `max_requests` HTTP/1.1 requests on `listener` (or runs indefinitely when
@@ -908,25 +1162,66 @@ impl WireProxyTransformer {
         Ok(served)
     }
 
+    fn collect_openai_pager_call_ids(items: &[Value]) -> BTreeSet<String> {
+        let mut ids = BTreeSet::new();
+        for item in items {
+            let item_type = item.get("type").and_then(Value::as_str).unwrap_or("");
+            let name = item.get("name").and_then(Value::as_str).unwrap_or("");
+            if item_type == "function_call" && InfinityContextMmu::is_icx_pager_tool(name) {
+                for k in ["call_id", "id"] {
+                    if let Some(cid) = item.get(k).and_then(Value::as_str) {
+                        ids.insert(cid.to_owned());
+                    }
+                }
+            }
+            if let Some(Value::Array(tcs)) = item.get("tool_calls") {
+                for tc in tcs {
+                    let tc_name = tc
+                        .get("function")
+                        .and_then(|f| f.get("name"))
+                        .or_else(|| tc.get("name"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    if InfinityContextMmu::is_icx_pager_tool(tc_name) {
+                        for k in ["id", "call_id"] {
+                            if let Some(cid) = tc.get(k).and_then(Value::as_str) {
+                                ids.insert(cid.to_owned());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ids
+    }
+
     fn transform_openai_items(
         items: &mut [Value],
         mmu: &mut InfinityContextMmu,
         protect_tail: usize,
+        text_part_type: &str,
     ) {
+        let pager_call_ids = Self::collect_openai_pager_call_ids(items);
         let total = items.len();
         if total > protect_tail {
             let fold_end = total - protect_tail;
+            let mut occ_idx = 0usize;
             for (idx, item) in items[..fold_end].iter_mut().enumerate() {
                 let role = item.get("role").and_then(Value::as_str).unwrap_or("");
                 if role == "system" || role == "developer" {
                     continue;
                 }
                 let name = item.get("name").and_then(Value::as_str).unwrap_or("");
-                if InfinityContextMmu::is_icx_pager_tool(name) {
+                let is_pager_call = item
+                    .get("call_id")
+                    .or_else(|| item.get("tool_call_id"))
+                    .and_then(Value::as_str)
+                    .is_some_and(|cid| pager_call_ids.contains(cid));
+                if InfinityContextMmu::is_icx_pager_tool(name) || is_pager_call {
                     continue;
                 }
                 let subj = format!("openai_turn_{idx}");
-                Self::virtualize_item_text(item, &subj, mmu);
+                Self::virtualize_item_text(item, &subj, &mut occ_idx, mmu);
             }
         }
 
@@ -934,11 +1229,12 @@ impl WireProxyTransformer {
             .last()
             .and_then(Self::extract_item_text)
             .map(Self::strip_existing_tail_slot)
+            .filter(|s| !s.is_empty())
             .unwrap_or("openai_turn")
             .to_owned();
         let tail_slot = mmu.build_ephemeral_tail_slot(AgentKind::Codex, &last_query, 3);
         if let Some(last_item) = items.last_mut() {
-            Self::append_tail_to_item(last_item, &tail_slot);
+            Self::append_tail_to_item(last_item, &tail_slot, text_part_type);
         }
     }
 
@@ -960,27 +1256,50 @@ impl WireProxyTransformer {
         item.get("output").and_then(Value::as_str)
     }
 
-    fn virtualize_item_text(item: &mut Value, subj: &str, mmu: &mut InfinityContextMmu) {
+    fn virtualize_item_text(
+        item: &mut Value,
+        subj: &str,
+        occ_idx: &mut usize,
+        mmu: &mut InfinityContextMmu,
+    ) {
         let threshold = mmu.tool_virtualize_threshold;
         if let Some(content_val) = item.get_mut("content") {
             match content_val {
-                Value::String(s)
-                    if s.len() >= threshold && !s.starts_with('⟦') && !s.starts_with("⟪ICX:") =>
-                {
-                    let res = mmu.ingest_payload(AgentKind::Codex, subj, s, false);
-                    *s = res.compressed_ahtl;
-                    return;
+                Value::String(s) => {
+                    if s.starts_with('⟦') || s.starts_with("⟪ICX:") {
+                        *occ_idx += 1;
+                        return;
+                    }
+                    if s.len() >= threshold {
+                        let (res, _) = mmu.ingest_or_reuse_at_index(
+                            *occ_idx,
+                            AgentKind::Codex,
+                            subj,
+                            s,
+                            None,
+                            false,
+                        );
+                        *occ_idx += 1;
+                        *s = res.compressed_ahtl;
+                        return;
+                    }
                 }
                 Value::Array(parts) => {
                     for (p_idx, part) in parts.iter_mut().enumerate() {
                         if let Some(Value::String(t)) = part.get_mut("text") {
-                            if t.len() >= threshold
-                                && !t.starts_with('⟦')
-                                && !t.starts_with("⟪ICX:")
-                            {
+                            if t.starts_with('⟦') || t.starts_with("⟪ICX:") {
+                                *occ_idx += 1;
+                            } else if t.len() >= threshold {
                                 let part_subj = format!("{subj}_p{p_idx}");
-                                let res =
-                                    mmu.ingest_payload(AgentKind::Codex, &part_subj, t, false);
+                                let (res, _) = mmu.ingest_or_reuse_at_index(
+                                    *occ_idx,
+                                    AgentKind::Codex,
+                                    &part_subj,
+                                    t,
+                                    None,
+                                    false,
+                                );
+                                *occ_idx += 1;
                                 *t = res.compressed_ahtl;
                             }
                         }
@@ -991,15 +1310,24 @@ impl WireProxyTransformer {
             }
         }
         if let Some(Value::String(out_s)) = item.get_mut("output") {
-            if out_s.len() >= threshold && !out_s.starts_with('⟦') && !out_s.starts_with("⟪ICX:")
-            {
-                let res = mmu.ingest_payload(AgentKind::Codex, subj, out_s, false);
+            if out_s.starts_with('⟦') || out_s.starts_with("⟪ICX:") {
+                *occ_idx += 1;
+            } else if out_s.len() >= threshold {
+                let (res, _) = mmu.ingest_or_reuse_at_index(
+                    *occ_idx,
+                    AgentKind::Codex,
+                    subj,
+                    out_s,
+                    None,
+                    false,
+                );
+                *occ_idx += 1;
                 *out_s = res.compressed_ahtl;
             }
         }
     }
 
-    fn append_tail_to_item(item: &mut Value, tail_slot: &str) {
+    fn append_tail_to_item(item: &mut Value, tail_slot: &str, text_part_type: &str) {
         if let Some(content_val) = item.get_mut("content") {
             match content_val {
                 Value::String(s) => {
@@ -1015,7 +1343,7 @@ impl WireProxyTransformer {
                             return;
                         }
                     }
-                    parts.push(json!({ "type": "text", "text": tail_slot }));
+                    parts.push(json!({ "type": text_part_type, "text": tail_slot }));
                     return;
                 }
                 _ => {}
@@ -1683,58 +2011,159 @@ mod tests {
             2
         );
 
-        // Verify end-to-end upstream HTTP forwarding, SSE response relay, and 502 Bad Gateway fallback
+        // Verify Anthropic `tool_use_id` pager exemption and 4-breakpoint `cache_control` ceiling
+        let anth_4bp_req = json!({
+            "system": [{ "type": "text", "text": "s1", "cache_control": { "type": "ephemeral" } }],
+            "tools": [{ "name": "icx", "cache_control": { "type": "ephemeral" } }],
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{ "type": "tool_use", "id": "tu_icx_1", "name": "mcp__icx__icx" }]
+                },
+                {
+                    "role": "user",
+                    "content": [{ "type": "tool_result", "tool_use_id": "tu_icx_1", "content": big_middle }]
+                },
+                {
+                    "role": "assistant",
+                    "cache_control": { "type": "ephemeral" },
+                    "content": "tail_1"
+                },
+                {
+                    "role": "user",
+                    "cache_control": { "type": "ephemeral" },
+                    "content": "tail_2"
+                }
+            ]
+        })
+        .to_string();
+        let anth_4bp_out: Value = serde_json::from_str(
+            &WireProxyTransformer::transform_anthropic_messages(&anth_4bp_req, &mut mmu).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            anth_4bp_out["messages"][1]["content"][0]["content"]
+                .as_str()
+                .unwrap(),
+            big_middle
+        );
+        assert!(anth_4bp_out["messages"][1].get("cache_control").is_none());
+
+        // Verify OpenAI `/v1/responses` `call_id` pager exemption and `"input_text"` tail block type
+        let oai_resp_pager = json!({
+            "input": [
+                { "type": "function_call", "call_id": "call_icx_1", "name": "icx" },
+                { "type": "function_call_output", "call_id": "call_icx_1", "output": big_middle },
+                { "role": "assistant", "content": "ok" },
+                { "role": "user", "content": [{ "type": "input_image" }] }
+            ]
+        })
+        .to_string();
+        let oai_resp_out: Value = serde_json::from_str(
+            &WireProxyTransformer::transform_openai_request(&oai_resp_pager, &mut mmu).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            oai_resp_out["input"][1]["output"].as_str().unwrap(),
+            big_middle
+        );
+        assert_eq!(
+            oai_resp_out["input"][3]["content"][1]["type"]
+                .as_str()
+                .unwrap(),
+            "input_text"
+        );
+
+        // Verify end-to-end upstream HTTP forwarding (with 100 Continue + chunked SSE and chunked JSON),
+        // HTTPS failure handling, and workspace persistence
+        let tmp_ws = std::env::temp_dir().join(format!("icx_proxy_ws_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp_ws);
+        mmu.save_workspace_dir(&tmp_ws).unwrap();
+
         let mock_upstream = TcpListener::bind("127.0.0.1:0").unwrap();
         let mock_up_addr = mock_upstream.local_addr().unwrap();
         let aid_for_up = aid;
         let up_thread = std::thread::spawn(move || {
-            let (mut up_stream, _) = mock_upstream.accept().unwrap();
-            let mut up_reader = BufReader::new(up_stream.try_clone().unwrap());
-            let mut req_line = String::new();
-            up_reader.read_line(&mut req_line).unwrap();
-            assert!(req_line.starts_with("POST /v1/messages HTTP/1.1"));
-            let mut cl = 0usize;
-            let mut saw_auth = false;
-            loop {
-                let mut h = String::new();
-                let n = up_reader.read_line(&mut h).unwrap();
-                if n == 0 || h == "\r\n" || h == "\n" {
-                    break;
+            // Request 1: Chunked SSE response preceded by 100 Continue
+            {
+                let (mut up_stream, _) = mock_upstream.accept().unwrap();
+                let mut up_reader = BufReader::new(up_stream.try_clone().unwrap());
+                let mut req_line = String::new();
+                up_reader.read_line(&mut req_line).unwrap();
+                assert!(req_line.starts_with("POST /v1/messages HTTP/1.1"));
+                let mut cl = 0usize;
+                let mut saw_auth = false;
+                loop {
+                    let mut h = String::new();
+                    let n = up_reader.read_line(&mut h).unwrap();
+                    if n == 0 || h == "\r\n" || h == "\n" {
+                        break;
+                    }
+                    if h.to_ascii_lowercase().starts_with("authorization:") {
+                        saw_auth = true;
+                    }
+                    if let Some((k, v)) = h.split_once(':')
+                        && k.trim().eq_ignore_ascii_case("content-length")
+                    {
+                        cl = v.trim().parse().unwrap();
+                    }
                 }
-                if h.to_ascii_lowercase().starts_with("authorization:") {
-                    saw_auth = true;
-                }
-                if let Some((k, v)) = h.split_once(':')
-                    && k.trim().eq_ignore_ascii_case("content-length")
-                {
-                    cl = v.trim().parse().unwrap();
-                }
+                assert!(saw_auth);
+                let mut body_buf = vec![0u8; cl];
+                up_reader.read_exact(&mut body_buf).unwrap();
+                let body_s = String::from_utf8_lossy(&body_buf);
+                assert!(body_s.contains("⟪ICX:TAIL_SLOT"));
+                let sse_chunk =
+                    format!("data: {{\"delta\":\"⟪!icx:deref({aid_for_up},1:1)⟫\"}}\n\n");
+                write!(
+                    up_stream,
+                    "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nX-Upstream: mock\r\n\r\n{:x};ext=1\r\n{}\r\n0\r\nX-Trailer: done\r\n\r\n",
+                    sse_chunk.len(),
+                    sse_chunk
+                )
+                .unwrap();
+                up_stream.flush().unwrap();
             }
-            assert!(saw_auth);
-            let mut body_buf = vec![0u8; cl];
-            up_reader.read_exact(&mut body_buf).unwrap();
-            let body_s = String::from_utf8_lossy(&body_buf);
-            assert!(body_s.contains("⟪ICX:TAIL_SLOT"));
-            let sse_resp = format!("data: {{\"delta\":\"⟪!icx:deref({aid_for_up},1:1)⟫\"}}\n\n");
-            write!(
-                up_stream,
-                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nX-Upstream: mock\r\nContent-Length: {}\r\n\r\n{}",
-                sse_resp.len(),
-                sse_resp
-            )
-            .unwrap();
-            up_stream.flush().unwrap();
+            // Request 2: Chunked non-SSE JSON response with multi-line deref
+            {
+                let (mut up_stream, _) = mock_upstream.accept().unwrap();
+                let mut up_reader = BufReader::new(up_stream.try_clone().unwrap());
+                let mut cl = 0usize;
+                loop {
+                    let mut h = String::new();
+                    let n = up_reader.read_line(&mut h).unwrap();
+                    if n == 0 || h == "\r\n" || h == "\n" {
+                        break;
+                    }
+                    if let Some((k, v)) = h.split_once(':')
+                        && k.trim().eq_ignore_ascii_case("content-length")
+                    {
+                        cl = v.trim().parse().unwrap();
+                    }
+                }
+                let mut body_buf = vec![0u8; cl];
+                up_reader.read_exact(&mut body_buf).unwrap();
+                let json_resp = format!("{{\"text\":\"⟪!icx:deref({aid_for_up},1:2)⟫\"}}");
+                write!(
+                    up_stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{}\r\n0\r\n\r\n",
+                    json_resp.len(),
+                    json_resp
+                )
+                .unwrap();
+                up_stream.flush().unwrap();
+            }
         });
 
         let proxy_listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let proxy_addr = proxy_listener.local_addr().unwrap();
         let up_url = format!("http://{mock_up_addr}");
         let proxy_client = std::thread::spawn(move || {
-            // 1. Forwarded request to mock_upstream
+            // 1. Forwarded chunked client request -> chunked SSE response
             {
                 let body = r#"{"model":"claude-opus-4-6","messages":[{"role":"user","content":"forward me"}]}"#;
                 let req = format!(
-                    "POST /anthropic/v1/messages HTTP/1.1\r\nAuthorization: Bearer test\r\nX-ICX-Upstream: {up_url}\r\nContent-Length: {}\r\n\r\n{}",
+                    "POST /anthropic/v1/messages HTTP/1.1\r\nAuthorization: Bearer test\r\nX-ICX-Upstream: {up_url}\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{}\r\n0\r\n\r\n",
                     body.len(),
                     body
                 );
@@ -1746,11 +2175,40 @@ mod tests {
                 assert!(resp.contains("X-Upstream: mock"));
                 assert!(resp.contains("line_alpha"));
             }
-            // 2. Unreachable upstream -> 502 Bad Gateway
+            // 2. Forwarded request -> chunked JSON response with multi-line deref (JSON-escaped)
+            {
+                let body = r#"{"model":"claude-opus-4-6","messages":[{"role":"user","content":"json deref"}]}"#;
+                let req = format!(
+                    "POST /anthropic/v1/messages HTTP/1.1\r\nX-ICX-Upstream: {up_url}\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let mut s = TcpStream::connect(proxy_addr).unwrap();
+                s.write_all(req.as_bytes()).unwrap();
+                let mut resp = String::new();
+                s.read_to_string(&mut resp).unwrap();
+                assert!(resp.contains("200 OK"));
+                assert!(resp.contains("line_alpha\\nline_beta"));
+            }
+            // 3. Unreachable HTTP upstream -> 502 Bad Gateway
             {
                 let body = r#"{"model":"claude-opus-4-6","messages":[{"role":"user","content":"fail me"}]}"#;
                 let req = format!(
                     "POST /anthropic/v1/messages HTTP/1.1\r\nX-ICX-Upstream: http://127.0.0.1:1\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let mut s = TcpStream::connect(proxy_addr).unwrap();
+                s.write_all(req.as_bytes()).unwrap();
+                let mut resp = String::new();
+                s.read_to_string(&mut resp).unwrap();
+                assert!(resp.contains("502 Bad Gateway"));
+            }
+            // 4. Unreachable HTTPS upstream -> 502 Bad Gateway (exercises `forward_https_upstream`)
+            {
+                let body = r#"{"model":"claude-opus-4-6","messages":[{"role":"user","content":"fail https"}]}"#;
+                let req = format!(
+                    "POST /anthropic/v1/messages HTTP/1.1\r\nX-ICX-Upstream: https://127.0.0.1:1\r\nContent-Length: {}\r\n\r\n{}",
                     body.len(),
                     body
                 );
@@ -1765,13 +2223,94 @@ mod tests {
             &proxy_listener,
             None,
             None,
-            None,
-            Some(2),
+            Some(&tmp_ws),
+            Some(4),
             &mut mmu,
         )
         .unwrap();
-        assert_eq!(served_up, 2);
+        assert_eq!(served_up, 4);
         up_thread.join().unwrap();
         proxy_client.join().unwrap();
+        let _ = std::fs::remove_dir_all(&tmp_ws);
+
+        // Verify ProviderFormat::default_upstream_url, strip_provider_route_prefix, is_loopback_upstream,
+        // non-chunked SSE relay, `upstream_override: Some("none")`, and OpenAI `tool_calls` + `output` tail
+        assert_eq!(
+            ProviderFormat::Anthropic.default_upstream_url(),
+            "https://api.anthropic.com"
+        );
+        assert_eq!(
+            ProviderFormat::OpenAI.default_upstream_url(),
+            "https://api.openai.com"
+        );
+        assert_eq!(
+            ProviderFormat::Gemini.default_upstream_url(),
+            "https://generativelanguage.googleapis.com"
+        );
+        assert_eq!(
+            WireProxyTransformer::strip_provider_route_prefix("/anthropic"),
+            "/"
+        );
+        assert!(WireProxyTransformer::is_loopback_upstream(
+            "http://localhost:8080"
+        ));
+        assert!(WireProxyTransformer::is_loopback_upstream(
+            "http://[::1]:8080"
+        ));
+        assert!(!WireProxyTransformer::is_loopback_upstream(
+            "https://example.com"
+        ));
+
+        // Non-chunked SSE relay via `relay_upstream_response`
+        let mut raw_sse_out = Vec::new();
+        let mut raw_sse_in = io::Cursor::new(format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: ⟪!icx:deref({aid},1:1)⟫\n"
+        ));
+        WireProxyTransformer::relay_upstream_response(&mut raw_sse_in, &mmu, &mut raw_sse_out)
+            .unwrap();
+        assert!(String::from_utf8_lossy(&raw_sse_out).contains("line_alpha"));
+
+        // `upstream_override: Some("none")` and `Some("auto")`
+        let mut none_out = Vec::new();
+        let none_req = "POST /anthropic HTTP/1.1\r\nContent-Length: 45\r\n\r\n{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+        WireProxyTransformer::handle_http_request_with_config(
+            io::Cursor::new(none_req.as_bytes()),
+            &mut none_out,
+            None,
+            Some("none"),
+            None,
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(String::from_utf8_lossy(&none_out).contains("200 OK"));
+
+        // OpenAI `tool_calls` pager exemption, already-virtualized middle turn reuse, and `output` tail item
+        let oai_tc_req = json!({
+            "input": [
+                {
+                    "role": "assistant",
+                    "tool_calls": [{ "id": "tc_icx_9", "function": { "name": "mcp__icx__icx" } }]
+                },
+                { "role": "tool", "tool_call_id": "tc_icx_9", "output": big_middle },
+                { "role": "user", "content": "⟦Δ:already_virt⊢✓ok⟧" },
+                { "role": "user", "output": "final_output_turn" },
+                { "role": "user", "output": "final_output_turn_2" }
+            ]
+        })
+        .to_string();
+        let oai_tc_out: Value = serde_json::from_str(
+            &WireProxyTransformer::transform_openai_request(&oai_tc_req, &mut mmu).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            oai_tc_out["input"][1]["output"].as_str().unwrap(),
+            big_middle
+        );
+        assert!(
+            oai_tc_out["input"][4]["output"]
+                .as_str()
+                .unwrap()
+                .contains("⟪ICX:TAIL_SLOT")
+        );
     }
 }
