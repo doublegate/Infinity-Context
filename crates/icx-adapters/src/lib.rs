@@ -1535,7 +1535,8 @@ unprefixed_secret = {unpref_sec}
         let fold_tc_req = serde_json::json!({
             "messages": [
                 {"role": "system", "content": "head"},
-                {"role": "assistant", "content": null, "tool_calls": [{"id": "tc_edit", "function": {"name": "edit_file", "arguments": "{\"path\":\"src/main.rs\"}"}}]},
+                {"role": "assistant", "content": "updating main.rs", "tool_calls": [{"id": "tc_edit", "function": {"name": "edit_file", "arguments": "{\"path\":\"src/main.rs\"}"}}]},
+                {"role": "assistant", "content": null, "tool_calls": [{"id": "tc_null", "function": {"name": "edit_file", "arguments": "{\"path\":\"src/lib.rs\"}"}}]},
                 {"role": "tool", "tool_call_id": "tc_edit", "name": "edit_file", "content": "Done"}
             ]
         })
@@ -1543,9 +1544,11 @@ unprefixed_secret = {unpref_sec}
         let pre_tc_out =
             HermesAdapter::handle_hook("on_pre_compress", &fold_tc_req, &mut tc_fold_mmu).unwrap();
         assert!(pre_tc_out.contains("src/main.rs"));
+        assert!(pre_tc_out.contains("src/lib.rs"));
         let comp_tc_out =
             HermesAdapter::handle_hook("compress", &fold_tc_req, &mut tc_fold_mmu).unwrap();
         assert!(comp_tc_out.contains("src/main.rs"));
+        assert!(comp_tc_out.contains("src/lib.rs"));
         let unnamed_pager_req = serde_json::json!({
             "messages": [
                 {"role": "system", "content": "head"},

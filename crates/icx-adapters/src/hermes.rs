@@ -118,6 +118,14 @@ impl HermesAdapter {
         handle_str.parse::<icx_core::ArtifactId>().ok()
     }
 
+    fn extract_line_deref_id(sanitized_line: &str) -> Option<icx_core::ArtifactId> {
+        let (_, after) = sanitized_line.rsplit_once("↦#icx:")?;
+        let hex_part = after.strip_suffix('⟧').unwrap_or(after);
+        format!("#icx:{hex_part}")
+            .parse::<icx_core::ArtifactId>()
+            .ok()
+    }
+
     fn extract_embedded_ahtl_lines(
         msg: &HermesMessage,
         out: &mut Vec<String>,
@@ -136,9 +144,16 @@ impl HermesAdapter {
             let trimmed = line.trim();
             if !trimmed.is_empty() {
                 let sanitized_line = Self::sanitize_embedded_ahtl_line(trimmed);
-                if !mmu.has_indexed_occurrence(*occurrence_idx) {
-                    let line_aid =
-                        stub_aid.unwrap_or_else(|| mmu.cas.put_bytes(sanitized_line.as_bytes()).0);
+                let parsed_aid = stub_aid
+                    .or_else(|| Self::extract_line_deref_id(&sanitized_line))
+                    .filter(|&aid| mmu.cas.get_meta(aid).is_some());
+                let slot_aid = if mmu.has_indexed_occurrence(*occurrence_idx) {
+                    parsed_aid.or_else(|| {
+                        Some(icx_core::ArtifactId::hash_bytes(sanitized_line.as_bytes()).0)
+                    })
+                } else {
+                    let line_aid = parsed_aid
+                        .unwrap_or_else(|| mmu.cas.put_bytes(sanitized_line.as_bytes()).0);
                     let subj = if stub_aid.is_some() {
                         role_label.as_str()
                     } else {
@@ -172,8 +187,9 @@ impl HermesAdapter {
                             was_virtualized: sanitized_line.len() >= mmu.tool_virtualize_threshold,
                         },
                     );
-                }
-                carried_slots.push((*occurrence_idx, stub_aid));
+                    Some(line_aid)
+                };
+                carried_slots.push((*occurrence_idx, slot_aid));
                 *occurrence_idx += 1;
                 out.push(sanitized_line);
             }
@@ -181,16 +197,18 @@ impl HermesAdapter {
     }
 
     fn effective_message_text(msg: &HermesMessage, raw_opt: Option<&Value>) -> String {
-        if !msg.content.trim().is_empty() {
-            return msg.content.clone();
-        }
-        if let Some(tc) = raw_opt
+        let tc_opt = raw_opt
             .and_then(|r| r.get("tool_calls"))
-            .filter(|v| v.as_array().is_some_and(|a| !a.is_empty()))
-        {
-            return format!("tool_calls:{tc}");
+            .filter(|v| v.as_array().is_some_and(|a| !a.is_empty()));
+        match (!msg.content.trim().is_empty(), tc_opt) {
+            (true, Some(tc)) => format!(
+                "tool_calls:{tc} — {}",
+                msg.content.lines().collect::<Vec<_>>().join(" ")
+            ),
+            (true, None) => msg.content.clone(),
+            (false, Some(tc)) => format!("tool_calls:{tc}"),
+            (false, None) => String::new(),
         }
-        String::new()
     }
 
     /// Indexes or reuses a message in `mmu` to keep `occurrence_idx` aligned across head, middle,
