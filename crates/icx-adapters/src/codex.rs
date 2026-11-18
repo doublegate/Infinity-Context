@@ -237,18 +237,22 @@ impl CodexRolloutTailer {
     fn compute_prefix_digest(file: &mut File, len: u64) -> io::Result<icx_core::Blake3Digest> {
         use std::io::Read;
         file.seek(SeekFrom::Start(0))?;
-        let head_cap = (len as usize).min(65_536);
-        let mut buf = vec![0u8; head_cap];
-        file.read_exact(&mut buf)?;
-        if len > 65_536 {
-            let tail_start = len - 4096;
-            file.seek(SeekFrom::Start(tail_start))?;
-            let mut tail_buf = [0u8; 4096];
-            file.read_exact(&mut tail_buf)?;
-            buf.extend_from_slice(&tail_buf);
+        let mut acc = [0u8; 40];
+        acc[32..40].copy_from_slice(&len.to_le_bytes());
+        let mut remaining = len as usize;
+        let mut chunk = [0u8; 8192];
+        while remaining > 0 {
+            let to_read = remaining.min(chunk.len());
+            file.read_exact(&mut chunk[..to_read])?;
+            let h = icx_core::Blake3Digest::hash(&chunk[..to_read]);
+            for (a, b) in acc[..32].iter_mut().zip(h.0.iter()) {
+                *a ^= *b;
+            }
+            let mixed = icx_core::Blake3Digest::hash(&acc);
+            acc[..32].copy_from_slice(&mixed.0);
+            remaining -= to_read;
         }
-        buf.extend_from_slice(&len.to_le_bytes());
-        Ok(icx_core::Blake3Digest::hash(&buf))
+        Ok(icx_core::Blake3Digest::hash(&acc))
     }
 
     /// Polls `path` from its last committed byte offset (resetting to `0` if the file was
@@ -324,7 +328,9 @@ impl CodexRolloutTailer {
 
         loop {
             raw_line.clear();
-            let bytes_read = reader.read_until(b'\n', &mut raw_line)?;
+            let bytes_read = (&mut reader)
+                .take(icx_core::ICX_MAX_INGEST_BYTES as u64 + 4096)
+                .read_until(b'\n', &mut raw_line)?;
             if bytes_read == 0 || !raw_line.ends_with(b"\n") {
                 // Stop before decoding or consuming any incomplete trailing line (including
                 // mid-character UTF-8 sequences) still being written.

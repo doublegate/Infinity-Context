@@ -14,9 +14,11 @@ use icx_store::BiTemporalGraph;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static MMU_TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+static WORKSPACE_IO_LOCK: Mutex<()> = Mutex::new(());
 
 /// Default inline byte threshold above which tool outputs are virtualized into AHTL Holographic Stubs.
 pub const DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES: usize = 512;
@@ -603,10 +605,31 @@ impl InfinityContextMmu {
         IcxError::Io(err.to_string())
     }
 
+    fn acquire_workspace_lock(
+        icx_dir: &Path,
+    ) -> Result<(std::sync::MutexGuard<'static, ()>, std::fs::File), IcxError> {
+        let mem_guard = WORKSPACE_IO_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        std::fs::create_dir_all(icx_dir).map_err(Self::map_io_err)?;
+        let lock_path = icx_dir.join(".icx-workspace.lock");
+        let mut opts = std::fs::OpenOptions::new();
+        opts.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        let lock_file = opts.open(&lock_path).map_err(Self::map_io_err)?;
+        lock_file.lock().map_err(Self::map_io_err)?;
+        Ok((mem_guard, lock_file))
+    }
+
     /// Loads persisted `CasStore`, `BiTemporalGraph`, `redacted_artifacts`, `subagent_branches`,
     /// logical `clock_ms`, and shared-memory `SeqlockTelemetryBus` state from `icx_dir` atomically
-    /// (only mutating `self` after all components succeed).
+    /// under an exclusive workspace lock (only mutating `self` after all components succeed).
     pub fn load_workspace_dir(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
+        let _lock = Self::acquire_workspace_lock(icx_dir)?;
         let cas_path = icx_dir.join("cas_store.json");
         let new_cas = if cas_path.exists() {
             Some(CasStore::load_from_dir(icx_dir)?)
@@ -627,7 +650,8 @@ impl InfinityContextMmu {
             None
         };
         let redacted_path = icx_dir.join("redacted_artifacts.json");
-        let raw_redacted: Option<Vec<u64>> = if redacted_path.exists() {
+        let raw_redacted: Option<Vec<u64>> = if persisted_state.is_none() && redacted_path.exists()
+        {
             let bytes = std::fs::read(&redacted_path).map_err(Self::map_io_err)?;
             Some(serde_json::from_slice(&bytes).map_err(Self::map_io_err)?)
         } else {
@@ -715,13 +739,12 @@ impl InfinityContextMmu {
     }
 
     /// Atomically persists `CasStore`, `BiTemporalGraph`, `redacted_artifacts`, `subagent_branches`,
-    /// and logical `clock_ms` state into `icx_dir`.
+    /// and logical `clock_ms` state into `icx_dir` under an exclusive workspace lock.
     pub fn save_workspace_dir(&self, icx_dir: &Path) -> Result<(), IcxError> {
+        let _lock = Self::acquire_workspace_lock(icx_dir)?;
         self.cas.save_to_dir(icx_dir)?;
         self.graph.save_to_dir(icx_dir)?;
         let redacted_ids: Vec<u64> = self.redacted_artifacts.iter().map(|id| id.0).collect();
-        let redacted_bytes = serde_json::to_vec(&redacted_ids).map_err(Self::map_io_err)?;
-        Self::write_atomic_file(icx_dir, "redacted_artifacts.json", &redacted_bytes)?;
         let state = PersistedMmuState {
             clock_ms: self.clock_ms,
             redacted_ids,

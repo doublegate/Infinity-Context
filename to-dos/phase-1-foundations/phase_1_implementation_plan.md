@@ -165,7 +165,7 @@ let normal_pivot = (offset + cfg.avg_size.max(min_size)).min(limit);
     }
     ```
   - Enrich `SeqlockSlot` (`4,096` bytes, `#[repr(C, align(64))]`) with `packet_kind: u8` (`Δ`, `Ψ`, `Ω`, `Θ`, `Φ`) inside the existing reserved bytes without changing `size_of::<SeqlockSlot>() == 4096`.
-  - Enforce Unix file mode `0o600` (`OpenOptionsExt::mode(0o600)`) and owner-UID verification (`MetadataExt::uid() == unsafe { libc_geteuid_or_proc_uid }`) in `SeqlockTelemetryBus::open_shared_file` (`docs/security-and-threat-model.md` §2).
+  - Enforce Unix file mode `0o600` (`OpenOptionsExt::mode(0o600)`) and owner-UID verification (`MetadataExt::uid()` compared against `/proc/self/status` `Uid:` in 100% safe Rust) in `SeqlockTelemetryBus::open_shared_file` (`docs/security-and-threat-model.md` §2).
   - Add `SeqlockTelemetryBus::poll_workspace_since(&self, since_seq: u64, workspace_hash: u64) -> Vec<TelepathyEvent>` so cross-agent readers filter out telepathy frames from unrelated repositories in the same single pass.
   - Add **Ticket `T-13-002` Acceptance Criterion 2**: a concurrent **8-writer thread × 8-reader thread × 10,000-message stress test** (plus a multi-instance file-backed `mmap` test) verifying zero torn reads (`s1 == s2`), valid UTF-8 AHTL framing, and `< 1 µs` per-slot latency.
 
