@@ -681,7 +681,7 @@ sequenceDiagram
       }
     },
     "ai-memory": {
-      "command": "/home/parobek/.local/lib/ai-memory/ai-memory",
+      "command": "$HOME/.local/lib/ai-memory/ai-memory",
       "args": ["mcp-bridge"]
     }
   },
@@ -692,7 +692,7 @@ sequenceDiagram
         "hooks": [
           {
             "type": "command",
-            "command": "/home/parobek/.local/lib/ai-memory/ai-memory hook claude-code SessionStart"
+            "command": "$HOME/.local/lib/ai-memory/ai-memory hook claude-code SessionStart"
           },
           {
             "type": "command",
@@ -1019,7 +1019,7 @@ Hermes Agent persists full conversation transcripts in `~/.hermes/state.db` (`se
 
 ### 7.2 Use Case 2: Multi-Agent Swarm Coordination (`Claude Code` + `Codex` + `agy` Subagents)
 
-**Scenario:** Three agents run concurrently on the same workstation inside `/home/parobek/Code/OSS_Public-Projects/Infinity-Context`:
+**Scenario:** Three agents run concurrently on the same workstation inside `~/Code/OSS_Public-Projects/Infinity-Context`:
 - **Agent 1 (`agy` Coordinator):** Designing architecture and spawning subagents.
 - **Agent 2 (`Claude Code` Author):** Implementing Rust changes in `crates/icx-proxy`.
 - **Agent 3 (`OpenAI Codex` Verifier):** Running test suites and benchmarks.
@@ -1234,7 +1234,7 @@ Install `~/.config/systemd/user/icx-proxy.service` to keep the Cache-Epoch Wire 
 ```ini
 [Unit]
 Description=Infinity-Context (icx v1.0.0) Cache-Epoch Wire Proxy & Virtual Context MMU
-Documentation=file:///home/parobek/Code/OSS_Public-Projects/Infinity-Context/docs/deployment-and-agent-integration-guide.md
+Documentation=https://github.com/doublegate/Infinity-Context/blob/main/docs/deployment-and-agent-integration-guide.md
 After=network-online.target
 
 [Service]

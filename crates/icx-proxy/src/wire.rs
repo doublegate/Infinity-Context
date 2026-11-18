@@ -902,6 +902,7 @@ impl WireProxyTransformer {
     }
 
     const MAX_REQUEST_BODY_BYTES: usize = 16 * 1024 * 1024;
+    const MAX_SSE_LINE_BYTES: usize = 16 * 1024 * 1024;
     const MAX_UPSTREAM_RESPONSE_BYTES: usize = 64 * 1024 * 1024;
 
     fn read_next_http_chunk<R: BufRead>(
@@ -1052,7 +1053,7 @@ impl WireProxyTransformer {
                 let mut pending_bytes: Vec<u8> = Vec::new();
                 while let Some(chunk) = Self::read_next_http_chunk(
                     up_reader,
-                    Self::MAX_REQUEST_BODY_BYTES.saturating_sub(pending_bytes.len()),
+                    Self::MAX_SSE_LINE_BYTES.saturating_sub(pending_bytes.len()),
                 )? {
                     pending_bytes.extend_from_slice(&chunk);
                     while let Some(nl_idx) = pending_bytes.iter().position(|&b| b == b'\n') {
@@ -1086,8 +1087,18 @@ impl WireProxyTransformer {
                 let mut line = String::new();
                 loop {
                     line.clear();
-                    if up_reader.read_line(&mut line)? == 0 {
+                    if up_reader
+                        .take((Self::MAX_SSE_LINE_BYTES as u64) + 1)
+                        .read_line(&mut line)?
+                        == 0
+                    {
                         break;
+                    }
+                    if line.len() > Self::MAX_SSE_LINE_BYTES {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "upstream SSE line exceeds 16 MiB limit",
+                        ));
                     }
                     let has_nl = line.ends_with('\n');
                     let trimmed = line.trim_end_matches(&['\r', '\n'][..]);
@@ -1118,8 +1129,14 @@ impl WireProxyTransformer {
             }
         } else {
             up_reader
-                .take(Self::MAX_UPSTREAM_RESPONSE_BYTES as u64)
+                .take((Self::MAX_UPSTREAM_RESPONSE_BYTES as u64) + 1)
                 .read_to_end(&mut resp_bytes)?;
+            if resp_bytes.len() > Self::MAX_UPSTREAM_RESPONSE_BYTES {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "upstream HTTP response exceeds 64 MiB limit",
+                ));
+            }
         }
         let resp_str = String::from_utf8_lossy(&resp_bytes);
         let final_body = Self::expand_json_or_text_body(&resp_str, mmu);
@@ -1301,8 +1318,10 @@ impl WireProxyTransformer {
             "--http1.1",
             "--connect-timeout",
             "10",
-            "--max-time",
-            "120",
+            "--speed-time",
+            "60",
+            "--speed-limit",
+            "1",
             "-H",
             "Expect:",
             "-H",
@@ -1628,6 +1647,8 @@ impl WireProxyTransformer {
             let Ok(mut stream) = stream_res else {
                 continue;
             };
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
+            let _ = stream.set_write_timeout(Some(Duration::from_secs(30)));
             let Ok(reader) = stream.try_clone() else {
                 continue;
             };

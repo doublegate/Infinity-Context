@@ -280,8 +280,11 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
             }
         };
         let out = dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)?;
-        if loaded_ok {
-            let _ = mmu.save_workspace_dir_unlocked(&ws_dir);
+        if loaded_ok && let Err(err) = mmu.save_workspace_dir_unlocked(&ws_dir) {
+            eprintln!(
+                "icx hook warning: failed to save workspace state to {}: {err}",
+                ws_dir.display()
+            );
         }
         drop(lock_guard);
         return Ok(out);
