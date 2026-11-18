@@ -222,6 +222,29 @@ impl MerkleContextDag {
         self.nodes.get(&id)
     }
 
+    /// Finds an existing `DagNode::Turn` matching `(agent, role, raw_artifact)` and returns
+    /// `(ahtl_repr, surprise)`.
+    pub fn find_turn(
+        &self,
+        agent: AgentKind,
+        role: &str,
+        raw_artifact: ArtifactId,
+    ) -> Option<(&str, f32)> {
+        self.nodes.values().find_map(|n| match n {
+            DagNode::Turn {
+                agent: n_agent,
+                role: n_role,
+                raw_artifact: n_raw,
+                ahtl_repr,
+                surprise,
+                ..
+            } if *n_agent == agent && n_role == role && *n_raw == raw_artifact => {
+                Some((ahtl_repr.as_str(), *surprise))
+            }
+            _ => None,
+        })
+    }
+
     /// Resolves either a full 64-bit handle (`#icx:<16-hex>`) or a compact 48-bit Profile A prefix
     /// (`#icx:<12-hex>`) against stored DAG nodes (`L1`–`L4`), failing closed with
     /// `IcxError::AmbiguousHandlePrefix` if multiple DAG nodes share the same 48-bit prefix.

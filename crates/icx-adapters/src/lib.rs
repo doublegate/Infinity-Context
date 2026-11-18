@@ -12,7 +12,7 @@ pub mod mmu;
 pub use antigravity::AntigravityAdapter;
 pub use claude::ClaudeCodeAdapter;
 pub use codex::{CodexAdapter, CodexRolloutTailer};
-pub use hermes::{HermesAdapter, HermesMessage};
+pub use hermes::{HermesAdapter, HermesMessage, PRE_COMPRESS_CHECKPOINT_API_VERSION};
 pub use mcp::McpPagerServer;
 pub use mmu::{
     DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES, ICX_AHTL_LEGEND, InfinityContextMmu, IngestResult,
@@ -987,5 +987,413 @@ unprefixed_secret = {unpref_sec}
         assert!(has_nl2);
         assert!(!trunc2);
         let _ = std::fs::remove_dir_all(&ws_dir);
+    }
+
+    #[test]
+    fn sprint_4_2_antigravity_and_hermes_adapters_conformance() {
+        let mut mmu = InfinityContextMmu::default();
+
+        // 1. AgentHookAdapter trait dispatch for AntigravityAdapter and HermesAdapter
+        let agy_trait = AntigravityAdapter;
+        assert_eq!(agy_trait.agent_kind(), AgentKind::AntigravityCli);
+        let agy_start = agy_trait
+            .handle_hook_event(
+                "SessionStart",
+                r#"{"conversationId":"conv-983dcb21"}"#,
+                &mut mmu,
+            )
+            .unwrap();
+        assert!(agy_start.contains("⟪ICX:TAIL_SLOT│conv=conv-983dcb21│"));
+        assert!(agy_start.contains(r#""terminationBehavior":"""#));
+
+        // 2. Antigravity PreToolUse decision + overwrite pass-through
+        let agy_pre_ow = AntigravityAdapter::handle_hook(
+            "PreToolUse",
+            r#"{"decision":"ask","overwrite":{"CommandLine":"cargo test | icx capture-pipe"}}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        let agy_pre_val: Value = serde_json::from_str(&agy_pre_ow).unwrap();
+        assert_eq!(agy_pre_val["decision"], "ask");
+        assert_eq!(
+            agy_pre_val["overwrite"]["CommandLine"],
+            "cargo test | icx capture-pipe"
+        );
+
+        // 3. Antigravity PostInvocation with and without forceContinue
+        let agy_post_inv = AntigravityAdapter::handle_hook(
+            "PostInvocation",
+            r#"{"conversationId":"conv-983dcb21","lastUserInput":"verify fix","forceContinue":true}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        let agy_post_inv_val: Value = serde_json::from_str(&agy_post_inv).unwrap();
+        assert_eq!(agy_post_inv_val["terminationBehavior"], "force_continue");
+        let agy_post_inv_idle =
+            AntigravityAdapter::handle_hook("post-invocation", "{}", &mut mmu).unwrap();
+        let agy_post_inv_idle_val: Value = serde_json::from_str(&agy_post_inv_idle).unwrap();
+        assert_eq!(agy_post_inv_idle_val["terminationBehavior"], "");
+
+        // 4. Antigravity PostToolUse:
+        //    - Exempts `icx` / `mcp__icx__icx` pager tool from ingestion
+        //    - Filters out `"error": false` / `""` / `{}` / `[]`
+        //    - Reads trailing step or targeted `stepIdx` from `transcriptPath` when `toolResponse` is absent
+        let cas_before_pager = mmu.cas.artifact_count();
+        let agy_pager = AntigravityAdapter::handle_hook(
+            "PostToolUse",
+            r##"{"toolCall":{"name":"mcp__icx__icx","args":{"op":"deref","id":"#icx:0011223344556677"}},"toolResponse":"raw page bytes"}"##,
+            &mut mmu,
+        )
+        .unwrap();
+        assert_eq!(agy_pager, "{}");
+        assert_eq!(mmu.cas.artifact_count(), cas_before_pager);
+
+        let transcript_dir = std::env::temp_dir().join(format!(
+            "icx_agy_transcript_{}_{}",
+            std::process::id(),
+            mmu.clock_ms()
+        ));
+        std::fs::create_dir_all(&transcript_dir).unwrap();
+        let transcript_path = transcript_dir.join("transcript_full.jsonl");
+        let large_transcript = format!(
+            "{}\n\nnot_json\n{{\"step_index\":0,\"content\":\"step zero output\"}}\n{{\"stepIdx\":1,\"output\":\"step one targeted transcript payload\"}}\n{{\"step_index\":2,\"toolResponse\":{{\"ok\":true,\"lines\":42}}}}\n{{\"step_index\":3,\"content\":[1,2]}}\n{{\"step_index\":4,\"content\":true}}\n{{\"step_index\":5,\"content\":\"latest transcript step payload\"}}\n",
+            "{\"filler\":\"".to_owned() + &"x".repeat(300_000) + "\"}"
+        );
+        std::fs::write(&transcript_path, &large_transcript).unwrap();
+        assert_eq!(
+            AntigravityAdapter::read_transcript_step(&transcript_dir.join("missing.jsonl"), None),
+            None
+        );
+        assert_eq!(
+            AntigravityAdapter::read_transcript_step(&transcript_path, Some(999)),
+            None
+        );
+        assert_eq!(
+            AntigravityAdapter::read_transcript_step(&transcript_path, Some(1)).as_deref(),
+            Some("step one targeted transcript payload")
+        );
+        assert_eq!(
+            AntigravityAdapter::read_transcript_step(&transcript_path, None).as_deref(),
+            Some("latest transcript step payload")
+        );
+
+        let agy_from_tp = AntigravityAdapter::handle_hook(
+            "PostToolUse",
+            &serde_json::json!({
+                "toolCall": {
+                    "name": "run_command",
+                    "args": {
+                        "CommandLine": "cargo test --workspace"
+                    }
+                },
+                "transcriptPath": transcript_path.to_str().unwrap(),
+                "error": false,
+                "exitCode": 0
+            })
+            .to_string(),
+            &mut mmu,
+        )
+        .unwrap();
+        assert_eq!(agy_from_tp, "{}");
+        // Verify non-error `"error": false` did not record `status = FAIL`
+        assert!(!mmu.graph.edges().iter().any(|e| {
+            e.source_entity == "run_command:cargo test --workspace"
+                && e.relation == "status"
+                && e.target_entity == "FAIL"
+                && e.t_invalid.is_none()
+        }));
+        // Also test structured error object / boolean true error in Antigravity PostToolUse
+        let _ = AntigravityAdapter::handle_hook(
+            "PostToolUse",
+            r#"{"toolCall":{"name":"run_command","args":{"CommandLine":"cargo check"}},"error":{"code":101},"exitCode":101}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        let _ = AntigravityAdapter::handle_hook(
+            "PostToolUse",
+            r#"{"toolCall":{"name":"run_command","args":{"CommandLine":"cargo build"}},"error":true}"#,
+            &mut mmu,
+        )
+        .unwrap();
+
+        // 5. Antigravity SubagentStart, SubagentStop, Stop (with sealed epoch handle), and SessionEnd
+        let sub_start = AntigravityAdapter::handle_hook(
+            "SubagentStart",
+            r#"{"subagentId":"agy-worker-1"}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(sub_start.contains("⟪ICX:SUBAGENT_START│agy-worker-1⟫"));
+        let _ = AntigravityAdapter::handle_hook(
+            "PostToolUse",
+            r#"{"subagentId":"agy-worker-1","toolCall":{"name":"read_file"},"toolResponse":"subagent file read"}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        let sub_stop = AntigravityAdapter::handle_hook(
+            "SubagentStop",
+            r#"{"subagentId":"agy-worker-1","summary":"completed worker task"}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(sub_stop.contains("⟪ICX:SUBAGENT_FOLDED│#icx:"));
+
+        let stop_cont = AntigravityAdapter::handle_hook(
+            "Stop",
+            r#"{"conversationId":"conv-983dcb21","terminationReason":"MAX_INVOCATIONS","continuationActive":false}"#,
+            &mut mmu,
+        )
+        .unwrap();
+        let stop_cont_val: Value = serde_json::from_str(&stop_cont).unwrap();
+        assert_eq!(stop_cont_val["decision"], "continue");
+        let stop_reason = stop_cont_val["reason"].as_str().unwrap();
+        assert!(stop_reason.contains("⟪ICX:EPOCH_FOLDED│#icx:"));
+        assert!(stop_reason.contains("│Resume from sealed AHTL state⟫"));
+        assert_eq!(
+            AntigravityAdapter::handle_hook("SessionEnd", "{}", &mut mmu).unwrap(),
+            "{}"
+        );
+        let _ = std::fs::remove_dir_all(&transcript_dir);
+
+        // 6. HermesAdapter: ContextEngine (`select_context`, `prune_tool_results_only`, `compress`,
+        //    `on_turn_complete`) and MemoryProvider (`on_pre_compress`, v=2)
+        let hermes_trait = HermesAdapter;
+        assert_eq!(hermes_trait.agent_kind(), AgentKind::Hermes);
+        assert_eq!(PRE_COMPRESS_CHECKPOINT_API_VERSION, 2);
+
+        let bulky_tool_payload = "tool_line_payload_0123456789abcdef\n".repeat(30);
+        let hermes_msgs = vec![
+            HermesMessage {
+                role: "system".into(),
+                content: "You are Hermes Agent.".into(),
+                tool_call_id: None,
+                name: None,
+            },
+            HermesMessage {
+                role: "tool".into(),
+                content: bulky_tool_payload.clone(),
+                tool_call_id: Some("call_1".into()),
+                name: Some("terminal".into()),
+            },
+            HermesMessage {
+                role: "tool".into(),
+                content: "dereferenced page from icx".into(),
+                tool_call_id: Some("call_icx".into()),
+                name: Some("mcp__icx__icx".into()),
+            },
+            HermesMessage {
+                role: "assistant".into(),
+                content: "Analyzed terminal output.".into(),
+                tool_call_id: None,
+                name: None,
+            },
+            HermesMessage {
+                role: "user".into(),
+                content: "Summarize the terminal status.".into(),
+                tool_call_id: None,
+                name: None,
+            },
+        ];
+
+        // 6a. `prune_tool_results_only` stubs bulky tool messages outside protected tail while
+        //     leaving `mcp__icx__icx` and protected tail untouched
+        let (pruned_msgs, pruned_n) =
+            HermesAdapter::prune_tool_results_only(&hermes_msgs, 1, &mut mmu);
+        assert_eq!(pruned_n, 1);
+        assert!(pruned_msgs[1].content.starts_with("⟪ICX:STUB│#icx:"));
+        assert_eq!(pruned_msgs[2].content, "dereferenced page from icx");
+        // Calling `prune_tool_results_only` again on already-stubbed messages is a no-op
+        let (_, pruned_again) = HermesAdapter::prune_tool_results_only(&pruned_msgs, 1, &mut mmu);
+        assert_eq!(pruned_again, 0);
+
+        // 6b. `on_turn_complete` indexes only newly unseen messages and is idempotent on repeat
+        let newly_ingested_1 = HermesAdapter::on_turn_complete(&hermes_msgs, &mut mmu);
+        assert!(newly_ingested_1 >= 2);
+        let dag_len_after_1 = mmu.dag.node_count();
+        let newly_ingested_2 = HermesAdapter::on_turn_complete(&hermes_msgs, &mut mmu);
+        assert_eq!(newly_ingested_2, 0);
+        assert_eq!(mmu.dag.node_count(), dag_len_after_1);
+
+        // 6c. `select_context` reuses existing DAG turns without duplicating nodes and strips
+        //     any prior synthetic `icx_tail_slot`
+        let sel_1 = HermesAdapter::select_context(&hermes_msgs, 1, 1, &mut mmu);
+        assert_eq!(mmu.dag.node_count(), dag_len_after_1);
+        let sel_2 = HermesAdapter::select_context(&sel_1, 1, 1, &mut mmu);
+        assert_eq!(
+            sel_2
+                .iter()
+                .filter(|m| m.name.as_deref() == Some("icx_tail_slot"))
+                .count(),
+            1
+        );
+
+        // 6d. `compress` folds messages into an `L3` epoch and emits `⟪ICX:HERMES_COMPACT│...⟫`
+        let compacted = HermesAdapter::compress(&hermes_msgs, Some("terminal status"), &mut mmu);
+        assert_eq!(compacted.len(), 3);
+        assert!(
+            compacted[1]
+                .content
+                .contains("⟪ICX:HERMES_COMPACT│epoch=#icx:")
+        );
+        assert!(compacted[1].content.contains("│topic=terminal status│"));
+
+        // 6e. `on_pre_compress` returns `v=2` checkpoint string
+        let checkpoint = HermesAdapter::on_pre_compress(&hermes_msgs, &mut mmu);
+        assert!(checkpoint.starts_with("⟪ICX:PRE_COMPRESS_CHECKPOINT│v=2│epoch=#icx:"));
+
+        // 6f. `HermesAdapter::handle_hook` wire JSON contract for all operations
+        let h_sel = hermes_trait
+            .handle_hook_event(
+                "select_context",
+                &serde_json::json!({
+                    "messages": hermes_msgs,
+                    "protect_first_n": 1,
+                    "protect_last_n": 1
+                })
+                .to_string(),
+                &mut mmu,
+            )
+            .unwrap();
+        assert!(h_sel.contains("icx_cache_epoch"));
+
+        let h_prune = HermesAdapter::handle_hook(
+            "prune_tool_results_only",
+            &serde_json::json!({
+                "request_messages": hermes_msgs,
+                "protect_last_n": 1
+            })
+            .to_string(),
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(h_prune.contains(r#""pruned_count":1"#));
+
+        let h_comp = HermesAdapter::handle_hook(
+            "compress",
+            &serde_json::json!({
+                "requestMessages": hermes_msgs,
+                "focusTopic": "audit"
+            })
+            .to_string(),
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(h_comp.contains("ICX:HERMES_COMPACT"));
+
+        let h_turn = HermesAdapter::handle_hook(
+            "on_turn_complete",
+            &serde_json::json!({
+                "messages": hermes_msgs
+            })
+            .to_string(),
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(h_turn.contains(r#""ingested_count":0"#));
+
+        let h_pre_comp = HermesAdapter::handle_hook(
+            "on_pre_compress",
+            &serde_json::json!({
+                "messages": hermes_msgs
+            })
+            .to_string(),
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(h_pre_comp.contains(r#""checkpoint_version":2"#));
+
+        let h_sess = HermesAdapter::handle_hook("SessionStart", "", &mut mmu).unwrap();
+        assert!(h_sess.contains("systemMessage"));
+        assert_eq!(
+            HermesAdapter::handle_hook("unknown", "{}", &mut mmu).unwrap(),
+            "{}"
+        );
+
+        // Additional edge-case coverage for AntigravityAdapter and HermesAdapter:
+        // - Empty MMU `Stop` continuation (`#icx:0000000000000000`), `compress` / `on_pre_compress`
+        //   on empty messages, `select_context` on messages containing an `icx_cache_epoch` frame,
+        //   `PostToolUse` with empty payload / array error / oversized line in transcript
+        let mut empty_mmu = InfinityContextMmu::default();
+        let empty_comp = HermesAdapter::compress(&[], None, &mut empty_mmu);
+        assert!(empty_comp[0].content.contains("topic=general"));
+        let empty_pre = HermesAdapter::on_pre_compress(&[], &mut empty_mmu);
+        assert!(empty_pre.contains("epoch=#icx:0000000000000000"));
+        let empty_stop = AntigravityAdapter::handle_hook(
+            "Stop",
+            r#"{"terminationReason":"MAX_TOKEN_BUDGET_EXCEEDED","continuationActive":false}"#,
+            &mut empty_mmu,
+        )
+        .unwrap();
+        assert!(empty_stop.contains("#icx:0000000000000000"));
+        assert_eq!(
+            AntigravityAdapter::handle_hook("PostToolUse", "{}", &mut empty_mmu).unwrap(),
+            "{}"
+        );
+        let _ = AntigravityAdapter::handle_hook(
+            "PostToolUse",
+            r#"{"toolCall":{"name":"run"},"error":["err1","err2"]}"#,
+            &mut empty_mmu,
+        )
+        .unwrap();
+
+        let tp_trunc = std::env::temp_dir().join(format!(
+            "icx_agy_tp_trunc_{}_{}.jsonl",
+            std::process::id(),
+            mmu.clock_ms()
+        ));
+        let oversized_tp_line = format!(
+            "{{\"content\":\"{}\"}}\n{{\"content\":\"after_truncated\"}}\n",
+            "z".repeat(2 * icx_core::ICX_MAX_INGEST_BYTES + 256)
+        );
+        std::fs::write(&tp_trunc, &oversized_tp_line).unwrap();
+        assert_eq!(
+            AntigravityAdapter::read_transcript_step(&tp_trunc, None).as_deref(),
+            Some("after_truncated")
+        );
+        let _ = std::fs::remove_file(&tp_trunc);
+
+        // `select_context` with an embedded `icx_cache_epoch` in the middle slice and default
+        // `protectFirstN` / `protectLastN` via `handle_hook`
+        let mut with_epoch = vec![
+            HermesMessage {
+                role: "system".into(),
+                content: "head".into(),
+                tool_call_id: None,
+                name: None,
+            },
+            HermesMessage {
+                role: "system".into(),
+                content: "⟪ICX:HERMES_EPOCH│folded_msgs=1⟫\n⟦Δ:src/lib.rs⊢⊕fn:init⟧".into(),
+                tool_call_id: None,
+                name: Some("icx_cache_epoch".into()),
+            },
+            HermesMessage {
+                role: "user".into(),
+                content: String::new(),
+                tool_call_id: None,
+                name: None,
+            },
+            HermesMessage {
+                role: "user".into(),
+                content: "tail1".into(),
+                tool_call_id: None,
+                name: None,
+            },
+            HermesMessage {
+                role: "user".into(),
+                content: "tail2".into(),
+                tool_call_id: None,
+                name: None,
+            },
+        ];
+        let sel_epoch = HermesAdapter::select_context(&with_epoch, 1, 2, &mut empty_mmu);
+        assert!(sel_epoch[1].content.contains("⟦Δ:src/lib.rs⊢⊕fn:init⟧"));
+        let _ = HermesAdapter::compress(&with_epoch, None, &mut empty_mmu);
+        let _ = HermesAdapter::on_turn_complete(&with_epoch, &mut empty_mmu);
+        let _ = HermesAdapter::on_pre_compress(&with_epoch, &mut empty_mmu);
+        with_epoch.clear();
+        let _ = HermesAdapter::handle_hook("select-context", "{}", &mut empty_mmu).unwrap();
+        let _ =
+            HermesAdapter::handle_hook("prune-tool-results-only", "{}", &mut empty_mmu).unwrap();
     }
 }

@@ -472,6 +472,9 @@ impl CodexRolloutTailer {
                 continue;
             };
             if let Some((subject, body, exit_code)) = Self::extract_rollout_item(&val) {
+                if InfinityContextMmu::is_icx_pager_tool(&subject) {
+                    continue;
+                }
                 let _ = mmu.ingest_payload_with_exit_code(
                     AgentKind::Codex,
                     &subject,

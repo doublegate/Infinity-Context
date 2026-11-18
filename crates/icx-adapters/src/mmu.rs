@@ -52,6 +52,8 @@ struct PersistedMmuState {
     epochs: Option<CacheEpochController>,
     #[serde(default)]
     hdc_events: Vec<HdcEventRecord>,
+    #[serde(default)]
+    agent_read_cursors: BTreeMap<u8, u64>,
 }
 
 /// The central Virtual Context Memory Management Unit (`MMU`).
@@ -120,19 +122,30 @@ impl InfinityContextMmu {
         let tool_name = payload
             .get("tool_name")
             .or_else(|| payload.get("toolName"))
+            .or_else(|| payload.get("toolCall").and_then(|tc| tc.get("name")))
             .and_then(serde_json::Value::as_str)
             .unwrap_or(default_tool);
         let cmd_opt = ["tool_input", "toolInput", "input"]
             .into_iter()
             .find_map(|container| {
                 payload.get(container).and_then(|obj| {
-                    ["command", "cmd"]
+                    ["command", "cmd", "CommandLine"]
                         .into_iter()
                         .find_map(|k| obj.get(k).and_then(serde_json::Value::as_str))
                 })
             })
             .or_else(|| {
-                ["command", "cmd"]
+                payload
+                    .get("toolCall")
+                    .and_then(|tc| tc.get("args"))
+                    .and_then(|args| {
+                        ["command", "cmd", "CommandLine"]
+                            .into_iter()
+                            .find_map(|k| args.get(k).and_then(serde_json::Value::as_str))
+                    })
+            })
+            .or_else(|| {
+                ["command", "cmd", "CommandLine"]
                     .into_iter()
                     .find_map(|k| payload.get(k).and_then(serde_json::Value::as_str))
             })
@@ -241,6 +254,49 @@ impl InfinityContextMmu {
         (sanitized, was_redacted)
     }
 
+    /// Ingests a tool output or turn if `(agent, clean_subject, sanitized_artifact_id)` has not
+    /// already been recorded in `self.dag`; otherwise reuses the existing `DagNode::Turn`
+    /// representation without duplicating DAG nodes, HDC observations, or `/dev/shm` broadcasts.
+    /// Returns `(IngestResult, was_newly_ingested)`.
+    pub fn ingest_or_reuse_payload(
+        &mut self,
+        agent: AgentKind,
+        raw_subject: &str,
+        raw_text: &str,
+        exit_code: Option<i32>,
+        force_anomaly: bool,
+    ) -> (IngestResult, bool) {
+        let clean_subject = Self::sanitize_hook_label(raw_subject, "event");
+        let (sanitized, _) = Self::bound_and_sanitize_raw(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
+        let raw_bytes = sanitized.len();
+        let aid = ArtifactId::from_digest(&icx_core::Blake3Digest::hash(sanitized.as_bytes()));
+        if self.cas.get_meta(aid).is_some()
+            && let Some((ahtl_repr, surprise)) = self.dag.find_turn(agent, &clean_subject, aid)
+        {
+            return (
+                IngestResult {
+                    artifact_id: aid,
+                    raw_bytes,
+                    compressed_ahtl: ahtl_repr.to_owned(),
+                    surprise,
+                    was_virtualized: raw_bytes >= self.tool_virtualize_threshold,
+                },
+                false,
+            );
+        }
+        (
+            self.ingest_payload_for_subagent(
+                agent,
+                raw_subject,
+                raw_text,
+                exit_code,
+                force_anomaly,
+                None,
+            ),
+            true,
+        )
+    }
+
     /// Ingests a tool output or turn with an optional process `exit_code` and optional
     /// `subagent_id` scope. When `subagent_id` is `Some(...)`, the turn is buffered inside that
     /// subagent's isolated trajectory branch rather than being appended directly onto the parent's
@@ -313,7 +369,7 @@ impl InfinityContextMmu {
             {
                 let key = clause.key.as_str();
                 saw_pass |= key == "pass";
-                saw_fail |= key == "fail";
+                saw_fail |= key == "fail" && val.trim() != "0";
                 let is_functional = matches!(
                     key,
                     "status" | "test_status" | "return_type" | "fail" | "pass" | "exit_code"
@@ -621,6 +677,14 @@ impl InfinityContextMmu {
         ep
     }
 
+    /// Forces sealing the active epoch (via `maybe_rollover` or `force_seal_active_epoch`) and
+    /// synchronizes `global_dag_root` on `self.bus`.
+    pub fn force_rollover_and_sync_dag_root(&mut self) -> Option<ArtifactId> {
+        let ep = self.epochs.force_seal_active_epoch(&mut self.dag);
+        self.sync_global_dag_root();
+        ep
+    }
+
     /// Completes and folds the trajectory belonging to `raw_subagent_id` (`SubagentStop`),
     /// sanitizing `raw_summary` through `SecretRedactor::sanitize` before committing the `L2`
     /// `SubTrajectoryBranch` node to `MerkleContextDag`.
@@ -792,6 +856,12 @@ impl InfinityContextMmu {
                     .map(ArtifactId)
                     .filter(|&aid| self.cas.get_meta(aid).is_some()),
             );
+            let bus_seq = self.bus.write_sequence();
+            self.agent_read_cursors = st
+                .agent_read_cursors
+                .into_iter()
+                .map(|(k, v)| (k, v.min(bus_seq)))
+                .collect();
         } else {
             self.clock_ms = 1_794_880_800_000_u64.max(max_graph_ms);
             self.dag = MerkleContextDag::new();
@@ -825,8 +895,8 @@ impl InfinityContextMmu {
 
     /// Atomically persists `CasStore`, `BiTemporalGraph`, `MerkleContextDag`,
     /// `CacheEpochController`, `HdcAssociativeIndex` events, `redacted_artifacts`,
-    /// `subagent_branches`, and logical `clock_ms` state into `icx_dir` under an exclusive
-    /// workspace lock.
+    /// `subagent_branches`, `agent_read_cursors`, and logical `clock_ms` state into `icx_dir`
+    /// under an exclusive workspace lock.
     pub fn save_workspace_dir(&self, icx_dir: &Path) -> Result<(), IcxError> {
         let _lock = Self::acquire_workspace_lock(icx_dir)?;
         self.cas.save_to_dir(icx_dir)?;
@@ -839,6 +909,7 @@ impl InfinityContextMmu {
             dag: self.dag.clone(),
             epochs: Some(self.epochs.clone()),
             hdc_events: self.hdc_events.clone(),
+            agent_read_cursors: self.agent_read_cursors.clone(),
         };
         let state_bytes = serde_json::to_vec(&state).map_err(Self::map_io_err)?;
         Self::write_atomic_file(icx_dir, "mmu_state.json", &state_bytes)

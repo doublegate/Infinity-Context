@@ -1,8 +1,15 @@
-//! Hermes Agent `ContextEngine.select_context()` and `prune_tool_results_only()` adapter (`HermesAdapter`).
+//! Hermes Agent `ContextEngine` (`select_context`, `prune_tool_results_only`, `compress`,
+//! `on_turn_complete`) and `MemoryProvider` (`on_pre_compress`) adapter (`HermesAdapter`).
 
 use crate::mmu::InfinityContextMmu;
+use crate::{AdapterError, AgentHookAdapter};
 use icx_core::AgentKind;
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+/// Fail-closed pre-compression evidence handoff checkpoint contract version
+/// (`ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md` §2.4).
+pub const PRE_COMPRESS_CHECKPOINT_API_VERSION: u32 = 2;
 
 /// OpenAI-compatible message entry passed by Hermes's `ContextEngine.select_context()`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,25 +22,65 @@ pub struct HermesMessage {
     pub name: Option<String>,
 }
 
-/// Adapter implementing Hermes's `ContextEngine` transformations without mutating `state.db`.
+/// Adapter implementing Hermes's `ContextEngine` and `MemoryProvider` transformations without
+/// mutating `state.db`.
 #[derive(Clone, Debug, Default)]
 pub struct HermesAdapter;
 
+impl AgentHookAdapter for HermesAdapter {
+    fn agent_kind(&self) -> AgentKind {
+        AgentKind::Hermes
+    }
+
+    fn handle_hook_event(
+        &self,
+        event_name: &str,
+        stdin_json: &str,
+        mmu: &mut InfinityContextMmu,
+    ) -> Result<String, AdapterError> {
+        Ok(Self::handle_hook(event_name, stdin_json, mmu)?)
+    }
+}
+
 impl HermesAdapter {
+    fn is_synthetic_tail_slot(msg: &HermesMessage) -> bool {
+        msg.name.as_deref() == Some("icx_tail_slot") || msg.content.starts_with("⟪ICX:TAIL_SLOT│")
+    }
+
+    fn is_synthetic_cache_epoch(msg: &HermesMessage) -> bool {
+        msg.name.as_deref() == Some("icx_cache_epoch")
+            || msg.content.starts_with("⟪ICX:HERMES_EPOCH│")
+            || msg.content.starts_with("⟪ICX:HERMES_COMPACT│")
+    }
+
+    fn message_subject(msg: &HermesMessage) -> &str {
+        msg.name
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(&msg.role)
+    }
+
     /// Implements `ContextEngine.select_context(request_messages, protect_first_n, protect_last_n)`:
-    /// 1. Keeps the first `protect_first_n` head messages (system prompt + initial goal) verbatim.
-    /// 2. Compresses middle messages (especially bulky tool results) into sealed AHTL Epoch frames.
-    /// 3. Keeps the last `protect_last_n` messages verbatim.
-    /// 4. Appends the Ephemeral Tail Slot containing HDC/PPR/Fractal recall and `/dev/shm` telepathy.
+    /// 1. Strips any prior synthetic `icx_tail_slot` message so repeated calls remain idempotent.
+    /// 2. Keeps the first `protect_first_n` head messages (system prompt + initial goal) verbatim.
+    /// 3. Compresses middle messages into sealed AHTL Epoch frames (reusing existing DAG turns on
+    ///    subsequent turns without duplicating DAG nodes or `/dev/shm` broadcasts, and keeping
+    ///    `icx` MCP pager outputs intact).
+    /// 4. Keeps the last `protect_last_n` messages verbatim.
+    /// 5. Appends the Ephemeral Tail Slot containing HDC/PPR/Fractal recall and `/dev/shm` telepathy.
     pub fn select_context(
         request_messages: &[HermesMessage],
         protect_first_n: usize,
         protect_last_n: usize,
         mmu: &mut InfinityContextMmu,
     ) -> Vec<HermesMessage> {
-        let total = request_messages.len();
-        if total <= protect_first_n + protect_last_n {
-            let mut out = request_messages.to_vec();
+        let cleaned: Vec<&HermesMessage> = request_messages
+            .iter()
+            .filter(|m| !Self::is_synthetic_tail_slot(m))
+            .collect();
+        let total = cleaned.len();
+        if total <= protect_first_n.saturating_add(protect_last_n) {
+            let mut out: Vec<HermesMessage> = cleaned.into_iter().cloned().collect();
             let last_query = out
                 .last()
                 .map(|m| m.content.as_str())
@@ -51,13 +98,31 @@ impl HermesAdapter {
         let head_end = protect_first_n;
         let tail_start = total - protect_last_n;
 
-        let mut selected = Vec::with_capacity(protect_first_n + protect_last_n + 2);
-        selected.extend_from_slice(&request_messages[..head_end]);
+        let mut selected = Vec::with_capacity(
+            protect_first_n
+                .saturating_add(protect_last_n)
+                .saturating_add(2),
+        );
+        for &msg in &cleaned[..head_end] {
+            selected.push(msg.clone());
+        }
 
         let mut middle_ahtl = Vec::new();
-        for msg in &request_messages[head_end..tail_start] {
-            let subj = msg.name.as_deref().unwrap_or(&msg.role);
-            let res = mmu.ingest_payload(AgentKind::Hermes, subj, &msg.content, false);
+        for &msg in &cleaned[head_end..tail_start] {
+            if Self::is_synthetic_cache_epoch(msg) {
+                for line in msg.content.lines().skip(1) {
+                    if !line.trim().is_empty() {
+                        middle_ahtl.push(line.to_owned());
+                    }
+                }
+                continue;
+            }
+            let subj = Self::message_subject(msg);
+            if InfinityContextMmu::is_icx_pager_tool(subj) {
+                continue;
+            }
+            let (res, _) =
+                mmu.ingest_or_reuse_payload(AgentKind::Hermes, subj, &msg.content, None, false);
             middle_ahtl.push(res.compressed_ahtl);
         }
 
@@ -72,9 +137,11 @@ impl HermesAdapter {
             name: Some("icx_cache_epoch".into()),
         });
 
-        selected.extend_from_slice(&request_messages[tail_start..]);
+        for &msg in &cleaned[tail_start..] {
+            selected.push(msg.clone());
+        }
 
-        let last_query = request_messages
+        let last_query = cleaned
             .last()
             .map(|m| m.content.as_str())
             .unwrap_or("hermes_turn");
@@ -87,5 +154,271 @@ impl HermesAdapter {
         });
 
         selected
+    }
+
+    /// Implements `ContextEngine.prune_tool_results_only(messages, protect_last_n)`:
+    /// Deterministically trims oversized tool-result messages outside the last `protect_last_n`
+    /// messages into `#icx:<16-hex>` AHTL Holographic Stubs while leaving `icx` MCP pager outputs,
+    /// already-stubbed tool results, and non-tool messages untouched. Returns
+    /// `(messages, n_pruned)`.
+    pub fn prune_tool_results_only(
+        messages: &[HermesMessage],
+        protect_last_n: usize,
+        mmu: &mut InfinityContextMmu,
+    ) -> (Vec<HermesMessage>, usize) {
+        let total = messages.len();
+        let cutoff = total.saturating_sub(protect_last_n);
+        let mut out = Vec::with_capacity(total);
+        let mut n_pruned = 0usize;
+
+        for (idx, msg) in messages.iter().enumerate() {
+            let is_tool = msg.role == "tool" || msg.tool_call_id.is_some();
+            let subj = Self::message_subject(msg);
+            if idx < cutoff
+                && is_tool
+                && !InfinityContextMmu::is_icx_pager_tool(subj)
+                && !msg.content.starts_with("⟪ICX:STUB│")
+                && msg.content.len() >= mmu.tool_virtualize_threshold
+            {
+                let (res, _) =
+                    mmu.ingest_or_reuse_payload(AgentKind::Hermes, subj, &msg.content, None, false);
+                let mut stubbed = msg.clone();
+                stubbed.content = format!(
+                    "⟪ICX:STUB│{}│bytes={}│Use `icx` MCP tool (op=deref/slice/grep) to inspect full output⟫\n{}",
+                    res.artifact_id, res.raw_bytes, res.compressed_ahtl
+                );
+                out.push(stubbed);
+                n_pruned += 1;
+            } else {
+                out.push(msg.clone());
+            }
+        }
+        (out, n_pruned)
+    }
+
+    /// Implements `ContextEngine.compress(messages, focus_topic)`:
+    /// Preserves leading system messages, commits all remaining messages into `mmu`, seals the
+    /// active `CacheEpochNode` in `MerkleContextDag`, and emits a compacted `icx_cache_epoch`
+    /// message followed by the dynamic `icx_tail_slot`.
+    pub fn compress(
+        messages: &[HermesMessage],
+        focus_topic: Option<&str>,
+        mmu: &mut InfinityContextMmu,
+    ) -> Vec<HermesMessage> {
+        let mut head = Vec::new();
+        let mut body_msgs = Vec::new();
+        let mut in_head = true;
+
+        for msg in messages {
+            if Self::is_synthetic_tail_slot(msg) || Self::is_synthetic_cache_epoch(msg) {
+                continue;
+            }
+            if in_head && msg.role == "system" {
+                head.push(msg.clone());
+            } else {
+                in_head = false;
+                body_msgs.push(msg);
+            }
+        }
+
+        let mut ahtl_frames = Vec::new();
+        for msg in &body_msgs {
+            let subj = Self::message_subject(msg);
+            if InfinityContextMmu::is_icx_pager_tool(subj) {
+                continue;
+            }
+            let (res, _) =
+                mmu.ingest_or_reuse_payload(AgentKind::Hermes, subj, &msg.content, None, false);
+            ahtl_frames.push(res.compressed_ahtl);
+        }
+
+        let ep_id = mmu.force_rollover_and_sync_dag_root();
+        let ep_handle = ep_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "#icx:0000000000000000".to_owned());
+        let topic_label = focus_topic
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|t| InfinityContextMmu::sanitize_hook_label(t, "general"))
+            .unwrap_or_else(|| "general".to_owned());
+
+        let mut out = head;
+        out.push(HermesMessage {
+            role: "system".into(),
+            content: format!(
+                "⟪ICX:HERMES_COMPACT│epoch={ep_handle}│topic={topic_label}│folded_msgs={}⟫\n{}",
+                body_msgs.len(),
+                ahtl_frames.join("\n")
+            ),
+            tool_call_id: None,
+            name: Some("icx_cache_epoch".into()),
+        });
+
+        let query = focus_topic
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| body_msgs.last().map(|m| m.content.as_str()))
+            .unwrap_or("hermes_compact");
+        let tail = mmu.build_ephemeral_tail_slot(AgentKind::Hermes, query, 3);
+        out.push(HermesMessage {
+            role: "system".into(),
+            content: tail,
+            tool_call_id: None,
+            name: Some("icx_tail_slot".into()),
+        });
+
+        out
+    }
+
+    /// Implements `ContextEngine.on_turn_complete(messages)`:
+    /// Indexes any non-synthetic, non-pager messages from `messages` that have not yet been
+    /// recorded in `mmu`, returning the count of newly ingested messages.
+    pub fn on_turn_complete(messages: &[HermesMessage], mmu: &mut InfinityContextMmu) -> usize {
+        let mut newly_ingested = 0usize;
+        for msg in messages {
+            if Self::is_synthetic_tail_slot(msg)
+                || Self::is_synthetic_cache_epoch(msg)
+                || msg.content.trim().is_empty()
+            {
+                continue;
+            }
+            let subj = Self::message_subject(msg);
+            if InfinityContextMmu::is_icx_pager_tool(subj) {
+                continue;
+            }
+            let (_, was_new) =
+                mmu.ingest_or_reuse_payload(AgentKind::Hermes, subj, &msg.content, None, false);
+            if was_new {
+                newly_ingested += 1;
+            }
+        }
+        newly_ingested
+    }
+
+    /// Implements `MemoryProvider.on_pre_compress(messages) -> String`
+    /// (`PRE_COMPRESS_CHECKPOINT_API_VERSION = 2` fail-closed pre-compression evidence handoff).
+    pub fn on_pre_compress(messages: &[HermesMessage], mmu: &mut InfinityContextMmu) -> String {
+        let mut ahtl_frames = Vec::new();
+        let mut msg_count = 0usize;
+        for msg in messages {
+            if Self::is_synthetic_tail_slot(msg)
+                || Self::is_synthetic_cache_epoch(msg)
+                || msg.content.trim().is_empty()
+            {
+                continue;
+            }
+            let subj = Self::message_subject(msg);
+            if InfinityContextMmu::is_icx_pager_tool(subj) {
+                continue;
+            }
+            let (res, _) =
+                mmu.ingest_or_reuse_payload(AgentKind::Hermes, subj, &msg.content, None, false);
+            ahtl_frames.push(res.compressed_ahtl);
+            msg_count += 1;
+        }
+        let ep_id = mmu.force_rollover_and_sync_dag_root();
+        let ep_handle = ep_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "#icx:0000000000000000".to_owned());
+        format!(
+            "⟪ICX:PRE_COMPRESS_CHECKPOINT│v={}│epoch={ep_handle}│msgs={msg_count}│cas_artifacts={}⟫\n{}",
+            PRE_COMPRESS_CHECKPOINT_API_VERSION,
+            mmu.cas.artifact_count(),
+            ahtl_frames.join("\n")
+        )
+    }
+
+    fn parse_messages(payload: &Value) -> Vec<HermesMessage> {
+        for key in ["messages", "request_messages", "requestMessages"] {
+            if let Some(arr) = payload.get(key)
+                && let Ok(msgs) = serde_json::from_value::<Vec<HermesMessage>>(arr.clone())
+            {
+                return msgs;
+            }
+        }
+        Vec::new()
+    }
+
+    /// Handles a Hermes hook or `ContextEngine` / `MemoryProvider` JSON RPC payload.
+    pub fn handle_hook(
+        event_name: &str,
+        stdin_json: &str,
+        mmu: &mut InfinityContextMmu,
+    ) -> Result<String, serde_json::Error> {
+        let payload: Value = if stdin_json.trim().is_empty() {
+            json!({})
+        } else {
+            serde_json::from_str(stdin_json)?
+        };
+
+        let response = match event_name {
+            "select_context" | "select-context" => {
+                let msgs = Self::parse_messages(&payload);
+                let first_n = payload
+                    .get("protect_first_n")
+                    .or_else(|| payload.get("protectFirstN"))
+                    .and_then(Value::as_u64)
+                    .map(|n| n as usize)
+                    .unwrap_or(1);
+                let last_n = payload
+                    .get("protect_last_n")
+                    .or_else(|| payload.get("protectLastN"))
+                    .and_then(Value::as_u64)
+                    .map(|n| n as usize)
+                    .unwrap_or(2);
+                let selected = Self::select_context(&msgs, first_n, last_n, mmu);
+                json!({
+                    "messages": selected
+                })
+            }
+            "prune_tool_results_only" | "prune-tool-results-only" => {
+                let msgs = Self::parse_messages(&payload);
+                let last_n = payload
+                    .get("protect_last_n")
+                    .or_else(|| payload.get("protectLastN"))
+                    .and_then(Value::as_u64)
+                    .map(|n| n as usize)
+                    .unwrap_or(2);
+                let (pruned, n_pruned) = Self::prune_tool_results_only(&msgs, last_n, mmu);
+                json!({
+                    "messages": pruned,
+                    "pruned_count": n_pruned
+                })
+            }
+            "compress" | "PreCompact" | "pre-compact" => {
+                let msgs = Self::parse_messages(&payload);
+                let focus_topic = payload
+                    .get("focus_topic")
+                    .or_else(|| payload.get("focusTopic"))
+                    .and_then(Value::as_str);
+                let compressed = Self::compress(&msgs, focus_topic, mmu);
+                json!({
+                    "messages": compressed
+                })
+            }
+            "on_turn_complete" | "on-turn-complete" | "PostToolUse" | "post-tool-use" => {
+                let msgs = Self::parse_messages(&payload);
+                let count = Self::on_turn_complete(&msgs, mmu);
+                json!({
+                    "ingested_count": count
+                })
+            }
+            "on_pre_compress" | "on-pre-compress" => {
+                let msgs = Self::parse_messages(&payload);
+                let checkpoint = Self::on_pre_compress(&msgs, mmu);
+                json!({
+                    "checkpoint_version": PRE_COMPRESS_CHECKPOINT_API_VERSION,
+                    "checkpoint": checkpoint
+                })
+            }
+            "SessionStart" | "session-start" => {
+                let tail = mmu.build_ephemeral_tail_slot(AgentKind::Hermes, "session_init", 3);
+                json!({
+                    "systemMessage": tail
+                })
+            }
+            _ => json!({}),
+        };
+
+        serde_json::to_string(&response)
     }
 }
