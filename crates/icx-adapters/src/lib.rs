@@ -897,6 +897,20 @@ unprefixed_secret = {unpref_sec}
         .unwrap();
         let c2 = tailer.poll_file(&rollout_path, &mut loaded_mmu).unwrap();
         assert_eq!(c2, 1);
+        // Verify read_bounded_jsonl_record caps allocation at max_bytes while draining through '\n'
+        let mut cursor = std::io::Cursor::new(&b"0123456789abcdef\nnext_line\n"[..]);
+        let mut rec_buf = Vec::new();
+        let (total_b, has_nl, trunc) =
+            CodexRolloutTailer::read_bounded_jsonl_record(&mut cursor, 8, &mut rec_buf).unwrap();
+        assert_eq!(total_b, 17);
+        assert!(has_nl);
+        assert!(trunc);
+        assert_eq!(&rec_buf, b"01234567");
+        let (total_b2, has_nl2, trunc2) =
+            CodexRolloutTailer::read_bounded_jsonl_record(&mut cursor, 32, &mut rec_buf).unwrap();
+        assert_eq!(total_b2, 10);
+        assert!(has_nl2);
+        assert!(!trunc2);
         let _ = std::fs::remove_dir_all(&ws_dir);
     }
 }

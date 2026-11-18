@@ -217,6 +217,10 @@ struct RolloutBookmark {
     prefix_digest: icx_core::Blake3Digest,
 }
 
+/// Maximum per-record buffer allocation (`64 MiB + 64 KiB`) before draining the remainder of an
+/// oversized rollout JSONL record through its terminating newline.
+pub const MAX_ROLLOUT_RECORD_BYTES: usize = icx_core::ICX_MAX_INGEST_BYTES + 65_536;
+
 /// Incremental JSONL rollout tailer for OpenAI Codex `threads.rollout_path` (`RolloutItemWire`).
 #[derive(Clone, Debug, Default)]
 pub struct CodexRolloutTailer {
@@ -296,6 +300,47 @@ impl CodexRolloutTailer {
         Ok((committed, ingested))
     }
 
+    /// Reads a single JSONL record from `reader`, appending at most `max_bytes` into `out` while
+    /// draining any excess bytes through the terminating `b'\n'`. Returns
+    /// `(total_bytes_on_disk, ended_with_newline, was_truncated)`.
+    pub fn read_bounded_jsonl_record<R: BufRead>(
+        reader: &mut R,
+        max_bytes: usize,
+        out: &mut Vec<u8>,
+    ) -> io::Result<(u64, bool, bool)> {
+        out.clear();
+        let mut total_bytes = 0u64;
+        let mut ended_with_newline = false;
+        let mut was_truncated = false;
+        loop {
+            let buf = reader.fill_buf()?;
+            if buf.is_empty() {
+                break;
+            }
+            let (used, found_nl) = match buf.iter().position(|&b| b == b'\n') {
+                Some(pos) => (pos + 1, true),
+                None => (buf.len(), false),
+            };
+            total_bytes += used as u64;
+            let remaining_cap = max_bytes.saturating_sub(out.len());
+            if remaining_cap > 0 {
+                let copy_len = used.min(remaining_cap);
+                out.extend_from_slice(&buf[..copy_len]);
+                if copy_len < used {
+                    was_truncated = true;
+                }
+            } else {
+                was_truncated = true;
+            }
+            reader.consume(used);
+            if found_nl {
+                ended_with_newline = true;
+                break;
+            }
+        }
+        Ok((total_bytes, ended_with_newline, was_truncated))
+    }
+
     fn ingest_from_open_file(
         mut file: File,
         byte_offset: u64,
@@ -327,17 +372,31 @@ impl CodexRolloutTailer {
         let mut ingested = 0usize;
 
         loop {
-            raw_line.clear();
-            let bytes_read = reader.read_until(b'\n', &mut raw_line)?;
-            if bytes_read == 0 || !raw_line.ends_with(b"\n") {
+            let (bytes_read, ended_with_nl, was_truncated) = Self::read_bounded_jsonl_record(
+                &mut reader,
+                MAX_ROLLOUT_RECORD_BYTES,
+                &mut raw_line,
+            )?;
+            if bytes_read == 0 || !ended_with_nl {
                 // Stop before decoding or consuming any incomplete trailing line (including
                 // mid-character UTF-8 sequences) still being written.
                 break;
             }
-            committed += bytes_read as u64;
+            committed += bytes_read;
             let line = String::from_utf8_lossy(&raw_line);
             let trimmed = line.trim();
             if trimmed.is_empty() {
+                continue;
+            }
+            if was_truncated {
+                let _ = mmu.ingest_payload_with_exit_code(
+                    AgentKind::Codex,
+                    "oversized_rollout_item",
+                    trimmed,
+                    None,
+                    false,
+                );
+                ingested += 1;
                 continue;
             }
             let Ok(val) = serde_json::from_str::<Value>(trimmed) else {
