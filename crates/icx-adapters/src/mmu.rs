@@ -961,7 +961,13 @@ impl InfinityContextMmu {
         } else {
             None
         };
-        let shm_path = icx_dir.join("icx-fabric-v1.shm");
+        let shm_path = std::env::var("ICX_SHM_PATH")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .map_or_else(
+                || icx_dir.join("icx-fabric-v1.shm"),
+                std::path::PathBuf::from,
+            );
         let new_bus = if shm_path.exists() {
             SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(Self::map_io_err)?
         } else {

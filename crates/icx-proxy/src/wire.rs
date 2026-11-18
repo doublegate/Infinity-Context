@@ -61,6 +61,7 @@ struct SsePendingEntry {
     pending: String,
     template: Option<Value>,
     json_path: Vec<String>,
+    last_holdback_line: usize,
 }
 
 #[derive(Default, Clone)]
@@ -71,10 +72,6 @@ struct SsePendingState {
 impl SsePendingState {
     fn is_empty(&self) -> bool {
         self.streams.values().all(|e| e.pending.is_empty())
-    }
-
-    fn clear(&mut self) {
-        self.streams.clear();
     }
 }
 
@@ -610,6 +607,26 @@ impl WireProxyTransformer {
         *cur = Value::String(new_val);
     }
 
+    fn append_json_string_at_path(root: &mut Value, path: &[String], suffix: &str) {
+        let mut cur = root;
+        for seg in path {
+            cur = match cur {
+                Value::Object(map) => match map.get_mut(seg) {
+                    Some(v) => v,
+                    None => return,
+                },
+                Value::Array(arr) => match seg.parse::<usize>().ok().and_then(|i| arr.get_mut(i)) {
+                    Some(v) => v,
+                    None => return,
+                },
+                _ => return,
+            };
+        }
+        if let Value::String(s) = cur {
+            s.push_str(suffix);
+        }
+    }
+
     fn expand_deref_in_json_value_stateful(
         val: &mut Value,
         stream_key_prefix: &str,
@@ -617,6 +634,7 @@ impl WireProxyTransformer {
         state: &mut SsePendingState,
         mmu: &InfinityContextMmu,
         allow_holdback: bool,
+        line_idx: usize,
     ) {
         match val {
             Value::String(s) => {
@@ -635,6 +653,7 @@ impl WireProxyTransformer {
                     entry.template = None;
                     if !entry.pending.is_empty() {
                         entry.json_path.clone_from(json_path);
+                        entry.last_holdback_line = line_idx;
                     }
                 }
             }
@@ -656,6 +675,7 @@ impl WireProxyTransformer {
                         state,
                         mmu,
                         allow_holdback,
+                        line_idx,
                     );
                     json_path.pop();
                 }
@@ -685,6 +705,7 @@ impl WireProxyTransformer {
                             entry.template = None;
                             if !entry.pending.is_empty() {
                                 entry.json_path.clone_from(json_path);
+                                entry.last_holdback_line = line_idx;
                             }
                         }
                     } else {
@@ -695,6 +716,7 @@ impl WireProxyTransformer {
                             state,
                             mmu,
                             allow_holdback,
+                            line_idx,
                         );
                     }
                     json_path.pop();
@@ -719,6 +741,7 @@ impl WireProxyTransformer {
         state: &mut SsePendingState,
         mmu: &InfinityContextMmu,
         allow_holdback: bool,
+        line_idx: usize,
     ) -> String {
         if state.is_empty() && !Self::might_contain_deref_marker(line) {
             return line.to_owned();
@@ -740,6 +763,7 @@ impl WireProxyTransformer {
                     state,
                     mmu,
                     allow_holdback,
+                    line_idx,
                 );
                 for entry in state.streams.values_mut() {
                     if !entry.pending.is_empty() && entry.template.is_none() {
@@ -753,6 +777,10 @@ impl WireProxyTransformer {
             let entry = state.streams.entry("raw_data".to_owned()).or_default();
             let out_text =
                 Self::expand_text_with_pending(json_part, &mut entry.pending, mmu, allow_holdback);
+            if !entry.pending.is_empty() {
+                entry.json_path.clear();
+                entry.last_holdback_line = line_idx;
+            }
             return format!("{prefix}{out_text}");
         }
         if !line.is_empty()
@@ -762,7 +790,13 @@ impl WireProxyTransformer {
             && !line.starts_with(':')
         {
             let entry = state.streams.entry("raw_line".to_owned()).or_default();
-            return Self::expand_text_with_pending(line, &mut entry.pending, mmu, allow_holdback);
+            let out_text =
+                Self::expand_text_with_pending(line, &mut entry.pending, mmu, allow_holdback);
+            if !entry.pending.is_empty() {
+                entry.json_path.clear();
+                entry.last_holdback_line = line_idx;
+            }
+            return out_text;
         }
         line.to_owned()
     }
@@ -778,25 +812,34 @@ impl WireProxyTransformer {
         let lines: Vec<&str> = sse_chunk.split('\n').collect();
         let mut out: Vec<String> = Vec::with_capacity(lines.len());
         let mut state = SsePendingState::default();
-        let mut pending_origin_idx: Option<usize> = None;
 
         for (idx, &line) in lines.iter().enumerate() {
-            let was_empty = state.is_empty();
-            let transformed = Self::transform_sse_line_stateful(line, &mut state, mmu, true);
-            if was_empty && !state.is_empty() {
-                pending_origin_idx = Some(idx);
-            } else if state.is_empty() {
-                pending_origin_idx = None;
-            }
+            let transformed = Self::transform_sse_line_stateful(line, &mut state, mmu, true, idx);
             out.push(transformed);
         }
 
-        if !state.is_empty()
-            && let Some(origin_idx) = pending_origin_idx
-        {
-            state.clear();
-            for idx in origin_idx..lines.len() {
-                out[idx] = Self::transform_sse_line_stateful(lines[idx], &mut state, mmu, false);
+        for entry in state.streams.values_mut() {
+            if !entry.pending.is_empty() && entry.last_holdback_line < out.len() {
+                let residual = std::mem::take(&mut entry.pending);
+                let line_slot = &mut out[entry.last_holdback_line];
+                if !entry.json_path.is_empty()
+                    && let Some(after_colon) = line_slot.strip_prefix("data:")
+                {
+                    let prefix = if after_colon.starts_with(' ') {
+                        "data: "
+                    } else {
+                        "data:"
+                    };
+                    let json_str = after_colon.strip_prefix(' ').unwrap_or(after_colon).trim();
+                    if let Ok(mut val) = serde_json::from_str::<Value>(json_str) {
+                        Self::append_json_string_at_path(&mut val, &entry.json_path, &residual);
+                        if let Ok(re_serialized) = serde_json::to_string(&val) {
+                            *line_slot = format!("{prefix}{re_serialized}");
+                            continue;
+                        }
+                    }
+                }
+                line_slot.push_str(&residual);
             }
         }
 
@@ -933,6 +976,7 @@ impl WireProxyTransformer {
         )
     }
 
+    const MAX_CHUNK_META_LINE_BYTES: usize = 4096;
     const MAX_REQUEST_BODY_BYTES: usize = 16 * 1024 * 1024;
     const MAX_SSE_LINE_BYTES: usize = 16 * 1024 * 1024;
     const MAX_UPSTREAM_RESPONSE_BYTES: usize = 64 * 1024 * 1024;
@@ -942,22 +986,48 @@ impl WireProxyTransformer {
         max_chunk_bytes: usize,
     ) -> io::Result<Option<Vec<u8>>> {
         let mut size_line = String::new();
-        if reader.read_line(&mut size_line)? == 0 {
+        if reader
+            .take((Self::MAX_CHUNK_META_LINE_BYTES as u64) + 1)
+            .read_line(&mut size_line)?
+            == 0
+        {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "unexpected EOF before terminating 0-length HTTP chunk",
+            ));
+        }
+        if size_line.len() > Self::MAX_CHUNK_META_LINE_BYTES || !size_line.ends_with('\n') {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "HTTP chunk size line exceeds metadata limit or lacks newline",
             ));
         }
         let hex_part = size_line.trim().split(';').next().unwrap_or("").trim();
         let chunk_len = usize::from_str_radix(hex_part, 16)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("chunk size: {e}")))?;
         if chunk_len == 0 {
-            loop {
+            let mut trailers_done = false;
+            for _ in 0..64 {
                 let mut trailer = String::new();
-                let n = reader.read_line(&mut trailer)?;
+                let n = reader
+                    .take((Self::MAX_CHUNK_META_LINE_BYTES as u64) + 1)
+                    .read_line(&mut trailer)?;
+                if trailer.len() > Self::MAX_CHUNK_META_LINE_BYTES {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "HTTP chunk trailer line exceeds metadata limit",
+                    ));
+                }
                 if n == 0 || trailer == "\r\n" || trailer == "\n" {
+                    trailers_done = true;
                     break;
                 }
+            }
+            if !trailers_done {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "too many HTTP chunk trailer lines",
+                ));
             }
             return Ok(None);
         }
@@ -970,10 +1040,16 @@ impl WireProxyTransformer {
         let mut buf = vec![0u8; chunk_len];
         reader.read_exact(&mut buf)?;
         let mut crlf = String::new();
-        if reader.read_line(&mut crlf)? == 0 {
+        if reader.take(16).read_line(&mut crlf)? == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "unexpected EOF reading HTTP chunk trailing CRLF",
+            ));
+        }
+        if crlf != "\r\n" && crlf != "\n" {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "invalid HTTP chunk trailing CRLF",
             ));
         }
         Ok(Some(buf))
@@ -1024,17 +1100,20 @@ impl WireProxyTransformer {
         Ok(())
     }
 
+    #[cfg(test)]
     fn relay_upstream_response<R: BufRead, W: Write>(
         up_reader: &mut R,
         body_already_dechunked: bool,
         mmu: &InfinityContextMmu,
         writer: &mut W,
     ) -> io::Result<()> {
+        let mut committed = false;
         Self::relay_upstream_response_with_eof(
             up_reader,
             body_already_dechunked,
             mmu,
             writer,
+            &mut committed,
             || Ok(()),
         )
     }
@@ -1044,6 +1123,7 @@ impl WireProxyTransformer {
         body_already_dechunked: bool,
         mmu: &InfinityContextMmu,
         writer: &mut W,
+        headers_committed: &mut bool,
         verify_eof: F,
     ) -> io::Result<()> {
         let mut status_trimmed;
@@ -1054,7 +1134,7 @@ impl WireProxyTransformer {
 
         loop {
             let mut status_line = String::new();
-            if up_reader.read_line(&mut status_line)? == 0 {
+            if up_reader.take(65_536).read_line(&mut status_line)? == 0 {
                 return Err(io::Error::new(
                     io::ErrorKind::UnexpectedEof,
                     "empty upstream HTTP response",
@@ -1065,9 +1145,9 @@ impl WireProxyTransformer {
             is_sse = false;
             is_chunked = false;
             declared_content_length = None;
-            loop {
+            for _ in 0..256 {
                 let mut hline = String::new();
-                let n = up_reader.read_line(&mut hline)?;
+                let n = up_reader.take(65_536).read_line(&mut hline)?;
                 if n == 0 || hline == "\r\n" || hline == "\n" {
                     break;
                 }
@@ -1107,6 +1187,7 @@ impl WireProxyTransformer {
             }
             write!(writer, "Connection: close\r\n\r\n")?;
             writer.flush()?;
+            *headers_committed = true;
 
             let mut sse_pending = SsePendingState::default();
             if is_chunked {
@@ -1128,6 +1209,7 @@ impl WireProxyTransformer {
                             &mut sse_pending,
                             mmu,
                             true,
+                            0,
                         );
                         writeln!(writer, "{transformed_line}")?;
                         writer.flush()?;
@@ -1137,8 +1219,13 @@ impl WireProxyTransformer {
                 if !pending_bytes.is_empty() {
                     let trimmed_bytes = pending_bytes.strip_suffix(b"\r").unwrap_or(&pending_bytes);
                     let raw_line = String::from_utf8_lossy(trimmed_bytes);
-                    let transformed_line =
-                        Self::transform_sse_line_stateful(&raw_line, &mut sse_pending, mmu, false);
+                    let transformed_line = Self::transform_sse_line_stateful(
+                        &raw_line,
+                        &mut sse_pending,
+                        mmu,
+                        false,
+                        0,
+                    );
                     write!(writer, "{transformed_line}")?;
                     writer.flush()?;
                 }
@@ -1165,8 +1252,13 @@ impl WireProxyTransformer {
                     if Self::is_sse_done_line(trimmed) {
                         Self::flush_sse_pending(&mut sse_pending, writer)?;
                     }
-                    let transformed_line =
-                        Self::transform_sse_line_stateful(trimmed, &mut sse_pending, mmu, has_nl);
+                    let transformed_line = Self::transform_sse_line_stateful(
+                        trimmed,
+                        &mut sse_pending,
+                        mmu,
+                        has_nl,
+                        0,
+                    );
                     if has_nl {
                         writeln!(writer, "{transformed_line}")?;
                     } else {
@@ -1210,6 +1302,7 @@ impl WireProxyTransformer {
         let resp_str = String::from_utf8_lossy(&resp_bytes);
         let final_body = Self::expand_json_or_text_body(&resp_str, mmu);
 
+        *headers_committed = true;
         write!(writer, "{status_trimmed}\r\n")?;
         for (hk, hv) in &resp_headers {
             write!(writer, "{hk}: {hv}\r\n")?;
@@ -1282,6 +1375,7 @@ impl WireProxyTransformer {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn forward_http_upstream<W: Write>(
         method: &str,
         upstream_base: &str,
@@ -1290,6 +1384,7 @@ impl WireProxyTransformer {
         transformed_body: &str,
         mmu: &InfinityContextMmu,
         writer: &mut W,
+        headers_committed: &mut bool,
     ) -> io::Result<()> {
         let (connect_addr, host_header, target_path) =
             Self::parse_http_upstream_endpoint(upstream_base, stripped_path);
@@ -1332,7 +1427,14 @@ impl WireProxyTransformer {
         upstream.flush()?;
 
         let mut up_reader = BufReader::new(upstream);
-        Self::relay_upstream_response(&mut up_reader, false, mmu, writer)
+        Self::relay_upstream_response_with_eof(
+            &mut up_reader,
+            false,
+            mmu,
+            writer,
+            headers_committed,
+            || Ok(()),
+        )
     }
 
     fn is_loopback_upstream(url: &str) -> bool {
@@ -1363,6 +1465,7 @@ impl WireProxyTransformer {
         false
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn forward_https_upstream<W: Write>(
         method: &str,
         upstream_base: &str,
@@ -1371,6 +1474,7 @@ impl WireProxyTransformer {
         transformed_body: &str,
         mmu: &InfinityContextMmu,
         writer: &mut W,
+        headers_committed: &mut bool,
     ) -> io::Result<()> {
         let safe_method = if Self::is_valid_http_token(method) {
             method
@@ -1435,6 +1539,7 @@ impl WireProxyTransformer {
                         true,
                         mmu,
                         writer,
+                        headers_committed,
                         || {
                             waited = true;
                             let status = child.wait()?;
@@ -1672,6 +1777,7 @@ impl WireProxyTransformer {
 
         if let Some(upstream_base) = effective_upstream {
             let stripped_path = Self::strip_provider_route_prefix(path);
+            let mut headers_committed = false;
             let forward_res = if upstream_base.starts_with("https://") {
                 Self::forward_https_upstream(
                     method,
@@ -1681,6 +1787,7 @@ impl WireProxyTransformer {
                     &transformed,
                     mmu,
                     &mut writer,
+                    &mut headers_committed,
                 )
             } else {
                 Self::forward_http_upstream(
@@ -1691,17 +1798,20 @@ impl WireProxyTransformer {
                     &transformed,
                     mmu,
                     &mut writer,
+                    &mut headers_committed,
                 )
             };
             if let Err(err) = forward_res {
-                let err_json =
-                    json!({ "error": format!("upstream gateway error: {err}") }).to_string();
-                write!(
-                    writer,
-                    "HTTP/1.1 502 Bad Gateway\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    err_json.len(),
-                    err_json
-                )?;
+                if !headers_committed {
+                    let err_json =
+                        json!({ "error": format!("upstream gateway error: {err}") }).to_string();
+                    write!(
+                        writer,
+                        "HTTP/1.1 502 Bad Gateway\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        err_json.len(),
+                        err_json
+                    )?;
+                }
                 return writer.flush();
             }
             return Ok(());

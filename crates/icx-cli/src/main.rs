@@ -127,7 +127,10 @@ fn init_workspace_dir(icx_dir: &Path) -> Result<(), String> {
         let cas = icx_core::cas::CasStore::new();
         cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
     }
-    let shm_path = icx_dir.join("icx-fabric-v1.shm");
+    let shm_path = env::var("ICX_SHM_PATH")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map_or_else(|| icx_dir.join("icx-fabric-v1.shm"), PathBuf::from);
     icx_bus::SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -319,7 +322,12 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
             mmu.load_workspace_dir_unlocked(&ws_dir)
                 .map_err(|e| format!("mcp-serve load error: {e}"))?;
             let r = McpPagerServer::handle_jsonrpc(&req_line, &mut mmu);
-            if McpPagerServer::is_mutating_request(&req_line) {
+            let is_err = r
+                .get("result")
+                .and_then(|res| res.get("isError"))
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            if McpPagerServer::is_mutating_request(&req_line) && !is_err {
                 mmu.save_workspace_dir_unlocked(&ws_dir)
                     .map_err(|e| format!("mcp-serve save error: {e}"))?;
             }
