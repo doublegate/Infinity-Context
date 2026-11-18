@@ -106,7 +106,16 @@ impl AntigravityAdapter {
             let Ok(val) = serde_json::from_str::<Value>(trimmed) else {
                 continue;
             };
-            let Some(body) = [
+            if !val.is_object() {
+                continue;
+            }
+            let fallback_idx = valid_step_idx;
+            valid_step_idx += 1;
+            let step_idx = ["step_index", "stepIdx", "idx"]
+                .into_iter()
+                .find_map(|k| val.get(k).and_then(Value::as_u64))
+                .unwrap_or(fallback_idx);
+            let body = [
                 "content",
                 "output",
                 "toolResponse",
@@ -116,22 +125,14 @@ impl AntigravityAdapter {
                 "text",
             ]
             .into_iter()
-            .find_map(|k| val.get(k).and_then(Self::non_empty_json_value)) else {
-                continue;
-            };
+            .find_map(|k| val.get(k).and_then(Self::non_empty_json_value));
 
-            let fallback_idx = valid_step_idx;
-            valid_step_idx += 1;
-            if let Some(target) = target_step_idx {
-                let step_idx = ["step_index", "stepIdx", "idx"]
-                    .into_iter()
-                    .find_map(|k| val.get(k).and_then(Value::as_u64))
-                    .unwrap_or(fallback_idx);
-                if step_idx == target {
-                    return Some(body);
-                }
+            if target_step_idx == Some(step_idx) {
+                return body;
             }
-            latest_body = Some(body);
+            if let Some(b) = body {
+                latest_body = Some(b);
+            }
         }
         if target_step_idx.is_some() {
             None
@@ -152,7 +153,7 @@ impl AntigravityAdapter {
             return None;
         }
         let file_len = meta.len();
-        let max_lines = target_step_idx
+        let mut max_lines = target_step_idx
             .and_then(|t| usize::try_from(t).ok())
             .map(|t| {
                 t.saturating_add(1024)
@@ -175,6 +176,7 @@ impl AntigravityAdapter {
             }
             file = r.into_inner();
             file.seek(SeekFrom::Start(0)).ok()?;
+            max_lines = 1_000_000;
         }
 
         let mut reader = BufReader::new(file);

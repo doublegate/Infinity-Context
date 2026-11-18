@@ -195,7 +195,7 @@ pub struct MerkleContextDag {
     branch_stack: Vec<OpenBranch>,
     next_ordinal: u64,
     #[serde(skip)]
-    turn_index: BTreeMap<(u8, ArtifactId, String), ArtifactId>,
+    turn_index: BTreeMap<(u8, ArtifactId), ArtifactId>,
 }
 
 impl MerkleContextDag {
@@ -230,33 +230,32 @@ impl MerkleContextDag {
         for (&id, node) in &self.nodes {
             if let DagNode::Turn {
                 agent,
-                role,
                 raw_artifact,
                 ..
             } = node
             {
-                self.turn_index
-                    .insert((*agent as u8, *raw_artifact, role.clone()), id);
+                self.turn_index.insert((*agent as u8, *raw_artifact), id);
             }
         }
     }
 
     /// Finds an existing `DagNode::Turn` matching `(agent, role, raw_artifact)` in $O(\log N)$ via
-    /// `turn_index` (with fallback scan for deserialized DAGs) and returns `(ahtl_repr, surprise)`.
+    /// `turn_index` without heap allocation (falling back to a scan for deserialized DAGs) and
+    /// returns `(ahtl_repr, surprise)`.
     pub fn find_turn(
         &self,
         agent: AgentKind,
         role: &str,
         raw_artifact: ArtifactId,
     ) -> Option<(&str, f32)> {
-        if let Some(&tid) = self
-            .turn_index
-            .get(&(agent as u8, raw_artifact, role.to_owned()))
+        if let Some(&tid) = self.turn_index.get(&(agent as u8, raw_artifact))
             && let Some(DagNode::Turn {
+                role: n_role,
                 ahtl_repr,
                 surprise,
                 ..
             }) = self.nodes.get(&tid)
+            && n_role == role
         {
             return Some((ahtl_repr.as_str(), *surprise));
         }
@@ -448,8 +447,7 @@ impl MerkleContextDag {
             surprise,
             token_estimate,
         };
-        self.turn_index
-            .insert((agent as u8, raw_artifact, role.to_owned()), id);
+        self.turn_index.insert((agent as u8, raw_artifact), id);
         self.nodes.insert(id, node);
         self.record_node_in_active_scope(id);
         id

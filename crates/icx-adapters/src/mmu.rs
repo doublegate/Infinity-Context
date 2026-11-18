@@ -297,6 +297,12 @@ impl InfinityContextMmu {
         (res, true)
     }
 
+    /// Returns `true` if `occurrence_idx` is already recorded in `self.indexed_occurrences`.
+    #[inline]
+    pub fn has_indexed_occurrence(&self, occurrence_idx: usize) -> bool {
+        self.indexed_occurrences.contains_key(&occurrence_idx)
+    }
+
     /// Records a carried-forward synthetic/stubbed AHTL frame at `occurrence_idx` so subsequent
     /// message positions remain aligned across compactions without overwriting an existing raw
     /// occurrence entry.
@@ -748,10 +754,16 @@ impl InfinityContextMmu {
     }
 
     /// Forces sealing the active epoch (via `maybe_rollover` or `force_seal_active_epoch`) and
-    /// synchronizes `global_dag_root` on `self.bus`.
+    /// synchronizes `global_dag_root` on `self.bus` (using the returned `L3`/`L4` epoch digest).
     pub fn force_rollover_and_sync_dag_root(&mut self) -> Option<ArtifactId> {
         let ep = self.epochs.force_seal_active_epoch(&mut self.dag);
-        self.sync_global_dag_root();
+        if let Some(id) = ep
+            && let Some(node) = self.dag.get_node(id)
+        {
+            self.bus.set_global_dag_root(node.digest().0);
+        } else {
+            self.sync_global_dag_root();
+        }
         ep
     }
 

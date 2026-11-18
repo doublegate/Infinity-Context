@@ -1340,17 +1340,32 @@ unprefixed_secret = {unpref_sec}
         // and verify `parse_messages` propagates deserialization errors on invalid `messages`
         let multimodal_req = serde_json::json!({
             "messages": [
-                {"role": "assistant", "content": null},
-                {"role": "user", "content": ["line_a", {"type": "text", "text": "line_b"}, {"raw": 1}, 42]},
+                {"role": "assistant", "content": null, "tool_calls": [{"id": "tc1"}]},
+                {"role": "user", "content": ["line_a", {"type": "text", "text": "line_b"}, {"type": "image_url", "image_url": {"url": "https://example.com/img.png"}}, 42, null]},
+                {"role": "tool", "name": "mcp__icx__icx", "content": "pager_keep"},
                 {"role": "tool", "content": {"status": "ok"}}
             ],
             "protect_first_n": 1,
-            "protect_last_n": 2
+            "protect_last_n": 1
         })
         .to_string();
         let mm_out =
             HermesAdapter::handle_hook("select_context", &multimodal_req, &mut pfp_mmu).unwrap();
-        assert!(mm_out.contains("line_b"));
+        let mm_val: Value = serde_json::from_str(&mm_out).unwrap();
+        assert!(mm_val["messages"][0]["content"].is_null());
+        assert!(mm_val["messages"][0]["tool_calls"].is_array());
+        // The multimodal message with `image_url` in the middle slice is preserved with its array content intact
+        assert!(mm_val["messages"].as_array().unwrap().iter().any(|m| {
+            m["content"].is_array()
+                && m["content"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|p| p["type"] == "image_url")
+        }));
+        let mm_comp =
+            HermesAdapter::handle_hook("compress", &multimodal_req, &mut pfp_mmu).unwrap();
+        assert!(mm_comp.contains("image_url"));
         assert!(
             HermesAdapter::handle_hook(
                 "select_context",
@@ -1360,7 +1375,49 @@ unprefixed_secret = {unpref_sec}
             .is_err()
         );
 
-        // Verify `read_transcript_step` rejects directories and recovers a trailing record > 256 KiB
+        // Verify empty-message occurrence accounting consistency across `on_turn_complete`,
+        // `select_context`, and `compress`: `[system, empty assistant, failing tool, passing tool]`
+        let mut empty_mid_mmu = InfinityContextMmu::default();
+        let empty_mid_msgs = vec![
+            HermesMessage {
+                role: "system".into(),
+                content: "sys".into(),
+                tool_call_id: None,
+                name: None,
+            },
+            HermesMessage {
+                role: "assistant".into(),
+                content: "   ".into(),
+                tool_call_id: None,
+                name: None,
+            },
+            HermesMessage {
+                role: "tool".into(),
+                content: fail_out.into(),
+                tool_call_id: Some("f1".into()),
+                name: Some("cargo_test".into()),
+            },
+            HermesMessage {
+                role: "tool".into(),
+                content: pass_out.into(),
+                tool_call_id: Some("p1".into()),
+                name: Some("cargo_test".into()),
+            },
+        ];
+        assert_eq!(
+            HermesAdapter::on_turn_complete(&empty_mid_msgs, &mut empty_mid_mmu),
+            3
+        );
+        let _ = HermesAdapter::select_context(&empty_mid_msgs, 1, 1, &mut empty_mid_mmu);
+        assert!(empty_mid_mmu.graph.edges().iter().any(|e| {
+            e.source_entity == "cargo_test"
+                && e.relation == "status"
+                && e.target_entity == "PASS"
+                && e.t_invalid.is_none()
+        }));
+
+        // Verify `read_transcript_step` rejects directories, handles targeted step with empty
+        // output, and recovers a trailing record > 256 KiB
         let big_tp_dir = std::env::temp_dir().join(format!(
             "icx_agy_big_tp_{}_{}",
             std::process::id(),
@@ -1373,10 +1430,14 @@ unprefixed_secret = {unpref_sec}
         );
         let big_tp_file = big_tp_dir.join("big_tail.jsonl");
         let big_record = format!(
-            "{{\"step_index\":0,\"content\":\"early\"}}\n{{\"step_index\":1,\"content\":\"{}\"}}\n",
+            "[1,2,3]\n{{\"step_index\":0,\"content\":\"\"}}\n{{\"step_index\":1,\"content\":\"{}\"}}\n",
             "B".repeat(300_000)
         );
         std::fs::write(&big_tp_file, &big_record).unwrap();
+        assert_eq!(
+            AntigravityAdapter::read_transcript_step(&big_tp_file, Some(0)),
+            None
+        );
         let recovered_big = AntigravityAdapter::read_transcript_step(&big_tp_file, None).unwrap();
         assert_eq!(recovered_big.len(), 300_000);
         let _ = std::fs::remove_dir_all(&big_tp_dir);
