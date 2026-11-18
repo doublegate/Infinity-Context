@@ -1528,6 +1528,37 @@ unprefixed_secret = {unpref_sec}
         let mm_turn_after_sel_2 =
             HermesAdapter::handle_hook("on_turn_complete", &mm_sel_out_2, &mut mm_occ_mmu).unwrap();
         assert!(mm_turn_after_sel_2.contains(r#""ingested_count":0"#));
+        // Selecting `mm_sel_out` with `protect_last_n = 2` (putting the retained failure into the
+        // protected tail and only the epoch in the middle slice) must also preserve the reordered
+        // occurrence binding without re-ingesting the failure over `PASS`
+        let mut mm_sel_tail2_val: Value = serde_json::from_str(&mm_sel_out).unwrap();
+        mm_sel_tail2_val["protect_first_n"] = serde_json::json!(1);
+        mm_sel_tail2_val["protect_last_n"] = serde_json::json!(2);
+        let _ = HermesAdapter::handle_hook(
+            "select_context",
+            &mm_sel_tail2_val.to_string(),
+            &mut mm_occ_mmu,
+        )
+        .unwrap();
+        assert!(mm_occ_mmu.graph.edges().iter().any(|e| {
+            e.source_entity == "cargo_test"
+                && e.relation == "status"
+                && e.target_entity == "PASS"
+                && e.t_invalid.is_none()
+        }));
+        // Also verify image-only messages are archived in `on_pre_compress` via `media_parts:`
+        let img_only_req = serde_json::json!({
+            "messages": [
+                {"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}}]}
+            ]
+        })
+        .to_string();
+        let mut img_only_mmu = InfinityContextMmu::default();
+        let img_pre_out =
+            HermesAdapter::handle_hook("on_pre_compress", &img_only_req, &mut img_only_mmu)
+                .unwrap();
+        assert!(img_pre_out.contains("msgs=1"));
+        assert_eq!(img_only_mmu.cas.artifact_count(), 1);
         // Also verify ordinary `assistant` `tool_calls` with `content: null` are archived into AHTL
         // during `compress` and `on_pre_compress` when not preserved verbatim, AND verify unnamed
         // `role: "tool"` responses resolve their tool name from the preceding assistant `tool_calls`

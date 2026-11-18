@@ -249,6 +249,27 @@ impl MerkleContextDag {
         }
     }
 
+    /// Finds the most recent `DagNode::Turn` matching `(agent, raw_artifact)` regardless of `role`,
+    /// returning `(role, ahtl_repr, surprise)`.
+    pub fn find_turn_any_role(
+        &self,
+        agent: AgentKind,
+        raw_artifact: ArtifactId,
+    ) -> Option<(&str, &str, f32)> {
+        if let Some(entries) = self.turn_index.get(&(agent as u8, raw_artifact))
+            && let Some((_, _, tid)) = entries.iter().max_by_key(|(_, ord, _)| *ord)
+            && let Some(DagNode::Turn {
+                role,
+                ahtl_repr,
+                surprise,
+                ..
+            }) = self.nodes.get(tid)
+        {
+            return Some((role.as_str(), ahtl_repr.as_str(), *surprise));
+        }
+        None
+    }
+
     /// Finds the most recent `DagNode::Turn` matching `(agent, role, raw_artifact)` in $O(\log N)$
     /// via `turn_index` without heap allocation (falling back to a max-ordinal scan for
     /// deserialized DAGs) and returns `(ahtl_repr, surprise)`.

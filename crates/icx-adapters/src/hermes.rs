@@ -127,7 +127,7 @@ impl HermesAdapter {
 
     fn extract_line_deref_id(sanitized_line: &str) -> Option<icx_core::ArtifactId> {
         let (_, after) = sanitized_line.rsplit_once("↦#icx:")?;
-        let hex_part = after.strip_suffix('⟧').unwrap_or(after);
+        let hex_part = after.split(|c: char| !c.is_ascii_hexdigit()).next()?;
         format!("#icx:{hex_part}")
             .parse::<icx_core::ArtifactId>()
             .ok()
@@ -145,8 +145,11 @@ impl HermesAdapter {
         } else {
             None
         };
-        let role_label =
-            InfinityContextMmu::sanitize_hook_label(Self::message_subject(msg), "carried_epoch");
+        let default_subj = if Self::is_stubbed_message(msg) {
+            InfinityContextMmu::sanitize_hook_label(Self::message_subject(msg), "carried_epoch")
+        } else {
+            "carried_epoch".to_owned()
+        };
         for line in msg.content.lines().skip(1) {
             let trimmed = line.trim();
             if !trimmed.is_empty() {
@@ -161,20 +164,15 @@ impl HermesAdapter {
                 } else {
                     let line_aid = parsed_aid
                         .unwrap_or_else(|| mmu.cas.put_bytes(sanitized_line.as_bytes()).0);
-                    let subj = if stub_aid.is_some() {
-                        role_label.as_str()
-                    } else {
-                        "carried_epoch"
-                    };
-                    if mmu
-                        .dag
-                        .find_turn(AgentKind::Hermes, subj, line_aid)
-                        .is_none()
-                    {
+                    let existing_turn = mmu.dag.find_turn_any_role(AgentKind::Hermes, line_aid);
+                    let subj = existing_turn
+                        .map(|(r, _, _)| r.to_owned())
+                        .unwrap_or_else(|| default_subj.clone());
+                    if existing_turn.is_none() {
                         mmu.epochs.record_turn(
                             &mut mmu.dag,
                             AgentKind::Hermes,
-                            subj,
+                            &subj,
                             line_aid,
                             sanitized_line.clone(),
                             0.5,
@@ -184,7 +182,7 @@ impl HermesAdapter {
                     mmu.record_carried_occurrence(
                         *occurrence_idx,
                         AgentKind::Hermes,
-                        subj.to_owned(),
+                        subj,
                         line_aid,
                         crate::mmu::IngestResult {
                             artifact_id: line_aid,
@@ -204,14 +202,29 @@ impl HermesAdapter {
     }
 
     fn effective_message_text(msg: &HermesMessage, raw_opt: Option<&Value>) -> String {
-        let tc_opt = raw_opt
+        let mut extras = Vec::new();
+        if let Some(tc) = raw_opt
             .and_then(|r| r.get("tool_calls"))
-            .filter(|v| v.as_array().is_some_and(|a| !a.is_empty()));
-        match (!msg.content.trim().is_empty(), tc_opt) {
-            (true, Some(tc)) => format!("tool_calls:{tc}\n{}", msg.content),
-            (true, None) => msg.content.clone(),
-            (false, Some(tc)) => format!("tool_calls:{tc}"),
-            (false, None) => String::new(),
+            .filter(|v| v.as_array().is_some_and(|a| !a.is_empty()))
+        {
+            extras.push(format!("tool_calls:{tc}"));
+        }
+        if let Some(Value::Array(parts)) = raw_opt.and_then(|r| r.get("content")) {
+            for p in parts {
+                if p.as_object().is_some_and(|obj| {
+                    ["text", "content", "output"]
+                        .into_iter()
+                        .all(|k| !obj.get(k).is_some_and(Value::is_string))
+                }) {
+                    extras.push(format!("media_part:{p}"));
+                }
+            }
+        }
+        match (!msg.content.trim().is_empty(), extras.is_empty()) {
+            (true, false) => format!("{}\n{}", extras.join("\n"), msg.content),
+            (true, true) => msg.content.clone(),
+            (false, false) => extras.join("\n"),
+            (false, true) => String::new(),
         }
     }
 
@@ -340,7 +353,6 @@ impl HermesAdapter {
         preserved_slots: &[(usize, Option<icx_core::ArtifactId>)],
     ) {
         if preserved_slots.is_empty() || folded_slots.is_empty() {
-            mmu.clear_reordered_occurrences_from(mid_start_occ);
             return;
         }
         let resolved: Vec<(usize, crate::mmu::IndexedOccurrenceRecord)> = (mid_start_occ..)
@@ -350,7 +362,6 @@ impl HermesAdapter {
                     .map(|entry| (new_idx, entry))
             })
             .collect();
-        mmu.clear_reordered_occurrences_from(mid_start_occ);
         for (new_idx, entry) in resolved {
             mmu.set_reordered_occurrence(new_idx, entry);
         }
