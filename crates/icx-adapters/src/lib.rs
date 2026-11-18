@@ -562,6 +562,8 @@ unprefixed_secret = {unpref_sec}
             .handle_hook_event("SubagentStart", r#"{"subagent_id":"sub-1"}"#, &mut mmu)
             .unwrap();
         assert!(claude_sub_start.contains("SubagentStart"));
+        // Unidentified parent PostToolUse stays on the parent trunk while sub-1 is running
+        let parent_nodes_before = mmu.dag.node_count();
         let claude_mcp_post = claude_trait
             .handle_hook_event(
                 "PostToolUse",
@@ -575,6 +577,25 @@ unprefixed_secret = {unpref_sec}
             .unwrap();
         assert!(claude_mcp_post.contains("updatedMCPToolOutput"));
         assert!(claude_mcp_post.contains("lines=1..60"));
+        assert_eq!(mmu.dag.node_count(), parent_nodes_before + 1);
+        // Tagged subagent PostToolUse is buffered in sub-1's branch
+        let _ = claude_trait
+            .handle_hook_event(
+                "PostToolUse",
+                &serde_json::json!({
+                    "subagent_id": "sub-1",
+                    "tool_name": "Read",
+                    "tool_response": "subagent line\n".repeat(60)
+                })
+                .to_string(),
+                &mut mmu,
+            )
+            .unwrap();
+        assert_eq!(mmu.dag.node_count(), parent_nodes_before + 1);
+        // Compaction while sub-1 is active preserves sub-1's open scope
+        let _ = claude_trait
+            .handle_hook_event("PreCompact", "{}", &mut mmu)
+            .unwrap();
         let claude_sub_stop = claude_trait
             .handle_hook_event("SubagentStop", r#"{"summary":"done_sub_1"}"#, &mut mmu)
             .unwrap();
@@ -636,6 +657,9 @@ unprefixed_secret = {unpref_sec}
             )
             .unwrap();
         assert!(codex_mcp_post.contains("updatedMCPToolOutput"));
+        let _ = codex_trait
+            .handle_hook_event("pre-compact", "{}", &mut mmu)
+            .unwrap();
         let codex_sub_stop = codex_trait
             .handle_hook_event("subagent-stop", r#"{"outcome":"cx_done"}"#, &mut mmu)
             .unwrap();
@@ -807,27 +831,50 @@ unprefixed_secret = {unpref_sec}
         assert_eq!(c1, 3);
         let saved_offset = tailer.offset_for(&rollout_path);
         assert!(saved_offset > 0);
-        // Append another complete line to existing file to verify prefix_digest match advances from saved_offset
+        // Append another complete line (>64 KiB total) + an incomplete trailing multibyte UTF-8 sequence (0xC3)
         {
             use std::io::Write;
             let mut f = std::fs::OpenOptions::new()
                 .append(true)
                 .open(&rollout_path)
                 .unwrap();
-            writeln!(f, "\n{{\"type\":\"RetainedContext\",\"text\":42}}").unwrap();
+            writeln!(
+                f,
+                "\n{{\"type\":\"RetainedContext\",\"text\":\"{}\"}}",
+                "big_payload_".repeat(6000)
+            )
+            .unwrap();
+            f.write_all(&[b'{', b'"', b'x', b'"', b':', b'"', 0xC3])
+                .unwrap();
         }
         let c_inc = tailer.poll_file(&rollout_path, &mut loaded_mmu).unwrap();
         assert_eq!(c_inc, 1);
+        let saved_offset = tailer.offset_for(&rollout_path);
+        assert!(saved_offset >= 65_536);
+        // Poll again after completing the trailing UTF-8 sequence to exercise >64 KiB verified_64k_digest reuse
+        {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&rollout_path)
+                .unwrap();
+            f.write_all(&[
+                0xA9, b'"', b',', b'"', b't', b'e', b'x', b't', b'"', b':', b'7', b'}', b'\n',
+            ])
+            .unwrap();
+        }
+        let c_utf8_done = tailer.poll_file(&rollout_path, &mut loaded_mmu).unwrap();
+        assert_eq!(c_utf8_done, 1);
         let saved_offset = tailer.offset_for(&rollout_path);
         // Direct call with mid-line byte_offset (preceding byte != '\n') resets to 0
         let (_, c_mid) =
             CodexRolloutTailer::ingest_rollout_jsonl_since(&rollout_path, 5, &mut loaded_mmu)
                 .unwrap();
-        assert_eq!(c_mid, 4);
+        assert_eq!(c_mid, 5);
         // Rewrite file with different content of GREATER length to verify prefix_digest mismatch resets offset to 0
         let rewritten = format!(
             "{{\"type\":\"RetainedContext\",\"text\":\"{}\"}}\n",
-            "retained_longer_rewrite_".repeat(25)
+            "retained_longer_rewrite_".repeat(3500)
         );
         assert!(rewritten.len() as u64 > saved_offset);
         std::fs::write(&rollout_path, &rewritten).unwrap();

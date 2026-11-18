@@ -106,14 +106,13 @@ impl CodexAdapter {
                     .into_iter()
                     .find_map(|k| payload.get(k).and_then(Value::as_str))
                     .map(str::to_owned);
-                let effective_sub_id = explicit_sub_id.or_else(|| mmu.single_active_subagent_id());
                 let res = mmu.ingest_payload_for_subagent(
                     AgentKind::Codex,
                     tool_name,
                     &raw_output,
                     exit_code,
                     false,
-                    effective_sub_id.as_deref(),
+                    explicit_sub_id.as_deref(),
                 );
                 let mut hso = json!({
                     "hookEventName": "PostToolUse",
@@ -177,11 +176,20 @@ impl CodexAdapter {
                     "systemMessage": folded_msg
                 })
             }
-            "PreCompact" | "pre-compact" | "PostCompact" | "post-compact" | "SessionEnd"
-            | "session-end" => {
-                mmu.fold_all_open_subagents(AgentKind::Codex, "session_end");
-                let _ = mmu.epochs.maybe_rollover(&mut mmu.dag);
+            "PreCompact" | "pre-compact" | "PostCompact" | "post-compact" => {
+                let _ = mmu.rollover_and_sync_dag_root();
                 let win = mmu.assemble_prompt_window(AgentKind::Codex, "compact_checkpoint");
+                json!({
+                    "continue": true,
+                    "stopReason": null,
+                    "suppressOutput": false,
+                    "systemMessage": win.deterministic_prefix()
+                })
+            }
+            "SessionEnd" | "session-end" => {
+                mmu.fold_all_open_subagents(AgentKind::Codex, "session_end");
+                let _ = mmu.rollover_and_sync_dag_root();
+                let win = mmu.assemble_prompt_window(AgentKind::Codex, "session_end");
                 json!({
                     "continue": true,
                     "stopReason": null,
@@ -250,12 +258,12 @@ impl CodexRolloutTailer {
         };
         let file = File::open(path)?;
         let (next_offset, count, prefix_digest) =
-            Self::ingest_from_open_file(file, start_offset, expected_prefix, mmu)?;
+            Self::ingest_from_open_file(file, start_offset, expected_prefix, true, mmu)?;
         self.bookmarks.insert(
             path.to_path_buf(),
             RolloutBookmark {
                 offset: next_offset,
-                prefix_digest,
+                prefix_digest: prefix_digest.unwrap_or_else(|| icx_core::Blake3Digest::hash(&[])),
             },
         );
         Ok(count)
@@ -271,7 +279,8 @@ impl CodexRolloutTailer {
         mmu: &mut InfinityContextMmu,
     ) -> Result<(u64, usize), io::Error> {
         let file = File::open(path)?;
-        let (committed, ingested, _) = Self::ingest_from_open_file(file, byte_offset, None, mmu)?;
+        let (committed, ingested, _) =
+            Self::ingest_from_open_file(file, byte_offset, None, false, mmu)?;
         Ok((committed, ingested))
     }
 
@@ -279,15 +288,23 @@ impl CodexRolloutTailer {
         mut file: File,
         byte_offset: u64,
         expected_prefix: Option<icx_core::Blake3Digest>,
+        need_prefix_digest: bool,
         mmu: &mut InfinityContextMmu,
-    ) -> Result<(u64, usize, icx_core::Blake3Digest), io::Error> {
+    ) -> Result<(u64, usize, Option<icx_core::Blake3Digest>), io::Error> {
         use std::io::Read;
         let file_len = file.metadata()?.len();
+        let mut verified_64k_digest = None;
         let mut committed = if byte_offset == 0 || file_len < byte_offset {
             0
         } else {
             let prefix_ok = match expected_prefix {
-                Some(exp) => Self::compute_prefix_digest(&mut file, byte_offset)? == exp,
+                Some(exp) => {
+                    let actual = Self::compute_prefix_digest(&mut file, byte_offset)?;
+                    if actual == exp && byte_offset >= 65_536 {
+                        verified_64k_digest = Some(actual);
+                    }
+                    actual == exp
+                }
                 None => true,
             };
             if prefix_ok {
@@ -301,17 +318,19 @@ impl CodexRolloutTailer {
         };
         file.seek(SeekFrom::Start(committed))?;
         let mut reader = BufReader::new(file);
-        let mut line = String::new();
+        let mut raw_line = Vec::new();
         let mut ingested = 0usize;
 
         loop {
-            line.clear();
-            let bytes_read = reader.read_line(&mut line)?;
-            if bytes_read == 0 || !line.ends_with('\n') {
-                // Stop before consuming any incomplete trailing line still being written.
+            raw_line.clear();
+            let bytes_read = reader.read_until(b'\n', &mut raw_line)?;
+            if bytes_read == 0 || !raw_line.ends_with(b"\n") {
+                // Stop before decoding or consuming any incomplete trailing line (including
+                // mid-character UTF-8 sequences) still being written.
                 break;
             }
             committed += bytes_read as u64;
+            let line = String::from_utf8_lossy(&raw_line);
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
@@ -330,8 +349,14 @@ impl CodexRolloutTailer {
                 ingested += 1;
             }
         }
-        let mut file = reader.into_inner();
-        let prefix_digest = Self::compute_prefix_digest(&mut file, committed)?;
+        let prefix_digest = if !need_prefix_digest {
+            None
+        } else if let Some(reused) = verified_64k_digest.filter(|_| committed >= 65_536) {
+            Some(reused)
+        } else {
+            let mut file = reader.into_inner();
+            Some(Self::compute_prefix_digest(&mut file, committed)?)
+        };
         Ok((committed, ingested, prefix_digest))
     }
 

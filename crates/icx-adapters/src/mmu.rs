@@ -310,9 +310,7 @@ impl InfinityContextMmu {
                 receipt.verdict.momentum_surprise,
                 est_tokens,
             );
-            if let Some(last_ep) = self.epochs.sealed_epochs().last() {
-                self.bus.set_global_dag_root(last_ep.digest().0);
-            }
+            self.sync_global_dag_root();
         }
 
         // Broadcast onto cross-agent Seqlock ring
@@ -524,6 +522,20 @@ impl InfinityContextMmu {
         }
     }
 
+    /// Synchronizes the latest sealed `L3`/`L4` epoch digest onto the `/dev/shm` `FabricHeader`.
+    pub fn sync_global_dag_root(&mut self) {
+        if let Some(last_ep) = self.epochs.sealed_epochs().last() {
+            self.bus.set_global_dag_root(last_ep.digest().0);
+        }
+    }
+
+    /// Triggers `CacheEpochController::maybe_rollover` and synchronizes `global_dag_root` on `self.bus`.
+    pub fn rollover_and_sync_dag_root(&mut self) -> Option<ArtifactId> {
+        let ep = self.epochs.maybe_rollover(&mut self.dag);
+        self.sync_global_dag_root();
+        ep
+    }
+
     /// Completes and folds the trajectory belonging to `raw_subagent_id` (`SubagentStop`),
     /// sanitizing `raw_summary` through `SecretRedactor::sanitize` before committing the `L2`
     /// `SubTrajectoryBranch` node to `MerkleContextDag`.
@@ -561,6 +573,7 @@ impl InfinityContextMmu {
                 .epochs
                 .fold_branch(&mut self.dag, &clean_summary)
                 .expect("active subagent branch must fold");
+            self.sync_global_dag_root();
             return format!("⟪ICX:SUBAGENT_FOLDED│{bid}│{clean_id}│{clean_summary}⟫");
         }
         format!("⟪ICX:SUBAGENT_STOP│{clean_summary}⟫")

@@ -92,14 +92,13 @@ impl ClaudeCodeAdapter {
                     .into_iter()
                     .find_map(|k| payload.get(k).and_then(Value::as_str))
                     .map(str::to_owned);
-                let effective_sub_id = explicit_sub_id.or_else(|| mmu.single_active_subagent_id());
                 let res = mmu.ingest_payload_for_subagent(
                     AgentKind::ClaudeCode,
                     tool_name,
                     &raw_output,
                     exit_code,
                     false,
-                    effective_sub_id.as_deref(),
+                    explicit_sub_id.as_deref(),
                 );
                 if res.was_virtualized {
                     let total_lines = mmu
@@ -155,13 +154,14 @@ impl ClaudeCodeAdapter {
                 })
             }
             "PreCompact" | "pre-compact" => {
-                let _ = mmu.epochs.maybe_rollover(&mut mmu.dag);
+                let _ = mmu.rollover_and_sync_dag_root();
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, "pre_compact", 5);
                 json!({
                     "systemMessage": tail
                 })
             }
             "PostCompact" | "post-compact" => {
+                let _ = mmu.rollover_and_sync_dag_root();
                 let win = mmu.assemble_prompt_window(AgentKind::ClaudeCode, "post_compact");
                 json!({
                     "systemMessage": win.deterministic_prefix()
