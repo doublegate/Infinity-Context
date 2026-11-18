@@ -146,8 +146,8 @@ impl AntigravityAdapter {
 
     /// Reads a tool/step output from an Antigravity `transcript.jsonl` / `transcript_full.jsonl`
     /// file using bounded JSONL record framing. When `target_step_idx` is `Some(idx)`, returns
-    /// that step's content if found; otherwise returns the latest non-empty step content from the
-    /// trailing window of `path` (falling back to a full scan from offset 0 if a single record
+    /// that step's content if found; otherwise returns the content of the latest step record in
+    /// the trailing window of `path` (falling back to a full scan from offset 0 if a single record
     /// exceeds the 512 KiB tail window).
     pub fn read_transcript_step(path: &Path, target_step_idx: Option<u64>) -> Option<String> {
         let mut file = File::open(path).ok()?;

@@ -90,7 +90,7 @@ impl HermesAdapter {
     }
 
     fn sanitize_embedded_ahtl_line(trimmed: &str) -> String {
-        if trimmed.len() <= icx_core::ICX_MAX_INGEST_BYTES
+        let candidate = if trimmed.len() <= icx_core::ICX_MAX_INGEST_BYTES
             && let Some(inner) = trimmed.strip_prefix('⟦').and_then(|s| s.strip_suffix('⟧'))
         {
             let mut out = String::with_capacity(trimmed.len());
@@ -105,9 +105,16 @@ impl HermesAdapter {
             }
             out.push_str(&icx_codec::SecretRedactor::sanitize(&inner[seg_start..]));
             out.push('⟧');
-            out
+            Some(out)
         } else {
-            InfinityContextMmu::bound_and_sanitize_raw(trimmed, icx_core::ICX_MAX_INGEST_BYTES).0
+            None
+        };
+        match candidate {
+            Some(s) if s.len() <= icx_core::ICX_MAX_INGEST_BYTES => s,
+            _ => {
+                InfinityContextMmu::bound_and_sanitize_raw(trimmed, icx_core::ICX_MAX_INGEST_BYTES)
+                    .0
+            }
         }
     }
 
@@ -201,10 +208,7 @@ impl HermesAdapter {
             .and_then(|r| r.get("tool_calls"))
             .filter(|v| v.as_array().is_some_and(|a| !a.is_empty()));
         match (!msg.content.trim().is_empty(), tc_opt) {
-            (true, Some(tc)) => format!(
-                "tool_calls:{tc} — {}",
-                msg.content.lines().collect::<Vec<_>>().join(" ")
-            ),
+            (true, Some(tc)) => format!("tool_calls:{tc}\n{}", msg.content),
             (true, None) => msg.content.clone(),
             (false, Some(tc)) => format!("tool_calls:{tc}"),
             (false, None) => String::new(),
@@ -336,6 +340,7 @@ impl HermesAdapter {
         preserved_slots: &[(usize, Option<icx_core::ArtifactId>)],
     ) {
         if preserved_slots.is_empty() || folded_slots.is_empty() {
+            mmu.clear_reordered_occurrences_from(mid_start_occ);
             return;
         }
         let resolved: Vec<(usize, crate::mmu::IndexedOccurrenceRecord)> = (mid_start_occ..)
@@ -345,6 +350,7 @@ impl HermesAdapter {
                     .map(|entry| (new_idx, entry))
             })
             .collect();
+        mmu.clear_reordered_occurrences_from(mid_start_occ);
         for (new_idx, entry) in resolved {
             mmu.set_reordered_occurrence(new_idx, entry);
         }

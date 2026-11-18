@@ -357,6 +357,11 @@ impl InfinityContextMmu {
         idx_opt.or(ro_opt).cloned()
     }
 
+    /// Clears any `self.reordered_occurrences` entries at or after `start_idx`.
+    pub fn clear_reordered_occurrences_from(&mut self, start_idx: usize) {
+        let _ = self.reordered_occurrences.split_off(&start_idx);
+    }
+
     /// Records a reordered outbound-view occurrence at `occurrence_idx` without mutating the
     /// canonical `self.indexed_occurrences` table.
     pub fn set_reordered_occurrence(
