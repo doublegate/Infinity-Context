@@ -1,17 +1,19 @@
 //! `icx` — Infinity-Context Command-Line Interface & Cross-Agent MMU Entrypoint.
 
 use icx_adapters::{
-    AntigravityAdapter, ClaudeCodeAdapter, CodexAdapter, InfinityContextMmu, McpPagerServer,
+    AntigravityAdapter, ClaudeCodeAdapter, CodexAdapter, HermesAdapter, InfinityContextMmu,
+    McpPagerServer,
 };
 use icx_codec::{AhtlPacket, StructuralSkeletonizer, WirePacket};
 use icx_core::epoch::{CacheEpochController, EpochControllerConfig};
 use icx_core::{AgentKind, ArtifactId};
 use icx_hdc::hv::Hypervector;
-use icx_proxy::WireProxyTransformer;
+use icx_proxy::{ProviderFormat, WireProxyTransformer};
 use std::env;
 use std::fs;
 use std::io::{self, BufRead};
-use std::path::Path;
+use std::net::TcpListener;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 fn main() {
@@ -41,7 +43,8 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
             }
             Ok(())
         }
-        "mcp-serve" => serve_mcp_stream(reader, io::stdout().lock()),
+        "mcp-serve" => serve_mcp_stream(tail, reader, io::stdout().lock()),
+        "proxy" => run_proxy_server(tail),
         "proxy-transform" => {
             let mut stdin_buf = String::new();
             let _ = reader.read_to_string(&mut stdin_buf);
@@ -52,7 +55,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
         "encode-ahtl" => run_encode_ahtl(tail),
         "decode-ahtl" => run_decode_ahtl(tail),
         "status" => {
-            run_status();
+            run_status(tail);
             Ok(())
         }
         "doctor" => {
@@ -87,17 +90,19 @@ Subcommands:",
       Initialize a workspace `.icx/` CAS store and shared-memory Seqlock fabric
   deref <HANDLE> [--lines <START:END>] [--dir <PATH>]
       Dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle from `.icx/`
-  hook --agent <claude-code|codex|agy|hermes> --event <EVENT>
+  hook --agent <claude-code|codex|agy|hermes> --event <EVENT> [--dir <PATH>]
       Execute synchronous <500us lifecycle hook (reads JSON from stdin, writes JSON to stdout)
-  mcp-serve
+  mcp-serve [--dir <PATH>]
       Run the Single-Tool Polymorphic MCP Virtual Pager (`icx`) over stdio (JSON-RPC 2.0)
-  proxy-transform [--provider <anthropic|openai>] [--dir <PATH>]
-      Transform an outbound Anthropic (`/v1/messages`) or OpenAI (`/v1/chat/completions`, `/v1/responses`) JSON request
+  proxy [--listen <HOST:PORT>] [--provider <anthropic|openai|gemini>] [--upstream <URL>] [--dir <PATH>] [--max-requests <N>]
+      Run the Cache-Epoch HTTP/1.1 & SSE reverse proxy (default 127.0.0.1:49380)
+  proxy-transform [--provider <anthropic|openai|gemini>] [--dir <PATH>]
+      Transform an outbound Anthropic (`/v1/messages`), OpenAI (`/v1/chat/completions`, `/v1/responses`), or Gemini (`/v1beta/models/*`) JSON request
   encode-ahtl <FILE> [--dir <PATH>]
       Compress a source file, diff, or build log into an AHTL Holographic Packet + BLAKE3 handle
   decode-ahtl <AHTL_STRING>
       Parse and inspect an AHTL Holographic Packet's clauses and Braille-256 sketch
-  status
+  status [--dir <PATH>]
       Print Infinity-Context MMU status and schema overview
   doctor
       Inspect local agent installations (claude, codex, agy, hermes) and verify readiness
@@ -122,24 +127,44 @@ fn init_workspace_dir(icx_dir: &Path) -> Result<(), String> {
         let cas = icx_core::cas::CasStore::new();
         cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
     }
-    let shm_path = icx_dir.join("icx-fabric-v1.shm");
+    let shm_path = env::var("ICX_SHM_PATH")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map_or_else(|| icx_dir.join("icx-fabric-v1.shm"), PathBuf::from);
     icx_bus::SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(|e| e.to_string())?;
     Ok(())
 }
 
-fn run_init(args: &[String]) -> Result<(), String> {
-    let mut dir_str = ".icx";
+fn resolve_workspace_dir(cli_dir: Option<&str>) -> PathBuf {
+    if let Some(d) = cli_dir.map(str::trim).filter(|s| !s.is_empty()) {
+        return PathBuf::from(d);
+    }
+    if let Ok(env_d) = env::var("ICX_DIR") {
+        let trimmed = env_d.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    PathBuf::from(".icx")
+}
+
+fn parse_dir_flag(args: &[String]) -> Option<&str> {
+    let mut dir_str: Option<&str> = None;
     let mut i = 0;
     while i < args.len() {
         if args[i] == "--dir" && i + 1 < args.len() {
-            dir_str = &args[i + 1];
+            dir_str = Some(args[i + 1].as_str());
             i += 2;
         } else {
             i += 1;
         }
     }
-    let icx_dir = Path::new(dir_str);
-    init_workspace_dir(icx_dir).map_err(|e| format!("icx init error: {e}"))?;
+    dir_str
+}
+
+fn run_init(args: &[String]) -> Result<(), String> {
+    let icx_dir = resolve_workspace_dir(parse_dir_flag(args));
+    init_workspace_dir(&icx_dir).map_err(|e| format!("icx init error: {e}"))?;
     println!("⟪ICX:INIT│dir={}│status=READY⟫", icx_dir.display());
     Ok(())
 }
@@ -169,13 +194,13 @@ fn deref_from_workspace_dir(
     handle: &str,
     line_range: Option<(usize, usize)>,
 ) -> Result<String, String> {
-    let cas = icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;
-    let id = cas.resolve_handle(handle).map_err(|e| e.to_string())?;
+    let mut mmu = InfinityContextMmu::default();
+    mmu.load_workspace_dir(icx_dir).map_err(|e| e.to_string())?;
+    let id = mmu.resolve_handle(handle).map_err(|e| e.to_string())?;
     if let Some((start, end)) = line_range {
-        cas.deref_lines(id, start, end).map_err(|e| e.to_string())
+        mmu.deref_lines(id, start, end).map_err(|e| e.to_string())
     } else {
-        let bytes = cas.deref_bytes(id).map_err(|e| e.to_string())?;
-        Ok(String::from_utf8_lossy(&bytes).into_owned())
+        mmu.deref_text(id).map_err(|e| e.to_string())
     }
 }
 
@@ -183,13 +208,13 @@ fn run_deref(args: &[String]) -> Result<(), String> {
     let Some(handle) = args.first() else {
         return Err("Usage: icx deref <HANDLE> [--lines <START:END>] [--dir <PATH>]".into());
     };
-    let mut dir_str = ".icx";
+    let mut dir_str: Option<&str> = None;
     let mut line_range: Option<(usize, usize)> = None;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--dir" if i + 1 < args.len() => {
-                dir_str = &args[i + 1];
+                dir_str = Some(args[i + 1].as_str());
                 i += 2;
             }
             "--lines" if i + 1 < args.len() => {
@@ -201,15 +226,38 @@ fn run_deref(args: &[String]) -> Result<(), String> {
             _ => i += 1,
         }
     }
-    let out = deref_from_workspace_dir(Path::new(dir_str), handle, line_range)
+    let icx_dir = resolve_workspace_dir(dir_str);
+    let out = deref_from_workspace_dir(&icx_dir, handle, line_range)
         .map_err(|e| format!("icx deref error: {e}"))?;
     print!("{out}");
     Ok(())
 }
 
+fn dispatch_agent_hook(
+    agent: AgentKind,
+    event_str: &str,
+    stdin_buf: &str,
+    mmu: &mut InfinityContextMmu,
+) -> Result<String, serde_json::Error> {
+    match agent {
+        AgentKind::Codex => CodexAdapter::handle_hook(event_str, stdin_buf, mmu),
+        AgentKind::AntigravityCli => AntigravityAdapter::handle_hook(event_str, stdin_buf, mmu),
+        AgentKind::Hermes => HermesAdapter::handle_hook(event_str, stdin_buf, mmu),
+        _ => ClaudeCodeAdapter::handle_hook(event_str, stdin_buf, mmu),
+    }
+}
+
+fn non_replacing_hook_response(agent: AgentKind) -> String {
+    match agent {
+        AgentKind::AntigravityCli => r#"{"injectSteps":[],"terminationBehavior":""}"#.to_owned(),
+        _ => r#"{"continue":true}"#.to_owned(),
+    }
+}
+
 fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::Error> {
     let mut agent_str = "claude-code";
     let mut event_str = "SessionStart";
+    let mut dir_str: Option<&str> = None;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -221,29 +269,141 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
                 event_str = &args[i + 1];
                 i += 2;
             }
+            "--dir" if i + 1 < args.len() => {
+                dir_str = Some(args[i + 1].as_str());
+                i += 2;
+            }
             _ => i += 1,
         }
     }
 
     let mut mmu = InfinityContextMmu::default();
     let agent = AgentKind::parse_agent(agent_str);
-    match agent {
-        AgentKind::Codex => CodexAdapter::handle_hook(event_str, stdin_buf, &mut mmu),
-        AgentKind::AntigravityCli => {
-            AntigravityAdapter::handle_hook(event_str, stdin_buf, &mut mmu)
+    let is_session_start = event_str.eq_ignore_ascii_case("SessionStart")
+        || event_str.eq_ignore_ascii_case("session-start");
+    let ws_dir = resolve_workspace_dir(dir_str);
+    if ws_dir.exists() {
+        let Ok(lock_guard) = InfinityContextMmu::acquire_workspace_lock(&ws_dir) else {
+            eprintln!(
+                "icx hook warning: failed to acquire workspace lock in {}",
+                ws_dir.display()
+            );
+            return if is_session_start {
+                dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)
+            } else {
+                Ok(non_replacing_hook_response(agent))
+            };
+        };
+        if let Err(err) = mmu.load_workspace_dir_unlocked(&ws_dir) {
+            eprintln!(
+                "icx hook warning: failed to load workspace state from {}: {err}",
+                ws_dir.display()
+            );
+            drop(lock_guard);
+            return if is_session_start {
+                dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)
+            } else {
+                Ok(non_replacing_hook_response(agent))
+            };
         }
-        _ => ClaudeCodeAdapter::handle_hook(event_str, stdin_buf, &mut mmu),
+        let out = dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)?;
+        if let Err(err) = mmu.save_workspace_dir_unlocked(&ws_dir) {
+            eprintln!(
+                "icx hook warning: failed to save workspace state to {}: {err}",
+                ws_dir.display()
+            );
+            drop(lock_guard);
+            return if is_session_start {
+                Ok(out)
+            } else {
+                Ok(non_replacing_hook_response(agent))
+            };
+        }
+        drop(lock_guard);
+        return Ok(out);
+    }
+    if is_session_start {
+        dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)
+    } else {
+        Ok(non_replacing_hook_response(agent))
     }
 }
 
-fn serve_mcp_stream<R: BufRead, W: io::Write>(reader: R, mut writer: W) -> Result<(), String> {
+fn mcp_tool_error_response(req_line: &str, err_msg: &str) -> serde_json::Value {
+    let parsed: serde_json::Value = serde_json::from_str(req_line).unwrap_or_default();
+    let Some(id) = parsed.get("id").filter(|id| !id.is_null()).cloned() else {
+        return serde_json::Value::Null;
+    };
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": {
+            "content": [{ "type": "text", "text": err_msg }],
+            "isError": true
+        }
+    })
+}
+
+fn serve_mcp_stream<R: BufRead, W: io::Write>(
+    args: &[String],
+    reader: R,
+    mut writer: W,
+) -> Result<(), String> {
     let mut mmu = InfinityContextMmu::default();
+    let ws_dir = resolve_workspace_dir(parse_dir_flag(args));
     for line in reader.lines() {
         let Ok(req_line) = line else { break };
         if req_line.trim().is_empty() {
             continue;
         }
-        let resp = McpPagerServer::handle_jsonrpc(&req_line, &mut mmu);
+        let resp = if ws_dir.exists() && McpPagerServer::requires_workspace_state(&req_line) {
+            match acquire_workspace_lock(&ws_dir) {
+                Ok(lock_guard) => match mmu.load_workspace_dir_unlocked(&ws_dir) {
+                    Ok(()) => {
+                        let r = McpPagerServer::handle_jsonrpc(&req_line, &mut mmu);
+                        let is_err = r
+                            .get("result")
+                            .and_then(|res| res.get("isError"))
+                            .and_then(serde_json::Value::as_bool)
+                            .unwrap_or(false);
+                        if McpPagerServer::is_mutating_request(&req_line)
+                            && !is_err
+                            && let Err(e) = mmu.save_workspace_dir_unlocked(&ws_dir)
+                        {
+                            eprintln!("icx mcp-serve warning: save error: {e}");
+                            drop(lock_guard);
+                            mcp_tool_error_response(
+                                &req_line,
+                                &format!("ERR: failed to persist workspace state: {e}"),
+                            )
+                        } else {
+                            drop(lock_guard);
+                            r
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("icx mcp-serve warning: load error: {e}");
+                        drop(lock_guard);
+                        mcp_tool_error_response(
+                            &req_line,
+                            &format!("ERR: failed to load workspace state: {e}"),
+                        )
+                    }
+                },
+                Err(e) => {
+                    eprintln!("icx mcp-serve warning: lock error: {e}");
+                    mcp_tool_error_response(
+                        &req_line,
+                        &format!("ERR: failed to acquire workspace lock: {e}"),
+                    )
+                }
+            }
+        } else {
+            McpPagerServer::handle_jsonrpc(&req_line, &mut mmu)
+        };
+        if resp.is_null() {
+            continue;
+        }
         writeln!(writer, "{resp}").map_err(|e| format!("mcp-serve write error: {e}"))?;
         writer
             .flush()
@@ -252,13 +412,82 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(reader: R, mut writer: W) -> Resul
     Ok(())
 }
 
+fn run_proxy_server(args: &[String]) -> Result<(), String> {
+    let env_bind = env::var("ICX_PROXY_BIND")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let mut listen_addr: &str = env_bind.as_deref().unwrap_or("127.0.0.1:49380");
+    let mut provider: Option<ProviderFormat> = None;
+    let mut upstream_str: Option<&str> = None;
+    let mut dir_str: Option<&str> = None;
+    let mut max_requests: Option<usize> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--listen" if i + 1 < args.len() => {
+                listen_addr = &args[i + 1];
+                i += 2;
+            }
+            "--provider" if i + 1 < args.len() => {
+                let raw = &args[i + 1];
+                provider = Some(ProviderFormat::parse_provider(raw).ok_or_else(|| {
+                    format!(
+                        "proxy error: unknown --provider `{raw}` (expected anthropic, openai, or gemini)"
+                    )
+                })?);
+                i += 2;
+            }
+            "--upstream" if i + 1 < args.len() => {
+                upstream_str = Some(args[i + 1].as_str());
+                i += 2;
+            }
+            "--dir" if i + 1 < args.len() => {
+                dir_str = Some(args[i + 1].as_str());
+                i += 2;
+            }
+            "--max-requests" if i + 1 < args.len() => {
+                max_requests = Some(
+                    args[i + 1]
+                        .parse::<usize>()
+                        .map_err(|e| format!("proxy error: invalid --max-requests: {e}"))?,
+                );
+                i += 2;
+            }
+            _ => i += 1,
+        }
+    }
+    let mut mmu = InfinityContextMmu::default();
+    let ws_dir = resolve_workspace_dir(dir_str);
+    let env_upstream = env::var("ICX_UPSTREAM_URL")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let effective_upstream = upstream_str.or(env_upstream.as_deref()).or(Some("auto"));
+    let listener =
+        TcpListener::bind(listen_addr).map_err(|e| format!("proxy bind `{listen_addr}`: {e}"))?;
+    WireProxyTransformer::serve_http_listener_with_config(
+        &listener,
+        provider,
+        effective_upstream,
+        Some(ws_dir.as_path()),
+        max_requests,
+        &mut mmu,
+    )
+    .map_err(|e| format!("proxy serve error: {e}"))?;
+    Ok(())
+}
+
 fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, String> {
-    let mut provider: Option<&str> = None;
+    let mut provider: Option<ProviderFormat> = None;
     let mut dir_str: Option<&str> = None;
     let mut i = 0;
     while i < args.len() {
         if args[i] == "--provider" && i + 1 < args.len() {
-            provider = Some(args[i + 1].as_str());
+            let raw = args[i + 1].as_str();
+            provider = Some(ProviderFormat::parse_provider(raw).ok_or_else(|| {
+                format!(
+                    "proxy-transform error: unknown --provider `{raw}` (expected anthropic, openai, or gemini)"
+                )
+            })?);
             i += 2;
         } else if args[i] == "--dir" && i + 1 < args.len() {
             dir_str = Some(args[i + 1].as_str());
@@ -267,61 +496,19 @@ fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, S
             i += 1;
         }
     }
-    let is_openai = match provider {
-        Some(p) if p.eq_ignore_ascii_case("openai") => true,
-        Some(p) if p.eq_ignore_ascii_case("anthropic") => false,
-        Some(other) => {
-            return Err(format!(
-                "proxy-transform error: unknown --provider `{other}` (expected anthropic or openai)"
-            ));
-        }
-        None => serde_json::from_str::<serde_json::Value>(stdin_buf).is_ok_and(|v| {
-            if v.get("input").is_some() {
-                return true;
-            }
-            v.get("model")
-                .and_then(serde_json::Value::as_str)
-                .is_some_and(|m| {
-                    let lower = m.to_ascii_lowercase();
-                    lower.starts_with("gpt-")
-                        || lower.starts_with("o1")
-                        || lower.starts_with("o3")
-                        || lower.starts_with("o4")
-                        || lower.contains("codex")
-                })
-        }),
-    };
     let mut mmu = InfinityContextMmu::default();
-    let icx_dir = Path::new(dir_str.unwrap_or(".icx"));
-    let has_workspace = icx_dir.exists();
-    let _guard = if has_workspace {
-        let g = acquire_workspace_lock(icx_dir)?;
-        let shm_path = icx_dir.join("icx-fabric-v1.shm");
-        if shm_path.exists() {
-            mmu.bus = icx_bus::SeqlockTelemetryBus::open_shared_file(&shm_path)
-                .map_err(|e| e.to_string())?;
-        }
-        let cas_path = icx_dir.join("cas_store.json");
-        if cas_path.exists() {
-            mmu.cas = icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;
-        }
-        Some(g)
-    } else {
-        None
-    };
-
-    let out = if is_openai {
-        WireProxyTransformer::transform_openai_request(stdin_buf, &mut mmu)
-            .map_err(|e| format!("proxy-transform error: {e}"))?
-    } else {
-        WireProxyTransformer::transform_anthropic_messages(stdin_buf, &mut mmu)
-            .map_err(|e| format!("proxy-transform error: {e}"))?
-    };
-
-    if has_workspace {
-        mmu.cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
+    let icx_dir = resolve_workspace_dir(dir_str);
+    if icx_dir.exists() {
+        return mmu
+            .with_locked_workspace(&icx_dir, |mmu| {
+                WireProxyTransformer::transform_for_provider(provider, "/", stdin_buf, mmu)
+                    .map_err(icx_adapters::AdapterError::from)
+            })
+            .map_err(|e| format!("proxy-transform error: {e}"));
     }
-    Ok(out)
+
+    WireProxyTransformer::transform_for_provider(provider, "/", stdin_buf, &mut mmu)
+        .map_err(|e| format!("proxy-transform error: {e}"))
 }
 
 fn render_ingested_profile(
@@ -360,21 +547,17 @@ fn encode_payload_into_workspace_profile(
         return render_ingested_profile(&mmu, res.compressed_ahtl, profile_a);
     }
 
-    let _guard = acquire_workspace_lock(icx_dir)?;
     let mut mmu = InfinityContextMmu::default();
-    let shm_path = icx_dir.join("icx-fabric-v1.shm");
-    if shm_path.exists() {
-        mmu.bus =
-            icx_bus::SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(|e| e.to_string())?;
-    }
-    let cas_path = icx_dir.join("cas_store.json");
-    if cas_path.exists() {
-        // Abort if an existing cas_store.json fails to parse or fails BLAKE3 verification,
-        // rather than overwriting it with an empty store.
-        mmu.cas = icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;
-    }
-    let res = mmu.ingest_payload(AgentKind::GenericMcp, subject, content, false);
-    mmu.cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
+    let res = mmu
+        .with_locked_workspace(icx_dir, |mmu| {
+            Ok::<_, icx_core::IcxError>(mmu.ingest_payload(
+                AgentKind::GenericMcp,
+                subject,
+                content,
+                false,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
     render_ingested_profile(&mmu, res.compressed_ahtl, profile_a)
 }
 
@@ -391,7 +574,7 @@ fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
     let Some(path_str) = args.first() else {
         return Err("Usage: icx encode-ahtl <FILE> [--dir <PATH>] [--profile <a|b>]".into());
     };
-    let mut dir_str = ".icx";
+    let mut dir_str: Option<&str> = None;
     let mut profile_a = false;
     let mut i = 1;
     while i < args.len() {
@@ -400,7 +583,7 @@ fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
                 if i + 1 >= args.len() {
                     return Err("icx encode-ahtl error: missing value for --dir".into());
                 }
-                dir_str = &args[i + 1];
+                dir_str = Some(args[i + 1].as_str());
                 i += 2;
             }
             "--profile" => {
@@ -431,8 +614,9 @@ fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
     let content =
         fs::read_to_string(path_str).map_err(|e| format!("Failed to read `{path_str}`: {e}"))?;
 
+    let icx_dir = resolve_workspace_dir(dir_str);
     let compressed_ahtl =
-        encode_payload_into_workspace_profile(path_str, &content, Path::new(dir_str), profile_a)
+        encode_payload_into_workspace_profile(path_str, &content, &icx_dir, profile_a)
             .map_err(|e| format!("icx encode-ahtl error: {e}"))?;
     println!("{compressed_ahtl}");
     Ok(())
@@ -471,8 +655,17 @@ fn run_decode_ahtl(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn run_status() {
+fn run_status(args: &[String]) {
     let mut mmu = InfinityContextMmu::default();
+    let ws_dir = resolve_workspace_dir(parse_dir_flag(args));
+    if ws_dir.exists()
+        && let Err(err) = mmu.load_workspace_dir(&ws_dir)
+    {
+        eprintln!(
+            "icx status warning: failed to load workspace state from {}: {err}",
+            ws_dir.display()
+        );
+    }
     let status = McpPagerServer::execute_icx_op(&serde_json::json!({"op": "status"}), &mut mmu);
     println!("{status}");
 }
@@ -498,6 +691,7 @@ fn run_doctor() {
             "Hermes Agent Source",
             format!("{home}/.hermes/hermes-agent/agent/context_engine.py"),
         ),
+        ("HTTPS Proxy Transport (curl)", "/usr/bin/curl".into()),
         ("POSIX Shared Memory (/dev/shm)", "/dev/shm".into()),
     ];
 
@@ -831,8 +1025,8 @@ mod tests {
             .is_err()
         );
 
-        // Test hook dispatch for claude-code, codex, agy, and malformed JSON
-        for agent in ["claude-code", "codex", "agy"] {
+        // Test hook dispatch for claude-code, codex, agy, hermes, and malformed JSON
+        for agent in ["claude-code", "codex", "agy", "hermes"] {
             dispatch_cli_args(
                 &[
                     "icx".into(),
@@ -841,6 +1035,8 @@ mod tests {
                     agent.into(),
                     "--event".into(),
                     "SessionStart".into(),
+                    "--dir".into(),
+                    dir_arg.clone(),
                     "--ignore".into(),
                 ],
                 io::Cursor::new("{}"),
@@ -848,12 +1044,23 @@ mod tests {
             .unwrap();
         }
         dispatch_cli_args(
+            &[
+                "icx".into(),
+                "status".into(),
+                "--dir".into(),
+                dir_arg.clone(),
+                "--ignore".into(),
+            ],
+            io::Cursor::new(""),
+        )
+        .unwrap();
+        dispatch_cli_args(
             &["icx".into(), "hook".into()],
             io::Cursor::new("{malformed_json"),
         )
         .unwrap();
 
-        // Test proxy-transform dispatch (Anthropic default & OpenAI via --provider / model / input auto-detect)
+        // Test proxy-transform dispatch (Anthropic, OpenAI, Gemini) and `icx proxy`
         dispatch_cli_args(
             &[
                 "icx".into(),
@@ -877,6 +1084,16 @@ mod tests {
                 "--extra".into(),
             ],
             io::Cursor::new(r#"{"model":"gpt-5","messages":[{"role":"user","content":"hi"}]}"#),
+        )
+        .unwrap();
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "proxy-transform".into(),
+                "--provider".into(),
+                "gemini".into(),
+            ],
+            io::Cursor::new(r#"{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}"#),
         )
         .unwrap();
         dispatch_cli_args(
@@ -904,13 +1121,125 @@ mod tests {
             .is_err()
         );
 
-        // Test mcp-serve dispatch
-        let mcp_input = "\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n";
+        // Test `icx proxy` subcommand with `--max-requests 0`, `--upstream`, and error paths
         dispatch_cli_args(
-            &["icx".into(), "mcp-serve".into()],
+            &[
+                "icx".into(),
+                "proxy".into(),
+                "--listen".into(),
+                "127.0.0.1:0".into(),
+                "--provider".into(),
+                "anthropic".into(),
+                "--upstream".into(),
+                "http://127.0.0.1:49381".into(),
+                "--dir".into(),
+                dir_arg.clone(),
+                "--max-requests".into(),
+                "0".into(),
+                "--unused".into(),
+            ],
+            io::Cursor::new(""),
+        )
+        .unwrap();
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "proxy".into(),
+                    "--provider".into(),
+                    "invalid".into()
+                ],
+                io::Cursor::new("")
+            )
+            .is_err()
+        );
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "proxy".into(),
+                    "--max-requests".into(),
+                    "not_a_number".into()
+                ],
+                io::Cursor::new("")
+            )
+            .is_err()
+        );
+
+        // Test mcp-serve dispatch with `--dir` (including mutating request) and without `--dir`
+        let mcp_input = "\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"icx\",\"arguments\":{\"op\":\"fold\",\"id\":\"cli_fold\",\"q\":\"folded\"}}}\n";
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "mcp-serve".into(),
+                "--dir".into(),
+                dir_arg.clone(),
+                "--unused".into(),
+            ],
             io::Cursor::new(mcp_input),
         )
         .unwrap();
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "mcp-serve".into(),
+                "--dir".into(),
+                tmp_dir.join("no_such_ws").to_string_lossy().into_owned(),
+            ],
+            io::Cursor::new("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}\n"),
+        )
+        .unwrap();
+
+        // Test execute_hook fail-open behavior when workspace state file is corrupted
+        let corrupt_ws = tmp_dir.join("corrupt_ws");
+        fs::create_dir_all(&corrupt_ws).unwrap();
+        fs::write(corrupt_ws.join("mmu_state.json"), "{corrupt_json").unwrap();
+        let corrupt_hook_out = execute_hook(
+            &[
+                "--agent".into(),
+                "claude".into(),
+                "--event".into(),
+                "SessionStart".into(),
+                "--dir".into(),
+                corrupt_ws.to_string_lossy().into_owned(),
+            ],
+            "{}",
+        )
+        .unwrap();
+        assert!(corrupt_hook_out.contains("ICX:LEGEND"));
+        assert_eq!(
+            fs::read_to_string(corrupt_ws.join("mmu_state.json")).unwrap(),
+            "{corrupt_json"
+        );
+        let corrupt_post_tool = execute_hook(
+            &[
+                "--agent".into(),
+                "claude".into(),
+                "--event".into(),
+                "PostToolUse".into(),
+                "--dir".into(),
+                corrupt_ws.to_string_lossy().into_owned(),
+            ],
+            r#"{"tool_name":"Bash","tool_response":"big output"}"#,
+        )
+        .unwrap();
+        assert_eq!(corrupt_post_tool, r#"{"continue":true}"#);
+        let corrupt_agy_post_tool = execute_hook(
+            &[
+                "--agent".into(),
+                "agy".into(),
+                "--event".into(),
+                "PostToolUse".into(),
+                "--dir".into(),
+                corrupt_ws.to_string_lossy().into_owned(),
+            ],
+            r#"{"toolName":"bash","toolOutput":"big output"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            corrupt_agy_post_tool,
+            r#"{"injectSteps":[],"terminationBehavior":""}"#
+        );
 
         // Test acquire_workspace_lock error when cas_store.lock is a directory
         let lock_dir_ws = tmp_dir.join("bad_lock_ws");
@@ -971,6 +1300,12 @@ mod tests {
             .is_err()
         );
         run_decode_ahtl(&[wire_a]).unwrap();
+        let err_rpc =
+            mcp_tool_error_response(r#"{"jsonrpc":"2.0","id":9,"method":"tools/call"}"#, "ERR");
+        assert_eq!(err_rpc["result"]["isError"], true);
+        let notif_rpc =
+            mcp_tool_error_response(r#"{"jsonrpc":"2.0","method":"tools/call"}"#, "ERR");
+        assert!(notif_rpc.is_null());
 
         let _ = fs::remove_dir_all(&tmp_dir);
     }

@@ -253,8 +253,14 @@ impl InfinityContextMmu {
             raw_text
         };
         let mut sanitized = SecretRedactor::sanitize(bounded_raw);
-        let was_redacted = bounded_raw != sanitized;
+        let is_unredacted = if sanitized.is_empty() {
+            bounded_raw.lines().next().is_none()
+        } else {
+            bounded_raw == sanitized || bounded_raw.lines().eq(sanitized.split('\n'))
+        };
+        let mut was_redacted = raw_text.len() > max_bytes || !is_unredacted;
         if sanitized.len() > max_bytes {
+            was_redacted = true;
             let mut bound = max_bytes;
             while !sanitized.is_char_boundary(bound) {
                 bound -= 1;
@@ -758,10 +764,48 @@ impl InfinityContextMmu {
         self.cas.grep_cold(id, pattern, max_matches)
     }
 
-    /// Returns `true` if pre-CAS secret redaction or delimiter escaping modified `id` during ingestion.
+    /// Returns `true` if `id` is stored directly in the `L0` Content-Addressed Storage (`CasStore`).
     #[inline]
+    pub fn is_cas_artifact(&self, id: ArtifactId) -> bool {
+        self.cas.get_meta(id).is_some()
+    }
+
+    /// Returns `true` if pre-CAS secret redaction or delimiter escaping modified `id` (or any
+    /// descendant `L0` CAS artifact of a `MerkleContextDag` node `id`) during ingestion.
     pub fn is_artifact_redacted(&self, id: ArtifactId) -> bool {
-        self.redacted_artifacts.contains(&id)
+        if self.redacted_artifacts.contains(&id) {
+            return true;
+        }
+        let mut stack = vec![id];
+        let mut visited = BTreeSet::new();
+        while let Some(cur) = stack.pop() {
+            if !visited.insert(cur) {
+                continue;
+            }
+            if self.redacted_artifacts.contains(&cur) {
+                return true;
+            }
+            if let Some(node) = self.dag.get_node(cur) {
+                match node {
+                    icx_core::dag::DagNode::Turn { raw_artifact, .. } => stack.push(*raw_artifact),
+                    icx_core::dag::DagNode::ToolArtifact(tn) => stack.push(tn.raw_artifact),
+                    icx_core::dag::DagNode::SubTrajectoryBranch { child_turns, .. } => {
+                        stack.extend(child_turns.iter().copied());
+                    }
+                    icx_core::dag::DagNode::CacheEpoch { child_nodes, .. } => {
+                        stack.extend(child_nodes.iter().copied());
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Returns the number of artifacts in `self` that had pre-CAS secret redaction or delimiter
+    /// escaping applied.
+    #[inline]
+    pub fn redacted_artifact_count(&self) -> usize {
+        self.redacted_artifacts.len()
     }
 
     /// Returns the current logical ingestion clock timestamp in milliseconds.
@@ -819,7 +863,7 @@ impl InfinityContextMmu {
         ep
     }
 
-    /// Forces sealing the active epoch (via `maybe_rollover` or `force_seal_active_epoch`) and
+    /// Forces sealing the active epoch via `CacheEpochController::force_seal_active_epoch` and
     /// synchronizes `global_dag_root` on `self.bus` (using the returned `L3`/`L4` epoch digest).
     pub fn force_rollover_and_sync_dag_root(&mut self) -> Option<ArtifactId> {
         let ep = self.epochs.force_seal_active_epoch(&mut self.dag);
@@ -923,6 +967,12 @@ impl InfinityContextMmu {
     /// workspace lock (only mutating `self` after all components succeed).
     pub fn load_workspace_dir(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
         let _lock = Self::acquire_workspace_lock(icx_dir)?;
+        self.load_workspace_dir_unlocked(icx_dir)
+    }
+
+    /// Loads workspace state from `icx_dir` assuming the caller already holds
+    /// `Self::acquire_workspace_lock(icx_dir)`.
+    pub fn load_workspace_dir_unlocked(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
         let cas_path = icx_dir.join("cas_store.json");
         let new_cas = if cas_path.exists() {
             CasStore::load_from_dir(icx_dir)?
@@ -942,13 +992,23 @@ impl InfinityContextMmu {
         } else {
             None
         };
-        let shm_path = icx_dir.join("icx-fabric-v1.shm");
+        let shm_path = std::env::var("ICX_SHM_PATH")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .map_or_else(
+                || icx_dir.join("icx-fabric-v1.shm"),
+                std::path::PathBuf::from,
+            );
         let new_bus = if shm_path.exists() {
             SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(Self::map_io_err)?
         } else {
             SeqlockTelemetryBus::new_in_memory()
         };
 
+        let canonical_ws = std::fs::canonicalize(icx_dir).unwrap_or_else(|_| icx_dir.to_path_buf());
+        self.workspace_hash = ArtifactId::hash_bytes(canonical_ws.to_string_lossy().as_bytes())
+            .0
+            .0;
         self.cas = new_cas;
         self.graph = new_graph;
         self.bus = new_bus;
@@ -1060,6 +1120,12 @@ impl InfinityContextMmu {
     /// state into `icx_dir` under an exclusive workspace lock.
     pub fn save_workspace_dir(&self, icx_dir: &Path) -> Result<(), IcxError> {
         let _lock = Self::acquire_workspace_lock(icx_dir)?;
+        self.save_workspace_dir_unlocked(icx_dir)
+    }
+
+    /// Atomically persists workspace state into `icx_dir` assuming the caller already holds
+    /// `Self::acquire_workspace_lock(icx_dir)`.
+    pub fn save_workspace_dir_unlocked(&self, icx_dir: &Path) -> Result<(), IcxError> {
         self.cas.save_to_dir(icx_dir)?;
         self.graph.save_to_dir(icx_dir)?;
         let redacted_ids: Vec<u64> = self.redacted_artifacts.iter().map(|id| id.0).collect();
@@ -1076,5 +1142,20 @@ impl InfinityContextMmu {
         };
         let state_bytes = serde_json::to_vec(&state).map_err(Self::map_io_err)?;
         Self::write_atomic_file(icx_dir, "mmu_state.json", &state_bytes)
+    }
+
+    /// Executes an atomic read-modify-write transaction against `icx_dir` while holding a single
+    /// exclusive workspace lock across `load_workspace_dir_unlocked`, `op(self)`, and
+    /// `save_workspace_dir_unlocked`.
+    pub fn with_locked_workspace<T, E, F>(&mut self, icx_dir: &Path, op: F) -> Result<T, E>
+    where
+        E: From<IcxError>,
+        F: FnOnce(&mut Self) -> Result<T, E>,
+    {
+        let _lock = Self::acquire_workspace_lock(icx_dir).map_err(E::from)?;
+        self.load_workspace_dir_unlocked(icx_dir).map_err(E::from)?;
+        let out = op(self)?;
+        self.save_workspace_dir_unlocked(icx_dir).map_err(E::from)?;
+        Ok(out)
     }
 }

@@ -250,7 +250,8 @@ impl MerkleContextDag {
     }
 
     /// Finds the most recent `DagNode::Turn` matching `(agent, raw_artifact)` regardless of `role`,
-    /// returning `(role, ahtl_repr, surprise)`.
+    /// returning `(role, ahtl_repr, surprise)` in $O(1)$ via `turn_index` (falling back to an
+    /// $O(N)$ scan over `nodes` if the secondary index was not populated after deserialization).
     pub fn find_turn_any_role(
         &self,
         agent: AgentKind,
@@ -267,7 +268,24 @@ impl MerkleContextDag {
         {
             return Some((role.as_str(), ahtl_repr.as_str(), *surprise));
         }
-        None
+        self.nodes
+            .values()
+            .filter_map(|n| match n {
+                DagNode::Turn {
+                    ordinal,
+                    agent: n_agent,
+                    role: n_role,
+                    raw_artifact: n_raw,
+                    ahtl_repr,
+                    surprise,
+                    ..
+                } if *n_agent == agent && *n_raw == raw_artifact => {
+                    Some((*ordinal, n_role.as_str(), ahtl_repr.as_str(), *surprise))
+                }
+                _ => None,
+            })
+            .max_by_key(|(ord, _, _, _)| *ord)
+            .map(|(_, role, ahtl, s)| (role, ahtl, s))
     }
 
     /// Finds the most recent `DagNode::Turn` matching `(agent, role, raw_artifact)` in $O(\log N)$

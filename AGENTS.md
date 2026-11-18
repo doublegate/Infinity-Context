@@ -20,6 +20,7 @@
   - `docs/virtual-memory-and-dag-engine.md` — FastCDC, BLAKE3 CAS, Merkle-DAG (`LCM`), Context-Folding, and Cache-Epoch Controller.
   - `docs/hyperdimensional-and-fractal-index.md` — 10,240-bit HDC, Fractal Chaos-Game Archive, Titans Surprise Gate, and Bi-Temporal PPR Graph.
   - `docs/agent-adapters-and-interception.md` — Claude Code, Codex, Antigravity CLI (`agy`), Hermes, and HTTP/2 Wire Proxy adapters.
+  - `docs/deployment-and-agent-integration-guide.md` — Comprehensive `v1.0.0` deployment, standalone & dual-stack (`icx` + `ai-memory`) coexistence, setup/configuration, best practices, pros/cons, and end-to-end workflows across all supported agent harnesses.
   - `docs/wire-protocol-and-shm-bus.md` — `/dev/shm` Seqlock Ring Buffer and Single-Tool Polymorphic MCP Pager.
   - `docs/data-model.md`, `docs/interfaces.md`, `docs/performance.md`, `docs/security-and-threat-model.md`, `docs/testing-strategy.md`, `docs/build-and-tooling.md`, `docs/glossary.md`, and `docs/adr/`.
   - `docs/diagrams/` — Normative Mermaid (`.mmd`) diagram sources.

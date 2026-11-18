@@ -1968,6 +1968,11 @@ unprefixed_secret = {unpref_sec}
                 .find_turn(AgentKind::Hermes, "direct_tool", res_a.artifact_id)
                 .is_some()
         );
+        assert!(
+            deser_dag
+                .find_turn_any_role(AgentKind::Hermes, res_a.artifact_id)
+                .is_some()
+        );
         deser_dag.rebuild_turn_index();
         assert!(
             deser_dag
@@ -1991,5 +1996,184 @@ unprefixed_secret = {unpref_sec}
         let _ = HermesAdapter::handle_hook("select-context", "{}", &mut empty_mmu).unwrap();
         let _ =
             HermesAdapter::handle_hook("prune-tool-results-only", "{}", &mut empty_mmu).unwrap();
+    }
+
+    #[test]
+    fn sprint_4_3_single_tool_mcp_pager_provenance_and_ambiguity_conformance() {
+        let mut mmu = InfinityContextMmu::default();
+        assert!(McpPagerServer::schema_token_estimate() < 180);
+
+        // 1. Verify `notifications/initialized` (JSON-RPC 2.0 notification returns Null without `id`) and `ping`
+        let ping_resp = McpPagerServer::handle_jsonrpc(
+            r#"{"jsonrpc":"2.0","id":10,"method":"ping"}"#,
+            &mut mmu,
+        );
+        assert_eq!(ping_resp["id"], 10);
+        assert!(ping_resp["result"].is_object());
+        let notif_resp = McpPagerServer::handle_jsonrpc(
+            r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+            &mut mmu,
+        );
+        assert!(notif_resp.is_null());
+        let notif_with_id = McpPagerServer::handle_jsonrpc(
+            r#"{"jsonrpc":"2.0","id":11,"method":"notifications/initialized"}"#,
+            &mut mmu,
+        );
+        assert!(notif_with_id.is_null());
+
+        // Verify trailing blank lines (`\n\n`) do not falsely set `was_redacted = true`
+        let (_, trailing_blank_redacted) =
+            InfinityContextMmu::bound_and_sanitize_raw("clean line 1\nclean line 2\n\n", 4096);
+        assert!(!trailing_blank_redacted);
+
+        // 2. Ingest a secret-containing artifact and a clean artifact
+        let secret_res = mmu.ingest_payload(
+            AgentKind::ClaudeCode,
+            "env_dump",
+            "line1: normal\nline2: api_key=sk-ant-api03-1234567890abcdef1234567890abcdef\nline3: tail",
+            false,
+        );
+        assert!(mmu.is_artifact_redacted(secret_res.artifact_id));
+        let clean_res = mmu.ingest_payload(
+            AgentKind::ClaudeCode,
+            "clean_file",
+            "pub fn clean_alpha() -> u32 { 1 }\npub fn clean_beta() -> u32 { 2 }",
+            false,
+        );
+        assert!(!mmu.is_artifact_redacted(clean_res.artifact_id));
+
+        // 3. `op: "expand"` on redacted artifact automatically prepends `⟪ICX:PROVENANCE│...│redacted=true│...⟫`
+        let expand_redacted = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "expand",
+                "id": secret_res.artifact_id.to_string()
+            }),
+            &mut mmu,
+        );
+        assert!(expand_redacted.starts_with("⟪ICX:PROVENANCE│id=#icx:"));
+        assert!(expand_redacted.contains("│redacted=true│exactness=post_sanitization_cas⟫"));
+        assert!(expand_redacted.contains("[REDACTED:"));
+
+        // 4. `op: "deref"` on clean artifact with `provenance: true` vs default (`provenance: false`)
+        let deref_clean_default = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "deref",
+                "id": clean_res.artifact_id.to_string()
+            }),
+            &mut mmu,
+        );
+        assert!(!deref_clean_default.starts_with("⟪ICX:PROVENANCE"));
+        let deref_clean_prov = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "deref",
+                "id": clean_res.artifact_id.to_string(),
+                "provenance": true
+            }),
+            &mut mmu,
+        );
+        assert!(deref_clean_prov.starts_with("⟪ICX:PROVENANCE│id=#icx:"));
+        assert!(deref_clean_prov.contains("│redacted=false│exactness=post_sanitization_cas⟫"));
+
+        // 5. `op: "slice"` with `provenance: true`
+        let slice_prov = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "slice",
+                "id": clean_res.artifact_id.to_string(),
+                "range": [1, 1],
+                "provenance": true
+            }),
+            &mut mmu,
+        );
+        assert!(slice_prov.starts_with("⟪ICX:PROVENANCE│id=#icx:"));
+        assert!(slice_prov.contains("clean_alpha"));
+
+        // 6. `op: "status"` with and without `id`
+        let status_all =
+            McpPagerServer::execute_icx_op(&serde_json::json!({ "op": "status" }), &mut mmu);
+        assert!(status_all.contains("│redacted_artifacts=1│"));
+        let status_redacted_id = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "status",
+                "id": secret_res.artifact_id.to_string()
+            }),
+            &mut mmu,
+        );
+        assert!(status_redacted_id.contains("│redacted=true│"));
+        let status_bad_id = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "status",
+                "id": "invalid_handle"
+            }),
+            &mut mmu,
+        );
+        assert!(status_bad_id.starts_with("ERR:"));
+
+        // 7. Bidirectional `op: "xagent"` (publish with `q` and custom `id`, then poll without `q`)
+        let xagent_pub = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "xagent",
+                "id": "custom_topic",
+                "q": "Shared invariant across Claude and Codex"
+            }),
+            &mut mmu,
+        );
+        assert!(xagent_pub.starts_with("⟪ICX:XAGENT_PUBLISHED│#icx:"));
+        let xagent_poll = McpPagerServer::execute_icx_op(
+            &serde_json::json!({
+                "op": "xagent",
+                "k": 4
+            }),
+            &mut mmu,
+        );
+        assert!(xagent_poll.contains("⟦"));
+
+        // 8. `IcxError::AmbiguousHandlePrefix` error formatting and `isError: true` in `tools/call`
+        let ambig_err =
+            McpPagerServer::format_error(&IcxError::AmbiguousHandlePrefix("abcdef012345".into()));
+        assert!(
+            ambig_err
+                .contains("retry with full 16-hex handle #icx:<16-hex> for prefix `abcdef012345`")
+        );
+        let err_call = McpPagerServer::handle_jsonrpc(
+            r##"{"jsonrpc":"2.0","id":99,"method":"tools/call","params":{"name":"icx","arguments":{"op":"deref","id":"#icx:ffffffffffffffff"}}}"##,
+            &mut mmu,
+        );
+        assert_eq!(err_call["result"]["isError"], true);
+
+        // 9. `McpPagerServer::is_mutating_request`, `bound_and_sanitize_raw` truncation, and `with_locked_workspace`
+        assert!(!McpPagerServer::is_mutating_request("{bad_json"));
+        assert!(!McpPagerServer::is_mutating_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#
+        ));
+        assert!(!McpPagerServer::is_mutating_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}"#
+        ));
+        assert!(McpPagerServer::is_mutating_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{"op":"fold","q":"s"}}}"#
+        ));
+        assert!(McpPagerServer::is_mutating_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{"op":"xagent","q":"msg"}}}"#
+        ));
+        assert!(!McpPagerServer::is_mutating_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{"op":"xagent"}}}"#
+        ));
+        assert!(!McpPagerServer::is_mutating_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{"op":"status"}}}"#
+        ));
+        let (_, truncated_was_redacted) =
+            InfinityContextMmu::bound_and_sanitize_raw("abcdef_oversized", 6);
+        assert!(truncated_was_redacted);
+
+        let lock_test_dir =
+            std::env::temp_dir().join(format!("icx_with_locked_ws_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&lock_test_dir);
+        mmu.save_workspace_dir(&lock_test_dir).unwrap();
+        let locked_count: usize = mmu
+            .with_locked_workspace::<usize, IcxError, _>(&lock_test_dir, |m| {
+                Ok(m.cas.artifact_count())
+            })
+            .unwrap();
+        assert!(locked_count >= 2);
+        let _ = std::fs::remove_dir_all(&lock_test_dir);
     }
 }
