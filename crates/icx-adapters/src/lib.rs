@@ -1515,15 +1515,78 @@ unprefixed_secret = {unpref_sec}
             .unwrap();
         let mm_sel_out =
             HermesAdapter::handle_hook("select_context", &mm_occ_payload, &mut mm_occ_mmu).unwrap();
+        // Calling `select_context` a second time on the original `mm_occ_payload` must also keep
+        // canonical occurrence identities intact (without re-ingesting the middle failure over a
+        // passing tail turn).
+        let mm_occ_tail_pass = serde_json::json!({
+            "messages": [
+                {"role": "system", "content": "sys"},
+                {"role": "tool", "name": "cargo_test", "content": [{"type": "text", "text": fail_out}, {"type": "image_url", "image_url": {"url": "https://example.com/i.png"}}]},
+                {"role": "user", "content": "mid_user"},
+                {"role": "tool", "name": "cargo_test", "content": pass_out}
+            ],
+            "protect_first_n": 1,
+            "protect_last_n": 1
+        })
+        .to_string();
+        let mut repeat_sel_mmu = InfinityContextMmu::default();
+        let _ =
+            HermesAdapter::handle_hook("on_turn_complete", &mm_occ_tail_pass, &mut repeat_sel_mmu)
+                .unwrap();
+        let _ =
+            HermesAdapter::handle_hook("select_context", &mm_occ_tail_pass, &mut repeat_sel_mmu)
+                .unwrap();
+        let _ =
+            HermesAdapter::handle_hook("select_context", &mm_occ_tail_pass, &mut repeat_sel_mmu)
+                .unwrap();
+        assert!(repeat_sel_mmu.graph.edges().iter().any(|e| {
+            e.source_entity == "cargo_test"
+                && e.relation == "status"
+                && e.target_entity == "PASS"
+                && e.t_invalid.is_none()
+        }));
         let mm_turn_after_sel =
             HermesAdapter::handle_hook("on_turn_complete", &mm_sel_out, &mut mm_occ_mmu).unwrap();
         assert!(mm_turn_after_sel.contains(r#""ingested_count":0"#));
+        // Save and reload `mm_occ_mmu` so `reordered_occurrences` persistence is exercised
+        let ro_ws = std::env::temp_dir().join(format!(
+            "icx_reordered_ws_{}_{}",
+            std::process::id(),
+            mmu.clock_ms()
+        ));
+        mm_occ_mmu.save_workspace_dir(&ro_ws).unwrap();
+        let mut ro_loaded = InfinityContextMmu::default();
+        ro_loaded.load_workspace_dir(&ro_ws).unwrap();
+        let _ = std::fs::remove_dir_all(&ro_ws);
         assert!(mm_occ_mmu.graph.edges().iter().any(|e| {
             e.source_entity == "cargo_test"
                 && e.relation == "status"
                 && e.target_entity == "PASS"
                 && e.t_invalid.is_none()
         }));
+        // Also verify `protect_first_n` ending on an `assistant` `tool_calls` message (or inside
+        // its tool response group) expands `head_end` across its contiguous `role == "tool"`
+        // responses so the group is not split
+        let head_boundary_req = serde_json::json!({
+            "messages": [
+                {"role": "system", "content": "head"},
+                {"role": "assistant", "content": null, "tool_calls": [{"id": "c_head"}, {"id": "c_head_2"}]},
+                {"role": "tool", "tool_call_id": "c_head", "name": "bash", "content": "head_tool_out"},
+                {"role": "tool", "tool_call_id": "c_head_2", "name": "bash", "content": "head_tool_out_2"},
+                {"role": "user", "content": "middle_fold"},
+                {"role": "user", "content": "tail"}
+            ],
+            "protect_first_n": 3,
+            "protect_last_n": 1
+        })
+        .to_string();
+        let head_boundary_sel =
+            HermesAdapter::handle_hook("select_context", &head_boundary_req, &mut repeat_sel_mmu)
+                .unwrap();
+        let head_boundary_val: Value = serde_json::from_str(&head_boundary_sel).unwrap();
+        assert_eq!(head_boundary_val["messages"][1]["role"], "assistant");
+        assert_eq!(head_boundary_val["messages"][2]["tool_call_id"], "c_head");
+        assert_eq!(head_boundary_val["messages"][3]["tool_call_id"], "c_head_2");
         // Also verify stubbed sibling tool responses inside a preserved `assistant` `tool_calls`
         // group are retained in both `select_context` and `compress` after `prune_tool_results_only`
         let stub_group_req = serde_json::json!({

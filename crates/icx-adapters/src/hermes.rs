@@ -259,8 +259,9 @@ impl HermesAdapter {
         preserve
     }
 
-    /// Rebinds `mmu.indexed_occurrences` in `[mid_start_occ, mid_end_occ)` when folded AHTL lines
-    /// and preserved verbatim messages are emitted as `[icx_cache_epoch (folded), preserved_msgs...]`.
+    /// Records `mmu.reordered_occurrences` in `[mid_start_occ, mid_end_occ)` when folded AHTL lines
+    /// and preserved verbatim messages are emitted as `[icx_cache_epoch (folded), preserved_msgs...]`,
+    /// without mutating the canonical `mmu.indexed_occurrences` positions.
     fn rebind_reordered_occurrences(
         mmu: &mut InfinityContextMmu,
         mid_start_occ: usize,
@@ -280,7 +281,7 @@ impl HermesAdapter {
                 .iter()
                 .chain(preserved_occ_indices.iter()),
         ) {
-            mmu.set_indexed_occurrence(new_idx, snapshot[&old_idx].clone());
+            mmu.set_reordered_occurrence(new_idx, snapshot[&old_idx].clone());
         }
     }
 
@@ -407,11 +408,22 @@ impl HermesAdapter {
             return (out_msgs, out_vals);
         }
 
-        let head_end = protect_first_n;
         let tail_start = total - protect_last_n;
-        let cap = protect_first_n
-            .saturating_add(protect_last_n)
-            .saturating_add(2);
+        let head_in_assistant_group = cleaned[..protect_first_n]
+            .iter()
+            .rev()
+            .find(|(m, _)| m.role != "tool" && m.tool_call_id.is_none())
+            .is_some_and(|(m, _)| m.role == "assistant");
+        let head_end = if head_in_assistant_group {
+            protect_first_n
+                + cleaned[protect_first_n..tail_start]
+                    .iter()
+                    .take_while(|(m, _)| m.role == "tool" || m.tool_call_id.is_some())
+                    .count()
+        } else {
+            protect_first_n
+        };
+        let cap = head_end.saturating_add(protect_last_n).saturating_add(2);
         let mut selected_msgs = Vec::with_capacity(cap);
         let mut selected_vals = Vec::with_capacity(if raw_messages.is_some() { cap } else { 0 });
 

@@ -58,6 +58,8 @@ struct PersistedMmuState {
     agent_read_cursors: BTreeMap<u8, u64>,
     #[serde(default)]
     indexed_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
+    #[serde(default)]
+    reordered_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
 }
 
 /// The central Virtual Context Memory Management Unit (`MMU`).
@@ -76,6 +78,7 @@ pub struct InfinityContextMmu {
     subagent_branches: BTreeMap<String, Vec<SubagentStep>>,
     hdc_events: Vec<HdcEventRecord>,
     indexed_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
+    reordered_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     clock_ms: u64,
 }
 
@@ -105,6 +108,7 @@ impl InfinityContextMmu {
             subagent_branches: BTreeMap::new(),
             hdc_events: Vec::new(),
             indexed_occurrences: BTreeMap::new(),
+            reordered_occurrences: BTreeMap::new(),
             clock_ms: 1_794_880_800_000,
         }
     }
@@ -289,8 +293,19 @@ impl InfinityContextMmu {
             {
                 return (prev_res.clone(), false);
             }
-            let _ = self.indexed_occurrences.split_off(&occurrence_idx);
         }
+        if let Some((prev_agent, prev_subj, prev_aid, prev_ec, prev_fa, prev_res)) =
+            self.reordered_occurrences.get(&occurrence_idx)
+            && *prev_agent == agent as u8
+            && prev_subj == &clean_subject
+            && *prev_aid == aid
+            && *prev_ec == exit_code
+            && *prev_fa == force_anomaly
+        {
+            return (prev_res.clone(), false);
+        }
+        let _ = self.indexed_occurrences.split_off(&occurrence_idx);
+        let _ = self.reordered_occurrences.split_off(&occurrence_idx);
         let res = self.ingest_payload_for_subagent(
             agent,
             raw_subject,
@@ -334,13 +349,14 @@ impl InfinityContextMmu {
             .collect()
     }
 
-    /// Replaces `self.indexed_occurrences` at `occurrence_idx` with `entry`.
-    pub fn set_indexed_occurrence(
+    /// Records a reordered outbound-view occurrence at `occurrence_idx` without mutating the
+    /// canonical `self.indexed_occurrences` table.
+    pub fn set_reordered_occurrence(
         &mut self,
         occurrence_idx: usize,
         entry: IndexedOccurrenceRecord,
     ) {
-        self.indexed_occurrences.insert(occurrence_idx, entry);
+        self.reordered_occurrences.insert(occurrence_idx, entry);
     }
 
     /// Records a carried-forward synthetic/stubbed AHTL frame at `occurrence_idx` so subsequent
@@ -945,6 +961,7 @@ impl InfinityContextMmu {
         self.hdc_index = HdcAssociativeIndex::new();
         self.hdc_events.clear();
         self.indexed_occurrences.clear();
+        self.reordered_occurrences.clear();
         if let Some(st) = persisted_state {
             self.clock_ms = 1_794_880_800_000_u64.max(st.clock_ms).max(max_graph_ms);
             self.dag = st.dag;
@@ -990,6 +1007,11 @@ impl InfinityContextMmu {
                 .collect();
             self.indexed_occurrences = st
                 .indexed_occurrences
+                .into_iter()
+                .filter(|(_, (_, _, aid, _, _, _))| self.cas.get_meta(*aid).is_some())
+                .collect();
+            self.reordered_occurrences = st
+                .reordered_occurrences
                 .into_iter()
                 .filter(|(_, (_, _, aid, _, _, _))| self.cas.get_meta(*aid).is_some())
                 .collect();
@@ -1042,6 +1064,7 @@ impl InfinityContextMmu {
             hdc_events: self.hdc_events.clone(),
             agent_read_cursors: self.agent_read_cursors.clone(),
             indexed_occurrences: self.indexed_occurrences.clone(),
+            reordered_occurrences: self.reordered_occurrences.clone(),
         };
         let state_bytes = serde_json::to_vec(&state).map_err(Self::map_io_err)?;
         Self::write_atomic_file(icx_dir, "mmu_state.json", &state_bytes)
