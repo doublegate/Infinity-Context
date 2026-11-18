@@ -264,6 +264,12 @@ impl CasStore {
         self.artifacts.get(&id)
     }
 
+    /// Returns `true` if `L0` chunk `cid` is present in `self.chunks`.
+    #[inline]
+    pub fn has_chunk(&self, cid: ArtifactId) -> bool {
+        self.chunks.contains_key(&cid)
+    }
+
     /// Losslessly reconstructs the full byte stream for `id` and verifies its 256-bit BLAKE3 digest.
     pub fn deref_bytes(&self, id: ArtifactId) -> Result<Vec<u8>, IcxError> {
         let meta = self

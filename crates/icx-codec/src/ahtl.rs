@@ -183,25 +183,47 @@ fn escape_clause_key(s: &str) -> String {
     {
         return s.to_owned();
     }
-    let escaped = s
-        .replace('%', "%25")
-        .replace(':', "%3A")
-        .replace('⋮', "%E2%8B%AE")
-        .replace('⇒', "%E2%87%92")
-        .replace('↦', "%E2%86%A6")
-        .replace('⟦', "%E2%9F%A6")
-        .replace('⟧', "%E2%9F%A7")
-        .replace('\n', "%0A")
-        .replace('\r', "%0D");
-    let mut chars = escaped.chars();
-    match chars.next() {
-        Some('⊕') => format!("%E2%8A%95{}", chars.as_str()),
-        Some('⊖') => format!("%E2%8A%96{}", chars.as_str()),
-        Some('¬') => format!("%C2%AC{}", chars.as_str()),
-        Some('!') => format!("%21{}", chars.as_str()),
-        Some('✓') => format!("%E2%9C%93{}", chars.as_str()),
-        _ => escaped,
+    let mut out = String::with_capacity(s.len() + 16);
+    for (idx, ch) in s.chars().enumerate() {
+        if idx == 0 {
+            match ch {
+                '⊕' => {
+                    out.push_str("%E2%8A%95");
+                    continue;
+                }
+                '⊖' => {
+                    out.push_str("%E2%8A%96");
+                    continue;
+                }
+                '¬' => {
+                    out.push_str("%C2%AC");
+                    continue;
+                }
+                '!' => {
+                    out.push_str("%21");
+                    continue;
+                }
+                '✓' => {
+                    out.push_str("%E2%9C%93");
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        match ch {
+            '%' => out.push_str("%25"),
+            ':' => out.push_str("%3A"),
+            '⋮' => out.push_str("%E2%8B%AE"),
+            '⇒' => out.push_str("%E2%87%92"),
+            '↦' => out.push_str("%E2%86%A6"),
+            '⟦' => out.push_str("%E2%9F%A6"),
+            '⟧' => out.push_str("%E2%9F%A7"),
+            '\n' => out.push_str("%0A"),
+            '\r' => out.push_str("%0D"),
+            other => out.push(other),
+        }
     }
+    out
 }
 
 /// Bijectively escapes `%`, `⋮`, `⇒`, `↦`, `⟦`, `⟧`, `\n`, and `\r` inside a clause value.
@@ -219,14 +241,21 @@ fn escape_clause_val(s: &str) -> String {
     {
         return s.to_owned();
     }
-    s.replace('%', "%25")
-        .replace('⋮', "%E2%8B%AE")
-        .replace('⇒', "%E2%87%92")
-        .replace('↦', "%E2%86%A6")
-        .replace('⟦', "%E2%9F%A6")
-        .replace('⟧', "%E2%9F%A7")
-        .replace('\n', "%0A")
-        .replace('\r', "%0D")
+    let mut out = String::with_capacity(s.len() + 16);
+    for ch in s.chars() {
+        match ch {
+            '%' => out.push_str("%25"),
+            '⋮' => out.push_str("%E2%8B%AE"),
+            '⇒' => out.push_str("%E2%87%92"),
+            '↦' => out.push_str("%E2%86%A6"),
+            '⟦' => out.push_str("%E2%9F%A6"),
+            '⟧' => out.push_str("%E2%9F%A7"),
+            '\n' => out.push_str("%0A"),
+            '\r' => out.push_str("%0D"),
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// Single-pass left-to-right inverse of `escape_clause_key` and `escape_clause_val`.

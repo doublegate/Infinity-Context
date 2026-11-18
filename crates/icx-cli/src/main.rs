@@ -59,10 +59,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
             Ok(())
         }
         "doctor" => run_doctor(tail),
-        "benchmark" => {
-            run_benchmark();
-            Ok(())
-        }
+        "benchmark" => run_benchmark(),
         _ => {
             print_help();
             Ok(())
@@ -719,12 +716,17 @@ fn is_dir_writable(dir: &Path) -> bool {
 fn run_doctor(args: &[String]) -> Result<(), String> {
     println!("=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===");
     let home = env::var("HOME").unwrap_or_else(|_| "/home/parobek".into());
-    let curl_path = find_executable_in_path("curl")
-        .map_or_else(|| "/usr/bin/curl".into(), |p| p.display().to_string());
+    let resolve_bin = |default_subpath: &str, bin_name: &str| -> String {
+        let primary = format!("{home}/{default_subpath}");
+        if is_executable_file(Path::new(&primary)) {
+            return primary;
+        }
+        find_executable_in_path(bin_name).map_or(primary, |p| p.display().to_string())
+    };
     let probes = [
         (
             "Claude Code Binary",
-            format!("{home}/.local/bin/claude"),
+            resolve_bin(".local/bin/claude", "claude"),
             true,
         ),
         (
@@ -734,7 +736,7 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         ),
         (
             "OpenAI Codex Binary",
-            format!("{home}/.local/bin/codex"),
+            resolve_bin(".local/bin/codex", "codex"),
             true,
         ),
         (
@@ -749,7 +751,7 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         ),
         (
             "Antigravity CLI (agy)",
-            format!("{home}/.local/bin/agy"),
+            resolve_bin(".local/bin/agy", "agy"),
             true,
         ),
         (
@@ -762,7 +764,12 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
             format!("{home}/.hermes/hermes-agent/agent/context_engine.py"),
             false,
         ),
-        ("HTTPS Proxy Transport (curl)", curl_path, true),
+        (
+            "HTTPS Proxy Transport (curl)",
+            find_executable_in_path("curl")
+                .map_or_else(|| "/usr/bin/curl".into(), |p| p.display().to_string()),
+            true,
+        ),
     ];
 
     for (label, path, require_exec) in probes {
@@ -786,13 +793,14 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
 
     let mut doctor_status = "READY";
     let mut doctor_err: Option<String> = None;
-    let ws_dir = resolve_workspace_dir(parse_dir_flag(args));
+    let explicit_dir = parse_dir_flag(args);
+    let ws_dir = resolve_workspace_dir(explicit_dir);
     if ws_dir.exists() {
         let mut mmu = InfinityContextMmu::default();
         match mmu.load_workspace_dir(&ws_dir) {
             Ok(()) => {
                 let cas_ok = mmu.cas.verify_all_integrity();
-                let dag_ok = mmu.dag.verify_all_merkle_integrity();
+                let dag_ok = mmu.dag.verify_all_merkle_integrity_with_cas(Some(&mmu.cas));
                 match (cas_ok, dag_ok) {
                     (Ok(artifacts), Ok(nodes)) => {
                         println!(
@@ -829,6 +837,17 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
                 ));
             }
         }
+    } else if explicit_dir.is_some() {
+        doctor_status = "DEGRADED";
+        println!(
+            "  [ABSENT  ] {:32} -> {} (not found)",
+            "Workspace Storage & Merkle-DAG",
+            ws_dir.display()
+        );
+        doctor_err = Some(format!(
+            "icx doctor error: workspace directory {} does not exist",
+            ws_dir.display()
+        ));
     }
 
     println!("Doctor status: {doctor_status}");
@@ -838,10 +857,24 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn run_benchmark() {
-    println!("=== Infinity-Context (icx) SLO & Accuracy Benchmark Suite ===");
+fn check_slo(passed: bool, label: &str, measured: &str, failures: &mut Vec<String>) {
+    let status = if passed { "PASS" } else { "FAIL" };
+    println!("  [{status}] {label}: {measured}");
+    if !passed {
+        failures.push(format!("{label} ({measured})"));
+    }
+}
 
-    // 1. 10,240-bit HDC Bind (^) + Permute Latency Benchmark
+fn run_benchmark() -> Result<(), String> {
+    println!("=== Infinity-Context (icx) SLO & Accuracy Benchmark Suite ===");
+    // Note: Under debug/coverage (`cfg!(debug_assertions)`) builds, compiler optimizations are
+    // disabled (`opt-level = 0`) and LLVM coverage instrumentation is injected, so timing ceilings
+    // are scaled by 25x while release builds (`cargo run --release -- benchmark`) enforce the
+    // strict hardware SLO ceilings from `docs/performance.md` §1.
+    let scale = if cfg!(debug_assertions) { 25.0 } else { 1.0 };
+    let mut failures = Vec::new();
+
+    // 1. 10,240-bit HDC Bind (^) + Permute Latency Benchmark (release ceiling: <= 250 ns)
     let hv_a = Hypervector::from_seed("bench", "role_key");
     let hv_b = Hypervector::from_seed("bench", "filler_val");
     let t_bind = Instant::now();
@@ -851,9 +884,14 @@ fn run_benchmark() {
     }
     let bind_ns = (t_bind.elapsed().as_nanos() as f64) / 1_000.0;
     assert_ne!(hv_acc.popcount(), 0);
-    println!("  [PASS] 10,240-bit HDC Bind (^) + Permute: {bind_ns:.2} ns / op (1,000 ops)");
+    check_slo(
+        bind_ns <= 250.0 * scale,
+        "10,240-bit HDC Bind (^) + Permute",
+        &format!("{bind_ns:.2} ns / op (1,000 ops)"),
+        &mut failures,
+    );
 
-    // 2. 10,240-bit HDC Hamming Scan Benchmark
+    // 2. 10,240-bit HDC Hamming Scan Benchmark (release ceiling: <= 5,000 us / 1,000 nodes)
     let t0 = Instant::now();
     let query_hv = Hypervector::from_seed("bench", "query_target");
     let candidates: Vec<Hypervector> = (0..1_000)
@@ -863,15 +901,18 @@ fn run_benchmark() {
     for c in &candidates {
         min_dist = min_dist.min(query_hv.hamming_distance_simd(c));
     }
-    let hdc_elapsed = t0.elapsed();
-    let per_10k_us = (hdc_elapsed.as_secs_f64() * 10.0) * 1_000_000.0;
-    println!(
-        "  [PASS] 10,240-bit HDC Hamming Scan:       {:.2} us / 1,000 nodes ({:.2} us / 10k nodes, min_dist={min_dist})",
-        hdc_elapsed.as_secs_f64() * 1_000_000.0,
-        per_10k_us
+    let hdc_us = t0.elapsed().as_secs_f64() * 1_000_000.0;
+    let per_10k_us = hdc_us * 10.0;
+    check_slo(
+        hdc_us <= 5_000.0 * scale,
+        "10,240-bit HDC Hamming Scan      ",
+        &format!(
+            "{hdc_us:.2} us / 1,000 nodes ({per_10k_us:.2} us / 10k nodes, min_dist={min_dist})"
+        ),
+        &mut failures,
     );
 
-    // 3. Fractal IFS Trajectory Suffix Match Benchmark
+    // 3. Fractal IFS Trajectory Suffix Match Benchmark (release ceiling: <= 100 ns / pair)
     let mut traj_a = icx_hdc::fractal::FractalCoord::default();
     let mut traj_b = icx_hdc::fractal::FractalCoord::default()
         .step(&Hypervector::from_seed("bench", "divergent_prefix"));
@@ -888,9 +929,11 @@ fn run_benchmark() {
         );
     }
     let ifs_ns = (t_ifs.elapsed().as_nanos() as f64) / 1_000.0;
-    assert!(shared_depth >= 6);
-    println!(
-        "  [PASS] Fractal IFS Suffix Match:          {ifs_ns:.2} ns / pair (shared_depth={shared_depth})"
+    check_slo(
+        shared_depth >= 6 && ifs_ns <= 100.0 * scale,
+        "Fractal IFS Suffix Match         ",
+        &format!("{ifs_ns:.2} ns / pair (shared_depth={shared_depth})"),
+        &mut failures,
     );
 
     // 4. Two-Stage HdcAssociativeIndex & CSR BiTemporalGraph PPR Benchmark
@@ -925,8 +968,11 @@ fn run_benchmark() {
     let ppr_hits = bench_graph.personalized_pagerank(&["mod:m_0"], None, 0.15, 8, 5);
     let ppr_us = t_ppr.elapsed().as_secs_f64() * 1_000_000.0;
     assert_ne!(ppr_hits.len(), 0);
-    println!(
-        "  [PASS] Two-Stage HDC + CSR PPR:           {idx_us:.2} us (two-stage query), {ppr_us:.2} us (201-node CSR PPR)"
+    check_slo(
+        idx_us <= 500.0 * scale && ppr_us <= 1_000.0 * scale,
+        "Two-Stage HDC + CSR PPR          ",
+        &format!("{idx_us:.2} us (two-stage query), {ppr_us:.2} us (201-node CSR PPR)"),
+        &mut failures,
     );
 
     // 5. AHTL Log Compression Ratio & Latency Benchmark
@@ -946,17 +992,20 @@ fn run_benchmark() {
     let pkt =
         StructuralSkeletonizer::compress_to_packet("cargo_test", &log_fixture, Some(id), [0x42; 8]);
     let rendered = pkt.render();
-    let codec_elapsed = t1.elapsed();
+    let codec_us = t1.elapsed().as_secs_f64() * 1_000_000.0;
     let ratio = (log_fixture.len() as f64) / (rendered.len() as f64);
-    assert!(ratio >= 10.0);
-    println!(
-        "  [PASS] AHTL Compression Ratio:            {ratio:.1}x ({} B -> {} B in {:.2} us)",
-        log_fixture.len(),
-        rendered.len(),
-        codec_elapsed.as_secs_f64() * 1_000_000.0
+    check_slo(
+        ratio >= 10.0 && codec_us <= 2_000.0 * scale,
+        "AHTL Compression Ratio           ",
+        &format!(
+            "{ratio:.1}x ({} B -> {} B in {codec_us:.2} us)",
+            log_fixture.len(),
+            rendered.len()
+        ),
+        &mut failures,
     );
 
-    // 6. FastCDC + BLAKE3 CAS Ingest (64 KB) Benchmark
+    // 6. FastCDC + BLAKE3 CAS Ingest (64 KB) Benchmark (release ceiling: <= 250 us)
     let mut cas_bench = icx_core::cas::CasStore::new();
     let cas_payload_64k = "pub fn fastcdc_kernel_step(x: u64) -> u64 { x.wrapping_mul(6364136223846793005).wrapping_add(1) }\n".repeat(660);
     let t_cas = Instant::now();
@@ -968,13 +1017,18 @@ fn run_benchmark() {
         cas_bench.deref_bytes(cas_aid).unwrap().len(),
         cas_payload_64k.len()
     );
-    println!(
-        "  [PASS] FastCDC + BLAKE3 CAS Ingest (64K): {cas_us:.2} us ({} B across {} chunks)",
-        cas_payload_64k.len(),
-        cas_bench.unique_chunk_count()
+    check_slo(
+        cas_us <= 250.0 * scale,
+        "FastCDC + BLAKE3 CAS Ingest (64K)",
+        &format!(
+            "{cas_us:.2} us ({} B across {} chunks)",
+            cas_payload_64k.len(),
+            cas_bench.unique_chunk_count()
+        ),
+        &mut failures,
     );
 
-    // 7. In-Process Atomic Seqlock Broadcast Latency Benchmark
+    // 7. In-Process Atomic Seqlock Broadcast Latency Benchmark (release ceiling: <= 5,000 ns)
     let bench_bus = icx_bus::SeqlockTelemetryBus::new_in_memory();
     let t3 = Instant::now();
     for seq_i in 0..1_000u64 {
@@ -990,11 +1044,14 @@ fn run_benchmark() {
         );
     }
     let bus_ns_per_op = (t3.elapsed().as_nanos() as f64) / 1_000.0;
-    println!(
-        "  [PASS] Atomic Seqlock Broadcast:          {bus_ns_per_op:.1} ns / slot (1,000 publishes)"
+    check_slo(
+        bus_ns_per_op <= 5_000.0 * scale,
+        "Atomic Seqlock Broadcast         ",
+        &format!("{bus_ns_per_op:.1} ns / slot (1,000 publishes)"),
+        &mut failures,
     );
 
-    // 8. Full Synchronous Hook Round-Trip (`ClaudeCodeAdapter::handle_hook`) Benchmark
+    // 8. Full Synchronous Hook Round-Trip (`ClaudeCodeAdapter::handle_hook`) Benchmark (release ceiling: <= 1,000 us)
     let hook_cfg = EpochControllerConfig::anthropic_default();
     let mut hook_mmu =
         InfinityContextMmu::new(hook_cfg, icx_bus::SeqlockTelemetryBus::new_in_memory());
@@ -1014,8 +1071,11 @@ fn run_benchmark() {
         ClaudeCodeAdapter::handle_hook("PostToolUse", &hook_stdin, &mut hook_mmu).unwrap();
     let hook_us = t_hook.elapsed().as_secs_f64() * 1_000_000.0;
     assert!(hook_out.contains("updatedToolOutput"));
-    println!(
-        "  [PASS] Full Synchronous Hook Round-Trip:  {hook_us:.2} us (PostToolUse virtualization)"
+    check_slo(
+        hook_us <= 1_000.0 * scale,
+        "Full Synchronous Hook Round-Trip ",
+        &format!("{hook_us:.2} us (PostToolUse virtualization)"),
+        &mut failures,
     );
 
     // 9. Multi-Turn Prefix-Cache Hit Ratio & Lossless Needle-in-a-Haystack Benchmark
@@ -1067,13 +1127,26 @@ fn run_benchmark() {
     assert_ne!(grep_hits.len(), 0);
 
     let avg_cache_hit = hit_ratios.iter().sum::<f64>() / (hit_ratios.len() as f64) * 100.0;
-    assert!(avg_cache_hit >= 90.0);
     let sim_elapsed = t2.elapsed();
-    println!(
-        "  [PASS] 50-Turn NIH + Cache-Epoch:         {avg_cache_hit:.2}% prefix cache hit rate, 100% lossless passkey recovery ({:.2} ms)",
-        sim_elapsed.as_secs_f64() * 1_000.0
+    check_slo(
+        avg_cache_hit >= 90.0,
+        "50-Turn NIH + Cache-Epoch        ",
+        &format!(
+            "{avg_cache_hit:.2}% prefix cache hit rate, 100% lossless passkey recovery ({:.2} ms)",
+            sim_elapsed.as_secs_f64() * 1_000.0
+        ),
+        &mut failures,
     );
+
+    if !failures.is_empty() {
+        return Err(format!(
+            "icx benchmark error: {} SLO gate(s) failed: {}",
+            failures.len(),
+            failures.join("; ")
+        ));
+    }
     println!("All Infinity-Context SLO gates PASSED.");
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1246,6 +1319,40 @@ mod tests {
                     "doctor".into(),
                     "--dir".into(),
                     tampered_ws.to_string_lossy().into_owned(),
+                ],
+                io::Cursor::new(""),
+            )
+            .is_err()
+        );
+        // Verify `icx doctor --dir <PATH>` fails closed when `cas_store.json` is deleted while
+        // `mmu_state.json` still references DAG turn artifacts, or when `--dir` does not exist
+        let missing_cas_ws = tmp_dir.join("missing_cas_ws");
+        init_workspace_dir(&missing_cas_ws).unwrap();
+        let _ =
+            encode_payload_into_workspace("src/m.rs", "pub fn m() {}\n", &missing_cas_ws).unwrap();
+        fs::remove_file(missing_cas_ws.join("cas_store.json")).unwrap();
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "doctor".into(),
+                    "--dir".into(),
+                    missing_cas_ws.to_string_lossy().into_owned(),
+                ],
+                io::Cursor::new(""),
+            )
+            .is_err()
+        );
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "doctor".into(),
+                    "--dir".into(),
+                    tmp_dir
+                        .join("no_such_doctor_dir")
+                        .to_string_lossy()
+                        .into_owned(),
                 ],
                 io::Cursor::new(""),
             )

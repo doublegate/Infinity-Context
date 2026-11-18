@@ -860,15 +860,43 @@ impl MerkleContextDag {
     }
 
     /// Cryptographically recomputes and verifies the domain-separated BLAKE3 Merkle digest of every
-    /// node stored in `self.nodes` in $O(V + E)$ time using a memoized `verified` set, returning the
-    /// total number of verified DAG nodes.
-    pub fn verify_all_merkle_integrity(&self) -> Result<usize, IcxError> {
+    /// node stored in `self.nodes` in $O(V + E)$ time using a memoized `verified` set, and when
+    /// `cas` is `Some(...)`, verifies that every `Turn`'s `raw_artifact` and every `ToolArtifact`'s
+    /// `chunk_ids` exist in `cas`, returning the total number of verified DAG nodes.
+    pub fn verify_all_merkle_integrity_with_cas(
+        &self,
+        cas: Option<&crate::cas::CasStore>,
+    ) -> Result<usize, IcxError> {
         let mut verified = std::collections::BTreeSet::new();
         let mut ancestors = Vec::new();
-        for &id in self.nodes.keys() {
+        for (&id, node) in &self.nodes {
+            if let Some(store) = cas {
+                match node {
+                    DagNode::Turn { raw_artifact, .. } => {
+                        if store.get_meta(*raw_artifact).is_none() {
+                            return Err(IcxError::ArtifactNotFound(*raw_artifact));
+                        }
+                    }
+                    DagNode::ToolArtifact(tool) => {
+                        for &cid in &tool.chunks {
+                            if !store.has_chunk(cid) {
+                                return Err(IcxError::ArtifactNotFound(cid));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
             self.verify_merkle_integrity_with_ancestors(id, &mut ancestors, &mut verified)?;
         }
         Ok(self.nodes.len())
+    }
+
+    /// Cryptographically recomputes and verifies the domain-separated BLAKE3 Merkle digest of every
+    /// node stored in `self.nodes` in $O(V + E)$ time using a memoized `verified` set, returning the
+    /// total number of verified DAG nodes.
+    pub fn verify_all_merkle_integrity(&self) -> Result<usize, IcxError> {
+        self.verify_all_merkle_integrity_with_cas(None)
     }
 
     /// Cryptographically recomputes and verifies the domain-separated BLAKE3 Merkle digest of `id`
