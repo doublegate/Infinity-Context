@@ -1204,7 +1204,7 @@ Expected output:
   [PASS] 10,240-bit HDC Hamming Scan:       12.40 us / 1,000 nodes (124.00 us / 10k nodes, min_dist=4892)
   [PASS] Fractal IFS Suffix Match:          8.10 ns / pair (shared_depth=6)
   [PASS] Two-Stage HDC + CSR PPR:           18.20 us (two-stage query), 14.50 us (201-node CSR PPR)
-  [PASS] AHTL Compression Ratio:            78.4x (19694 B -> 251 B in 42.10 us)
+  [PASS] AHTL Compression Ratio:            214.0x (61413 B -> 287 B in 30.42 us)
   [PASS] FastCDC + BLAKE3 CAS Ingest (64K): 64.50 us (64680 B across 8 chunks)
   [PASS] Atomic Seqlock Broadcast:          44.2 ns / slot (1,000 publishes)
   [PASS] Full Synchronous Hook Round-Trip:  118.40 us (PostToolUse virtualization)

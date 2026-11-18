@@ -873,8 +873,13 @@ impl MerkleContextDag {
             if let Some(store) = cas {
                 match node {
                     DagNode::Turn { raw_artifact, .. } => {
-                        if store.get_meta(*raw_artifact).is_none() {
+                        let Some(meta) = store.get_meta(*raw_artifact) else {
                             return Err(IcxError::ArtifactNotFound(*raw_artifact));
+                        };
+                        for &cid in &meta.chunk_ids {
+                            if !store.has_chunk(cid) {
+                                return Err(IcxError::ArtifactNotFound(cid));
+                            }
                         }
                     }
                     DagNode::ToolArtifact(tool) => {

@@ -163,16 +163,13 @@ impl AhtlClause {
     }
 }
 
-/// Bijectively escapes `%`, `:`, `⋮`, `⇒`, `↦`, `⟦`, `⟧`, `\n`, `\r`, and leading clause operator
-/// glyphs (`⊕`, `⊖`, `¬`, `!`, `✓`) inside a clause key so programmatic `AhtlClause` instances
-/// (including `ClauseOp::Neutral` keys starting with an operator character) never collide with
-/// operator prefixes, key-value `:`, clause `⋮`, causal `⇒`, dereference `↦`, or packet `⟦...⟧`
-/// delimiters.
-fn escape_clause_key(s: &str) -> String {
-    let starts_with_op = matches!(s.chars().next(), Some('⊕' | '⊖' | '¬' | '!' | '✓'));
+/// Bijectively escapes `%`, `⋮`, `⇒`, `↦`, `⟦`, `⟧`, `\n`, `\r` (and, when `is_key` is `true`,
+/// `:` plus leading clause operator glyphs `⊕`, `⊖`, `¬`, `!`, `✓`) inside a clause key or value.
+fn escape_clause_field(s: &str, is_key: bool) -> String {
+    let starts_with_op = is_key && matches!(s.chars().next(), Some('⊕' | '⊖' | '¬' | '!' | '✓'));
     if !starts_with_op
+        && (!is_key || !s.contains(':'))
         && !s.contains('%')
-        && !s.contains(':')
         && !s.contains('⋮')
         && !s.contains('⇒')
         && !s.contains('↦')
@@ -185,7 +182,7 @@ fn escape_clause_key(s: &str) -> String {
     }
     let mut out = String::with_capacity(s.len() + 16);
     for (idx, ch) in s.chars().enumerate() {
-        if idx == 0 {
+        if is_key && idx == 0 {
             match ch {
                 '⊕' => {
                     out.push_str("%E2%8A%95");
@@ -212,7 +209,7 @@ fn escape_clause_key(s: &str) -> String {
         }
         match ch {
             '%' => out.push_str("%25"),
-            ':' => out.push_str("%3A"),
+            ':' if is_key => out.push_str("%3A"),
             '⋮' => out.push_str("%E2%8B%AE"),
             '⇒' => out.push_str("%E2%87%92"),
             '↦' => out.push_str("%E2%86%A6"),
@@ -226,36 +223,14 @@ fn escape_clause_key(s: &str) -> String {
     out
 }
 
-/// Bijectively escapes `%`, `⋮`, `⇒`, `↦`, `⟦`, `⟧`, `\n`, and `\r` inside a clause value.
-/// Note: literal `:` inside a value does not need escaping because `AhtlClause::parse` splits
-/// only on the first `:` (`split_once(':')`), preserving unescaped colons in spans such as `L1:L10`.
+#[inline]
+fn escape_clause_key(s: &str) -> String {
+    escape_clause_field(s, true)
+}
+
+#[inline]
 fn escape_clause_val(s: &str) -> String {
-    if !s.contains('%')
-        && !s.contains('⋮')
-        && !s.contains('⇒')
-        && !s.contains('↦')
-        && !s.contains('⟦')
-        && !s.contains('⟧')
-        && !s.contains('\n')
-        && !s.contains('\r')
-    {
-        return s.to_owned();
-    }
-    let mut out = String::with_capacity(s.len() + 16);
-    for ch in s.chars() {
-        match ch {
-            '%' => out.push_str("%25"),
-            '⋮' => out.push_str("%E2%8B%AE"),
-            '⇒' => out.push_str("%E2%87%92"),
-            '↦' => out.push_str("%E2%86%A6"),
-            '⟦' => out.push_str("%E2%9F%A6"),
-            '⟧' => out.push_str("%E2%9F%A7"),
-            '\n' => out.push_str("%0A"),
-            '\r' => out.push_str("%0D"),
-            other => out.push(other),
-        }
-    }
-    out
+    escape_clause_field(s, false)
 }
 
 /// Single-pass left-to-right inverse of `escape_clause_key` and `escape_clause_val`.

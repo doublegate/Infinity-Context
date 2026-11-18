@@ -824,7 +824,8 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
     );
 
     let mut doctor_status = if shm_writable { "READY" } else { "DEGRADED" };
-    let mut doctor_err: Option<String> = None;
+    let mut doctor_err: Option<String> =
+        (!shm_writable).then(|| "icx doctor error: /dev/shm is absent or not writable".into());
     let ws_dir = resolve_workspace_dir(explicit_dir);
     if ws_dir.exists() {
         let mut mmu = InfinityContextMmu::default();

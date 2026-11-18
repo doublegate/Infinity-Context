@@ -436,18 +436,21 @@ impl InfinityContextMmu {
             .agent_reordered_occurrences
             .get(&(agent as u8))
             .and_then(|m| m.get(&occurrence_idx));
-        let idx_opt = agent_idx_opt.or_else(|| self.indexed_occurrences.get(&occurrence_idx));
-        let ro_opt = agent_ro_opt.or_else(|| self.reordered_occurrences.get(&occurrence_idx));
+        let idx_opt = agent_idx_opt.or_else(|| {
+            self.indexed_occurrences
+                .get(&occurrence_idx)
+                .filter(|e| e.0 == agent as u8)
+        });
+        let ro_opt = agent_ro_opt.or_else(|| {
+            self.reordered_occurrences
+                .get(&occurrence_idx)
+                .filter(|e| e.0 == agent as u8)
+        });
         if let Some(target_aid) = sanitized_aid
-            && let Some(matched) = [
-                agent_idx_opt,
-                agent_ro_opt,
-                self.indexed_occurrences.get(&occurrence_idx),
-                self.reordered_occurrences.get(&occurrence_idx),
-            ]
-            .into_iter()
-            .flatten()
-            .find(|entry| entry.2 == target_aid)
+            && let Some(matched) = [agent_idx_opt, agent_ro_opt, idx_opt, ro_opt]
+                .into_iter()
+                .flatten()
+                .find(|entry| entry.2 == target_aid)
         {
             return Some(matched.clone());
         }
