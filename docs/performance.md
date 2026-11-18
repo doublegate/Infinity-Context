@@ -12,8 +12,8 @@
 | **HDC Hamming Scan (10,000 nodes)** | `< 25 µs` | `100 µs` | `benches/hdc_bench.rs` |
 | **Fractal IFS Trajectory Suffix Match** | `< 15 ns` | `50 ns` | `benches/fractal_bench.rs` |
 | **AHTL Structural Skeletonize + Encode (64 KB log)** | `< 180 µs` | `400 µs` | `benches/codec_bench.rs` |
-| **FastCDC + BLAKE3 CAS Ingest (64 KB)** | `< 110 µs` | `250 µs` | `benches/cas_bench.rs` |
-| **`/dev/shm` Seqlock Ring Publish / Poll** | `< 800 ns` | `5 µs` | `benches/bus_bench.rs` |
+| **FastCDC + BLAKE3 CAS Ingest (64 KB)** | `< 110 µs` | `250 µs` | `icx benchmark` |
+| **`SeqlockTelemetryBus` Publish / Poll (`InProcess` atomic / `/dev/shm` `SharedFile`)** | `< 800 ns` (`InProcess`) / `< 15 µs` (`SharedFile`) | `5 µs` / `100 µs` | `icx benchmark` |
 | **Full Synchronous Hook Round-Trip (`icx hook`)** | `< 450 µs` | `1,000 µs` | `icx benchmark` |
 | **In-Window Token Compression Ratio** | `15x–40x` | `>= 10x` | `icx benchmark` |
 | **Provider Prompt Prefix-Cache Hit Ratio** | `>= 94%` | `>= 90%` | `tests/cache_epoch_sim.rs` |
@@ -27,8 +27,9 @@
    - Hamming distance uses hardware `u64::count_ones()` (`POPCNT` / AVX-512 `VPOPCNTDQ`), which LLVM auto-vectorizes across the 160-element fixed array into `zmm` register loops.
 2. **Single-Pass Structural Skeletonization:**
    - `StructuralSkeletonizer` scans input strings once by line slice without constructing intermediate AST heap trees or running backtracking regular expressions.
-3. **Lock-Free Shared Memory:**
-   - `SeqlockRing` uses `AtomicU64` sequence counters (`Acquire`/`Release` memory ordering) over a fixed `4080`-slot array—zero syscalls, zero mutexes, zero allocations after `mmap`.
+3. **Lock-Free Atomic & Safe Positional Shared Memory (`#![forbid(unsafe_code)]`):**
+   - In `BackingStore::InProcess` mode, `SeqlockTelemetryBus` uses 100% lock-free `AtomicU32` and `AtomicU64` sequence counters (`Acquire`/`Release` memory ordering) over a fixed `256 x 4096`-byte cache-line-aligned slot array (`< 800 ns` per publish/poll, zero syscalls, zero mutexes).
+   - In `BackingStore::SharedFile` (`/dev/shm/icx-fabric-v1.shm`) cross-process mode, to permanently uphold `#![forbid(unsafe_code)]` across all 8 workspace crates without `unsafe { libc::mmap(...) }`, `SeqlockTelemetryBus` uses safe positional file I/O (`std::os::unix::fs::FileExt::{read_exact_at, write_all_at}`) and OS advisory file locks (`File::try_lock()`), achieving `< 15 µs` uncontended cross-process propagation over the Linux `/dev/shm` tmpfs RAM disk.
 4. **Amortized Epoch Sealing:**
    - `CacheEpochController` seals epochs only when `unsealed_tokens > epoch_rollover_threshold` (`16,384` tokens), keeping `98%+` of turns append-only.
 

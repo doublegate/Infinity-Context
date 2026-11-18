@@ -140,7 +140,9 @@ impl CasStore {
             return Ok((artifact_id, full_digest));
         }
         let spans = chunk_bytes_with_lines(raw, self.chunk_config);
-        for span in &spans {
+        let mut precomputed_chunks = Vec::with_capacity(spans.len());
+        let mut batch_chunk_digests = BTreeMap::new();
+        for span in spans {
             let slice = &raw[span.offset..span.offset + span.len];
             let (cid, cdigest) = ArtifactId::hash_bytes(slice);
             if let Some((existing_cdigest, _)) = self.chunks.get(&cid)
@@ -148,8 +150,14 @@ impl CasStore {
             {
                 return Err(IcxError::AmbiguousHandlePrefix(cid.to_string()));
             }
+            if let Some(prev_batch_digest) = batch_chunk_digests.insert(cid, cdigest)
+                && prev_batch_digest != cdigest
+            {
+                return Err(IcxError::AmbiguousHandlePrefix(cid.to_string()));
+            }
+            precomputed_chunks.push((span, cid, cdigest));
         }
-        Ok(self.put_bytes_precomputed(raw, artifact_id, full_digest, spans))
+        Ok(self.put_bytes_precomputed(raw, artifact_id, full_digest, precomputed_chunks))
     }
 
     /// Verifies the 256-bit cryptographic BLAKE3 digest of every stored chunk once and every
@@ -191,7 +199,15 @@ impl CasStore {
             return (artifact_id, existing.full_digest);
         }
         let spans = chunk_bytes_with_lines(raw, self.chunk_config);
-        self.put_bytes_precomputed(raw, artifact_id, full_digest, spans)
+        let precomputed_chunks: Vec<_> = spans
+            .into_iter()
+            .map(|span| {
+                let slice = &raw[span.offset..span.offset + span.len];
+                let (cid, cdigest) = ArtifactId::hash_bytes(slice);
+                (span, cid, cdigest)
+            })
+            .collect();
+        self.put_bytes_precomputed(raw, artifact_id, full_digest, precomputed_chunks)
     }
 
     fn put_bytes_precomputed(
@@ -199,14 +215,13 @@ impl CasStore {
         raw: &[u8],
         artifact_id: ArtifactId,
         full_digest: Blake3Digest,
-        spans: Vec<crate::chunker::ChunkLineSpan>,
+        precomputed_chunks: Vec<(crate::chunker::ChunkLineSpan, ArtifactId, Blake3Digest)>,
     ) -> (ArtifactId, Blake3Digest) {
-        let mut chunk_ids = Vec::with_capacity(spans.len());
-        let mut line_index = Vec::with_capacity(spans.len());
+        let mut chunk_ids = Vec::with_capacity(precomputed_chunks.len());
+        let mut line_index = Vec::with_capacity(precomputed_chunks.len());
 
-        for span in spans {
+        for (span, cid, cdigest) in precomputed_chunks {
             let slice = &raw[span.offset..span.offset + span.len];
-            let (cid, cdigest) = ArtifactId::hash_bytes(slice);
             self.chunks
                 .entry(cid)
                 .or_insert_with(|| (cdigest, slice.to_vec()));
@@ -729,6 +744,25 @@ mod tests {
         ));
         assert!(matches!(
             cas.verify_all_integrity(),
+            Err(IcxError::IntegrityViolation(_))
+        ));
+
+        // Verify chunk-level 64-bit `cid` collision detection in `put_bytes_checked` and
+        // chunk-level integrity failure in `verify_all_integrity`
+        let mut cas_chunk_col = CasStore::new();
+        let fresh_payload = b"fresh_chunk_collision_test_payload\n";
+        let (fresh_cid, fresh_cdigest) = ArtifactId::hash_bytes(fresh_payload);
+        let mut fake_cdigest = fresh_cdigest;
+        fake_cdigest.0[0] ^= 0xFF;
+        cas_chunk_col
+            .chunks
+            .insert(fresh_cid, (fake_cdigest, fresh_payload.to_vec()));
+        assert!(matches!(
+            cas_chunk_col.put_bytes_checked(fresh_payload),
+            Err(IcxError::AmbiguousHandlePrefix(_))
+        ));
+        assert!(matches!(
+            cas_chunk_col.verify_all_integrity(),
             Err(IcxError::IntegrityViolation(_))
         ));
     }

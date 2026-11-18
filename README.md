@@ -28,7 +28,7 @@
   <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/10%2C240--bit%20HDC%20scan-1.31%20%C2%B5s%2Fnode-0284c7.svg" alt="HDC Scan: 1.31 us/node"></a><br/>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.100%2B%20(Edition%202024)-f97316.svg?logo=rust" alt="Rust: 1.100+ (Edition 2024)"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/unsafe_code-forbid%20(100%25%20safe)-16a34a.svg" alt="unsafe_code: forbid (100% safe)"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v0.5.0-2563eb.svg" alt="Release: v0.5.0"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v1.0.0-2563eb.svg" alt="Release: v1.0.0"></a>
   <a href="#verified-performance--accuracy-benchmarks"><img src="https://img.shields.io/badge/shm%20seqlock-%3C300%20ns-0d9488.svg" alt="SHM Seqlock: <300 ns"></a>
   <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20MCP-475569.svg" alt="Supported Agents"></a>
 </p>
@@ -439,9 +439,9 @@ See [Security & Threat Model](docs/security-and-threat-model.md) and [SECURITY.m
 
 ---
 
-## Roadmap & Completed Milestones (`Phases 0–4` — `v0.1.0` -> `v0.5.0`)
+## Roadmap & Completed Milestones (`Phases 0–5` — `v0.1.0` -> `v1.0.0`)
 
-Development is organized into 5 phases and 15 sprints tracked in [`to-dos/ROADMAP.md`](to-dos/ROADMAP.md):
+Development is organized into 5 phases and 15 sprints tracked in [`to-dos/ROADMAP.md`](to-dos/ROADMAP.md) (all 5 phases and 15 sprints completed in `v1.0.0`):
 
 - **Phase 0 (`v0.1.0` — COMPLETED): Research, REA Forensics, Specifications & Workspace Bootstrap** — [Overview](to-dos/phase-0-precursory-setup/overview.md)
   - 38-source deep research report, 22 downloaded arXiv PDFs (`ref-docs/papers/`), REA binary/SQLite forensics on Claude Code, Codex, Antigravity CLI (`agy`), and Hermes (`ref-docs/agent-internals/`), 13 normative specs + 4 ADRs (`docs/`), 9-chapter AHTL v1.0 specification volume (`docs/ahtl/`), multi-tier GPL-3.0/AGPL-3.0/CC-BY-NC-ND-4.0 + 5-family patent IP governance (`REUSE 3.3`), and 8-crate workspace bootstrap.
@@ -453,7 +453,8 @@ Development is organized into 5 phases and 15 sprints tracked in [`to-dos/ROADMA
   - 10,240-bit `Hypervector` algebraic engine (`BitXor`/`BitXorAssign`, `unbind`, `inverse_permute`, `from_seed_framed`, `bind_role_filler`, `encode_sequence`, `cosine_bipolar`, `sub_hypervector_64`, `dedup_fingerprint_u128`), Infini-attention Delta-Rule `HdcBundler` with coordinate-parity tie-breaking and 128-bit deduplication, two-stage 16-byte `EntrySummary` L2-cache pre-screened `HdcAssociativeIndex` (`AssociativeMemoryIndex`), Contractive IFS `FractalCoord` (`verified_suffix_depth`, `to_q1_14`/`from_q1_14`, 64-bit Morton Z-order `morton_z64`, `@o1:o2` octal quadrant addressing) and `FractalTrajectoryArchive` verified against Theorem 3.2 bounds ($K \in 1..=32$), `TitansSurpriseGate` (`apply_idle_decay`, `observe_with_exit_code`, Delta-Rule novelty gating), and `BiTemporalGraph` with automatic functional relation supersession, atomic JSON persistence, and `CsrGraphSnapshot` $O(V + E)$ Personalized PageRank (`PPR`).
 - **Phase 4 (`v0.5.0` — COMPLETED): Cross-Agent Adapters, Polymorphic MCP Pager & Cache-Epoch Wire Proxy** — [Overview (`Sprints 4.1–4.3`)](to-dos/phase-4-cross-agent-interception/overview.md)
   - `AgentHookAdapter` trait, `ClaudeCodeAdapter`, `CodexAdapter` + bounded `CodexRolloutTailer`, `AntigravityAdapter` (`exit 0`, UI-silent `systemMessage`, `512 KiB` tail-window `transcriptPath` fallback), `HermesAdapter` (`ContextEngine` & `MemoryProvider` v2 with `tool_calls` group preservation and occurrence-aligned `ingest_or_reuse_at_index`), `< 180` token Single-Tool Polymorphic `McpPagerServer` (`icx` with `⟪ICX:PROVENANCE│...⟫` redaction honesty, 16-hex ambiguity recovery hints, and bidirectional `xagent`), `WireProxyTransformer` (`Anthropic`, `OpenAI`, `Gemini`, SSE `⟪!icx:deref(...)⟫` expansion, and safe `TcpListener` `icx proxy`), and the comprehensive [Deployment & Agent Integration Guide](docs/deployment-and-agent-integration-guide.md).
-- **Phase 5: LongMemEval / SWE-Bench Verification, Fuzzing & Release Packaging (`v1.0.0`)** — [Overview](to-dos/phase-5-verification-benchmarks-and-release/overview.md)
+- **Phase 5 (`v1.0.0` — COMPLETED): Long-Horizon Verification, 9-SLO Benchmark Suite, AHTL Exactness Closure & Production Release** — [Overview (`Sprints 5.1–5.2`)](to-dos/phase-5-verification-benchmarks-and-release/overview.md)
+  - 500-turn (`> 8.4 MB` / `> 2.1M` raw tokens) Needle-in-a-Haystack / OOLONG & Prefix-Cache simulator (`>= 94%` cache hit rate, `< 32,768` active window tokens, 100% passkey recall), 4-agent shared-file `/dev/shm` telepathy verification (`< 100 µs` propagation across Claude Code, Antigravity CLI, Codex, and Hermes), full 256-bit `Blake3Digest` collision guards in `CasStore::put_bytes_checked`, adaptive Stage-1 `HdcAssociativeIndex` candidate scaling (`(entries.len() / 64).clamp(16, 512)`), bijective `AhtlClause` key/value escaping, enhanced `icx doctor [--dir <PATH>]` (`verify_all_integrity` + `verify_all_merkle_integrity`), and 9-SLO `icx benchmark` scorecard.
 
 ---
 

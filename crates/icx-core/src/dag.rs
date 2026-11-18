@@ -859,6 +859,15 @@ impl MerkleContextDag {
         Ok(folded_epoch)
     }
 
+    /// Cryptographically recomputes and verifies the domain-separated BLAKE3 Merkle digest of every
+    /// node stored in `self.nodes`, returning the total number of verified DAG nodes.
+    pub fn verify_all_merkle_integrity(&self) -> Result<usize, IcxError> {
+        for &id in self.nodes.keys() {
+            self.verify_merkle_integrity(id)?;
+        }
+        Ok(self.nodes.len())
+    }
+
     /// Cryptographically recomputes and verifies the domain-separated BLAKE3 Merkle digest of `id`
     /// and (recursively) all of its descendant DAG nodes.
     pub fn verify_merkle_integrity(&self, id: ArtifactId) -> Result<bool, IcxError> {

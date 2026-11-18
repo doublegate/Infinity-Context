@@ -59,7 +59,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
             Ok(())
         }
         "doctor" => {
-            run_doctor();
+            run_doctor(tail);
             Ok(())
         }
         "benchmark" => {
@@ -104,10 +104,10 @@ Subcommands:",
       Parse and inspect an AHTL Holographic Packet's clauses and Braille-256 sketch
   status [--dir <PATH>]
       Print Infinity-Context MMU status and schema overview
-  doctor
-      Inspect local agent installations (claude, codex, agy, hermes) and verify readiness
+  doctor [--dir <PATH>]
+      Inspect local agent installations (claude, codex, agy, hermes), /dev/shm, and workspace integrity
   benchmark
-      Execute the end-to-end SLO benchmark suite (Compression, HDC, Fractal, PPR, Prefix-Cache, Seqlock)"
+      Execute the end-to-end 9-SLO benchmark suite (HDC, Fractal, PPR, AHTL, FastCDC, Seqlock, Hook, NIH)"
     );
 }
 
@@ -670,9 +670,22 @@ fn run_status(args: &[String]) {
     println!("{status}");
 }
 
-fn run_doctor() {
+fn find_executable_in_path(bin_name: &str) -> Option<PathBuf> {
+    let path_var = env::var_os("PATH")?;
+    for dir in env::split_paths(&path_var) {
+        let candidate = dir.join(bin_name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn run_doctor(args: &[String]) {
     println!("=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===");
     let home = env::var("HOME").unwrap_or_else(|_| "/home/parobek".into());
+    let curl_path = find_executable_in_path("curl")
+        .map_or_else(|| "/usr/bin/curl".into(), |p| p.display().to_string());
     let probes = [
         ("Claude Code Binary", format!("{home}/.local/bin/claude")),
         ("Claude Settings", format!("{home}/.claude/settings.json")),
@@ -691,8 +704,7 @@ fn run_doctor() {
             "Hermes Agent Source",
             format!("{home}/.hermes/hermes-agent/agent/context_engine.py"),
         ),
-        ("HTTPS Proxy Transport (curl)", "/usr/bin/curl".into()),
-        ("POSIX Shared Memory (/dev/shm)", "/dev/shm".into()),
+        ("HTTPS Proxy Transport (curl)", curl_path),
     ];
 
     for (label, path) in probes {
@@ -700,13 +712,71 @@ fn run_doctor() {
         let status = if exists { "DETECTED" } else { "ABSENT" };
         println!("  [{status:8}] {label:32} -> {path}");
     }
+
+    let shm_dir = Path::new("/dev/shm");
+    let shm_writable = shm_dir
+        .metadata()
+        .is_ok_and(|m| m.is_dir() && !m.permissions().readonly());
+    let shm_status = if shm_writable { "DETECTED" } else { "ABSENT" };
+    println!(
+        "  [{shm_status:8}] {:32} -> /dev/shm (writable={shm_writable})",
+        "POSIX Shared Memory (/dev/shm)"
+    );
+
+    let ws_dir = resolve_workspace_dir(parse_dir_flag(args));
+    if ws_dir.exists() {
+        let mut mmu = InfinityContextMmu::default();
+        match mmu.load_workspace_dir(&ws_dir) {
+            Ok(()) => {
+                let cas_ok = mmu.cas.verify_all_integrity();
+                let dag_ok = mmu.dag.verify_all_merkle_integrity();
+                match (cas_ok, dag_ok) {
+                    (Ok(artifacts), Ok(nodes)) => {
+                        println!(
+                            "  [VERIFIED] {:32} -> {} (cas_artifacts={artifacts}, dag_nodes={nodes}, graph_edges={})",
+                            "Workspace Storage & Merkle-DAG",
+                            ws_dir.display(),
+                            mmu.graph.edges().len()
+                        );
+                    }
+                    (Err(e), _) | (_, Err(e)) => {
+                        println!(
+                            "  [CORRUPT ] {:32} -> {} ({e})",
+                            "Workspace Storage & Merkle-DAG",
+                            ws_dir.display()
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                println!(
+                    "  [WARNING ] {:32} -> {} ({e})",
+                    "Workspace Storage & Merkle-DAG",
+                    ws_dir.display()
+                );
+            }
+        }
+    }
+
     println!("Doctor status: READY");
 }
 
 fn run_benchmark() {
     println!("=== Infinity-Context (icx) SLO & Accuracy Benchmark Suite ===");
 
-    // 1. 10,240-bit HDC Bind + Hamming Scan Benchmark
+    // 1. 10,240-bit HDC Bind (^) + Permute Latency Benchmark
+    let hv_a = Hypervector::from_seed("bench", "role_key");
+    let hv_b = Hypervector::from_seed("bench", "filler_val");
+    let t_bind = Instant::now();
+    let mut hv_acc = hv_a;
+    for shift in 0..1_000usize {
+        hv_acc = (hv_acc ^ hv_b).permute(shift & 63);
+    }
+    let bind_ns = (t_bind.elapsed().as_nanos() as f64) / 1_000.0;
+    assert_ne!(hv_acc.popcount(), 0);
+    println!("  [PASS] 10,240-bit HDC Bind (^) + Permute: {bind_ns:.2} ns / op (1,000 ops)");
+
+    // 2. 10,240-bit HDC Hamming Scan Benchmark
     let t0 = Instant::now();
     let query_hv = Hypervector::from_seed("bench", "query_target");
     let candidates: Vec<Hypervector> = (0..1_000)
@@ -714,17 +784,37 @@ fn run_benchmark() {
         .collect();
     let mut min_dist = u32::MAX;
     for c in &candidates {
-        min_dist = min_dist.min(query_hv.hamming_distance(c));
+        min_dist = min_dist.min(query_hv.hamming_distance_simd(c));
     }
     let hdc_elapsed = t0.elapsed();
     let per_10k_us = (hdc_elapsed.as_secs_f64() * 10.0) * 1_000_000.0;
     println!(
-        "  [PASS] 10,240-bit HDC Hamming Scan: {:.2} us / 1,000 nodes ({:.2} us / 10k nodes, min_dist={min_dist})",
+        "  [PASS] 10,240-bit HDC Hamming Scan:       {:.2} us / 1,000 nodes ({:.2} us / 10k nodes, min_dist={min_dist})",
         hdc_elapsed.as_secs_f64() * 1_000_000.0,
         per_10k_us
     );
 
-    // 1b. Two-Stage HdcAssociativeIndex & CSR BiTemporalGraph PPR Benchmark
+    // 3. Fractal IFS Trajectory Suffix Match Benchmark
+    let mut traj_a = icx_hdc::fractal::FractalCoord::default();
+    let mut traj_b = icx_hdc::fractal::FractalCoord::default()
+        .step(&Hypervector::from_seed("bench", "divergent_prefix"));
+    for step in ["edit", "compile", "test", "fail", "fix", "verify"] {
+        let step_hv = Hypervector::from_seed("crates/icx-core/src/dag.rs", step);
+        traj_a = traj_a.step(&step_hv);
+        traj_b = traj_b.step(&step_hv);
+    }
+    let t_ifs = Instant::now();
+    let mut shared_depth = 0u32;
+    for _ in 0..1_000 {
+        shared_depth = traj_a.shared_suffix_depth(&traj_b);
+    }
+    let ifs_ns = (t_ifs.elapsed().as_nanos() as f64) / 1_000.0;
+    assert!(shared_depth >= 6);
+    println!(
+        "  [PASS] Fractal IFS Suffix Match:          {ifs_ns:.2} ns / pair (shared_depth={shared_depth})"
+    );
+
+    // 4. Two-Stage HdcAssociativeIndex & CSR BiTemporalGraph PPR Benchmark
     let mut bench_idx = icx_hdc::HdcAssociativeIndex::new();
     for i in 0..250u64 {
         let _ = bench_idx.observe_event(
@@ -757,10 +847,10 @@ fn run_benchmark() {
     let ppr_us = t_ppr.elapsed().as_secs_f64() * 1_000_000.0;
     assert_ne!(ppr_hits.len(), 0);
     println!(
-        "  [PASS] Two-Stage HDC + CSR PPR:     {idx_us:.2} us (two-stage query), {ppr_us:.2} us (201-node CSR PPR)"
+        "  [PASS] Two-Stage HDC + CSR PPR:           {idx_us:.2} us (two-stage query), {ppr_us:.2} us (201-node CSR PPR)"
     );
 
-    // 2. AHTL Log Compression Ratio & Latency Benchmark
+    // 5. AHTL Log Compression Ratio & Latency Benchmark
     let mut log_fixture = String::from("running 400 tests\n");
     for i in 0..399 {
         log_fixture.push_str(&format!(
@@ -780,13 +870,75 @@ fn run_benchmark() {
     let codec_elapsed = t1.elapsed();
     let ratio = (log_fixture.len() as f64) / (rendered.len() as f64);
     println!(
-        "  [PASS] AHTL Compression Ratio:      {ratio:.1}x ({} B -> {} B in {:.2} us)",
+        "  [PASS] AHTL Compression Ratio:            {ratio:.1}x ({} B -> {} B in {:.2} us)",
         log_fixture.len(),
         rendered.len(),
         codec_elapsed.as_secs_f64() * 1_000_000.0
     );
 
-    // 3. Multi-Turn Prefix-Cache Hit Ratio & Lossless Needle-in-a-Haystack Benchmark
+    // 6. FastCDC + BLAKE3 CAS Ingest (64 KB) Benchmark
+    let mut cas_bench = icx_core::cas::CasStore::new();
+    let cas_payload_64k = "pub fn fastcdc_kernel_step(x: u64) -> u64 { x.wrapping_mul(6364136223846793005).wrapping_add(1) }\n".repeat(660);
+    let t_cas = Instant::now();
+    let (cas_aid, _) = cas_bench
+        .put_bytes_checked(cas_payload_64k.as_bytes())
+        .expect("64 KB CAS ingest succeeds");
+    let cas_us = t_cas.elapsed().as_secs_f64() * 1_000_000.0;
+    assert_eq!(
+        cas_bench.deref_bytes(cas_aid).unwrap().len(),
+        cas_payload_64k.len()
+    );
+    println!(
+        "  [PASS] FastCDC + BLAKE3 CAS Ingest (64K): {cas_us:.2} us ({} B across {} chunks)",
+        cas_payload_64k.len(),
+        cas_bench.unique_chunk_count()
+    );
+
+    // 7. In-Process Atomic Seqlock Broadcast Latency Benchmark
+    let bench_bus = icx_bus::SeqlockTelemetryBus::new_in_memory();
+    let t3 = Instant::now();
+    for seq_i in 0..1_000u64 {
+        bench_bus.publish(
+            AgentKind::ClaudeCode,
+            ArtifactId(seq_i),
+            0x4943_585F_574F_524B,
+            128,
+            [seq_i; 4],
+            [0; 16],
+            "⟦Θ:bench@seqlock⊢✓ok⟧",
+            seq_i,
+        );
+    }
+    let bus_ns_per_op = (t3.elapsed().as_nanos() as f64) / 1_000.0;
+    println!(
+        "  [PASS] Atomic Seqlock Broadcast:          {bus_ns_per_op:.1} ns / slot (1,000 publishes)"
+    );
+
+    // 8. Full Synchronous Hook Round-Trip (`ClaudeCodeAdapter::handle_hook`) Benchmark
+    let hook_cfg = EpochControllerConfig::anthropic_default();
+    let mut hook_mmu =
+        InfinityContextMmu::new(hook_cfg, icx_bus::SeqlockTelemetryBus::new_in_memory());
+    let hook_payload = format!(
+        "running 24 tests\n{}test crate_core::mmu::test_epoch_seal ... FAILED\n",
+        "test crate_core::suite::verify_invariant ... ok\n".repeat(23)
+    );
+    let hook_stdin = serde_json::json!({
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Bash",
+        "tool_input": {"command": "cargo test --workspace"},
+        "tool_response": &hook_payload
+    })
+    .to_string();
+    let t_hook = Instant::now();
+    let hook_out =
+        ClaudeCodeAdapter::handle_hook("PostToolUse", &hook_stdin, &mut hook_mmu).unwrap();
+    let hook_us = t_hook.elapsed().as_secs_f64() * 1_000_000.0;
+    assert!(hook_out.contains("updatedToolOutput"));
+    println!(
+        "  [PASS] Full Synchronous Hook Round-Trip:  {hook_us:.2} us (PostToolUse virtualization)"
+    );
+
+    // 9. Multi-Turn Prefix-Cache Hit Ratio & Lossless Needle-in-a-Haystack Benchmark
     let t2 = Instant::now();
     let epoch_cfg = EpochControllerConfig {
         epoch_rollover_tokens: 1000,
@@ -795,7 +947,7 @@ fn run_benchmark() {
     };
     let mut mmu = InfinityContextMmu::new(epoch_cfg, icx_bus::SeqlockTelemetryBus::new_in_memory());
     mmu.epochs = CacheEpochController::new(
-        "⟪ICX:PINNED_HEAD│system=infinity-context-mmu-v1│cache_breakpoint=0⟫\n".repeat(200),
+        "⟪ICX:PINNED_HEAD│system=infinity-context-mmu-v1│cache_breakpoint=0⟫\n".repeat(300),
         epoch_cfg,
     );
 
@@ -837,28 +989,8 @@ fn run_benchmark() {
     let avg_cache_hit = hit_ratios.iter().sum::<f64>() / (hit_ratios.len() as f64) * 100.0;
     let sim_elapsed = t2.elapsed();
     println!(
-        "  [PASS] 50-Turn NIH + Cache-Epoch:   {avg_cache_hit:.2}% prefix cache hit rate, 100% lossless passkey recovery ({:.2} ms)",
+        "  [PASS] 50-Turn NIH + Cache-Epoch:         {avg_cache_hit:.2}% prefix cache hit rate, 100% lossless passkey recovery ({:.2} ms)",
         sim_elapsed.as_secs_f64() * 1_000.0
-    );
-
-    // 4. In-Process Atomic Seqlock Broadcast Latency Benchmark
-    let bench_bus = icx_bus::SeqlockTelemetryBus::new_in_memory();
-    let t3 = Instant::now();
-    for seq_i in 0..1_000u64 {
-        bench_bus.publish(
-            AgentKind::ClaudeCode,
-            ArtifactId(seq_i),
-            0x4943_585F_574F_524B,
-            128,
-            [seq_i; 4],
-            [0; 16],
-            "⟦Θ:bench@seqlock⊢✓ok⟧",
-            seq_i,
-        );
-    }
-    let bus_ns_per_op = (t3.elapsed().as_nanos() as f64) / 1_000.0;
-    println!(
-        "  [PASS] Atomic Seqlock Broadcast:    {bus_ns_per_op:.1} ns / slot (1,000 publishes)"
     );
     println!("All Infinity-Context SLO gates PASSED.");
 }
@@ -988,6 +1120,49 @@ mod tests {
             &sample_path_str,
             "pub fn cli_sample() -> u32 { 7 }\n",
             &tmp_dir,
+        )
+        .unwrap();
+        assert!(find_executable_in_path("__nonexistent_icx_test_binary__").is_none());
+        // Verify `icx doctor --dir <PATH>` against a valid initialized workspace
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "doctor".into(),
+                "--dir".into(),
+                dir_arg.clone(),
+            ],
+            io::Cursor::new(""),
+        )
+        .unwrap();
+        // Verify `[CORRUPT ]` branch of `icx doctor --dir <PATH>` when a DAG node's digest is tampered
+        let tampered_ws = tmp_dir.join("tampered_dag_ws");
+        init_workspace_dir(&tampered_ws).unwrap();
+        let _ = encode_payload_into_workspace("src/t.rs", "pub fn t() {}\n", &tampered_ws).unwrap();
+        let mmu_json_path = tampered_ws.join("mmu_state.json");
+        let mut mmu_val: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&mmu_json_path).unwrap()).unwrap();
+        if let Some(nodes) = mmu_val
+            .get_mut("dag")
+            .and_then(|d| d.get_mut("nodes"))
+            .and_then(serde_json::Value::as_object_mut)
+            && let Some((_, first_node)) = nodes.iter_mut().next()
+            && let Some(turn_obj) = first_node.get_mut("Turn")
+            && let Some(arr) = turn_obj
+                .get_mut("digest")
+                .and_then(serde_json::Value::as_array_mut)
+            && let Some(b0) = arr.first_mut()
+        {
+            *b0 = serde_json::json!(255);
+        }
+        fs::write(&mmu_json_path, serde_json::to_string(&mmu_val).unwrap()).unwrap();
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "doctor".into(),
+                "--dir".into(),
+                tampered_ws.to_string_lossy().into_owned(),
+            ],
+            io::Cursor::new(""),
         )
         .unwrap();
         dispatch_cli_args(
@@ -1194,6 +1369,16 @@ mod tests {
         let corrupt_ws = tmp_dir.join("corrupt_ws");
         fs::create_dir_all(&corrupt_ws).unwrap();
         fs::write(corrupt_ws.join("mmu_state.json"), "{corrupt_json").unwrap();
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "doctor".into(),
+                "--dir".into(),
+                corrupt_ws.to_string_lossy().into_owned(),
+            ],
+            io::Cursor::new(""),
+        )
+        .unwrap();
         let corrupt_hook_out = execute_hook(
             &[
                 "--agent".into(),

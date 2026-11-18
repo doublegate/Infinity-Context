@@ -79,7 +79,27 @@ When `tokens(W_active) > epoch_rollover_threshold`:
 
 ---
 
-## 5. Edge Cases and Invariants
+## 5. Single-Node CAS Availability, Retention, Backup & Integrity Policy
+
+1. **Workspace Persistence Layout (`.icx/`):**
+   - Every initialized workspace directory (`.icx/` by default, or `ICX_DIR` / `--dir <PATH>`) stores four files protected by OS advisory locking (`cas_store.lock` via `InfinityContextMmu::acquire_workspace_lock`):
+     - `cas_store.json`: FastCDC `L0` chunks (`BTreeMap<ArtifactId, (Blake3Digest, Vec<u8>)>`) and top-level `StoredArtifact` metadata (`LineIndexEntry` tables and 256-bit `full_digest`).
+     - `mmu_state.json`: Serialized `MerkleContextDag`, `CacheEpochController`, `HdcAssociativeIndex`, `redacted_artifacts`, and per-agent occurrence tables (`agent_occurrences`).
+     - `bitemporal_graph.json`: Bi-Temporal Knowledge Graph edges (`t_valid`, `t_invalid`, `t_tx_start`, `t_tx_end`) and provenance `ArtifactId` sets.
+     - `icx-fabric-v1.shm`: `1,048,640`-byte (`64 B` `FabricHeader` + `256 x 4,096 B` `SeqlockSlot`) shared-memory telepathy ring.
+2. **Atomic Crash-Safe Writes & `0o600` Access Control:**
+   - All state snapshots (`CasStore::save_to_dir`, `BiTemporalGraph::save_to_dir`, and `InfinityContextMmu::save_workspace_dir`) write to a sibling `.tmp.<pid>` file created with owner-only `0o600` Unix permissions (`OpenOptionsExt::mode(0o600)`), flush kernel buffers via `File::sync_all()`, and atomically replace the target file via `std::fs::rename`.
+   - `SeqlockTelemetryBus::open_shared_file` enforces `0o600` owner-only permissions on the shared ring file, rejecting group/world-accessible segments with `Err(BusError::InsecurePermissions)`.
+3. **Fail-Closed Corruption & Collision Protection:**
+   - On load (`CasStore::load_from_dir`) or explicit health check (`CasStore::verify_all_integrity` and `MerkleContextDag::verify_merkle_integrity`), every `L0` chunk and every reassembled artifact is verified against its full 256-bit `BLAKE3` digest (`Blake3Digest`). If any bit is corrupted or any JSON snapshot fails to parse, `icx` fails closed (`IcxError::IntegrityViolation`) and refuses to overwrite the existing `.icx/` files during subsequent hook or CLI calls.
+   - `CasStore::put_bytes_checked` enforces the `64 MiB` (`ICX_MAX_INGEST_BYTES`) STRIDE DoS ceiling and verifies full 256-bit digest equality on any 64-bit `ArtifactId` or `L0` chunk collision.
+4. **Retention, Backup & `icx doctor` Verification:**
+   - Because `.icx/` is self-contained and updated exclusively via atomic `rename` under `cas_store.lock`, backing up or archiving a session requires only copying `.icx/{cas_store.json,mmu_state.json,bitemporal_graph.json}`.
+   - Running `icx doctor [--dir <PATH>]` inspects local agent harnesses, verifies `/dev/shm` writability, loads `<PATH>` (default `.icx`), and executes `mmu.cas.verify_all_integrity()` + `mmu.dag.verify_all_merkle_integrity()` to report `[VERIFIED] Workspace Storage & Merkle-DAG`.
+
+---
+
+## 6. Edge Cases and Invariants
 
 - **Model Switch Calibration Reset:** If an agent switches mid-session from a 1M-token model to a 128K-token model (e.g., `PreModelSwitch` in Claude Code or `update_model()` in Hermes), `CacheEpochController::retarget_budget(new_budget)` hierarchically folds existing `L3` epochs `(E_0, E_1) -> E_{0..1}^{(L4)}` without losing a single `L0` leaf in the DAG.
 - **Deterministic Replay:** Given the same sequence of turns and tool outputs, `MerkleContextDag` produces bit-for-bit identical `Blake3Hash` roots and AHTL Epoch Frames.

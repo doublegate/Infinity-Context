@@ -113,9 +113,15 @@ impl AhtlClause {
 
     /// Renders this clause into its compact AHTL token representation.
     pub fn render(&self) -> String {
+        let escaped_key = escape_clause_key(&self.key);
         let base = match &self.value {
-            Some(v) => format!("{}{}:{}", self.op.prefix_str(), self.key, v),
-            None => format!("{}{}", self.op.prefix_str(), self.key),
+            Some(v) => format!(
+                "{}{}:{}",
+                self.op.prefix_str(),
+                escaped_key,
+                escape_clause_val(v)
+            ),
+            None => format!("{}{}", self.op.prefix_str(), escaped_key),
         };
         match &self.implies {
             Some(effect) => format!("{base}⇒{}", effect.render()),
@@ -142,19 +148,117 @@ impl AhtlClause {
         if let Some((k, v)) = rest.split_once(':') {
             Self {
                 op,
-                key: k.to_owned(),
-                value: Some(v.to_owned()),
+                key: unescape_clause_field(k),
+                value: Some(unescape_clause_field(v)),
                 implies,
             }
         } else {
             Self {
                 op,
-                key: rest.to_owned(),
+                key: unescape_clause_field(rest),
                 value: None,
                 implies,
             }
         }
     }
+}
+
+/// Bijectively escapes `%`, `:`, `⋮`, `⇒`, `↦`, `⟦`, `⟧`, `\n`, and `\r` inside a clause key so
+/// programmatic `AhtlClause` instances never collide with key-value `:`, clause `⋮`, causal `⇒`,
+/// dereference `↦`, or packet `⟦...⟧` delimiters.
+fn escape_clause_key(s: &str) -> String {
+    if !s.contains('%')
+        && !s.contains(':')
+        && !s.contains('⋮')
+        && !s.contains('⇒')
+        && !s.contains('↦')
+        && !s.contains('⟦')
+        && !s.contains('⟧')
+        && !s.contains('\n')
+        && !s.contains('\r')
+    {
+        return s.to_owned();
+    }
+    s.replace('%', "%25")
+        .replace(':', "%3A")
+        .replace('⋮', "%E2%8B%AE")
+        .replace('⇒', "%E2%87%92")
+        .replace('↦', "%E2%86%A6")
+        .replace('⟦', "%E2%9F%A6")
+        .replace('⟧', "%E2%9F%A7")
+        .replace('\n', "%0A")
+        .replace('\r', "%0D")
+}
+
+/// Bijectively escapes `%`, `⋮`, `⇒`, `↦`, `⟦`, `⟧`, `\n`, and `\r` inside a clause value.
+/// Note: literal `:` inside a value does not need escaping because `AhtlClause::parse` splits
+/// only on the first `:` (`split_once(':')`), preserving unescaped colons in spans such as `L1:L10`.
+fn escape_clause_val(s: &str) -> String {
+    if !s.contains('%')
+        && !s.contains('⋮')
+        && !s.contains('⇒')
+        && !s.contains('↦')
+        && !s.contains('⟦')
+        && !s.contains('⟧')
+        && !s.contains('\n')
+        && !s.contains('\r')
+    {
+        return s.to_owned();
+    }
+    s.replace('%', "%25")
+        .replace('⋮', "%E2%8B%AE")
+        .replace('⇒', "%E2%87%92")
+        .replace('↦', "%E2%86%A6")
+        .replace('⟦', "%E2%9F%A6")
+        .replace('⟧', "%E2%9F%A7")
+        .replace('\n', "%0A")
+        .replace('\r', "%0D")
+}
+
+/// Single-pass left-to-right inverse of `escape_clause_key` and `escape_clause_val`.
+fn unescape_clause_field(s: &str) -> String {
+    if !s.contains('%') {
+        return s.to_owned();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while !rest.is_empty() {
+        if let Some(after) = rest.strip_prefix("%25") {
+            out.push('%');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%3A") {
+            out.push(':');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%E2%8B%AE") {
+            out.push('⋮');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%E2%87%92") {
+            out.push('⇒');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%E2%86%A6") {
+            out.push('↦');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%E2%9F%A6") {
+            out.push('⟦');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%E2%9F%A7") {
+            out.push('⟧');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%0A") {
+            out.push('\n');
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("%0D") {
+            out.push('\r');
+            rest = after;
+        } else {
+            let mut chars = rest.chars();
+            if let Some(ch) = chars.next() {
+                out.push(ch);
+                rest = chars.as_str();
+            }
+        }
+    }
+    out
 }
 
 /// Bijectively escapes `%` (`%25`), `#L` (`%23L`), `⟦` (`%E2%9F%A6`), `⟧` (`%E2%9F%A7`),
@@ -1145,5 +1249,34 @@ mod tests {
         assert_eq!(tv2_pkt.render(), expected_tv2);
         let parsed_tv2 = AhtlWirePacketV1::parse(expected_tv2).unwrap();
         assert_eq!(parsed_tv2.render(), expected_tv2);
+
+        // Verify programmatic `AhtlClause` bijective escaping for keys and values containing
+        // `:`, `⋮`, `⇒`, `↦`, `⟦`, `⟧`, `%`, `\n`, and `\r`.
+        let tricky_clause = AhtlClause::new(
+            ClauseOp::Anomaly,
+            "ns::key:with⋮delim⇒and↦ptr⟦x⟧%25\n\r",
+            Some("val:with⋮delim⇒and↦ptr⟦y⟧%3A\n\r".into()),
+        )
+        .with_implication(AhtlClause::new(ClauseOp::Verified, "effect:key⋮ok", None));
+        let tricky_pkt = AhtlPacket::new(
+            PacketKind::Invariant,
+            "subj:test#L1-2",
+            Some((1, 2)),
+            vec![tricky_clause.clone()],
+            Some(tv_id),
+            [0x55; 8],
+        );
+        let tricky_rendered = tricky_pkt.render();
+        let tricky_reparsed = AhtlPacket::parse(&tricky_rendered).expect("parse tricky clause pkt");
+        assert_eq!(tricky_reparsed, tricky_pkt);
+        assert_eq!(tricky_reparsed.clauses[0], tricky_clause);
+        assert_eq!(
+            AhtlClause::parse("⊕key_with_unrecognized_%99_percent:val_%ZZ_raw"),
+            AhtlClause::new(
+                ClauseOp::Added,
+                "key_with_unrecognized_%99_percent",
+                Some("val_%ZZ_raw".into())
+            )
+        );
     }
 }
