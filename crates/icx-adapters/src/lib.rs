@@ -1206,9 +1206,10 @@ unprefixed_secret = {unpref_sec}
         let (_, pruned_again) = HermesAdapter::prune_tool_results_only(&pruned_msgs, 1, &mut mmu);
         assert_eq!(pruned_again, 0);
 
-        // 6b. `on_turn_complete` indexes only newly unseen messages and is idempotent on repeat
+        // 6b. `on_turn_complete` indexes only newly unseen messages (`0` after `prune_tool_results_only`
+        //     already synchronized all 4 non-pager messages) and is idempotent on repeat
         let newly_ingested_1 = HermesAdapter::on_turn_complete(&hermes_msgs, &mut mmu);
-        assert!(newly_ingested_1 >= 2);
+        assert_eq!(newly_ingested_1, 0);
         let dag_len_after_1 = mmu.dag.node_count();
         let newly_ingested_2 = HermesAdapter::on_turn_complete(&hermes_msgs, &mut mmu);
         assert_eq!(newly_ingested_2, 0);
@@ -1528,7 +1529,8 @@ unprefixed_secret = {unpref_sec}
             HermesAdapter::handle_hook("on_turn_complete", &mm_sel_out_2, &mut mm_occ_mmu).unwrap();
         assert!(mm_turn_after_sel_2.contains(r#""ingested_count":0"#));
         // Also verify ordinary `assistant` `tool_calls` with `content: null` are archived into AHTL
-        // during `compress` and `on_pre_compress` when not preserved verbatim
+        // during `compress` and `on_pre_compress` when not preserved verbatim, AND verify unnamed
+        // `role: "tool"` responses resolve their tool name from the preceding assistant `tool_calls`
         let mut tc_fold_mmu = InfinityContextMmu::default();
         let fold_tc_req = serde_json::json!({
             "messages": [
@@ -1544,6 +1546,28 @@ unprefixed_secret = {unpref_sec}
         let comp_tc_out =
             HermesAdapter::handle_hook("compress", &fold_tc_req, &mut tc_fold_mmu).unwrap();
         assert!(comp_tc_out.contains("src/main.rs"));
+        let unnamed_pager_req = serde_json::json!({
+            "messages": [
+                {"role": "system", "content": "head"},
+                {"role": "assistant", "content": null, "tool_calls": [{"id": "tc_pager", "function": {"name": "mcp__icx__icx", "arguments": "{\"op\":\"deref\"}"}}]},
+                {"role": "tool", "tool_call_id": "tc_pager", "content": "pager_line\n".repeat(80)},
+                {"role": "user", "content": "tail"}
+            ],
+            "protect_first_n": 1,
+            "protect_last_n": 1
+        })
+        .to_string();
+        let unnamed_pruned = HermesAdapter::handle_hook(
+            "prune_tool_results_only",
+            &unnamed_pager_req,
+            &mut tc_fold_mmu,
+        )
+        .unwrap();
+        assert!(unnamed_pruned.contains(r#""pruned_count":0"#));
+        let unnamed_sel =
+            HermesAdapter::handle_hook("select_context", &unnamed_pager_req, &mut tc_fold_mmu)
+                .unwrap();
+        assert!(unnamed_sel.contains("tc_pager"));
         // Calling `select_context` a second time on the original `mm_occ_payload` must also keep
         // canonical occurrence identities intact (without re-ingesting the middle failure over a
         // passing tail turn).
@@ -1675,7 +1699,7 @@ unprefixed_secret = {unpref_sec}
         let big_tp_file = big_tp_dir.join("big_tail.jsonl");
         let big_record = format!(
             "[1,2,3]\n{{\"step_index\":0,\"content\":\"\"}}\n{{\"step_index\":1,\"content\":\"{}\"}}\n",
-            "B".repeat(300_000)
+            "B".repeat(600_000)
         );
         std::fs::write(&big_tp_file, &big_record).unwrap();
         assert_eq!(
@@ -1683,7 +1707,7 @@ unprefixed_secret = {unpref_sec}
             None
         );
         let recovered_big = AntigravityAdapter::read_transcript_step(&big_tp_file, None).unwrap();
-        assert_eq!(recovered_big.len(), 300_000);
+        assert_eq!(recovered_big.len(), 600_000);
         let _ = std::fs::remove_dir_all(&big_tp_dir);
         // Also verify `CodexRolloutTailer` skips `mcp__icx__icx` rollout items
         let rollout_pager_path = std::env::temp_dir().join(format!(
@@ -1822,6 +1846,18 @@ unprefixed_secret = {unpref_sec}
         assert_eq!(
             AntigravityAdapter::read_transcript_step(&tp_trunc, Some(1)).as_deref(),
             Some("after_truncated")
+        );
+        // Also verify that if the trailing step is truncated (> MAX_TRANSCRIPT_RECORD_BYTES) or
+        // empty, `read_transcript_step(path, None)` returns `None` instead of returning an earlier
+        // step's payload
+        let trailing_trunc = format!(
+            "{{\"content\":\"earlier_step\"}}\n{{\"content\":\"{}\"}}\n",
+            "z".repeat(2 * icx_core::ICX_MAX_INGEST_BYTES + 256)
+        );
+        std::fs::write(&tp_trunc, &trailing_trunc).unwrap();
+        assert_eq!(
+            AntigravityAdapter::read_transcript_step(&tp_trunc, None),
+            None
         );
         let _ = std::fs::remove_file(&tp_trunc);
 

@@ -15,7 +15,7 @@ use std::io::{BufReader, Seek, SeekFrom};
 use std::path::Path;
 
 const MAX_TRANSCRIPT_RECORD_BYTES: usize = 2 * icx_core::ICX_MAX_INGEST_BYTES;
-const TRANSCRIPT_TAIL_WINDOW_BYTES: u64 = 256 * 1024;
+const TRANSCRIPT_TAIL_WINDOW_BYTES: u64 = 512 * 1024;
 const MAX_TRANSCRIPT_SCAN_LINES: usize = 10_000;
 
 /// Native hook adapter for Google Antigravity CLI (`agy`).
@@ -94,6 +94,9 @@ impl AntigravityAdapter {
                 break;
             }
             if was_truncated {
+                if target_step_idx.is_none() {
+                    latest_body = None;
+                }
                 valid_step_idx += 1;
                 continue;
             }
@@ -129,9 +132,7 @@ impl AntigravityAdapter {
             if target_step_idx == Some(step_idx) && body.is_some() {
                 return body;
             }
-            if let Some(b) = body {
-                latest_body = Some(b);
-            }
+            latest_body = body;
         }
         if target_step_idx.is_some() {
             None

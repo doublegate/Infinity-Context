@@ -136,9 +136,9 @@ impl HermesAdapter {
             let trimmed = line.trim();
             if !trimmed.is_empty() {
                 let sanitized_line = Self::sanitize_embedded_ahtl_line(trimmed);
-                let line_aid =
-                    stub_aid.unwrap_or_else(|| mmu.cas.put_bytes(sanitized_line.as_bytes()).0);
                 if !mmu.has_indexed_occurrence(*occurrence_idx) {
+                    let line_aid =
+                        stub_aid.unwrap_or_else(|| mmu.cas.put_bytes(sanitized_line.as_bytes()).0);
                     let subj = if stub_aid.is_some() {
                         role_label.as_str()
                     } else {
@@ -193,22 +193,43 @@ impl HermesAdapter {
         String::new()
     }
 
-    fn count_occurrence_advance(msg: &HermesMessage, raw_opt: Option<&Value>) -> usize {
-        if Self::is_synthetic_tail_slot(msg)
-            || Self::effective_message_text(msg, raw_opt).trim().is_empty()
-        {
-            0
-        } else if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
-            msg.content
-                .lines()
-                .skip(1)
-                .filter(|l| !l.trim().is_empty())
-                .count()
-        } else {
-            usize::from(!InfinityContextMmu::is_icx_pager_tool(
-                Self::message_subject(msg),
-            ))
+    /// Indexes or reuses a message in `mmu` to keep `occurrence_idx` aligned across head, middle,
+    /// and tail slices without skipping earlier positions.
+    fn sync_message_occurrence(
+        msg: &HermesMessage,
+        raw_opt: Option<&Value>,
+        occurrence_idx: &mut usize,
+        mmu: &mut InfinityContextMmu,
+    ) {
+        let eff_text = Self::effective_message_text(msg, raw_opt);
+        if Self::is_synthetic_tail_slot(msg) || eff_text.trim().is_empty() {
+            return;
         }
+        if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
+            let mut sink = Vec::new();
+            let mut carried_sink = Vec::new();
+            Self::extract_embedded_ahtl_lines(
+                msg,
+                &mut sink,
+                occurrence_idx,
+                &mut carried_sink,
+                mmu,
+            );
+            return;
+        }
+        let subj = Self::message_subject(msg);
+        if InfinityContextMmu::is_icx_pager_tool(subj) {
+            return;
+        }
+        let _ = mmu.ingest_or_reuse_at_index(
+            *occurrence_idx,
+            AgentKind::Hermes,
+            subj,
+            &eff_text,
+            None,
+            false,
+        );
+        *occurrence_idx += 1;
     }
 
     fn message_subject(msg: &HermesMessage) -> &str {
@@ -457,7 +478,7 @@ impl HermesAdapter {
 
         let mut occurrence_idx = 0usize;
         for &(msg, raw_opt) in &cleaned[..head_end] {
-            occurrence_idx += Self::count_occurrence_advance(msg, raw_opt);
+            Self::sync_message_occurrence(msg, raw_opt, &mut occurrence_idx, mmu);
             selected_msgs.push(msg.clone());
             if let Some(r) = raw_opt {
                 selected_vals.push(r.clone());
@@ -496,6 +517,7 @@ impl HermesAdapter {
         selected_vals.extend(preserved_vals);
 
         for &(msg, raw_opt) in &cleaned[tail_start..] {
+            Self::sync_message_occurrence(msg, raw_opt, &mut occurrence_idx, mmu);
             selected_msgs.push(msg.clone());
             if let Some(r) = raw_opt {
                 selected_vals.push(r.clone());
@@ -581,7 +603,7 @@ impl HermesAdapter {
                 out.push(stubbed);
                 n_pruned += 1;
             } else {
-                occurrence_idx += Self::count_occurrence_advance(msg, raw_opt);
+                Self::sync_message_occurrence(msg, raw_opt, &mut occurrence_idx, mmu);
                 if let Some(r) = raw_opt {
                     out_vals.push(r.clone());
                 }
@@ -633,10 +655,10 @@ impl HermesAdapter {
             }
         }
 
-        let mut occurrence_idx: usize = head_msgs
-            .iter()
-            .map(|m| Self::count_occurrence_advance(m, None))
-            .sum();
+        let mut occurrence_idx = 0usize;
+        for (i, m) in head_msgs.iter().enumerate() {
+            Self::sync_message_occurrence(m, head_vals.get(i), &mut occurrence_idx, mmu);
+        }
         let preserve_mask = Self::build_preserve_mask(&body_slice, false);
         let (ahtl_frames, preserved_msgs, preserved_vals) =
             Self::process_body_slice(&body_slice, &preserve_mask, &mut occurrence_idx, mmu);
@@ -822,9 +844,38 @@ impl HermesAdapter {
         for key in ["messages", "request_messages", "requestMessages"] {
             if let Some(val) = payload.get(key).filter(|v| !v.is_null()) {
                 let raw_msgs = serde_json::from_value::<Vec<Value>>(val.clone())?;
+                let mut call_id_to_name = std::collections::BTreeMap::new();
+                for item in &raw_msgs {
+                    if let Some(calls) = item.get("tool_calls").and_then(Value::as_array) {
+                        for tc in calls {
+                            let id_opt = tc
+                                .get("id")
+                                .and_then(Value::as_str)
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty());
+                            let name_opt = tc
+                                .get("function")
+                                .and_then(|f| f.get("name"))
+                                .or_else(|| tc.get("name"))
+                                .and_then(Value::as_str)
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty());
+                            if let (Some(id), Some(name)) = (id_opt, name_opt) {
+                                call_id_to_name.insert(id.to_owned(), name.to_owned());
+                            }
+                        }
+                    }
+                }
                 let mut msgs = Vec::with_capacity(raw_msgs.len());
                 for item in &raw_msgs {
-                    msgs.push(serde_json::from_value::<HermesMessage>(item.clone())?);
+                    let mut m = serde_json::from_value::<HermesMessage>(item.clone())?;
+                    if m.name.as_deref().is_none_or(|n| n.trim().is_empty())
+                        && let Some(cid) = m.tool_call_id.as_deref()
+                        && let Some(resolved_name) = call_id_to_name.get(cid.trim())
+                    {
+                        m.name = Some(resolved_name.clone());
+                    }
+                    msgs.push(m);
                 }
                 return Ok((msgs, raw_msgs));
             }
