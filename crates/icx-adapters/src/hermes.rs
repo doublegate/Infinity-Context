@@ -53,6 +53,44 @@ impl HermesAdapter {
             || msg.content.starts_with("⟪ICX:HERMES_COMPACT│")
     }
 
+    fn is_stubbed_message(msg: &HermesMessage) -> bool {
+        msg.content.starts_with("⟪ICX:STUB│")
+    }
+
+    fn extract_embedded_ahtl_lines(
+        msg: &HermesMessage,
+        out: &mut Vec<String>,
+        mmu: &mut InfinityContextMmu,
+    ) {
+        for line in msg.content.lines().skip(1) {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                let (aid, _) = mmu.cas.put_bytes(trimmed.as_bytes());
+                if mmu
+                    .dag
+                    .find_turn(AgentKind::Hermes, "carried_epoch", aid)
+                    .is_none()
+                    && !mmu.dag.trunk_nodes().iter().any(|&tid| {
+                        mmu.dag
+                            .get_node(tid)
+                            .is_some_and(|n| n.ahtl_representation() == trimmed)
+                    })
+                {
+                    mmu.epochs.record_turn(
+                        &mut mmu.dag,
+                        AgentKind::Hermes,
+                        "carried_epoch",
+                        aid,
+                        trimmed.to_owned(),
+                        0.5,
+                        (trimmed.len() / 4).max(1),
+                    );
+                }
+                out.push(trimmed.to_owned());
+            }
+        }
+    }
+
     fn message_subject(msg: &HermesMessage) -> &str {
         msg.name
             .as_deref()
@@ -64,8 +102,8 @@ impl HermesAdapter {
     /// 1. Strips any prior synthetic `icx_tail_slot` message so repeated calls remain idempotent.
     /// 2. Keeps the first `protect_first_n` head messages (system prompt + initial goal) verbatim.
     /// 3. Compresses middle messages into sealed AHTL Epoch frames (reusing existing DAG turns on
-    ///    subsequent turns without duplicating DAG nodes or `/dev/shm` broadcasts, and keeping
-    ///    `icx` MCP pager outputs intact).
+    ///    subsequent turns without duplicating DAG nodes or `/dev/shm` broadcasts, and preserving
+    ///    `icx` MCP pager outputs verbatim).
     /// 4. Keeps the last `protect_last_n` messages verbatim.
     /// 5. Appends the Ephemeral Tail Slot containing HDC/PPR/Fractal recall and `/dev/shm` telepathy.
     pub fn select_context(
@@ -108,17 +146,15 @@ impl HermesAdapter {
         }
 
         let mut middle_ahtl = Vec::new();
+        let mut preserved_pager_msgs = Vec::new();
         for &msg in &cleaned[head_end..tail_start] {
-            if Self::is_synthetic_cache_epoch(msg) {
-                for line in msg.content.lines().skip(1) {
-                    if !line.trim().is_empty() {
-                        middle_ahtl.push(line.to_owned());
-                    }
-                }
+            if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
+                Self::extract_embedded_ahtl_lines(msg, &mut middle_ahtl, mmu);
                 continue;
             }
             let subj = Self::message_subject(msg);
             if InfinityContextMmu::is_icx_pager_tool(subj) {
+                preserved_pager_msgs.push(msg.clone());
                 continue;
             }
             let (res, _) =
@@ -126,16 +162,19 @@ impl HermesAdapter {
             middle_ahtl.push(res.compressed_ahtl);
         }
 
-        selected.push(HermesMessage {
-            role: "system".into(),
-            content: format!(
-                "⟪ICX:HERMES_EPOCH│folded_msgs={}⟫\n{}",
-                tail_start - head_end,
-                middle_ahtl.join("\n")
-            ),
-            tool_call_id: None,
-            name: Some("icx_cache_epoch".into()),
-        });
+        if !middle_ahtl.is_empty() {
+            selected.push(HermesMessage {
+                role: "system".into(),
+                content: format!(
+                    "⟪ICX:HERMES_EPOCH│folded_msgs={}⟫\n{}",
+                    middle_ahtl.len(),
+                    middle_ahtl.join("\n")
+                ),
+                tool_call_id: None,
+                name: Some("icx_cache_epoch".into()),
+            });
+        }
+        selected.extend(preserved_pager_msgs);
 
         for &msg in &cleaned[tail_start..] {
             selected.push(msg.clone());
@@ -177,7 +216,7 @@ impl HermesAdapter {
             if idx < cutoff
                 && is_tool
                 && !InfinityContextMmu::is_icx_pager_tool(subj)
-                && !msg.content.starts_with("⟪ICX:STUB│")
+                && !Self::is_stubbed_message(msg)
                 && msg.content.len() >= mmu.tool_virtualize_threshold
             {
                 let (res, _) =
@@ -197,9 +236,10 @@ impl HermesAdapter {
     }
 
     /// Implements `ContextEngine.compress(messages, focus_topic)`:
-    /// Preserves leading system messages, commits all remaining messages into `mmu`, seals the
-    /// active `CacheEpochNode` in `MerkleContextDag`, and emits a compacted `icx_cache_epoch`
-    /// message followed by the dynamic `icx_tail_slot`.
+    /// Preserves leading system messages, carries forward any existing `icx_cache_epoch` or
+    /// stubbed AHTL frames, commits remaining messages into `mmu`, seals the active
+    /// `CacheEpochNode` in `MerkleContextDag`, and emits a compacted `icx_cache_epoch` message
+    /// followed by any preserved `icx` pager messages and the dynamic `icx_tail_slot`.
     pub fn compress(
         messages: &[HermesMessage],
         focus_topic: Option<&str>,
@@ -210,10 +250,10 @@ impl HermesAdapter {
         let mut in_head = true;
 
         for msg in messages {
-            if Self::is_synthetic_tail_slot(msg) || Self::is_synthetic_cache_epoch(msg) {
+            if Self::is_synthetic_tail_slot(msg) {
                 continue;
             }
-            if in_head && msg.role == "system" {
+            if in_head && msg.role == "system" && !Self::is_synthetic_cache_epoch(msg) {
                 head.push(msg.clone());
             } else {
                 in_head = false;
@@ -222,9 +262,15 @@ impl HermesAdapter {
         }
 
         let mut ahtl_frames = Vec::new();
+        let mut preserved_pager_msgs = Vec::new();
         for msg in &body_msgs {
+            if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
+                Self::extract_embedded_ahtl_lines(msg, &mut ahtl_frames, mmu);
+                continue;
+            }
             let subj = Self::message_subject(msg);
             if InfinityContextMmu::is_icx_pager_tool(subj) {
+                preserved_pager_msgs.push((*msg).clone());
                 continue;
             }
             let (res, _) =
@@ -247,12 +293,13 @@ impl HermesAdapter {
             role: "system".into(),
             content: format!(
                 "⟪ICX:HERMES_COMPACT│epoch={ep_handle}│topic={topic_label}│folded_msgs={}⟫\n{}",
-                body_msgs.len(),
+                ahtl_frames.len(),
                 ahtl_frames.join("\n")
             ),
             tool_call_id: None,
             name: Some("icx_cache_epoch".into()),
         });
+        out.extend(preserved_pager_msgs);
 
         let query = focus_topic
             .filter(|s| !s.trim().is_empty())
@@ -270,13 +317,14 @@ impl HermesAdapter {
     }
 
     /// Implements `ContextEngine.on_turn_complete(messages)`:
-    /// Indexes any non-synthetic, non-pager messages from `messages` that have not yet been
-    /// recorded in `mmu`, returning the count of newly ingested messages.
+    /// Indexes any non-synthetic, non-stubbed, non-pager messages from `messages` that have not
+    /// yet been recorded in `mmu`, returning the count of newly ingested messages.
     pub fn on_turn_complete(messages: &[HermesMessage], mmu: &mut InfinityContextMmu) -> usize {
         let mut newly_ingested = 0usize;
         for msg in messages {
             if Self::is_synthetic_tail_slot(msg)
                 || Self::is_synthetic_cache_epoch(msg)
+                || Self::is_stubbed_message(msg)
                 || msg.content.trim().is_empty()
             {
                 continue;
@@ -298,12 +346,12 @@ impl HermesAdapter {
     /// (`PRE_COMPRESS_CHECKPOINT_API_VERSION = 2` fail-closed pre-compression evidence handoff).
     pub fn on_pre_compress(messages: &[HermesMessage], mmu: &mut InfinityContextMmu) -> String {
         let mut ahtl_frames = Vec::new();
-        let mut msg_count = 0usize;
         for msg in messages {
-            if Self::is_synthetic_tail_slot(msg)
-                || Self::is_synthetic_cache_epoch(msg)
-                || msg.content.trim().is_empty()
-            {
+            if Self::is_synthetic_tail_slot(msg) || msg.content.trim().is_empty() {
+                continue;
+            }
+            if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
+                Self::extract_embedded_ahtl_lines(msg, &mut ahtl_frames, mmu);
                 continue;
             }
             let subj = Self::message_subject(msg);
@@ -313,15 +361,15 @@ impl HermesAdapter {
             let (res, _) =
                 mmu.ingest_or_reuse_payload(AgentKind::Hermes, subj, &msg.content, None, false);
             ahtl_frames.push(res.compressed_ahtl);
-            msg_count += 1;
         }
         let ep_id = mmu.force_rollover_and_sync_dag_root();
         let ep_handle = ep_id
             .map(|id| id.to_string())
             .unwrap_or_else(|| "#icx:0000000000000000".to_owned());
         format!(
-            "⟪ICX:PRE_COMPRESS_CHECKPOINT│v={}│epoch={ep_handle}│msgs={msg_count}│cas_artifacts={}⟫\n{}",
+            "⟪ICX:PRE_COMPRESS_CHECKPOINT│v={}│epoch={ep_handle}│msgs={}│cas_artifacts={}⟫\n{}",
             PRE_COMPRESS_CHECKPOINT_API_VERSION,
+            ahtl_frames.len(),
             mmu.cas.artifact_count(),
             ahtl_frames.join("\n")
         )

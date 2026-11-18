@@ -97,8 +97,9 @@ impl AntigravityAdapter {
 
         let mut raw_line = Vec::new();
         let mut latest_body: Option<String> = None;
+        let mut valid_step_idx = 0u64;
 
-        for cur_line_idx in 0..(MAX_TRANSCRIPT_SCAN_LINES as u64) {
+        for _ in 0..MAX_TRANSCRIPT_SCAN_LINES {
             let Ok((bytes_read, ended_with_nl, was_truncated)) =
                 CodexRolloutTailer::read_bounded_jsonl_record(
                     &mut reader,
@@ -136,11 +137,13 @@ impl AntigravityAdapter {
                 continue;
             };
 
+            let fallback_idx = valid_step_idx;
+            valid_step_idx += 1;
             if let Some(target) = target_step_idx {
                 let step_idx = ["step_index", "stepIdx", "idx"]
                     .into_iter()
                     .find_map(|k| val.get(k).and_then(Value::as_u64))
-                    .unwrap_or(cur_line_idx);
+                    .unwrap_or(fallback_idx);
                 if step_idx == target {
                     return Some(body);
                 }
@@ -309,7 +312,9 @@ impl AntigravityAdapter {
                         .map(str::trim)
                         .filter(|s| !s.is_empty())
                 {
-                    let step_idx = payload.get("stepIdx").and_then(Value::as_u64);
+                    let step_idx = ["stepIdx", "step_index", "idx"]
+                        .into_iter()
+                        .find_map(|k| payload.get(k).and_then(Value::as_u64));
                     if let Some(from_transcript) =
                         Self::read_transcript_step(Path::new(tp), step_idx)
                     {

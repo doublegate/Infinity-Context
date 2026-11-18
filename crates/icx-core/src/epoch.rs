@@ -233,28 +233,31 @@ impl CacheEpochController {
         Some(id)
     }
 
-    /// Forces sealing the active unsealed turns into a new `CacheEpochNode` regardless of
-    /// `epoch_rollover_tokens` (used on explicit compaction checkpoints or `MAX_TOKEN_BUDGET_EXCEEDED`
-    /// continuation). If no unsealed turns exist (or if a sub-trajectory branch is open), returns
-    /// the most recently sealed epoch ID if one exists.
+    /// Forces sealing all active unsealed turns into a new `CacheEpochNode` regardless of
+    /// `epoch_rollover_tokens` or `protect_last_n_turns` (used on explicit compaction checkpoints
+    /// or `MAX_TOKEN_BUDGET_EXCEEDED` continuation). When multiple sealed epochs exist, also
+    /// commits a cumulative `L4` folded `CacheEpoch` into `dag` so the returned handle dereferences
+    /// the entire session's sealed history while keeping `self.sealed_epochs` intact for Zone 1
+    /// prefix caching.
     pub fn force_seal_active_epoch(&mut self, dag: &mut MerkleContextDag) -> Option<ArtifactId> {
-        if let Some(id) = self.maybe_rollover(dag) {
-            return Some(id);
+        if dag.active_branch_depth() == 0 && !self.unsealed_turn_ids.is_empty() {
+            let to_seal: Vec<ArtifactId> = std::mem::take(&mut self.unsealed_turn_ids);
+            let raw_tokens: usize = to_seal
+                .iter()
+                .filter_map(|&id| dag.get_node(id).map(DagNode::raw_token_count))
+                .fold(0usize, usize::saturating_add);
+            let epoch_idx = self.next_epoch_index;
+            self.next_epoch_index = self.next_epoch_index.saturating_add(1);
+            let epoch_node = dag.seal_epoch(epoch_idx, to_seal, raw_tokens);
+            self.sealed_epochs.push(epoch_node);
         }
-        if dag.active_branch_depth() > 0 || self.unsealed_turn_ids.is_empty() {
-            return self.sealed_epochs.last().map(DagNode::id);
+        if self.sealed_epochs.len() >= 2 {
+            let epoch_ids: Vec<ArtifactId> = self.sealed_epochs.iter().map(DagNode::id).collect();
+            if let Ok(folded) = dag.fold_epochs(&epoch_ids) {
+                return Some(folded.id());
+            }
         }
-        let to_seal: Vec<ArtifactId> = std::mem::take(&mut self.unsealed_turn_ids);
-        let raw_tokens: usize = to_seal
-            .iter()
-            .filter_map(|&id| dag.get_node(id).map(DagNode::raw_token_count))
-            .fold(0usize, usize::saturating_add);
-        let epoch_idx = self.next_epoch_index;
-        self.next_epoch_index = self.next_epoch_index.saturating_add(1);
-        let epoch_node = dag.seal_epoch(epoch_idx, to_seal, raw_tokens);
-        let id = epoch_node.id();
-        self.sealed_epochs.push(epoch_node);
-        Some(id)
+        self.sealed_epochs.last().map(DagNode::id)
     }
 
     /// Hierarchically folds existing `L3` epochs `(E_0, E_1) -> E_{0..1}^{(L4)}` in level-order pairs

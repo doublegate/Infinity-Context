@@ -194,6 +194,8 @@ pub struct MerkleContextDag {
     trunk_order: Vec<ArtifactId>,
     branch_stack: Vec<OpenBranch>,
     next_ordinal: u64,
+    #[serde(skip)]
+    turn_index: BTreeMap<(u8, ArtifactId, String), ArtifactId>,
 }
 
 impl MerkleContextDag {
@@ -222,14 +224,25 @@ impl MerkleContextDag {
         self.nodes.get(&id)
     }
 
-    /// Finds an existing `DagNode::Turn` matching `(agent, role, raw_artifact)` and returns
-    /// `(ahtl_repr, surprise)`.
+    /// Finds an existing `DagNode::Turn` matching `(agent, role, raw_artifact)` in $O(\log N)$ via
+    /// `turn_index` (with fallback scan for deserialized DAGs) and returns `(ahtl_repr, surprise)`.
     pub fn find_turn(
         &self,
         agent: AgentKind,
         role: &str,
         raw_artifact: ArtifactId,
     ) -> Option<(&str, f32)> {
+        if let Some(&tid) = self
+            .turn_index
+            .get(&(agent as u8, raw_artifact, role.to_owned()))
+            && let Some(DagNode::Turn {
+                ahtl_repr,
+                surprise,
+                ..
+            }) = self.nodes.get(&tid)
+        {
+            return Some((ahtl_repr.as_str(), *surprise));
+        }
         self.nodes.values().find_map(|n| match n {
             DagNode::Turn {
                 agent: n_agent,
@@ -418,6 +431,8 @@ impl MerkleContextDag {
             surprise,
             token_estimate,
         };
+        self.turn_index
+            .insert((agent as u8, raw_artifact, role.to_owned()), id);
         self.nodes.insert(id, node);
         self.record_node_in_active_scope(id);
         id

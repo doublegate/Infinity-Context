@@ -1214,10 +1214,14 @@ unprefixed_secret = {unpref_sec}
         assert_eq!(newly_ingested_2, 0);
         assert_eq!(mmu.dag.node_count(), dag_len_after_1);
 
-        // 6c. `select_context` reuses existing DAG turns without duplicating nodes and strips
-        //     any prior synthetic `icx_tail_slot`
+        // 6c. `select_context` reuses existing DAG turns without duplicating nodes, preserves
+        //     `mcp__icx__icx` pager messages in the returned message list, and strips any prior
+        //     synthetic `icx_tail_slot`
         let sel_1 = HermesAdapter::select_context(&hermes_msgs, 1, 1, &mut mmu);
         assert_eq!(mmu.dag.node_count(), dag_len_after_1);
+        assert!(sel_1.iter().any(|m| {
+            m.name.as_deref() == Some("mcp__icx__icx") && m.content == "dereferenced page from icx"
+        }));
         let sel_2 = HermesAdapter::select_context(&sel_1, 1, 1, &mut mmu);
         assert_eq!(
             sel_2
@@ -1227,15 +1231,50 @@ unprefixed_secret = {unpref_sec}
             1
         );
 
-        // 6d. `compress` folds messages into an `L3` epoch and emits `⟪ICX:HERMES_COMPACT│...⟫`
+        // 6d. `compress` folds messages into an `L3`/`L4` epoch, preserves `mcp__icx__icx` pager
+        //     messages, and carries forward prior `icx_cache_epoch` evidence across successive
+        //     compactions
         let compacted = HermesAdapter::compress(&hermes_msgs, Some("terminal status"), &mut mmu);
-        assert_eq!(compacted.len(), 3);
+        assert_eq!(compacted.len(), 4);
         assert!(
             compacted[1]
                 .content
                 .contains("⟪ICX:HERMES_COMPACT│epoch=#icx:")
         );
         assert!(compacted[1].content.contains("│topic=terminal status│"));
+        assert_eq!(compacted[2].name.as_deref(), Some("mcp__icx__icx"));
+        let mut next_compaction_input = compacted.clone();
+        next_compaction_input.push(HermesMessage {
+            role: "user".into(),
+            content: "Follow-up question after first compaction.".into(),
+            tool_call_id: None,
+            name: None,
+        });
+        let compacted_2 =
+            HermesAdapter::compress(&next_compaction_input, Some("followup"), &mut mmu);
+        assert!(
+            compacted_2[1].content.contains("│folded_msgs=4⟫"),
+            "second compaction must carry forward all 3 prior epoch AHTL frames plus 1 new turn"
+        );
+        //Also verify `on_turn_complete` and `select_context` on `pruned_msgs` (which contains a `⟪ICX:STUB│` message)
+        assert_eq!(HermesAdapter::on_turn_complete(&pruned_msgs, &mut mmu), 0);
+        let _ = HermesAdapter::select_context(&pruned_msgs, 1, 1, &mut mmu);
+        // Also verify `CodexRolloutTailer` skips `mcp__icx__icx` rollout items
+        let rollout_pager_path = std::env::temp_dir().join(format!(
+            "icx_rollout_pager_{}_{}.jsonl",
+            std::process::id(),
+            mmu.clock_ms()
+        ));
+        std::fs::write(
+            &rollout_pager_path,
+            "{\"type\":\"ToolOutput\",\"name\":\"mcp__icx__icx\",\"output\":\"pager raw bytes\"}\n",
+        )
+        .unwrap();
+        let (_, pager_ingested) =
+            CodexRolloutTailer::ingest_rollout_jsonl_since(&rollout_pager_path, 0, &mut mmu)
+                .unwrap();
+        assert_eq!(pager_ingested, 0);
+        let _ = std::fs::remove_file(&rollout_pager_path);
 
         // 6e. `on_pre_compress` returns `v=2` checkpoint string
         let checkpoint = HermesAdapter::on_pre_compress(&hermes_msgs, &mut mmu);
