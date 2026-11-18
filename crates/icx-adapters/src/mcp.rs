@@ -58,6 +58,11 @@ impl McpPagerServer {
         serde_json::from_str::<Value>(request_json).is_ok_and(|req| {
             req.get("id").is_some()
                 && req.get("method").and_then(Value::as_str) == Some("tools/call")
+                && req
+                    .get("params")
+                    .and_then(|p| p.get("name"))
+                    .and_then(Value::as_str)
+                    .is_none_or(InfinityContextMmu::is_icx_pager_tool)
         })
     }
 

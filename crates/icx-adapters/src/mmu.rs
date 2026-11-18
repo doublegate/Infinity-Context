@@ -974,6 +974,10 @@ impl InfinityContextMmu {
             SeqlockTelemetryBus::new_in_memory()
         };
 
+        let canonical_ws = std::fs::canonicalize(icx_dir).unwrap_or_else(|_| icx_dir.to_path_buf());
+        self.workspace_hash = ArtifactId::hash_bytes(canonical_ws.to_string_lossy().as_bytes())
+            .0
+            .0;
         self.cas = new_cas;
         self.graph = new_graph;
         self.bus = new_bus;

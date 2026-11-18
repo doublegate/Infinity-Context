@@ -60,12 +60,14 @@ impl ProviderFormat {
 struct SsePendingEntry {
     pending: String,
     template: Option<Value>,
+    event_header: Option<String>,
     json_path: Vec<String>,
     last_holdback_line: usize,
 }
 
 #[derive(Default, Clone)]
 struct SsePendingState {
+    current_event: Option<String>,
     streams: std::collections::BTreeMap<String, SsePendingEntry>,
 }
 
@@ -743,6 +745,14 @@ impl WireProxyTransformer {
         allow_holdback: bool,
         line_idx: usize,
     ) -> String {
+        if line.starts_with("event:") {
+            state.current_event = Some(line.to_owned());
+            return line.to_owned();
+        }
+        if line.trim().is_empty() {
+            state.current_event = None;
+            return line.to_owned();
+        }
         if state.is_empty() && !Self::might_contain_deref_marker(line) {
             return line.to_owned();
         }
@@ -765,9 +775,11 @@ impl WireProxyTransformer {
                     allow_holdback,
                     line_idx,
                 );
+                let cur_ev = state.current_event.clone();
                 for entry in state.streams.values_mut() {
                     if !entry.pending.is_empty() && entry.template.is_none() {
                         entry.template = Some(val.clone());
+                        entry.event_header.clone_from(&cur_ev);
                     }
                 }
                 if let Ok(re_serialized) = serde_json::to_string(&val) {
@@ -1089,6 +1101,9 @@ impl WireProxyTransformer {
                 if let Some(mut template) = entry.template.take() {
                     Self::set_json_string_at_path(&mut template, &entry.json_path, residual);
                     if let Ok(serialized) = serde_json::to_string(&template) {
+                        if let Some(ev) = entry.event_header.take() {
+                            writeln!(writer, "{ev}")?;
+                        }
                         write!(writer, "data: {serialized}\n\n")?;
                     }
                 } else {
@@ -1415,7 +1430,7 @@ impl WireProxyTransformer {
             }
             write!(upstream, "{k}: {v}\r\n")?;
         }
-        if !has_content_type {
+        if !has_content_type && !transformed_body.is_empty() {
             write!(upstream, "Content-Type: application/json\r\n")?;
         }
         write!(
@@ -1515,45 +1530,55 @@ impl WireProxyTransformer {
             }
             cmd.args(["-H", &format!("{k}: {v}")]);
         }
-        if !has_content_type {
+        if !has_content_type && !transformed_body.is_empty() {
             cmd.args(["-H", "Content-Type: application/json"]);
         }
-        cmd.args(["--data-binary", "@-", "--", &full_url]);
+        if !transformed_body.is_empty() {
+            cmd.args(["--data-binary", "@-"]);
+        }
+        cmd.args(["--", &full_url]);
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
 
         let mut child = cmd.spawn()?;
-        let write_res = if let Some(mut child_in) = child.stdin.take() {
-            child_in.write_all(transformed_body.as_bytes())
-        } else {
-            Ok(())
+        let child_in_opt = child.stdin.take();
+        let Some(child_out) = child.stdout.take() else {
+            let _ = child.wait();
+            return Err(io::Error::other("missing curl stdout"));
         };
         let mut waited = false;
-        let relay_res = match write_res {
-            Ok(()) => match child.stdout.take() {
-                Some(child_out) => {
-                    let mut up_reader = BufReader::new(child_out);
-                    Self::relay_upstream_response_with_eof(
-                        &mut up_reader,
-                        true,
-                        mmu,
-                        writer,
-                        headers_committed,
-                        || {
-                            waited = true;
-                            let status = child.wait()?;
-                            if !status.success() {
-                                return Err(io::Error::other(format!("curl exited with {status}")));
-                            }
-                            Ok(())
-                        },
-                    )
+        let relay_res = std::thread::scope(|s| {
+            let writer_handle = s.spawn(move || -> io::Result<()> {
+                if let Some(mut child_in) = child_in_opt {
+                    child_in.write_all(transformed_body.as_bytes())?;
                 }
-                None => Err(io::Error::other("missing curl stdout")),
-            },
-            Err(e) => Err(e),
-        };
+                Ok(())
+            });
+            let mut up_reader = BufReader::new(child_out);
+            let r = Self::relay_upstream_response_with_eof(
+                &mut up_reader,
+                true,
+                mmu,
+                writer,
+                headers_committed,
+                || {
+                    waited = true;
+                    let status = child.wait()?;
+                    if !status.success() {
+                        return Err(io::Error::other(format!("curl exited with {status}")));
+                    }
+                    Ok(())
+                },
+            );
+            let write_res = writer_handle
+                .join()
+                .unwrap_or_else(|_| Err(io::Error::other("stdin writer thread panicked")));
+            match r {
+                Ok(()) => Ok(()),
+                Err(e) => Err(write_res.err().unwrap_or(e)),
+            }
+        });
         if !waited {
             let status = child.wait()?;
             if !status.success() {
@@ -1725,11 +1750,17 @@ impl WireProxyTransformer {
         }
 
         let resolved_provider = Self::resolve_provider(default_provider, path, &body_str);
-        let transformed_res =
-            Self::transform_for_provider(Some(resolved_provider), path, &body_str, mmu);
+        let is_bodyless_get_or_head = (method.eq_ignore_ascii_case("GET")
+            || method.eq_ignore_ascii_case("HEAD"))
+            && body_str.trim().is_empty();
+        let transformed_res = if is_bodyless_get_or_head {
+            Ok(String::new())
+        } else {
+            Self::transform_for_provider(Some(resolved_provider), path, &body_str, mmu)
+        };
 
         if let Some((p, g)) = lock_guard {
-            let save_res = if transformed_res.is_ok() {
+            let save_res = if transformed_res.is_ok() && !is_bodyless_get_or_head {
                 mmu.save_workspace_dir_unlocked(p)
             } else {
                 Ok(())
