@@ -250,7 +250,8 @@ impl MerkleContextDag {
     }
 
     /// Finds the most recent `DagNode::Turn` matching `(agent, raw_artifact)` regardless of `role`,
-    /// returning `(role, ahtl_repr, surprise)`.
+    /// returning `(role, ahtl_repr, surprise)` in $O(1)$ via `turn_index` (falling back to an
+    /// $O(N)$ scan over `nodes` if the secondary index was not populated after deserialization).
     pub fn find_turn_any_role(
         &self,
         agent: AgentKind,

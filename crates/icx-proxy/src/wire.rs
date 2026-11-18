@@ -708,6 +708,12 @@ impl WireProxyTransformer {
         s.contains('⟪') || s.contains("\\u27ea") || s.contains("\\u27EA")
     }
 
+    fn is_sse_done_line(line: &str) -> bool {
+        line.trim()
+            .strip_prefix("data:")
+            .is_some_and(|rest| rest.trim() == "[DONE]")
+    }
+
     fn transform_sse_line_stateful(
         line: &str,
         state: &mut SsePendingState,
@@ -717,7 +723,10 @@ impl WireProxyTransformer {
         if state.is_empty() && !Self::might_contain_deref_marker(line) {
             return line.to_owned();
         }
-        if let Some(json_part) = line.strip_prefix("data: ") {
+        if let Some(after_colon) = line.strip_prefix("data:") {
+            let has_leading_space = after_colon.starts_with(' ');
+            let prefix = if has_leading_space { "data: " } else { "data:" };
+            let json_part = after_colon.strip_prefix(' ').unwrap_or(after_colon);
             let trimmed = json_part.trim();
             if trimmed == "[DONE]" {
                 return line.to_owned();
@@ -738,13 +747,13 @@ impl WireProxyTransformer {
                     }
                 }
                 if let Ok(re_serialized) = serde_json::to_string(&val) {
-                    return format!("data: {re_serialized}");
+                    return format!("{prefix}{re_serialized}");
                 }
             }
             let entry = state.streams.entry("raw_data".to_owned()).or_default();
             let out_text =
                 Self::expand_text_with_pending(json_part, &mut entry.pending, mmu, allow_holdback);
-            return format!("data: {out_text}");
+            return format!("{prefix}{out_text}");
         }
         if !line.is_empty()
             && !line.starts_with("event:")
@@ -1111,7 +1120,7 @@ impl WireProxyTransformer {
                         let line_bytes = &pending_bytes[..nl_idx];
                         let trimmed_bytes = line_bytes.strip_suffix(b"\r").unwrap_or(line_bytes);
                         let raw_line = String::from_utf8_lossy(trimmed_bytes);
-                        if raw_line.trim() == "data: [DONE]" {
+                        if Self::is_sse_done_line(&raw_line) {
                             Self::flush_sse_pending(&mut sse_pending, writer)?;
                         }
                         let transformed_line = Self::transform_sse_line_stateful(
@@ -1153,7 +1162,7 @@ impl WireProxyTransformer {
                     }
                     let has_nl = line.ends_with('\n');
                     let trimmed = line.trim_end_matches(&['\r', '\n'][..]);
-                    if trimmed.trim() == "data: [DONE]" {
+                    if Self::is_sse_done_line(trimmed) {
                         Self::flush_sse_pending(&mut sse_pending, writer)?;
                     }
                     let transformed_line =
@@ -1615,7 +1624,11 @@ impl WireProxyTransformer {
             Self::transform_for_provider(Some(resolved_provider), path, &body_str, mmu);
 
         if let Some((p, g)) = lock_guard {
-            let save_res = mmu.save_workspace_dir_unlocked(p);
+            let save_res = if transformed_res.is_ok() {
+                mmu.save_workspace_dir_unlocked(p)
+            } else {
+                Ok(())
+            };
             drop(g);
             save_res.map_err(|e| io::Error::other(e.to_string()))?;
         }

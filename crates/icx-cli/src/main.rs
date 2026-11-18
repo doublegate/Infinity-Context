@@ -187,13 +187,13 @@ fn deref_from_workspace_dir(
     handle: &str,
     line_range: Option<(usize, usize)>,
 ) -> Result<String, String> {
-    let cas = icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;
-    let id = cas.resolve_handle(handle).map_err(|e| e.to_string())?;
+    let mut mmu = InfinityContextMmu::default();
+    mmu.load_workspace_dir(icx_dir).map_err(|e| e.to_string())?;
+    let id = mmu.resolve_handle(handle).map_err(|e| e.to_string())?;
     if let Some((start, end)) = line_range {
-        cas.deref_lines(id, start, end).map_err(|e| e.to_string())
+        mmu.deref_lines(id, start, end).map_err(|e| e.to_string())
     } else {
-        let bytes = cas.deref_bytes(id).map_err(|e| e.to_string())?;
-        Ok(String::from_utf8_lossy(&bytes).into_owned())
+        mmu.deref_text(id).map_err(|e| e.to_string())
     }
 }
 
@@ -478,19 +478,11 @@ fn encode_payload_into_workspace_profile(
 
     let _guard = acquire_workspace_lock(icx_dir)?;
     let mut mmu = InfinityContextMmu::default();
-    let shm_path = icx_dir.join("icx-fabric-v1.shm");
-    if shm_path.exists() {
-        mmu.bus =
-            icx_bus::SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(|e| e.to_string())?;
-    }
-    let cas_path = icx_dir.join("cas_store.json");
-    if cas_path.exists() {
-        // Abort if an existing cas_store.json fails to parse or fails BLAKE3 verification,
-        // rather than overwriting it with an empty store.
-        mmu.cas = icx_core::cas::CasStore::load_from_dir(icx_dir).map_err(|e| e.to_string())?;
-    }
+    mmu.load_workspace_dir_unlocked(icx_dir)
+        .map_err(|e| e.to_string())?;
     let res = mmu.ingest_payload(AgentKind::GenericMcp, subject, content, false);
-    mmu.cas.save_to_dir(icx_dir).map_err(|e| e.to_string())?;
+    mmu.save_workspace_dir_unlocked(icx_dir)
+        .map_err(|e| e.to_string())?;
     render_ingested_profile(&mmu, res.compressed_ahtl, profile_a)
 }
 
@@ -634,6 +626,7 @@ fn run_doctor() {
             "Hermes Agent Source",
             format!("{home}/.hermes/hermes-agent/agent/context_engine.py"),
         ),
+        ("HTTPS Proxy Transport (curl)", "/usr/bin/curl".into()),
         ("POSIX Shared Memory (/dev/shm)", "/dev/shm".into()),
     ];
 
