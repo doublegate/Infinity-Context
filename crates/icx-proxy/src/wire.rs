@@ -1581,22 +1581,43 @@ impl WireProxyTransformer {
         if !has_content_type && !transformed_body.is_empty() {
             header_file_buf.push_str("Content-Type: application/json\n");
         }
-        let hdr_file_path = std::env::temp_dir().join(format!(
-            "icx_curl_hdr_{}_{}.tmp",
-            std::process::id(),
-            CURL_HDR_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        ));
+        let mut hdr_file_path = None;
         if !header_file_buf.is_empty() {
             let mut opts = std::fs::OpenOptions::new();
-            opts.write(true).create(true).truncate(true);
+            opts.write(true).create_new(true);
             #[cfg(unix)]
             {
                 use std::os::unix::fs::OpenOptionsExt;
                 opts.mode(0o600);
             }
-            let mut f = opts.open(&hdr_file_path)?;
-            f.write_all(header_file_buf.as_bytes())?;
-            cmd.args(["-H", &format!("@{}", hdr_file_path.display())]);
+            let mut created = None;
+            for _ in 0..64 {
+                let candidate = std::env::temp_dir().join(format!(
+                    "icx_curl_hdr_{}_{}.tmp",
+                    std::process::id(),
+                    CURL_HDR_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                ));
+                match opts.open(&candidate) {
+                    Ok(f) => {
+                        created = Some((candidate, f));
+                        break;
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+                    Err(e) => return Err(e),
+                }
+            }
+            let (path, mut f) = created.ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "failed to allocate exclusive curl header file",
+                )
+            })?;
+            if let Err(e) = f.write_all(header_file_buf.as_bytes()) {
+                let _ = std::fs::remove_file(&path);
+                return Err(e);
+            }
+            cmd.args(["-H", &format!("@{}", path.display())]);
+            hdr_file_path = Some(path);
         }
         if !transformed_body.is_empty() {
             cmd.args(["--data-binary", "@-"]);
@@ -1610,14 +1631,18 @@ impl WireProxyTransformer {
         let mut child = match spawn_res {
             Ok(c) => c,
             Err(e) => {
-                let _ = std::fs::remove_file(&hdr_file_path);
+                if let Some(ref p) = hdr_file_path {
+                    let _ = std::fs::remove_file(p);
+                }
                 return Err(e);
             }
         };
         let child_in_opt = child.stdin.take();
         let Some(child_out) = child.stdout.take() else {
             let _ = child.wait();
-            let _ = std::fs::remove_file(&hdr_file_path);
+            if let Some(ref p) = hdr_file_path {
+                let _ = std::fs::remove_file(p);
+            }
             return Err(io::Error::other("missing curl stdout"));
         };
         let mut waited = false;
@@ -1663,7 +1688,9 @@ impl WireProxyTransformer {
                 Err(e) => Err(e),
             }
         };
-        let _ = std::fs::remove_file(&hdr_file_path);
+        if let Some(ref p) = hdr_file_path {
+            let _ = std::fs::remove_file(p);
+        }
         wait_res?;
         relay_res
     }
