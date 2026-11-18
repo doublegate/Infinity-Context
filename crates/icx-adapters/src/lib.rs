@@ -2243,6 +2243,7 @@ unprefixed_secret = {unpref_sec}
             };
 
             total_raw_bytes += payload.len();
+            let prev_epochs = mmu.epochs.sealed_epoch_count();
             let res = mmu.ingest_payload_with_exit_code(
                 AgentKind::ClaudeCode,
                 &subject,
@@ -2257,7 +2258,6 @@ unprefixed_secret = {unpref_sec}
             if mmu.epochs.zone1_compressed_tokens() > 20_480 {
                 let _ = mmu.epochs.retarget_budget(&mut mmu.dag, 12_288);
             }
-            let prev_epochs = mmu.epochs.sealed_epoch_count();
             let win = mmu.assemble_prompt_window(AgentKind::ClaudeCode, "verify_passkey");
             let active_tokens =
                 ((win.total_cached_prefix_bytes + win.total_uncached_tail_bytes) / 4).max(1);

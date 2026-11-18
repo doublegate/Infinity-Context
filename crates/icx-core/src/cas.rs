@@ -179,6 +179,7 @@ impl CasStore {
 
     /// Ingests raw bytes into the Content-Addressed Store, returning `(ArtifactId, Blake3Digest)`.
     /// Inputs larger than `ICX_MAX_INGEST_BYTES` (`64 MiB`) are bounded to `ICX_MAX_INGEST_BYTES`.
+    /// Existing artifacts are never overwritten.
     pub fn put_bytes(&mut self, raw: &[u8]) -> (ArtifactId, Blake3Digest) {
         let raw = if raw.len() > ICX_MAX_INGEST_BYTES {
             &raw[..ICX_MAX_INGEST_BYTES]
@@ -186,10 +187,8 @@ impl CasStore {
             raw
         };
         let (artifact_id, full_digest) = ArtifactId::hash_bytes(raw);
-        if let Some(existing) = self.artifacts.get(&artifact_id)
-            && existing.full_digest == full_digest
-        {
-            return (artifact_id, full_digest);
+        if let Some(existing) = self.artifacts.get(&artifact_id) {
+            return (artifact_id, existing.full_digest);
         }
         let spans = chunk_bytes_with_lines(raw, self.chunk_config);
         self.put_bytes_precomputed(raw, artifact_id, full_digest, spans)
@@ -208,7 +207,9 @@ impl CasStore {
         for span in spans {
             let slice = &raw[span.offset..span.offset + span.len];
             let (cid, cdigest) = ArtifactId::hash_bytes(slice);
-            self.chunks.insert(cid, (cdigest, slice.to_vec()));
+            self.chunks
+                .entry(cid)
+                .or_insert_with(|| (cdigest, slice.to_vec()));
             chunk_ids.push(cid);
             line_index.push(LineIndexEntry {
                 start_line: span.start_line,
@@ -230,17 +231,14 @@ impl CasStore {
             }
         };
 
-        self.artifacts.insert(
-            artifact_id,
-            StoredArtifact {
-                id: artifact_id,
-                full_digest,
-                total_bytes: raw.len(),
-                total_lines,
-                chunk_ids,
-                line_index,
-            },
-        );
+        self.artifacts.entry(artifact_id).or_insert(StoredArtifact {
+            id: artifact_id,
+            full_digest,
+            total_bytes: raw.len(),
+            total_lines,
+            chunk_ids,
+            line_index,
+        });
 
         (artifact_id, full_digest)
     }
