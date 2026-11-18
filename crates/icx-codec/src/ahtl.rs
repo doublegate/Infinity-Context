@@ -168,15 +168,9 @@ impl AhtlClause {
 fn escape_clause_field(s: &str, is_key: bool) -> String {
     let starts_with_op = is_key && matches!(s.chars().next(), Some('⊕' | '⊖' | '¬' | '!' | '✓'));
     if !starts_with_op
-        && (!is_key || !s.contains(':'))
-        && !s.contains('%')
-        && !s.contains('⋮')
-        && !s.contains('⇒')
-        && !s.contains('↦')
-        && !s.contains('⟦')
-        && !s.contains('⟧')
-        && !s.contains('\n')
-        && !s.contains('\r')
+        && !s.chars().any(|c| {
+            matches!(c, '%' | '⋮' | '⇒' | '↦' | '⟦' | '⟧' | '\n' | '\r') || (is_key && c == ':')
+        })
     {
         return s.to_owned();
     }

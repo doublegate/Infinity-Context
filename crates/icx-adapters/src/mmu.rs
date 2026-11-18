@@ -436,25 +436,27 @@ impl InfinityContextMmu {
             .agent_reordered_occurrences
             .get(&(agent as u8))
             .and_then(|m| m.get(&occurrence_idx));
-        let idx_opt = agent_idx_opt.or_else(|| {
-            self.indexed_occurrences
-                .get(&occurrence_idx)
-                .filter(|e| e.0 == agent as u8)
-        });
-        let ro_opt = agent_ro_opt.or_else(|| {
-            self.reordered_occurrences
-                .get(&occurrence_idx)
-                .filter(|e| e.0 == agent as u8)
-        });
+        let legacy_idx_opt = self
+            .indexed_occurrences
+            .get(&occurrence_idx)
+            .filter(|e| e.0 == agent as u8);
+        let legacy_ro_opt = self
+            .reordered_occurrences
+            .get(&occurrence_idx)
+            .filter(|e| e.0 == agent as u8);
         if let Some(target_aid) = sanitized_aid
-            && let Some(matched) = [agent_idx_opt, agent_ro_opt, idx_opt, ro_opt]
+            && let Some(matched) = [agent_idx_opt, agent_ro_opt, legacy_idx_opt, legacy_ro_opt]
                 .into_iter()
                 .flatten()
                 .find(|entry| entry.2 == target_aid)
         {
             return Some(matched.clone());
         }
-        idx_opt.or(ro_opt).cloned()
+        agent_idx_opt
+            .or(agent_ro_opt)
+            .or(legacy_idx_opt)
+            .or(legacy_ro_opt)
+            .cloned()
     }
 
     /// Returns the occurrence record at `occurrence_idx` matching `sanitized_aid` from either

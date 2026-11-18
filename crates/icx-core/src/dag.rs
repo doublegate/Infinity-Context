@@ -861,12 +861,16 @@ impl MerkleContextDag {
 
     /// Cryptographically recomputes and verifies the domain-separated BLAKE3 Merkle digest of every
     /// node stored in `self.nodes` in $O(V + E)$ time using a memoized `verified` set, and when
-    /// `cas` is `Some(...)`, verifies that every `Turn`'s `raw_artifact` and every `ToolArtifact`'s
-    /// `chunk_ids` exist in `cas`, returning the total number of verified DAG nodes.
+    /// `cas` is `Some(...)`, first runs `cas.verify_all_integrity()` and then verifies that every
+    /// `Turn`'s `raw_artifact` and every `ToolArtifact`'s `chunk_ids` exist in `cas`, returning the
+    /// total number of verified DAG nodes.
     pub fn verify_all_merkle_integrity_with_cas(
         &self,
         cas: Option<&crate::cas::CasStore>,
     ) -> Result<usize, IcxError> {
+        if let Some(store) = cas {
+            store.verify_all_integrity()?;
+        }
         let mut verified = std::collections::BTreeSet::new();
         let mut ancestors = Vec::new();
         for (&id, node) in &self.nodes {

@@ -824,10 +824,15 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
     );
 
     let mut doctor_status = if shm_writable { "READY" } else { "DEGRADED" };
-    let mut doctor_err: Option<String> =
-        (!shm_writable).then(|| "icx doctor error: /dev/shm is absent or not writable".into());
+    let mut doctor_errs: Vec<String> = Vec::new();
+    if !shm_writable {
+        doctor_errs.push("icx doctor error: /dev/shm is absent or not writable".into());
+    }
     let ws_dir = resolve_workspace_dir(explicit_dir);
-    if ws_dir.exists() {
+    let is_initialized = ws_dir.join("cas_store.json").exists()
+        || ws_dir.join("mmu_state.json").exists()
+        || ws_dir.join("bitemporal_graph.json").exists();
+    if ws_dir.exists() && is_initialized {
         let mut mmu = InfinityContextMmu::default();
         // Note: `InfinityContextMmu::load_workspace_dir` acquires `cas_store.lock` + `WORKSPACE_IO_LOCK`
         // before reading `cas_store.json`, `bitemporal_graph.json`, and `mmu_state.json`.
@@ -851,26 +856,54 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
                             "Workspace Storage & Merkle-DAG",
                             ws_dir.display()
                         );
-                        doctor_err = Some(format!(
+                        doctor_errs.push(format!(
                             "icx doctor error: workspace {} is corrupt: {e}",
                             ws_dir.display()
                         ));
                     }
                 }
             }
+            Err(
+                e @ (icx_core::IcxError::IntegrityViolation(_)
+                | icx_core::IcxError::ArtifactNotFound(_)),
+            ) => {
+                doctor_status = "CORRUPT";
+                println!(
+                    "  [CORRUPT ] {:32} -> {} ({e})",
+                    "Workspace Storage & Merkle-DAG",
+                    ws_dir.display()
+                );
+                doctor_errs.push(format!(
+                    "icx doctor error: workspace {} is corrupt: {e}",
+                    ws_dir.display()
+                ));
+            }
             Err(e) => {
-                doctor_status = "DEGRADED";
+                if doctor_status != "CORRUPT" {
+                    doctor_status = "DEGRADED";
+                }
                 println!(
                     "  [WARNING ] {:32} -> {} ({e})",
                     "Workspace Storage & Merkle-DAG",
                     ws_dir.display()
                 );
-                doctor_err = Some(format!(
+                doctor_errs.push(format!(
                     "icx doctor error: workspace {} failed to load: {e}",
                     ws_dir.display()
                 ));
             }
         }
+    } else if ws_dir.exists() && explicit_dir.is_some() {
+        doctor_status = "DEGRADED";
+        println!(
+            "  [ABSENT  ] {:32} -> {} (uninitialized)",
+            "Workspace Storage & Merkle-DAG",
+            ws_dir.display()
+        );
+        doctor_errs.push(format!(
+            "icx doctor error: workspace directory {} is uninitialized",
+            ws_dir.display()
+        ));
     } else if explicit_dir.is_some() {
         doctor_status = "DEGRADED";
         println!(
@@ -878,15 +911,15 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
             "Workspace Storage & Merkle-DAG",
             ws_dir.display()
         );
-        doctor_err = Some(format!(
+        doctor_errs.push(format!(
             "icx doctor error: workspace directory {} does not exist",
             ws_dir.display()
         ));
     }
 
     println!("Doctor status: {doctor_status}");
-    if let Some(err) = doctor_err {
-        return Err(err);
+    if !doctor_errs.is_empty() {
+        return Err(doctor_errs.join("; "));
     }
     Ok(())
 }
@@ -922,7 +955,7 @@ fn run_benchmark() -> Result<(), String> {
     let t_bind = Instant::now();
     let mut hv_acc = hv_a;
     for shift in 0..1_000usize {
-        hv_acc = (hv_acc ^ hv_b).permute(shift & 63);
+        hv_acc = std::hint::black_box((hv_acc ^ hv_b).permute(shift & 63));
     }
     let bind_ns = (t_bind.elapsed().as_nanos() as f64) / 1_000.0;
     assert_ne!(hv_acc.popcount(), 0);
@@ -1621,7 +1654,24 @@ mod tests {
         )
         .unwrap();
 
-        // Test execute_hook fail-open behavior when workspace state file is corrupted
+        // Test execute_hook fail-open behavior when workspace state file is corrupted,
+        // and verify `icx doctor` reports uninitialized directory when no state files exist
+        let uninit_ws = tmp_dir.join("uninit_ws");
+        fs::create_dir_all(&uninit_ws).unwrap();
+        assert!(
+            dispatch_cli_args(
+                &[
+                    "icx".into(),
+                    "doctor".into(),
+                    "--dir".into(),
+                    uninit_ws.to_string_lossy().into_owned(),
+                ],
+                io::Cursor::new(""),
+            )
+            .is_err()
+        );
+        assert!(!uninit_ws.join("cas_store.lock").exists());
+
         let corrupt_ws = tmp_dir.join("corrupt_ws");
         fs::create_dir_all(&corrupt_ws).unwrap();
         fs::write(corrupt_ws.join("mmu_state.json"), "{corrupt_json").unwrap();

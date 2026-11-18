@@ -2474,6 +2474,32 @@ unprefixed_secret = {unpref_sec}
         );
         assert_eq!(deref_out, panic_log.trim_end_matches('\n'));
 
+        // Verify per-agent occurrence helpers (`has_indexed_occurrence_for`, `get_occurrence_record_for`)
+        let (occ_res, fresh) = claude_mmu.ingest_or_reuse_at_index(
+            0,
+            AgentKind::ClaudeCode,
+            "claude_occ_0",
+            "status:ready",
+            Some(0),
+            false,
+        );
+        assert!(fresh);
+        assert!(claude_mmu.has_indexed_occurrence_for(AgentKind::ClaudeCode, 0));
+        assert!(!claude_mmu.has_indexed_occurrence(0));
+        assert_eq!(
+            claude_mmu
+                .get_occurrence_record_for(AgentKind::ClaudeCode, 0, Some(occ_res.artifact_id))
+                .map(|r| r.2),
+            Some(occ_res.artifact_id)
+        );
+        assert_eq!(
+            claude_mmu
+                .get_occurrence_record_for(AgentKind::ClaudeCode, 0, None)
+                .map(|r| r.2),
+            Some(occ_res.artifact_id)
+        );
+        assert!(claude_mmu.get_occurrence_record(0, None).is_none());
+
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 }
