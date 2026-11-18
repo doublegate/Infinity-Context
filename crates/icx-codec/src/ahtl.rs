@@ -113,7 +113,7 @@ impl AhtlClause {
 
     /// Renders this clause into its compact AHTL token representation.
     pub fn render(&self) -> String {
-        let escaped_key = escape_clause_key(&self.key);
+        let escaped_key = escape_clause_key_with_op(&self.key, self.op == ClauseOp::Neutral);
         let base = match &self.value {
             Some(v) => format!(
                 "{}{}:{}",
@@ -163,20 +163,24 @@ impl AhtlClause {
     }
 }
 
-/// Bijectively escapes `%`, `⋮`, `⇒`, `↦`, `⟦`, `⟧`, `\n`, `\r` (and, when `is_key` is `true`,
-/// `:` plus leading clause operator glyphs `⊕`, `⊖`, `¬`, `!`, `✓`) inside a clause key or value.
-fn escape_clause_field(s: &str, is_key: bool) -> String {
-    let starts_with_op = is_key && matches!(s.chars().next(), Some('⊕' | '⊖' | '¬' | '!' | '✓'));
+/// Bijectively escapes `%`, `⊢`, `⋮`, `⇒`, `↦`, `⟦`, `⟧`, `\n`, `\r` (and, when `is_key` is
+/// `true`, `:` plus leading clause operator glyphs `⊕`, `⊖`, `¬`, `!`, `✓` when `escape_leading_op`
+/// is `true`) inside a clause key or value.
+fn escape_clause_field(s: &str, is_key: bool, escape_leading_op: bool) -> String {
+    let starts_with_op = is_key
+        && escape_leading_op
+        && matches!(s.chars().next(), Some('⊕' | '⊖' | '¬' | '!' | '✓'));
     if !starts_with_op
         && !s.chars().any(|c| {
-            matches!(c, '%' | '⋮' | '⇒' | '↦' | '⟦' | '⟧' | '\n' | '\r') || (is_key && c == ':')
+            matches!(c, '%' | '⊢' | '⋮' | '⇒' | '↦' | '⟦' | '⟧' | '\n' | '\r')
+                || (is_key && c == ':')
         })
     {
         return s.to_owned();
     }
     let mut out = String::with_capacity(s.len() + 16);
     for (idx, ch) in s.chars().enumerate() {
-        if is_key && idx == 0 {
+        if is_key && escape_leading_op && idx == 0 {
             match ch {
                 '⊕' => {
                     out.push_str("%E2%8A%95");
@@ -204,6 +208,7 @@ fn escape_clause_field(s: &str, is_key: bool) -> String {
         match ch {
             '%' => out.push_str("%25"),
             ':' if is_key => out.push_str("%3A"),
+            '⊢' => out.push_str("%E2%8A%A2"),
             '⋮' => out.push_str("%E2%8B%AE"),
             '⇒' => out.push_str("%E2%87%92"),
             '↦' => out.push_str("%E2%86%A6"),
@@ -218,16 +223,16 @@ fn escape_clause_field(s: &str, is_key: bool) -> String {
 }
 
 #[inline]
-fn escape_clause_key(s: &str) -> String {
-    escape_clause_field(s, true)
+fn escape_clause_key_with_op(s: &str, escape_leading_op: bool) -> String {
+    escape_clause_field(s, true, escape_leading_op)
 }
 
 #[inline]
 fn escape_clause_val(s: &str) -> String {
-    escape_clause_field(s, false)
+    escape_clause_field(s, false, false)
 }
 
-/// Single-pass left-to-right inverse of `escape_clause_key` and `escape_clause_val`.
+/// Single-pass left-to-right inverse of `escape_clause_key_with_op` and `escape_clause_val`.
 fn unescape_clause_field(s: &str) -> String {
     const ESCAPE_TABLE: &[(&str, char)] = &[
         ("%25", '%'),
@@ -237,6 +242,7 @@ fn unescape_clause_field(s: &str) -> String {
         ("%E2%8A%95", '⊕'),
         ("%E2%8A%96", '⊖'),
         ("%E2%9C%93", '✓'),
+        ("%E2%8A%A2", '⊢'),
         ("%E2%8B%AE", '⋮'),
         ("%E2%87%92", '⇒'),
         ("%E2%86%A6", '↦'),

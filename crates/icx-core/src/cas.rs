@@ -161,16 +161,20 @@ impl CasStore {
         Ok(self.put_bytes_precomputed(raw, artifact_id, full_digest, precomputed_chunks))
     }
 
-    /// Verifies the 256-bit cryptographic BLAKE3 digest of every stored chunk once and every
-    /// reassembled top-level artifact in `self`, returning the number of verified artifacts
-    /// (or failing closed with `Err(IcxError::IntegrityViolation)` on any mismatch).
+    /// Verifies the 256-bit cryptographic BLAKE3 digest and 64-bit `ArtifactId` key binding of
+    /// every stored chunk once and every reassembled top-level artifact in `self`, returning the
+    /// number of verified artifacts (or failing closed with `Err(IcxError::IntegrityViolation)` on
+    /// any mismatch).
     pub fn verify_all_integrity(&self) -> Result<usize, IcxError> {
         for (&cid, (cdigest, bytes)) in &self.chunks {
-            if Blake3Digest::hash(bytes) != *cdigest {
+            if Blake3Digest::hash(bytes) != *cdigest || ArtifactId::from_digest(cdigest) != cid {
                 return Err(IcxError::IntegrityViolation(cid));
             }
         }
         for (&aid, meta) in &self.artifacts {
+            if meta.id != aid || ArtifactId::from_digest(&meta.full_digest) != aid {
+                return Err(IcxError::IntegrityViolation(aid));
+            }
             let mut out = Vec::with_capacity(meta.total_bytes);
             for &cid in &meta.chunk_ids {
                 let (_, bytes) = self

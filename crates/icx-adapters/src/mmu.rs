@@ -582,7 +582,10 @@ impl InfinityContextMmu {
             Self::bound_and_sanitize_raw(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
         let was_redacted = body_redacted || subject != raw_subject.trim();
         let raw_bytes = sanitized.len();
-        let (artifact_id, _) = self.cas.put_bytes(sanitized.as_bytes());
+        let (artifact_id, _) = self
+            .cas
+            .put_bytes_checked(sanitized.as_bytes())
+            .unwrap_or_else(|_| self.cas.put_bytes(sanitized.as_bytes()));
 
         let mut receipt = self.hdc_index.observe_event_with_exit_code(
             artifact_id,

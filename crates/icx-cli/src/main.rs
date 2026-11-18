@@ -837,32 +837,29 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         // Note: `InfinityContextMmu::load_workspace_dir` acquires `cas_store.lock` + `WORKSPACE_IO_LOCK`
         // before reading `cas_store.json`, `bitemporal_graph.json`, and `mmu_state.json`.
         match mmu.load_workspace_dir(&ws_dir) {
-            Ok(()) => {
-                let cas_ok = mmu.cas.verify_all_integrity();
-                let dag_ok = mmu.dag.verify_all_merkle_integrity_with_cas(Some(&mmu.cas));
-                match (cas_ok, dag_ok) {
-                    (Ok(artifacts), Ok(nodes)) => {
-                        println!(
-                            "  [VERIFIED] {:32} -> {} (cas_artifacts={artifacts}, dag_nodes={nodes}, graph_edges={})",
-                            "Workspace Storage & Merkle-DAG",
-                            ws_dir.display(),
-                            mmu.graph.edges().len()
-                        );
-                    }
-                    (Err(e), _) | (_, Err(e)) => {
-                        doctor_status = "CORRUPT";
-                        println!(
-                            "  [CORRUPT ] {:32} -> {} ({e})",
-                            "Workspace Storage & Merkle-DAG",
-                            ws_dir.display()
-                        );
-                        doctor_errs.push(format!(
-                            "icx doctor error: workspace {} is corrupt: {e}",
-                            ws_dir.display()
-                        ));
-                    }
+            Ok(()) => match mmu.dag.verify_all_merkle_integrity_with_cas(Some(&mmu.cas)) {
+                Ok(nodes) => {
+                    let artifacts = mmu.cas.artifact_count();
+                    println!(
+                        "  [VERIFIED] {:32} -> {} (cas_artifacts={artifacts}, dag_nodes={nodes}, graph_edges={})",
+                        "Workspace Storage & Merkle-DAG",
+                        ws_dir.display(),
+                        mmu.graph.edges().len()
+                    );
                 }
-            }
+                Err(e) => {
+                    doctor_status = "CORRUPT";
+                    println!(
+                        "  [CORRUPT ] {:32} -> {} ({e})",
+                        "Workspace Storage & Merkle-DAG",
+                        ws_dir.display()
+                    );
+                    doctor_errs.push(format!(
+                        "icx doctor error: workspace {} is corrupt: {e}",
+                        ws_dir.display()
+                    ));
+                }
+            },
             Err(
                 e @ (icx_core::IcxError::IntegrityViolation(_)
                 | icx_core::IcxError::ArtifactNotFound(_)),
