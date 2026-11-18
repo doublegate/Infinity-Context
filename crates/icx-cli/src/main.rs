@@ -601,8 +601,13 @@ fn run_status(args: &[String]) {
     }
     let mut mmu = InfinityContextMmu::default();
     let ws_dir = resolve_workspace_dir(dir_str);
-    if ws_dir.exists() {
-        let _ = mmu.load_workspace_dir(&ws_dir);
+    if ws_dir.exists()
+        && let Err(err) = mmu.load_workspace_dir(&ws_dir)
+    {
+        eprintln!(
+            "icx status warning: failed to load workspace state from {}: {err}",
+            ws_dir.display()
+        );
     }
     let status = McpPagerServer::execute_icx_op(&serde_json::json!({"op": "status"}), &mut mmu);
     println!("{status}");

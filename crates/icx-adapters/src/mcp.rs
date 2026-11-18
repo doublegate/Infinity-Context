@@ -160,12 +160,22 @@ impl McpPagerServer {
                 "result": Self::tool_schema()
             }),
             "tools/call" => {
-                let args = req
+                let tool_name = req
                     .get("params")
-                    .and_then(|p| p.get("arguments"))
-                    .cloned()
-                    .unwrap_or_else(|| json!({}));
-                let result_text = Self::execute_icx_op(&args, mmu);
+                    .and_then(|p| p.get("name"))
+                    .and_then(Value::as_str);
+                let result_text = if let Some(name) = tool_name
+                    && !InfinityContextMmu::is_icx_pager_tool(name)
+                {
+                    format!("ERR: unknown tool `{name}` (expected `icx`)")
+                } else {
+                    let args = req
+                        .get("params")
+                        .and_then(|p| p.get("arguments"))
+                        .cloned()
+                        .unwrap_or_else(|| json!({}));
+                    Self::execute_icx_op(&args, mmu)
+                };
                 let is_err = result_text.starts_with("ERR:");
                 json!({
                     "jsonrpc": "2.0",

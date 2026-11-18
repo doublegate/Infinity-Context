@@ -584,14 +584,26 @@ impl WireProxyTransformer {
         let mut cur = root;
         for seg in path {
             cur = match cur {
-                Value::Object(map) => match map.get_mut(seg) {
-                    Some(v) => v,
-                    None => return,
-                },
-                Value::Array(arr) => match seg.parse::<usize>().ok().and_then(|i| arr.get_mut(i)) {
-                    Some(v) => v,
-                    None => return,
-                },
+                Value::Object(map) => {
+                    map.retain(|k, v| {
+                        k == seg
+                            || !v.is_string()
+                            || matches!(k.as_str(), "type" | "role" | "id" | "model" | "object")
+                    });
+                    match map.get_mut(seg) {
+                        Some(v) => v,
+                        None => return,
+                    }
+                }
+                Value::Array(arr) => {
+                    let Some(idx) = seg.parse::<usize>().ok().filter(|&i| i < arr.len()) else {
+                        return;
+                    };
+                    let kept = arr.swap_remove(idx);
+                    arr.clear();
+                    arr.push(kept);
+                    &mut arr[0]
+                }
                 _ => return,
             };
         }
@@ -894,6 +906,7 @@ impl WireProxyTransformer {
                 | "connection"
                 | "transfer-encoding"
                 | "accept-encoding"
+                | "expect"
                 | "x-icx-upstream"
                 | "x-icx-transform-only"
         )
@@ -909,7 +922,10 @@ impl WireProxyTransformer {
     ) -> io::Result<Option<Vec<u8>>> {
         let mut size_line = String::new();
         if reader.read_line(&mut size_line)? == 0 {
-            return Ok(None);
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "unexpected EOF before terminating 0-length HTTP chunk",
+            ));
         }
         let hex_part = size_line.trim().split(';').next().unwrap_or("").trim();
         let chunk_len = usize::from_str_radix(hex_part, 16)
@@ -933,7 +949,12 @@ impl WireProxyTransformer {
         let mut buf = vec![0u8; chunk_len];
         reader.read_exact(&mut buf)?;
         let mut crlf = String::new();
-        let _ = reader.read_line(&mut crlf);
+        if reader.read_line(&mut crlf)? == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "unexpected EOF reading HTTP chunk trailing CRLF",
+            ));
+        }
         Ok(Some(buf))
     }
 
@@ -1453,7 +1474,11 @@ impl WireProxyTransformer {
     ) -> io::Result<()> {
         let mut buf_reader = BufReader::new(reader);
         let mut request_line = String::new();
-        if buf_reader.read_line(&mut request_line)? == 0 {
+        if (&mut buf_reader)
+            .take(65_536)
+            .read_line(&mut request_line)?
+            == 0
+        {
             return Ok(());
         }
         let parts: Vec<&str> = request_line.split_whitespace().collect();
@@ -1466,9 +1491,9 @@ impl WireProxyTransformer {
         let mut client_headers: Vec<(String, String)> = Vec::new();
         let mut header_upstream: Option<String> = None;
         let mut transform_only = path.starts_with("/transform");
-        loop {
+        for _ in 0..256 {
             let mut header_line = String::new();
-            let n = buf_reader.read_line(&mut header_line)?;
+            let n = (&mut buf_reader).take(65_536).read_line(&mut header_line)?;
             if n == 0 || header_line == "\r\n" || header_line == "\n" {
                 break;
             }
