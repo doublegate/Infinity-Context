@@ -164,19 +164,18 @@ impl McpPagerServer {
                     .get("params")
                     .and_then(|p| p.get("name"))
                     .and_then(Value::as_str);
-                let result_text = if let Some(name) = tool_name
+                let (result_text, is_err) = if let Some(name) = tool_name
                     && !InfinityContextMmu::is_icx_pager_tool(name)
                 {
-                    format!("ERR: unknown tool `{name}` (expected `icx`)")
+                    (format!("ERR: unknown tool `{name}` (expected `icx`)"), true)
                 } else {
                     let args = req
                         .get("params")
                         .and_then(|p| p.get("arguments"))
                         .cloned()
                         .unwrap_or_else(|| json!({}));
-                    Self::execute_icx_op(&args, mmu)
+                    Self::execute_icx_op_checked(&args, mmu)
                 };
-                let is_err = result_text.starts_with("ERR:");
                 json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -199,26 +198,37 @@ impl McpPagerServer {
         }
     }
 
-    /// Executes the polymorphic `icx` tool operation.
+    /// Executes the polymorphic `icx` tool operation and returns the formatted output text.
     pub fn execute_icx_op(args: &Value, mmu: &mut InfinityContextMmu) -> String {
+        Self::execute_icx_op_checked(args, mmu).0
+    }
+
+    /// Executes the polymorphic `icx` tool operation and returns `(output_text, is_error)`.
+    pub fn execute_icx_op_checked(args: &Value, mmu: &mut InfinityContextMmu) -> (String, bool) {
         let op = args.get("op").and_then(Value::as_str).unwrap_or("status");
 
         match op {
             "deref" | "expand" => {
                 let Some(id_str) = args.get("id").and_then(Value::as_str) else {
-                    return "ERR: missing `id` (#icx:<16-hex> or #icx:<12-hex>)".into();
+                    return (
+                        "ERR: missing `id` (#icx:<16-hex> or #icx:<12-hex>)".into(),
+                        true,
+                    );
                 };
                 match mmu.resolve_handle(id_str) {
                     Ok(aid) => match mmu.deref_text(aid) {
-                        Ok(text) => Self::attach_provenance(text, aid, args, mmu),
-                        Err(e) => Self::format_error(&e),
+                        Ok(text) => (Self::attach_provenance(text, aid, args, mmu), false),
+                        Err(e) => (Self::format_error(&e), true),
                     },
-                    Err(e) => Self::format_error(&e),
+                    Err(e) => (Self::format_error(&e), true),
                 }
             }
             "slice" => {
                 let Some(id_str) = args.get("id").and_then(Value::as_str) else {
-                    return "ERR: missing `id` (#icx:<16-hex> or #icx:<12-hex>)".into();
+                    return (
+                        "ERR: missing `id` (#icx:<16-hex> or #icx:<12-hex>)".into(),
+                        true,
+                    );
                 };
                 let range = args
                     .get("range")
@@ -232,10 +242,10 @@ impl McpPagerServer {
 
                 match mmu.resolve_handle(id_str) {
                     Ok(aid) => match mmu.deref_lines(aid, range.0, range.1) {
-                        Ok(text) => Self::attach_provenance(text, aid, args, mmu),
-                        Err(e) => Self::format_error(&e),
+                        Ok(text) => (Self::attach_provenance(text, aid, args, mmu), false),
+                        Err(e) => (Self::format_error(&e), true),
                     },
-                    Err(e) => Self::format_error(&e),
+                    Err(e) => (Self::format_error(&e), true),
                 }
             }
             "grep" => {
@@ -252,17 +262,22 @@ impl McpPagerServer {
                 {
                     Some(s) => match mmu.resolve_handle(s) {
                         Ok(aid) => Some(aid),
-                        Err(e) => return Self::format_error(&e),
+                        Err(e) => return (Self::format_error(&e), true),
                     },
                     None => None,
                 };
                 match mmu.grep_cold(target_id, pattern, limit) {
-                    Ok(matches) => matches
-                        .iter()
-                        .map(|m| format!("{}#L{}: {}", m.artifact_id, m.line_number, m.line_text))
-                        .collect::<Vec<_>>()
-                        .join("\n"),
-                    Err(e) => Self::format_error(&e),
+                    Ok(matches) => (
+                        matches
+                            .iter()
+                            .map(|m| {
+                                format!("{}#L{}: {}", m.artifact_id, m.line_number, m.line_text)
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                        false,
+                    ),
+                    Err(e) => (Self::format_error(&e), true),
                 }
             }
             "recall" => {
@@ -272,23 +287,26 @@ impl McpPagerServer {
                     .and_then(Value::as_u64)
                     .unwrap_or(5)
                     .clamp(1, 50) as usize;
-                mmu.build_ephemeral_tail_slot(AgentKind::GenericMcp, q, top_k)
+                (
+                    mmu.build_ephemeral_tail_slot(AgentKind::GenericMcp, q, top_k),
+                    false,
+                )
             }
             "fold" => {
                 let summary = args.get("q").and_then(Value::as_str).unwrap_or("completed");
                 if let Some(label) = summary.strip_prefix("begin:") {
                     let clean_label = InfinityContextMmu::sanitize_hook_label(label, "branch");
                     mmu.epochs.begin_branch(&mut mmu.dag, &clean_label);
-                    format!("⟪ICX:BRANCH_OPENED│{clean_label}⟫")
+                    (format!("⟪ICX:BRANCH_OPENED│{clean_label}⟫"), false)
                 } else {
                     let clean_summary =
                         InfinityContextMmu::sanitize_hook_label(summary, "completed");
                     match mmu.epochs.fold_branch(&mut mmu.dag, &clean_summary) {
                         Ok(bid) => {
                             mmu.sync_global_dag_root();
-                            format!("⟪ICX:BRANCH_FOLDED│{bid}⟫")
+                            (format!("⟪ICX:BRANCH_FOLDED│{bid}⟫"), false)
                         }
-                        Err(e) => Self::format_error(&e),
+                        Err(e) => (Self::format_error(&e), true),
                     }
                 }
             }
@@ -306,11 +324,14 @@ impl McpPagerServer {
                         .filter(|s| !s.is_empty())
                         .unwrap_or("xagent_broadcast");
                     let res = mmu.ingest_payload(AgentKind::GenericMcp, subj, broadcast_q, false);
-                    return format!(
-                        "⟪ICX:XAGENT_PUBLISHED│{}│seq={}⟫\n{}",
-                        res.artifact_id,
-                        mmu.bus.write_sequence(),
-                        res.compressed_ahtl
+                    return (
+                        format!(
+                            "⟪ICX:XAGENT_PUBLISHED│{}│seq={}⟫\n{}",
+                            res.artifact_id,
+                            mmu.bus.write_sequence(),
+                            res.compressed_ahtl
+                        ),
+                        false,
                     );
                 }
                 let limit = args
@@ -319,13 +340,16 @@ impl McpPagerServer {
                     .unwrap_or(10)
                     .clamp(1, 256) as usize;
                 let events = mmu.bus.poll_workspace_since(0, mmu.workspace_hash);
-                events
-                    .iter()
-                    .rev()
-                    .take(limit)
-                    .map(|e| e.ahtl_packet.clone())
-                    .collect::<Vec<_>>()
-                    .join("\n")
+                (
+                    events
+                        .iter()
+                        .rev()
+                        .take(limit)
+                        .map(|e| e.ahtl_packet.clone())
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                    false,
+                )
             }
             _ => {
                 if let Some(id_str) = args
@@ -334,10 +358,28 @@ impl McpPagerServer {
                     .filter(|s| !s.trim().is_empty())
                 {
                     match mmu.resolve_handle(id_str) {
-                        Ok(aid) => format!(
-                            "⟪ICX:STATUS│id={aid}│redacted={}│cas_artifacts={}│unique_chunks={}│dag_nodes={}│sealed_epochs={}│hdc_entries={}│graph_edges={}│shm_seq={}⟫",
-                            mmu.is_artifact_redacted(aid),
+                        Ok(aid) => (
+                            format!(
+                                "⟪ICX:STATUS│id={aid}│redacted={}│cas_artifacts={}│unique_chunks={}│dag_nodes={}│sealed_epochs={}│hdc_entries={}│graph_edges={}│shm_seq={}⟫",
+                                mmu.is_artifact_redacted(aid),
+                                mmu.cas.artifact_count(),
+                                mmu.cas.unique_chunk_count(),
+                                mmu.dag.node_count(),
+                                mmu.epochs.sealed_epoch_count(),
+                                mmu.hdc_index.len(),
+                                mmu.graph.active_edge_count(),
+                                mmu.bus.write_sequence()
+                            ),
+                            false,
+                        ),
+                        Err(e) => (Self::format_error(&e), true),
+                    }
+                } else {
+                    (
+                        format!(
+                            "⟪ICX:STATUS│cas_artifacts={}│redacted_artifacts={}│unique_chunks={}│dag_nodes={}│sealed_epochs={}│hdc_entries={}│graph_edges={}│shm_seq={}⟫",
                             mmu.cas.artifact_count(),
+                            mmu.redacted_artifact_count(),
                             mmu.cas.unique_chunk_count(),
                             mmu.dag.node_count(),
                             mmu.epochs.sealed_epoch_count(),
@@ -345,19 +387,7 @@ impl McpPagerServer {
                             mmu.graph.active_edge_count(),
                             mmu.bus.write_sequence()
                         ),
-                        Err(e) => Self::format_error(&e),
-                    }
-                } else {
-                    format!(
-                        "⟪ICX:STATUS│cas_artifacts={}│redacted_artifacts={}│unique_chunks={}│dag_nodes={}│sealed_epochs={}│hdc_entries={}│graph_edges={}│shm_seq={}⟫",
-                        mmu.cas.artifact_count(),
-                        mmu.redacted_artifact_count(),
-                        mmu.cas.unique_chunk_count(),
-                        mmu.dag.node_count(),
-                        mmu.epochs.sealed_epoch_count(),
-                        mmu.hdc_index.len(),
-                        mmu.graph.active_edge_count(),
-                        mmu.bus.write_sequence()
+                        false,
                     )
                 }
             }

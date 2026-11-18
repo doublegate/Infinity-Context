@@ -704,13 +704,17 @@ impl WireProxyTransformer {
         }
     }
 
+    fn might_contain_deref_marker(s: &str) -> bool {
+        s.contains('⟪') || s.contains("\\u27ea") || s.contains("\\u27EA")
+    }
+
     fn transform_sse_line_stateful(
         line: &str,
         state: &mut SsePendingState,
         mmu: &InfinityContextMmu,
         allow_holdback: bool,
     ) -> String {
-        if state.is_empty() && !line.contains('⟪') {
+        if state.is_empty() && !Self::might_contain_deref_marker(line) {
             return line.to_owned();
         }
         if let Some(json_part) = line.strip_prefix("data: ") {
@@ -759,7 +763,7 @@ impl WireProxyTransformer {
     /// (including directives split across consecutive SSE delta events).
     #[must_use]
     pub fn transform_sse_chunk(sse_chunk: &str, mmu: &InfinityContextMmu) -> String {
-        if !sse_chunk.contains('⟪') {
+        if !Self::might_contain_deref_marker(sse_chunk) {
             return sse_chunk.to_owned();
         }
         let lines: Vec<&str> = sse_chunk.split('\n').collect();
@@ -794,36 +798,44 @@ impl WireProxyTransformer {
     /// body, preserving valid JSON string escaping when `body` is a JSON document.
     #[must_use]
     pub fn expand_json_or_text_body(body: &str, mmu: &InfinityContextMmu) -> String {
-        if !body.contains("⟪!icx:deref(") {
+        if !Self::might_contain_deref_marker(body) {
             return body.to_owned();
         }
         if let Ok(mut val) = serde_json::from_str::<Value>(body) {
-            Self::expand_deref_in_json_value(&mut val, mmu);
-            if let Ok(re_serialized) = serde_json::to_string(&val) {
+            if Self::expand_deref_in_json_value(&mut val, mmu)
+                && let Ok(re_serialized) = serde_json::to_string(&val)
+            {
                 return re_serialized;
             }
+            return body.to_owned();
         }
         Self::expand_inline_deref_directives(body, mmu)
     }
 
-    fn expand_deref_in_json_value(val: &mut Value, mmu: &InfinityContextMmu) {
+    fn expand_deref_in_json_value(val: &mut Value, mmu: &InfinityContextMmu) -> bool {
         match val {
             Value::String(s) => {
                 if s.contains("⟪!icx:deref(") {
                     *s = Self::expand_inline_deref_directives(s, mmu);
+                    return true;
                 }
+                false
             }
             Value::Array(arr) => {
+                let mut changed = false;
                 for item in arr {
-                    Self::expand_deref_in_json_value(item, mmu);
+                    changed |= Self::expand_deref_in_json_value(item, mmu);
                 }
+                changed
             }
             Value::Object(map) => {
+                let mut changed = false;
                 for v in map.values_mut() {
-                    Self::expand_deref_in_json_value(v, mmu);
+                    changed |= Self::expand_deref_in_json_value(v, mmu);
                 }
+                changed
             }
-            _ => {}
+            _ => false,
         }
     }
 
@@ -1491,10 +1503,12 @@ impl WireProxyTransformer {
         let mut client_headers: Vec<(String, String)> = Vec::new();
         let mut header_upstream: Option<String> = None;
         let mut transform_only = path.starts_with("/transform");
+        let mut headers_terminated = false;
         for _ in 0..256 {
             let mut header_line = String::new();
             let n = (&mut buf_reader).take(65_536).read_line(&mut header_line)?;
             if n == 0 || header_line == "\r\n" || header_line == "\n" {
+                headers_terminated = true;
                 break;
             }
             if let Some((k, v)) = header_line.split_once(':') {
@@ -1516,6 +1530,16 @@ impl WireProxyTransformer {
                 }
                 client_headers.push((k_trim.to_owned(), v_trim.to_owned()));
             }
+        }
+
+        if !headers_terminated {
+            let err_json = "{\"error\":\"request header fields too large\"}";
+            write!(
+                writer,
+                "HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{err_json}",
+                err_json.len(),
+            )?;
+            return writer.flush();
         }
 
         if payload_too_large {
