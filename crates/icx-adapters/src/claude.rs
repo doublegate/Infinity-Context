@@ -66,9 +66,15 @@ impl ClaudeCodeAdapter {
             }
             "PreToolUse" | "pre-tool-use" => {
                 let mut hso = json!({
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "allow"
+                    "hookEventName": "PreToolUse"
                 });
+                if let Some(dec) = payload
+                    .get("permissionDecision")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                {
+                    hso["permissionDecision"] = Value::String(dec.to_owned());
+                }
                 if let Some(updated) = payload.get("updatedInput").filter(|v| !v.is_null()) {
                     hso["updatedInput"] = updated.clone();
                 }
@@ -168,7 +174,7 @@ impl ClaudeCodeAdapter {
                     "systemMessage": win.deterministic_prefix()
                 })
             }
-            "Stop" | "stop" | "SessionEnd" | "session-end" => {
+            "SessionEnd" | "session-end" => {
                 mmu.fold_all_open_subagents(AgentKind::ClaudeCode, "session_end");
                 let _ = mmu.rollover_and_sync_dag_root();
                 json!({})

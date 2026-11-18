@@ -661,9 +661,10 @@ impl InfinityContextMmu {
 
     /// Acquires the shared workspace lock (`cas_store.lock` + in-process `WORKSPACE_IO_LOCK`)
     /// coordinating all workspace readers and writers across `icx-adapters` and `icx-cli`.
+    /// Returns `(lock_file, mem_guard)` so the OS file lock drops before the in-process mutex guard.
     pub fn acquire_workspace_lock(
         icx_dir: &Path,
-    ) -> Result<(std::sync::MutexGuard<'static, ()>, std::fs::File), IcxError> {
+    ) -> Result<(std::fs::File, std::sync::MutexGuard<'static, ()>), IcxError> {
         let mem_guard = WORKSPACE_IO_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -679,7 +680,7 @@ impl InfinityContextMmu {
         let lock_file = opts.open(&lock_path).map_err(Self::map_io_err)?;
         for _ in 0..5_000u32 {
             match lock_file.try_lock() {
-                Ok(()) => return Ok((mem_guard, lock_file)),
+                Ok(()) => return Ok((lock_file, mem_guard)),
                 Err(std::fs::TryLockError::WouldBlock) => {
                     std::thread::sleep(std::time::Duration::from_millis(1));
                 }

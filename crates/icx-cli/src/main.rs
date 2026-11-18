@@ -108,7 +108,7 @@ Subcommands:",
 
 fn acquire_workspace_lock(
     icx_dir: &Path,
-) -> Result<(std::sync::MutexGuard<'static, ()>, fs::File), String> {
+) -> Result<(fs::File, std::sync::MutexGuard<'static, ()>), String> {
     InfinityContextMmu::acquire_workspace_lock(icx_dir).map_err(|e| e.to_string())
 }
 

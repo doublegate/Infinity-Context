@@ -558,6 +558,11 @@ unprefixed_secret = {unpref_sec}
             )
             .unwrap();
         assert!(claude_pre.contains("cargo test --quiet"));
+        assert!(!claude_pre.contains("permissionDecision"));
+        let claude_pre_dec = claude_trait
+            .handle_hook_event("PreToolUse", r#"{"permissionDecision":"ask"}"#, &mut mmu)
+            .unwrap();
+        assert!(claude_pre_dec.contains("\"permissionDecision\":\"ask\""));
         let claude_sub_start = claude_trait
             .handle_hook_event("SubagentStart", r#"{"subagent_id":"sub-1"}"#, &mut mmu)
             .unwrap();

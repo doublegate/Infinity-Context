@@ -91,9 +91,9 @@ flowchart TD
 #### [MODIFY] [claude.rs](../../crates/icx-adapters/src/claude.rs)
 - Implement `AgentHookAdapter` for `ClaudeCodeAdapter`.
 - **`SessionStart`:** Prepend the canonical AHTL legend header `⟪ICX:LEGEND│Δ=code_mut│Ψ=tool_stub│Ω=invariant│Θ=xagent│Φ=folded_branch│↦=deref_via_icx_tool⟫` to `hookSpecificOutput.additionalContext` (`docs/agent-adapters-and-interception.md` §2.1 #1).
-- **`PreToolUse`:** Return `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}` (`cross-agent-hook-and-wire-matrix.md` §2).
+- **`PreToolUse`:** Return `{"hookSpecificOutput": {"hookEventName": "PreToolUse"}}` (passing through `permissionDecision` or `updatedInput` only when explicitly provided so normal harness permission prompts are preserved).
 - **`PostToolUse`:** Include `lines=1..<total_lines>` in the `⟪ICX:STUB│#icx:<hex>│raw=<N>B→<M>B│lines=1..<L>⟫` header (`docs/agent-adapters-and-interception.md` §2.1 #3), and populate `updatedMCPToolOutput` alongside `updatedToolOutput` when `tool_name.starts_with("mcp__")`.
-- **`SubagentStart` & `SubagentStop`:** On `SubagentStart`, open a sub-trajectory branch (`mmu.epochs.begin_branch(&mut mmu.dag, subagent_id)`) and return `hookSpecificOutput.additionalContext`; on `SubagentStop`, fold the active branch (`mmu.epochs.fold_branch`) and return `systemMessage` with the folded branch commit (`cross-agent-hook-and-wire-matrix.md` §2).
+- **`SubagentStart` & `SubagentStop`:** On `SubagentStart`, open an ID-keyed sub-trajectory scope (`mmu.begin_subagent(subagent_id)`) and return `hookSpecificOutput.additionalContext`; on `SubagentStop`, fold the subagent branch (`mmu.finish_subagent`) and return `systemMessage` with the folded branch commit (`cross-agent-hook-and-wire-matrix.md` §2).
 
 #### [MODIFY] [codex.rs](../../crates/icx-adapters/src/codex.rs)
 - Implement `AgentHookAdapter` for `CodexAdapter`.
