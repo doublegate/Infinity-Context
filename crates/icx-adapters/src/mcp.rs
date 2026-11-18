@@ -120,7 +120,7 @@ impl McpPagerServer {
         let id = req.get("id").cloned().unwrap_or(Value::Null);
         let method = req.get("method").and_then(Value::as_str).unwrap_or("");
 
-        if !has_id && method.starts_with("notifications/") {
+        if !has_id || method.starts_with("notifications/") {
             return Value::Null;
         }
 
@@ -137,7 +137,7 @@ impl McpPagerServer {
                     }
                 }
             }),
-            "notifications/initialized" | "ping" => json!({
+            "ping" => json!({
                 "jsonrpc": "2.0",
                 "id": id,
                 "result": {}

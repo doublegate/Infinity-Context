@@ -269,7 +269,16 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
     if ws_dir.exists()
         && let Ok(lock_guard) = InfinityContextMmu::acquire_workspace_lock(&ws_dir)
     {
-        let loaded_ok = mmu.load_workspace_dir_unlocked(&ws_dir).is_ok();
+        let loaded_ok = match mmu.load_workspace_dir_unlocked(&ws_dir) {
+            Ok(()) => true,
+            Err(err) => {
+                eprintln!(
+                    "icx hook warning: failed to load workspace state from {}: {err}",
+                    ws_dir.display()
+                );
+                false
+            }
+        };
         let out = dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)?;
         if loaded_ok {
             let _ = mmu.save_workspace_dir_unlocked(&ws_dir);
@@ -1091,8 +1100,8 @@ mod tests {
             .is_err()
         );
 
-        // Test mcp-serve dispatch with `--dir` and JSON-RPC 2.0 notification (`notifications/initialized`)
-        let mcp_input = "\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n";
+        // Test mcp-serve dispatch with `--dir` (including mutating request) and without `--dir`
+        let mcp_input = "\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"icx\",\"arguments\":{\"op\":\"fold\",\"id\":\"cli_fold\",\"q\":\"folded\"}}}\n";
         dispatch_cli_args(
             &[
                 "icx".into(),
@@ -1104,6 +1113,38 @@ mod tests {
             io::Cursor::new(mcp_input),
         )
         .unwrap();
+        dispatch_cli_args(
+            &[
+                "icx".into(),
+                "mcp-serve".into(),
+                "--dir".into(),
+                tmp_dir.join("no_such_ws").to_string_lossy().into_owned(),
+            ],
+            io::Cursor::new("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}\n"),
+        )
+        .unwrap();
+
+        // Test execute_hook fail-open behavior when workspace state file is corrupted
+        let corrupt_ws = tmp_dir.join("corrupt_ws");
+        fs::create_dir_all(&corrupt_ws).unwrap();
+        fs::write(corrupt_ws.join("mmu_state.json"), "{corrupt_json").unwrap();
+        let corrupt_hook_out = execute_hook(
+            &[
+                "--agent".into(),
+                "claude".into(),
+                "--event".into(),
+                "SessionStart".into(),
+                "--dir".into(),
+                corrupt_ws.to_string_lossy().into_owned(),
+            ],
+            "{}",
+        )
+        .unwrap();
+        assert!(corrupt_hook_out.contains("ICX:LEGEND"));
+        assert_eq!(
+            fs::read_to_string(corrupt_ws.join("mmu_state.json")).unwrap(),
+            "{corrupt_json"
+        );
 
         // Test acquire_workspace_lock error when cas_store.lock is a directory
         let lock_dir_ws = tmp_dir.join("bad_lock_ws");

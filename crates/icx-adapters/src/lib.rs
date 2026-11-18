@@ -2019,7 +2019,7 @@ unprefixed_secret = {unpref_sec}
             r#"{"jsonrpc":"2.0","id":11,"method":"notifications/initialized"}"#,
             &mut mmu,
         );
-        assert!(notif_with_id["result"].is_object());
+        assert!(notif_with_id.is_null());
 
         // Verify trailing blank lines (`\n\n`) do not falsely set `was_redacted = true`
         let (_, trailing_blank_redacted) =
@@ -2139,5 +2139,41 @@ unprefixed_secret = {unpref_sec}
             &mut mmu,
         );
         assert_eq!(err_call["result"]["isError"], true);
+
+        // 9. `McpPagerServer::is_mutating_request`, `bound_and_sanitize_raw` truncation, and `with_locked_workspace`
+        assert!(!McpPagerServer::is_mutating_request("{bad_json"));
+        assert!(!McpPagerServer::is_mutating_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#
+        ));
+        assert!(!McpPagerServer::is_mutating_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}"#
+        ));
+        assert!(McpPagerServer::is_mutating_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{"op":"fold","q":"s"}}}"#
+        ));
+        assert!(McpPagerServer::is_mutating_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{"op":"xagent","q":"msg"}}}"#
+        ));
+        assert!(!McpPagerServer::is_mutating_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{"op":"xagent"}}}"#
+        ));
+        assert!(!McpPagerServer::is_mutating_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{"op":"status"}}}"#
+        ));
+        let (_, truncated_was_redacted) =
+            InfinityContextMmu::bound_and_sanitize_raw("abcdef_oversized", 6);
+        assert!(truncated_was_redacted);
+
+        let lock_test_dir =
+            std::env::temp_dir().join(format!("icx_with_locked_ws_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&lock_test_dir);
+        mmu.save_workspace_dir(&lock_test_dir).unwrap();
+        let locked_count: usize = mmu
+            .with_locked_workspace::<usize, IcxError, _>(&lock_test_dir, |m| {
+                Ok(m.cas.artifact_count())
+            })
+            .unwrap();
+        assert!(locked_count >= 2);
+        let _ = std::fs::remove_dir_all(&lock_test_dir);
     }
 }

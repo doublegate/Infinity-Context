@@ -527,13 +527,14 @@ impl WireProxyTransformer {
         text: &str,
         pending: &mut String,
         mmu: &InfinityContextMmu,
+        allow_holdback: bool,
     ) -> String {
         let combined = if pending.is_empty() {
             text.to_owned()
         } else {
             format!("{}{text}", std::mem::take(pending))
         };
-        if let Some(split_idx) = Self::find_incomplete_deref_start(&combined) {
+        if allow_holdback && let Some(split_idx) = Self::find_incomplete_deref_start(&combined) {
             combined[split_idx..].clone_into(pending);
             Self::expand_inline_deref_directives(&combined[..split_idx], mmu)
         } else {
@@ -545,16 +546,17 @@ impl WireProxyTransformer {
         val: &mut Value,
         pending: &mut String,
         mmu: &InfinityContextMmu,
+        allow_holdback: bool,
     ) {
         match val {
             Value::String(s) => {
                 if !pending.is_empty() || s.contains('⟪') {
-                    *s = Self::expand_text_with_pending(s, pending, mmu);
+                    *s = Self::expand_text_with_pending(s, pending, mmu, allow_holdback);
                 }
             }
             Value::Array(arr) => {
                 for item in arr {
-                    Self::expand_deref_in_json_value_stateful(item, pending, mmu);
+                    Self::expand_deref_in_json_value_stateful(item, pending, mmu, allow_holdback);
                 }
             }
             Value::Object(map) => {
@@ -563,10 +565,10 @@ impl WireProxyTransformer {
                         let is_text_key =
                             matches!(k.as_str(), "text" | "content" | "delta" | "output");
                         if (is_text_key && !pending.is_empty()) || s.contains('⟪') {
-                            *s = Self::expand_text_with_pending(s, pending, mmu);
+                            *s = Self::expand_text_with_pending(s, pending, mmu, allow_holdback);
                         }
                     } else {
-                        Self::expand_deref_in_json_value_stateful(v, pending, mmu);
+                        Self::expand_deref_in_json_value_stateful(v, pending, mmu, allow_holdback);
                     }
                 }
             }
@@ -578,6 +580,7 @@ impl WireProxyTransformer {
         line: &str,
         pending: &mut String,
         mmu: &InfinityContextMmu,
+        allow_holdback: bool,
     ) -> String {
         if pending.is_empty() && !line.contains('⟪') {
             return line.to_owned();
@@ -588,14 +591,14 @@ impl WireProxyTransformer {
                 return line.to_owned();
             }
             if let Ok(mut val) = serde_json::from_str::<Value>(trimmed) {
-                Self::expand_deref_in_json_value_stateful(&mut val, pending, mmu);
+                Self::expand_deref_in_json_value_stateful(&mut val, pending, mmu, allow_holdback);
                 if let Ok(re_serialized) = serde_json::to_string(&val) {
                     return format!("data: {re_serialized}");
                 }
             }
             return format!(
                 "data: {}",
-                Self::expand_text_with_pending(json_part, pending, mmu)
+                Self::expand_text_with_pending(json_part, pending, mmu, allow_holdback)
             );
         }
         if !line.is_empty()
@@ -604,7 +607,7 @@ impl WireProxyTransformer {
             && !line.starts_with("retry:")
             && !line.starts_with(':')
         {
-            return Self::expand_text_with_pending(line, pending, mmu);
+            return Self::expand_text_with_pending(line, pending, mmu, allow_holdback);
         }
         line.to_owned()
     }
@@ -617,12 +620,32 @@ impl WireProxyTransformer {
         if !sse_chunk.contains('⟪') {
             return sse_chunk.to_owned();
         }
+        let lines: Vec<&str> = sse_chunk.split('\n').collect();
+        let mut out: Vec<String> = Vec::with_capacity(lines.len());
         let mut pending = String::new();
-        sse_chunk
-            .split('\n')
-            .map(|line| Self::transform_sse_line_stateful(line, &mut pending, mmu))
-            .collect::<Vec<_>>()
-            .join("\n")
+        let mut pending_origin_idx: Option<usize> = None;
+
+        for (idx, &line) in lines.iter().enumerate() {
+            let was_empty = pending.is_empty();
+            let transformed = Self::transform_sse_line_stateful(line, &mut pending, mmu, true);
+            if was_empty && !pending.is_empty() {
+                pending_origin_idx = Some(idx);
+            } else if pending.is_empty() {
+                pending_origin_idx = None;
+            }
+            out.push(transformed);
+        }
+
+        if !pending.is_empty()
+            && let Some(origin_idx) = pending_origin_idx
+        {
+            pending.clear();
+            for idx in origin_idx..lines.len() {
+                out[idx] = Self::transform_sse_line_stateful(lines[idx], &mut pending, mmu, false);
+            }
+        }
+
+        out.join("\n")
     }
 
     /// Expands any inline `⟪!icx:deref(#icx:...)⟫` directives in a JSON or plain-text response
@@ -746,7 +769,13 @@ impl WireProxyTransformer {
         )
     }
 
-    fn read_next_http_chunk<R: BufRead>(reader: &mut R) -> io::Result<Option<Vec<u8>>> {
+    const MAX_REQUEST_BODY_BYTES: usize = 16 * 1024 * 1024;
+    const MAX_UPSTREAM_RESPONSE_BYTES: usize = 64 * 1024 * 1024;
+
+    fn read_next_http_chunk<R: BufRead>(
+        reader: &mut R,
+        max_chunk_bytes: usize,
+    ) -> io::Result<Option<Vec<u8>>> {
         let mut size_line = String::new();
         if reader.read_line(&mut size_line)? == 0 {
             return Ok(None);
@@ -764,11 +793,30 @@ impl WireProxyTransformer {
             }
             return Ok(None);
         }
+        if chunk_len > max_chunk_bytes {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("HTTP chunk size {chunk_len} exceeds remaining budget {max_chunk_bytes}"),
+            ));
+        }
         let mut buf = vec![0u8; chunk_len];
         reader.read_exact(&mut buf)?;
         let mut crlf = String::new();
         let _ = reader.read_line(&mut crlf);
         Ok(Some(buf))
+    }
+
+    fn flush_sse_pending<W: Write>(sse_pending: &mut String, writer: &mut W) -> io::Result<()> {
+        if !sse_pending.is_empty() {
+            let residual = std::mem::take(sse_pending);
+            let fallback = json!({
+                "type": "content_block_delta",
+                "delta": { "type": "text_delta", "text": residual }
+            });
+            writeln!(writer, "data: {fallback}")?;
+            writer.flush()?;
+        }
+        Ok(())
     }
 
     fn relay_upstream_response<R: BufRead, W: Write>(
@@ -838,14 +886,23 @@ impl WireProxyTransformer {
             let mut sse_pending = String::new();
             if is_chunked {
                 let mut pending_bytes: Vec<u8> = Vec::new();
-                while let Some(chunk) = Self::read_next_http_chunk(up_reader)? {
+                while let Some(chunk) =
+                    Self::read_next_http_chunk(up_reader, Self::MAX_REQUEST_BODY_BYTES)?
+                {
                     pending_bytes.extend_from_slice(&chunk);
                     while let Some(nl_idx) = pending_bytes.iter().position(|&b| b == b'\n') {
                         let line_bytes = &pending_bytes[..nl_idx];
                         let trimmed_bytes = line_bytes.strip_suffix(b"\r").unwrap_or(line_bytes);
                         let raw_line = String::from_utf8_lossy(trimmed_bytes);
-                        let transformed_line =
-                            Self::transform_sse_line_stateful(&raw_line, &mut sse_pending, mmu);
+                        if raw_line.trim() == "data: [DONE]" {
+                            Self::flush_sse_pending(&mut sse_pending, writer)?;
+                        }
+                        let transformed_line = Self::transform_sse_line_stateful(
+                            &raw_line,
+                            &mut sse_pending,
+                            mmu,
+                            true,
+                        );
                         writeln!(writer, "{transformed_line}")?;
                         writer.flush()?;
                         pending_bytes.drain(..=nl_idx);
@@ -855,10 +912,11 @@ impl WireProxyTransformer {
                     let trimmed_bytes = pending_bytes.strip_suffix(b"\r").unwrap_or(&pending_bytes);
                     let raw_line = String::from_utf8_lossy(trimmed_bytes);
                     let transformed_line =
-                        Self::transform_sse_line_stateful(&raw_line, &mut sse_pending, mmu);
+                        Self::transform_sse_line_stateful(&raw_line, &mut sse_pending, mmu, false);
                     write!(writer, "{transformed_line}")?;
                     writer.flush()?;
                 }
+                Self::flush_sse_pending(&mut sse_pending, writer)?;
             } else {
                 let mut line = String::new();
                 loop {
@@ -868,8 +926,11 @@ impl WireProxyTransformer {
                     }
                     let has_nl = line.ends_with('\n');
                     let trimmed = line.trim_end_matches(&['\r', '\n'][..]);
+                    if trimmed.trim() == "data: [DONE]" {
+                        Self::flush_sse_pending(&mut sse_pending, writer)?;
+                    }
                     let transformed_line =
-                        Self::transform_sse_line_stateful(trimmed, &mut sse_pending, mmu);
+                        Self::transform_sse_line_stateful(trimmed, &mut sse_pending, mmu, has_nl);
                     if has_nl {
                         writeln!(writer, "{transformed_line}")?;
                     } else {
@@ -877,13 +938,17 @@ impl WireProxyTransformer {
                     }
                     writer.flush()?;
                 }
+                Self::flush_sse_pending(&mut sse_pending, writer)?;
             }
             return Ok(());
         }
 
         let mut resp_bytes = Vec::new();
         if is_chunked {
-            while let Some(chunk) = Self::read_next_http_chunk(up_reader)? {
+            while let Some(chunk) = Self::read_next_http_chunk(
+                up_reader,
+                Self::MAX_UPSTREAM_RESPONSE_BYTES.saturating_sub(resp_bytes.len()),
+            )? {
                 resp_bytes.extend_from_slice(&chunk);
             }
         } else {
@@ -905,6 +970,65 @@ impl WireProxyTransformer {
         writer.flush()
     }
 
+    fn join_upstream_path(base_path: &str, stripped_path: &str) -> String {
+        let bp = base_path.trim_end_matches('/');
+        if bp.is_empty()
+            || stripped_path == bp
+            || stripped_path
+                .strip_prefix(bp)
+                .is_some_and(|rest| rest.starts_with('/'))
+        {
+            stripped_path.to_owned()
+        } else {
+            format!("{bp}{stripped_path}")
+        }
+    }
+
+    fn parse_http_upstream_endpoint(
+        upstream_base: &str,
+        stripped_path: &str,
+    ) -> (String, String, String) {
+        let without_scheme = upstream_base
+            .trim()
+            .strip_prefix("http://")
+            .unwrap_or_else(|| upstream_base.trim());
+        let (authority, base_path) = match without_scheme.find('/') {
+            Some(idx) => (
+                &without_scheme[..idx],
+                without_scheme[idx..].trim_end_matches('/'),
+            ),
+            None => (without_scheme, ""),
+        };
+        let has_port = if authority.starts_with('[') {
+            authority.contains("]:")
+        } else {
+            authority.contains(':')
+        };
+        let connect_addr = if has_port {
+            authority.to_owned()
+        } else {
+            format!("{authority}:80")
+        };
+        let target_path = Self::join_upstream_path(base_path, stripped_path);
+        (connect_addr, authority.to_owned(), target_path)
+    }
+
+    fn join_upstream_base_and_route(upstream_base: &str, stripped_path: &str) -> String {
+        let trimmed = upstream_base.trim().trim_end_matches('/');
+        let after_scheme_idx = trimmed.find("://").map_or(0, |idx| idx + 3);
+        let (origin, base_path) = match trimmed[after_scheme_idx..].find('/') {
+            Some(rel_idx) => {
+                let split_idx = after_scheme_idx + rel_idx;
+                (&trimmed[..split_idx], &trimmed[split_idx..])
+            }
+            None => (trimmed, ""),
+        };
+        format!(
+            "{origin}{}",
+            Self::join_upstream_path(base_path, stripped_path)
+        )
+    }
+
     fn forward_http_upstream<W: Write>(
         method: &str,
         upstream_base: &str,
@@ -914,30 +1038,16 @@ impl WireProxyTransformer {
         mmu: &InfinityContextMmu,
         writer: &mut W,
     ) -> io::Result<()> {
-        let without_scheme = upstream_base
-            .trim()
-            .strip_prefix("http://")
-            .unwrap_or_else(|| upstream_base.trim());
-        let (host_port, base_path) = match without_scheme.find('/') {
-            Some(idx) => (
-                &without_scheme[..idx],
-                without_scheme[idx..].trim_end_matches('/'),
-            ),
-            None => (without_scheme, ""),
-        };
-        let target_path = if base_path.is_empty() || stripped_path.starts_with(base_path) {
-            stripped_path.to_owned()
-        } else {
-            format!("{base_path}{stripped_path}")
-        };
+        let (connect_addr, host_header, target_path) =
+            Self::parse_http_upstream_endpoint(upstream_base, stripped_path);
 
-        let mut upstream = TcpStream::connect(host_port)?;
+        let mut upstream = TcpStream::connect(&connect_addr)?;
         let _ = upstream.set_read_timeout(Some(Duration::from_secs(30)));
         let _ = upstream.set_write_timeout(Some(Duration::from_secs(30)));
 
         write!(
             upstream,
-            "{method} {target_path} HTTP/1.1\r\nHost: {host_port}\r\nAccept-Encoding: identity\r\n"
+            "{method} {target_path} HTTP/1.1\r\nHost: {host_header}\r\nAccept-Encoding: identity\r\n"
         )?;
         let mut has_content_type = false;
         for (k, v) in client_headers {
@@ -1001,7 +1111,7 @@ impl WireProxyTransformer {
         mmu: &InfinityContextMmu,
         writer: &mut W,
     ) -> io::Result<()> {
-        let full_url = format!("{}{stripped_path}", upstream_base.trim_end_matches('/'));
+        let full_url = Self::join_upstream_base_and_route(upstream_base, stripped_path);
         let mut cmd = Command::new("curl");
         cmd.args([
             "-sS",
@@ -1061,6 +1171,16 @@ impl WireProxyTransformer {
         relay_res
     }
 
+    fn write_payload_too_large<W: Write>(writer: &mut W) -> io::Result<()> {
+        let err_json = "{\"error\":\"request payload exceeds 16 MiB limit\"}";
+        write!(
+            writer,
+            "HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{err_json}",
+            err_json.len(),
+        )?;
+        writer.flush()
+    }
+
     /// Handles a single HTTP/1.1 request on `reader` and writes an HTTP/1.1 response to `writer`.
     /// Supports `/health` (`GET`), `/sse-expand` (`POST`), `/transform` (`POST` transform-only),
     /// and `/anthropic/v1/messages`, `/openai/v1/responses`, `/openai/v1/chat/completions`, and
@@ -1096,6 +1216,7 @@ impl WireProxyTransformer {
         let path = parts.get(1).copied().unwrap_or("/");
 
         let mut content_length = 0usize;
+        let mut payload_too_large = false;
         let mut req_is_chunked = false;
         let mut client_headers: Vec<(String, String)> = Vec::new();
         let mut header_upstream: Option<String> = None;
@@ -1110,7 +1231,10 @@ impl WireProxyTransformer {
                 let k_trim = k.trim();
                 let v_trim = v.trim();
                 if k_trim.eq_ignore_ascii_case("content-length") {
-                    content_length = v_trim.parse::<usize>().unwrap_or(0).min(16 * 1024 * 1024);
+                    match v_trim.parse::<usize>() {
+                        Ok(len) if len <= Self::MAX_REQUEST_BODY_BYTES => content_length = len,
+                        _ => payload_too_large = true,
+                    }
                 } else if k_trim.eq_ignore_ascii_case("transfer-encoding")
                     && v_trim.to_ascii_lowercase().contains("chunked")
                 {
@@ -1124,13 +1248,25 @@ impl WireProxyTransformer {
             }
         }
 
+        if payload_too_large {
+            return Self::write_payload_too_large(&mut writer);
+        }
+
         let mut body_bytes = Vec::new();
         if req_is_chunked {
-            while let Some(chunk) = Self::read_next_http_chunk(&mut buf_reader)? {
-                if body_bytes.len().saturating_add(chunk.len()) > 16 * 1024 * 1024 {
-                    break;
+            loop {
+                let remaining = Self::MAX_REQUEST_BODY_BYTES.saturating_sub(body_bytes.len());
+                match Self::read_next_http_chunk(&mut buf_reader, remaining) {
+                    Ok(Some(chunk)) => body_bytes.extend_from_slice(&chunk),
+                    Ok(None) => break,
+                    Err(err)
+                        if err.kind() == io::ErrorKind::InvalidData
+                            && err.to_string().contains("exceeds remaining budget") =>
+                    {
+                        return Self::write_payload_too_large(&mut writer);
+                    }
+                    Err(err) => return Err(err),
                 }
-                body_bytes.extend_from_slice(&chunk);
             }
         } else if content_length > 0 {
             body_bytes.resize(content_length, 0u8);
@@ -2555,5 +2691,88 @@ mod tests {
         assert!(split_events_out.contains("\"text\":\"Start \""));
         assert!(split_events_out.contains("\"text\":\"line_alpha end\""));
         assert!(split_events_out.contains("data: [DONE]"));
+
+        // Split mid-prefix (`⟪!icx:de` + `ref(...)⟫`), unclosed trailing prefix in `transform_sse_chunk`,
+        // and array-wrapped SSE JSON + plain `data:` SSE lines
+        let mid_prefix_sse = format!(
+            "data: [\"prefix ⟪!icx:de\"]\ndata: [\"ref({aid},1:1)⟫ done\"]\ndata: plain ⟪!icx:deref({aid},2:2)⟫\n"
+        );
+        let mid_prefix_out = WireProxyTransformer::transform_sse_chunk(&mid_prefix_sse, &mmu);
+        assert!(mid_prefix_out.contains("line_alpha done"));
+        assert!(mid_prefix_out.contains("data: plain line_beta"));
+
+        let unclosed_sse = "data: {\"delta\":{\"text\":\"hello ⟪!icx:deref(#icx:1234\"}}\n";
+        let unclosed_out = WireProxyTransformer::transform_sse_chunk(unclosed_sse, &mmu);
+        assert!(unclosed_out.contains("hello ⟪!icx:deref(#icx:1234"));
+
+        // Relay upstream with `100 Continue`, `200 Connection established`, and unclosed SSE pending before `[DONE]`
+        let mut continue_sse_out = Vec::new();
+        let mut continue_sse_in = io::Cursor::new(
+            "HTTP/1.1 200 Connection established\r\n\r\nHTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: {\"delta\":{\"text\":\"tail ⟪!icx:deref(\"}}\ndata: [DONE]\n",
+        );
+        WireProxyTransformer::relay_upstream_response(
+            &mut continue_sse_in,
+            true,
+            &mmu,
+            &mut continue_sse_out,
+        )
+        .unwrap();
+        let continue_sse_str = String::from_utf8_lossy(&continue_sse_out);
+        assert!(continue_sse_str.contains("⟪!icx:deref("));
+        assert!(continue_sse_str.contains("data: [DONE]"));
+
+        // Endpoint parsing (port 80 default, IPv6, explicit port) and base-path deduplication
+        let (addr1, host1, path1) = WireProxyTransformer::parse_http_upstream_endpoint(
+            "http://localhost/v1",
+            "/v1/responses",
+        );
+        assert_eq!(addr1, "localhost:80");
+        assert_eq!(host1, "localhost");
+        assert_eq!(path1, "/v1/responses");
+        let (addr2, _, path2) =
+            WireProxyTransformer::parse_http_upstream_endpoint("http://[::1]/v1", "/v1beta/models");
+        assert_eq!(addr2, "[::1]:80");
+        assert_eq!(path2, "/v1/v1beta/models");
+        let (addr3, _, _) =
+            WireProxyTransformer::parse_http_upstream_endpoint("http://[::1]:8080", "/v1/messages");
+        assert_eq!(addr3, "[::1]:8080");
+        assert_eq!(
+            WireProxyTransformer::join_upstream_base_and_route(
+                "https://gateway.example/v1",
+                "/v1/responses"
+            ),
+            "https://gateway.example/v1/responses"
+        );
+        assert_eq!(
+            WireProxyTransformer::join_upstream_base_and_route(
+                "https://gateway.example/v1",
+                "/v1beta/models"
+            ),
+            "https://gateway.example/v1/v1beta/models"
+        );
+
+        // HTTP 413 Payload Too Large on oversized `Content-Length` and oversized HTTP chunk header
+        let mut too_large_cl_out = Vec::new();
+        let too_large_cl_req =
+            "POST /anthropic/v1/messages HTTP/1.1\r\nContent-Length: 99999999\r\n\r\n{}";
+        WireProxyTransformer::handle_http_request(
+            io::Cursor::new(too_large_cl_req.as_bytes()),
+            &mut too_large_cl_out,
+            None,
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(String::from_utf8_lossy(&too_large_cl_out).contains("413 Payload Too Large"));
+
+        let mut too_large_chunk_out = Vec::new();
+        let too_large_chunk_req = "POST /anthropic/v1/messages HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\nffffffffffffffff\r\n";
+        WireProxyTransformer::handle_http_request(
+            io::Cursor::new(too_large_chunk_req.as_bytes()),
+            &mut too_large_chunk_out,
+            None,
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(String::from_utf8_lossy(&too_large_chunk_out).contains("413 Payload Too Large"));
     }
 }
