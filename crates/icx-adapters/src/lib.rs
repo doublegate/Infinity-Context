@@ -1495,14 +1495,17 @@ unprefixed_secret = {unpref_sec}
 
         // Verify a preserved mixed image/text user message advances `occurrence_idx` consistently
         // between `on_turn_complete` and `select_context` so a historical tool failure after the
-        // multimodal turn does not overwrite a protected tail passing turn
+        // multimodal turn does not overwrite a protected tail passing turn, AND verify that
+        // feeding the selected/compressed output back into `on_turn_complete` when a preserved
+        // multimodal failure precedes a folded passing result does NOT re-ingest the retained
+        // failure at the passing result's slot.
         let mut mm_occ_mmu = InfinityContextMmu::default();
         let mm_occ_payload = serde_json::json!({
             "messages": [
                 {"role": "system", "content": "sys"},
-                {"role": "user", "content": [{"type": "text", "text": "inspect image"}, {"type": "image_url", "image_url": {"url": "https://example.com/i.png"}}]},
-                {"role": "tool", "name": "cargo_test", "content": fail_out},
-                {"role": "tool", "name": "cargo_test", "content": pass_out}
+                {"role": "tool", "name": "cargo_test", "content": [{"type": "text", "text": fail_out}, {"type": "image_url", "image_url": {"url": "https://example.com/i.png"}}]},
+                {"role": "tool", "name": "cargo_test", "content": pass_out},
+                {"role": "user", "content": "tail"}
             ],
             "protect_first_n": 1,
             "protect_last_n": 1
@@ -1510,14 +1513,60 @@ unprefixed_secret = {unpref_sec}
         .to_string();
         let _ = HermesAdapter::handle_hook("on_turn_complete", &mm_occ_payload, &mut mm_occ_mmu)
             .unwrap();
-        let _ =
+        let mm_sel_out =
             HermesAdapter::handle_hook("select_context", &mm_occ_payload, &mut mm_occ_mmu).unwrap();
+        let mm_turn_after_sel =
+            HermesAdapter::handle_hook("on_turn_complete", &mm_sel_out, &mut mm_occ_mmu).unwrap();
+        assert!(mm_turn_after_sel.contains(r#""ingested_count":0"#));
         assert!(mm_occ_mmu.graph.edges().iter().any(|e| {
             e.source_entity == "cargo_test"
                 && e.relation == "status"
                 && e.target_entity == "PASS"
                 && e.t_invalid.is_none()
         }));
+        // Also verify stubbed sibling tool responses inside a preserved `assistant` `tool_calls`
+        // group are retained in both `select_context` and `compress` after `prune_tool_results_only`
+        let stub_group_req = serde_json::json!({
+            "messages": [
+                {"role": "system", "content": "head"},
+                {"role": "assistant", "content": null, "tool_calls": [{"id": "c_big"}, {"id": "c_icx"}]},
+                {"role": "tool", "tool_call_id": "c_big", "name": "bash", "content": "bulky_line\n".repeat(80)},
+                {"role": "tool", "tool_call_id": "c_icx", "name": "mcp__icx__icx", "content": "pager_page"},
+                {"role": "user", "content": "middle_foldable"},
+                {"role": "user", "content": "tail"}
+            ],
+            "protect_first_n": 1,
+            "protect_last_n": 1
+        })
+        .to_string();
+        let pruned_group_json =
+            HermesAdapter::handle_hook("prune_tool_results_only", &stub_group_req, &mut mm_occ_mmu)
+                .unwrap();
+        let mut pruned_group_val: Value = serde_json::from_str(&pruned_group_json).unwrap();
+        pruned_group_val["protect_first_n"] = serde_json::json!(1);
+        pruned_group_val["protect_last_n"] = serde_json::json!(1);
+        let pruned_group_req = pruned_group_val.to_string();
+        let sel_after_prune =
+            HermesAdapter::handle_hook("select_context", &pruned_group_req, &mut mm_occ_mmu)
+                .unwrap();
+        let sel_after_prune_val: Value = serde_json::from_str(&sel_after_prune).unwrap();
+        assert!(
+            sel_after_prune_val["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|m| m["tool_call_id"] == "c_big")
+        );
+        let comp_after_prune =
+            HermesAdapter::handle_hook("compress", &pruned_group_req, &mut mm_occ_mmu).unwrap();
+        let comp_after_prune_val: Value = serde_json::from_str(&comp_after_prune).unwrap();
+        assert!(
+            comp_after_prune_val["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|m| m["tool_call_id"] == "c_big")
+        );
 
         // Verify `read_transcript_step` rejects directories, handles targeted step with empty
         // output, and recovers a trailing record > 256 KiB

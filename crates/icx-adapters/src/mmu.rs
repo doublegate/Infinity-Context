@@ -39,7 +39,8 @@ pub struct IngestResult {
 
 type SubagentStep = (String, ArtifactId, String, f32, usize);
 type HdcEventRecord = (ArtifactId, String, Option<i32>, bool);
-type IndexedOccurrenceRecord = (u8, String, ArtifactId, Option<i32>, bool, IngestResult);
+/// Indexed occurrence record stored per conversation slot `(agent_u8, clean_subject, artifact_id, exit_code, force_anomaly, ingest_result)`.
+pub type IndexedOccurrenceRecord = (u8, String, ArtifactId, Option<i32>, bool, IngestResult);
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct PersistedMmuState {
@@ -316,6 +317,30 @@ impl InfinityContextMmu {
     #[inline]
     pub fn has_indexed_occurrence(&self, occurrence_idx: usize) -> bool {
         self.indexed_occurrences.contains_key(&occurrence_idx)
+    }
+
+    /// Returns a cloned snapshot of `(occurrence_idx, entry)` pairs from `self.indexed_occurrences`
+    /// in `[start_idx, end_idx)` for re-binding occurrence indices when folded AHTL frames and
+    /// preserved verbatim messages are reordered during context selection/compaction.
+    #[must_use]
+    pub fn snapshot_indexed_occurrences_range(
+        &self,
+        start_idx: usize,
+        end_idx: usize,
+    ) -> Vec<(usize, IndexedOccurrenceRecord)> {
+        self.indexed_occurrences
+            .range(start_idx..end_idx)
+            .map(|(&idx, entry)| (idx, entry.clone()))
+            .collect()
+    }
+
+    /// Replaces `self.indexed_occurrences` at `occurrence_idx` with `entry`.
+    pub fn set_indexed_occurrence(
+        &mut self,
+        occurrence_idx: usize,
+        entry: IndexedOccurrenceRecord,
+    ) {
+        self.indexed_occurrences.insert(occurrence_idx, entry);
     }
 
     /// Records a carried-forward synthetic/stubbed AHTL frame at `occurrence_idx` so subsequent

@@ -259,6 +259,108 @@ impl HermesAdapter {
         preserve
     }
 
+    /// Rebinds `mmu.indexed_occurrences` in `[mid_start_occ, mid_end_occ)` when folded AHTL lines
+    /// and preserved verbatim messages are emitted as `[icx_cache_epoch (folded), preserved_msgs...]`.
+    fn rebind_reordered_occurrences(
+        mmu: &mut InfinityContextMmu,
+        mid_start_occ: usize,
+        mid_end_occ: usize,
+        folded_occ_indices: &[usize],
+        preserved_occ_indices: &[usize],
+    ) {
+        if preserved_occ_indices.is_empty() || folded_occ_indices.is_empty() {
+            return;
+        }
+        let snapshot: std::collections::BTreeMap<usize, crate::mmu::IndexedOccurrenceRecord> = mmu
+            .snapshot_indexed_occurrences_range(mid_start_occ, mid_end_occ)
+            .into_iter()
+            .collect();
+        for (new_idx, &old_idx) in (mid_start_occ..).zip(
+            folded_occ_indices
+                .iter()
+                .chain(preserved_occ_indices.iter()),
+        ) {
+            mmu.set_indexed_occurrence(new_idx, snapshot[&old_idx].clone());
+        }
+    }
+
+    fn process_body_slice<'a>(
+        slice: &[(&'a HermesMessage, Option<&'a Value>)],
+        preserve_mask: &[bool],
+        occurrence_idx: &mut usize,
+        mmu: &mut InfinityContextMmu,
+    ) -> (Vec<String>, Vec<HermesMessage>, Vec<Value>) {
+        let start_occ = *occurrence_idx;
+        let mut ahtl_frames = Vec::new();
+        let mut folded_occ_indices = Vec::new();
+        let mut preserved_occ_indices = Vec::new();
+        let mut preserved_msgs = Vec::new();
+        let mut preserved_vals = Vec::new();
+
+        for (&(msg, raw_opt), &keep_verbatim) in slice.iter().zip(preserve_mask.iter()) {
+            if Self::is_synthetic_cache_epoch(msg)
+                || (Self::is_stubbed_message(msg) && !keep_verbatim)
+            {
+                let start = *occurrence_idx;
+                Self::extract_embedded_ahtl_lines(msg, &mut ahtl_frames, occurrence_idx, mmu);
+                folded_occ_indices.extend(start..*occurrence_idx);
+                continue;
+            }
+            if keep_verbatim {
+                if Self::is_stubbed_message(msg) {
+                    let start = *occurrence_idx;
+                    let mut stub_sink = Vec::new();
+                    Self::extract_embedded_ahtl_lines(msg, &mut stub_sink, occurrence_idx, mmu);
+                    preserved_occ_indices.extend(start..*occurrence_idx);
+                } else {
+                    let subj = Self::message_subject(msg);
+                    if !InfinityContextMmu::is_icx_pager_tool(subj)
+                        && !msg.content.trim().is_empty()
+                    {
+                        let _ = mmu.ingest_or_reuse_at_index(
+                            *occurrence_idx,
+                            AgentKind::Hermes,
+                            subj,
+                            &msg.content,
+                            None,
+                            false,
+                        );
+                        preserved_occ_indices.push(*occurrence_idx);
+                        *occurrence_idx += 1;
+                    }
+                }
+                preserved_msgs.push(msg.clone());
+                if let Some(r) = raw_opt {
+                    preserved_vals.push(r.clone());
+                }
+                continue;
+            }
+            if msg.content.trim().is_empty() {
+                continue;
+            }
+            let subj = Self::message_subject(msg);
+            let (res, _) = mmu.ingest_or_reuse_at_index(
+                *occurrence_idx,
+                AgentKind::Hermes,
+                subj,
+                &msg.content,
+                None,
+                false,
+            );
+            folded_occ_indices.push(*occurrence_idx);
+            *occurrence_idx += 1;
+            ahtl_frames.push(res.compressed_ahtl);
+        }
+        Self::rebind_reordered_occurrences(
+            mmu,
+            start_occ,
+            *occurrence_idx,
+            &folded_occ_indices,
+            &preserved_occ_indices,
+        );
+        (ahtl_frames, preserved_msgs, preserved_vals)
+    }
+
     fn select_context_core(
         request_messages: &[HermesMessage],
         raw_messages: Option<&[Value]>,
@@ -327,49 +429,8 @@ impl HermesAdapter {
             .first()
             .is_some_and(|(m, _)| m.role == "tool" || m.tool_call_id.is_some());
         let preserve_mask = Self::build_preserve_mask(mid_slice, tail_starts_with_tool);
-
-        let mut middle_ahtl = Vec::new();
-        let mut preserved_msgs = Vec::new();
-        let mut preserved_vals = Vec::new();
-        for (&(msg, raw_opt), &keep_verbatim) in mid_slice.iter().zip(preserve_mask.iter()) {
-            if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
-                Self::extract_embedded_ahtl_lines(msg, &mut middle_ahtl, &mut occurrence_idx, mmu);
-                continue;
-            }
-            if keep_verbatim {
-                let subj = Self::message_subject(msg);
-                if !InfinityContextMmu::is_icx_pager_tool(subj) && !msg.content.trim().is_empty() {
-                    let _ = mmu.ingest_or_reuse_at_index(
-                        occurrence_idx,
-                        AgentKind::Hermes,
-                        subj,
-                        &msg.content,
-                        None,
-                        false,
-                    );
-                    occurrence_idx += 1;
-                }
-                preserved_msgs.push(msg.clone());
-                if let Some(r) = raw_opt {
-                    preserved_vals.push(r.clone());
-                }
-                continue;
-            }
-            if msg.content.trim().is_empty() {
-                continue;
-            }
-            let subj = Self::message_subject(msg);
-            let (res, _) = mmu.ingest_or_reuse_at_index(
-                occurrence_idx,
-                AgentKind::Hermes,
-                subj,
-                &msg.content,
-                None,
-                false,
-            );
-            occurrence_idx += 1;
-            middle_ahtl.push(res.compressed_ahtl);
-        }
+        let (middle_ahtl, preserved_msgs, preserved_vals) =
+            Self::process_body_slice(mid_slice, &preserve_mask, &mut occurrence_idx, mmu);
 
         if !middle_ahtl.is_empty() {
             let epoch_content = format!(
@@ -534,49 +595,8 @@ impl HermesAdapter {
 
         let mut occurrence_idx: usize = head_msgs.iter().map(Self::count_occurrence_advance).sum();
         let preserve_mask = Self::build_preserve_mask(&body_slice, false);
-        let mut ahtl_frames = Vec::new();
-        let mut preserved_msgs = Vec::new();
-        let mut preserved_vals = Vec::new();
-
-        for (&(msg, raw_opt), &keep_verbatim) in body_slice.iter().zip(preserve_mask.iter()) {
-            if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
-                Self::extract_embedded_ahtl_lines(msg, &mut ahtl_frames, &mut occurrence_idx, mmu);
-                continue;
-            }
-            if keep_verbatim {
-                let subj = Self::message_subject(msg);
-                if !InfinityContextMmu::is_icx_pager_tool(subj) && !msg.content.trim().is_empty() {
-                    let _ = mmu.ingest_or_reuse_at_index(
-                        occurrence_idx,
-                        AgentKind::Hermes,
-                        subj,
-                        &msg.content,
-                        None,
-                        false,
-                    );
-                    occurrence_idx += 1;
-                }
-                preserved_msgs.push(msg.clone());
-                if let Some(r) = raw_opt {
-                    preserved_vals.push(r.clone());
-                }
-                continue;
-            }
-            if msg.content.trim().is_empty() {
-                continue;
-            }
-            let subj = Self::message_subject(msg);
-            let (res, _) = mmu.ingest_or_reuse_at_index(
-                occurrence_idx,
-                AgentKind::Hermes,
-                subj,
-                &msg.content,
-                None,
-                false,
-            );
-            occurrence_idx += 1;
-            ahtl_frames.push(res.compressed_ahtl);
-        }
+        let (ahtl_frames, preserved_msgs, preserved_vals) =
+            Self::process_body_slice(&body_slice, &preserve_mask, &mut occurrence_idx, mmu);
 
         let ep_id = mmu.force_rollover_and_sync_dag_root();
         let ep_handle = ep_id
