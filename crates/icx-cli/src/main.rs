@@ -106,49 +106,10 @@ Subcommands:",
     );
 }
 
-struct WorkspaceLockGuard {
-    file: fs::File,
-}
-
-impl Drop for WorkspaceLockGuard {
-    fn drop(&mut self) {
-        let _ = self.file.unlock();
-    }
-}
-
-fn acquire_workspace_lock(icx_dir: &Path) -> Result<WorkspaceLockGuard, String> {
-    fs::create_dir_all(icx_dir).map_err(|e| e.to_string())?;
-    let lock_path = icx_dir.join("cas_store.lock");
-    let file = fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(&lock_path)
-        .map_err(|e| {
-            format!(
-                "failed to open workspace lock `{}`: {e}",
-                lock_path.display()
-            )
-        })?;
-    for _attempt in 0..5_000u32 {
-        match file.try_lock() {
-            Ok(()) => return Ok(WorkspaceLockGuard { file }),
-            Err(fs::TryLockError::WouldBlock) => {
-                std::thread::sleep(std::time::Duration::from_millis(1));
-            }
-            Err(fs::TryLockError::Error(e)) => {
-                return Err(format!(
-                    "failed to acquire workspace lock `{}`: {e}",
-                    lock_path.display()
-                ));
-            }
-        }
-    }
-    Err(format!(
-        "timed out acquiring workspace lock `{}`",
-        lock_path.display()
-    ))
+fn acquire_workspace_lock(
+    icx_dir: &Path,
+) -> Result<(fs::File, std::sync::MutexGuard<'static, ()>), String> {
+    InfinityContextMmu::acquire_workspace_lock(icx_dir).map_err(|e| e.to_string())
 }
 
 fn init_workspace_dir(icx_dir: &Path) -> Result<(), String> {

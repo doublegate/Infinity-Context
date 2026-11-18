@@ -181,14 +181,14 @@ impl DagNode {
 }
 
 /// Active sub-trajectory branch state before folding.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct OpenBranch {
     label: String,
     turn_ids: Vec<ArtifactId>,
 }
 
 /// Hierarchical Lossless Context Management (`LCM`) Merkle-DAG.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct MerkleContextDag {
     nodes: BTreeMap<ArtifactId, DagNode>,
     trunk_order: Vec<ArtifactId>,

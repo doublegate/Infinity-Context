@@ -93,7 +93,7 @@ impl AssembledWindow {
 }
 
 /// Manages the 4-zone Prefix-Cache-Locked Virtual Context Window.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CacheEpochController {
     config: EpochControllerConfig,
     pinned_head: String,
