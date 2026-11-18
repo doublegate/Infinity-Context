@@ -8,15 +8,15 @@
 
 | Operation | Hot-Path Target (p99) | Hard Ceiling | Verification Benchmark |
 | :--- | ---: | ---: | :--- |
-| **HDC 10,240-bit Bind (`^`) + Permute** | `< 25 ns` | `100 ns` | `benches/hdc_bench.rs` |
-| **HDC Hamming Scan (10,000 nodes)** | `< 25 µs` | `100 µs` | `benches/hdc_bench.rs` |
-| **Fractal IFS Trajectory Suffix Match** | `< 15 ns` | `50 ns` | `benches/fractal_bench.rs` |
-| **AHTL Structural Skeletonize + Encode (64 KB log)** | `< 180 µs` | `400 µs` | `benches/codec_bench.rs` |
+| **HDC 10,240-bit Bind (`^`) + Permute** | `< 25 ns` | `100 ns` | `icx benchmark` |
+| **HDC Hamming Scan (1,000 nodes)** | `< 25 µs` | `150 µs` | `icx benchmark` |
+| **Fractal IFS Trajectory Suffix Match** | `< 15 ns` | `50 ns` | `icx benchmark` |
+| **AHTL Structural Skeletonize + Encode (64 KB log)** | `< 180 µs` | `400 µs` | `icx benchmark` |
 | **FastCDC + BLAKE3 CAS Ingest (64 KB)** | `< 110 µs` | `250 µs` | `icx benchmark` |
 | **`SeqlockTelemetryBus` Publish / Poll (`InProcess` atomic / `/dev/shm` `SharedFile`)** | `< 800 ns` (`InProcess`) / `< 15 µs` (`SharedFile`) | `5 µs` / `100 µs` | `icx benchmark` |
 | **Full Synchronous Hook Round-Trip (`icx hook`)** | `< 450 µs` | `1,000 µs` | `icx benchmark` |
 | **In-Window Token Compression Ratio** | `15x–40x` | `>= 10x` | `icx benchmark` |
-| **Provider Prompt Prefix-Cache Hit Ratio** | `>= 94%` | `>= 90%` | `tests/cache_epoch_sim.rs` |
+| **Provider Prompt Prefix-Cache Hit Ratio** | `>= 94%` | `>= 90%` | `icx benchmark` |
 
 ---
 

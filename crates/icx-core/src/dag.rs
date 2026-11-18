@@ -878,6 +878,12 @@ impl MerkleContextDag {
                         }
                     }
                     DagNode::ToolArtifact(tool) => {
+                        let Some(meta) = store.get_meta(tool.raw_artifact) else {
+                            return Err(IcxError::ArtifactNotFound(tool.raw_artifact));
+                        };
+                        if meta.full_digest != tool.full_digest {
+                            return Err(IcxError::IntegrityViolation(tool.raw_artifact));
+                        }
                         for &cid in &tool.chunks {
                             if !store.has_chunk(cid) {
                                 return Err(IcxError::ArtifactNotFound(cid));

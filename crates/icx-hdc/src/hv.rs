@@ -363,9 +363,12 @@ impl Hypervector {
         let word_shift = shift % HV_WORDS;
         let bit_shift = ((shift % 63) + 1) as u32;
         let mut out = [0u64; HV_WORDS];
-        for i in 0..HV_WORDS {
-            let src = (i + HV_WORDS - word_shift) % HV_WORDS;
-            out[i] = self.words[src].rotate_left(bit_shift);
+        let split = HV_WORDS - word_shift;
+        for (dst, &src) in out[..word_shift].iter_mut().zip(&self.words[split..]) {
+            *dst = src.rotate_left(bit_shift);
+        }
+        for (dst, &src) in out[word_shift..].iter_mut().zip(&self.words[..split]) {
+            *dst = src.rotate_left(bit_shift);
         }
         Self { words: out }
     }
@@ -376,9 +379,12 @@ impl Hypervector {
         let word_shift = shift % HV_WORDS;
         let bit_shift = ((shift % 63) + 1) as u32;
         let mut out = [0u64; HV_WORDS];
-        for i in 0..HV_WORDS {
-            let src = (i + word_shift) % HV_WORDS;
-            out[i] = self.words[src].rotate_right(bit_shift);
+        let split = HV_WORDS - word_shift;
+        for (dst, &src) in out[..split].iter_mut().zip(&self.words[word_shift..]) {
+            *dst = src.rotate_right(bit_shift);
+        }
+        for (dst, &src) in out[split..].iter_mut().zip(&self.words[..word_shift]) {
+            *dst = src.rotate_right(bit_shift);
         }
         Self { words: out }
     }

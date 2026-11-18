@@ -188,7 +188,8 @@ impl CasStore {
 
     /// Ingests raw bytes into the Content-Addressed Store, returning `(ArtifactId, Blake3Digest)`.
     /// Inputs larger than `ICX_MAX_INGEST_BYTES` (`64 MiB`) are bounded to `ICX_MAX_INGEST_BYTES`.
-    /// Existing artifacts are never overwritten.
+    /// Existing artifacts are never overwritten. For fail-closed 64 MiB size and 64-bit collision
+    /// verification returning `Result`, use [`Self::put_bytes_checked`].
     pub fn put_bytes(&mut self, raw: &[u8]) -> (ArtifactId, Blake3Digest) {
         let raw = if raw.len() > ICX_MAX_INGEST_BYTES {
             &raw[..ICX_MAX_INGEST_BYTES]

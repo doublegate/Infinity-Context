@@ -713,9 +713,32 @@ fn is_dir_writable(dir: &Path) -> bool {
     true
 }
 
+fn parse_doctor_dir_flag(args: &[String]) -> Result<Option<&str>, String> {
+    let mut dir_str: Option<&str> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--dir" => {
+                if i + 1 >= args.len() {
+                    return Err("icx doctor error: missing value for --dir".into());
+                }
+                dir_str = Some(args[i + 1].as_str());
+                i += 2;
+            }
+            unknown => {
+                return Err(format!(
+                    "icx doctor error: unknown option `{unknown}` (expected `--dir <PATH>`)"
+                ));
+            }
+        }
+    }
+    Ok(dir_str)
+}
+
 fn run_doctor(args: &[String]) -> Result<(), String> {
+    let explicit_dir = parse_doctor_dir_flag(args)?;
     println!("=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===");
-    let home = env::var("HOME").unwrap_or_else(|_| "/home/parobek".into());
+    let home = env::var("HOME").unwrap_or_else(|_| ".".into());
     let resolve_bin = |default_subpath: &str, bin_name: &str| -> String {
         let primary = format!("{home}/{default_subpath}");
         if is_executable_file(Path::new(&primary)) {
@@ -793,10 +816,11 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
 
     let mut doctor_status = "READY";
     let mut doctor_err: Option<String> = None;
-    let explicit_dir = parse_dir_flag(args);
     let ws_dir = resolve_workspace_dir(explicit_dir);
     if ws_dir.exists() {
         let mut mmu = InfinityContextMmu::default();
+        // Note: `InfinityContextMmu::load_workspace_dir` acquires `cas_store.lock` + `WORKSPACE_IO_LOCK`
+        // before reading `cas_store.json`, `bitemporal_graph.json`, and `mmu_state.json`.
         match mmu.load_workspace_dir(&ws_dir) {
             Ok(()) => {
                 let cas_ok = mmu.cas.verify_all_integrity();
@@ -868,13 +892,21 @@ fn check_slo(passed: bool, label: &str, measured: &str, failures: &mut Vec<Strin
 fn run_benchmark() -> Result<(), String> {
     println!("=== Infinity-Context (icx) SLO & Accuracy Benchmark Suite ===");
     // Note: Under debug/coverage (`cfg!(debug_assertions)`) builds, compiler optimizations are
-    // disabled (`opt-level = 0`) and LLVM coverage instrumentation is injected, so timing ceilings
-    // are scaled by 25x while release builds (`cargo run --release -- benchmark`) enforce the
-    // strict hardware SLO ceilings from `docs/performance.md` §1.
-    let scale = if cfg!(debug_assertions) { 25.0 } else { 1.0 };
+    // disabled (`opt-level = 0`) and LLVM coverage instrumentation is injected (`25x` allowance);
+    // on shared virtualized CI runners (`CI=true` / `GITHUB_ACTIONS=true`), wall-clock ceilings
+    // allow a `3x` VM jitter factor while dedicated workstations enforce the raw `1.0x` ceilings
+    // from `docs/performance.md` §1.
+    let is_ci = env::var_os("CI").is_some() || env::var_os("GITHUB_ACTIONS").is_some();
+    let scale = if cfg!(debug_assertions) {
+        25.0
+    } else if is_ci {
+        3.0
+    } else {
+        1.0
+    };
     let mut failures = Vec::new();
 
-    // 1. 10,240-bit HDC Bind (^) + Permute Latency Benchmark (release ceiling: <= 250 ns)
+    // 1. 10,240-bit HDC Bind (^) + Permute Latency Benchmark (ceiling: <= 100 ns)
     let hv_a = Hypervector::from_seed("bench", "role_key");
     let hv_b = Hypervector::from_seed("bench", "filler_val");
     let t_bind = Instant::now();
@@ -885,18 +917,18 @@ fn run_benchmark() -> Result<(), String> {
     let bind_ns = (t_bind.elapsed().as_nanos() as f64) / 1_000.0;
     assert_ne!(hv_acc.popcount(), 0);
     check_slo(
-        bind_ns <= 250.0 * scale,
+        bind_ns <= 100.0 * scale,
         "10,240-bit HDC Bind (^) + Permute",
         &format!("{bind_ns:.2} ns / op (1,000 ops)"),
         &mut failures,
     );
 
-    // 2. 10,240-bit HDC Hamming Scan Benchmark (release ceiling: <= 5,000 us / 1,000 nodes)
-    let t0 = Instant::now();
+    // 2. 10,240-bit HDC Hamming Scan Benchmark (ceiling: <= 150 us / 1,000 nodes)
     let query_hv = Hypervector::from_seed("bench", "query_target");
     let candidates: Vec<Hypervector> = (0..1_000)
         .map(|i| Hypervector::from_seed("bench", &format!("cand_{i}")))
         .collect();
+    let t0 = Instant::now();
     let mut min_dist = u32::MAX;
     for c in &candidates {
         min_dist = min_dist.min(query_hv.hamming_distance_simd(c));
@@ -904,7 +936,7 @@ fn run_benchmark() -> Result<(), String> {
     let hdc_us = t0.elapsed().as_secs_f64() * 1_000_000.0;
     let per_10k_us = hdc_us * 10.0;
     check_slo(
-        hdc_us <= 5_000.0 * scale,
+        hdc_us <= 150.0 * scale,
         "10,240-bit HDC Hamming Scan      ",
         &format!(
             "{hdc_us:.2} us / 1,000 nodes ({per_10k_us:.2} us / 10k nodes, min_dist={min_dist})"
@@ -912,7 +944,7 @@ fn run_benchmark() -> Result<(), String> {
         &mut failures,
     );
 
-    // 3. Fractal IFS Trajectory Suffix Match Benchmark (release ceiling: <= 100 ns / pair)
+    // 3. Fractal IFS Trajectory Suffix Match Benchmark (ceiling: <= 50 ns / pair)
     let mut traj_a = icx_hdc::fractal::FractalCoord::default();
     let mut traj_b = icx_hdc::fractal::FractalCoord::default()
         .step(&Hypervector::from_seed("bench", "divergent_prefix"));
@@ -930,7 +962,7 @@ fn run_benchmark() -> Result<(), String> {
     }
     let ifs_ns = (t_ifs.elapsed().as_nanos() as f64) / 1_000.0;
     check_slo(
-        shared_depth >= 6 && ifs_ns <= 100.0 * scale,
+        shared_depth >= 6 && ifs_ns <= 50.0 * scale,
         "Fractal IFS Suffix Match         ",
         &format!("{ifs_ns:.2} ns / pair (shared_depth={shared_depth})"),
         &mut failures,
@@ -969,13 +1001,13 @@ fn run_benchmark() -> Result<(), String> {
     let ppr_us = t_ppr.elapsed().as_secs_f64() * 1_000_000.0;
     assert_ne!(ppr_hits.len(), 0);
     check_slo(
-        idx_us <= 500.0 * scale && ppr_us <= 1_000.0 * scale,
+        idx_us <= 200.0 * scale && ppr_us <= 400.0 * scale,
         "Two-Stage HDC + CSR PPR          ",
         &format!("{idx_us:.2} us (two-stage query), {ppr_us:.2} us (201-node CSR PPR)"),
         &mut failures,
     );
 
-    // 5. AHTL Log Compression Ratio & Latency Benchmark
+    // 5. AHTL Log Compression Ratio & Latency Benchmark (ceiling: <= 400 us, ratio >= 10x)
     let mut log_fixture = String::from("running 400 tests\n");
     for i in 0..399 {
         log_fixture.push_str(&format!(
@@ -987,15 +1019,19 @@ fn run_benchmark() -> Result<(), String> {
         "thread 'crate_core::mmu::test_epoch_seal' panicked at crates/icx-core/src/epoch.rs:142:9: assertion failed\n",
     );
 
-    let t1 = Instant::now();
     let (id, _) = ArtifactId::hash_bytes(log_fixture.as_bytes());
-    let pkt =
-        StructuralSkeletonizer::compress_to_packet("cargo_test", &log_fixture, Some(id), [0x42; 8]);
+    let t1 = Instant::now();
+    let pkt = StructuralSkeletonizer::compress_sanitized_to_packet(
+        "cargo_test",
+        &log_fixture,
+        Some(id),
+        [0x42; 8],
+    );
     let rendered = pkt.render();
     let codec_us = t1.elapsed().as_secs_f64() * 1_000_000.0;
     let ratio = (log_fixture.len() as f64) / (rendered.len() as f64);
     check_slo(
-        ratio >= 10.0 && codec_us <= 2_000.0 * scale,
+        ratio >= 10.0 && codec_us <= 400.0 * scale,
         "AHTL Compression Ratio           ",
         &format!(
             "{ratio:.1}x ({} B -> {} B in {codec_us:.2} us)",
@@ -1358,6 +1394,23 @@ mod tests {
             )
             .is_err()
         );
+        assert!(
+            dispatch_cli_args(
+                &["icx".into(), "doctor".into(), "--dir".into()],
+                io::Cursor::new(""),
+            )
+            .is_err()
+        );
+        assert!(
+            dispatch_cli_args(
+                &["icx".into(), "doctor".into(), "--unknown".into()],
+                io::Cursor::new(""),
+            )
+            .is_err()
+        );
+        let mut fail_vec = Vec::new();
+        check_slo(false, "synthetic_gate", "9999 us", &mut fail_vec);
+        assert_eq!(fail_vec.len(), 1);
         dispatch_cli_args(
             &["icx".into(), "decode-ahtl".into(), pkt_str.clone()],
             io::Cursor::new(""),
