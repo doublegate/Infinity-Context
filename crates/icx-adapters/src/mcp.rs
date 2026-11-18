@@ -36,6 +36,7 @@ impl McpPagerServer {
                                 "type": "array",
                                 "items": { "type": "integer" }
                             },
+                            "k": { "type": "integer" },
                             "provenance": { "type": "boolean" }
                         }
                     }
@@ -92,8 +93,13 @@ impl McpPagerServer {
             }
         };
 
+        let has_id = req.get("id").is_some();
         let id = req.get("id").cloned().unwrap_or(Value::Null);
         let method = req.get("method").and_then(Value::as_str).unwrap_or("");
+
+        if !has_id && method.starts_with("notifications/") {
+            return Value::Null;
+        }
 
         match method {
             "initialize" => json!({
@@ -189,18 +195,23 @@ impl McpPagerServer {
             }
             "grep" => {
                 let pattern = args.get("q").and_then(Value::as_str).unwrap_or("");
+                let limit = args
+                    .get("k")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(25)
+                    .clamp(1, 250) as usize;
                 let target_id = match args
                     .get("id")
                     .and_then(Value::as_str)
                     .filter(|s| !s.trim().is_empty())
                 {
-                    Some(s) => match mmu.cas.resolve_handle(s) {
+                    Some(s) => match mmu.resolve_handle(s) {
                         Ok(aid) => Some(aid),
                         Err(e) => return Self::format_error(&e),
                     },
                     None => None,
                 };
-                match mmu.grep_cold(target_id, pattern, 25) {
+                match mmu.grep_cold(target_id, pattern, limit) {
                     Ok(matches) => matches
                         .iter()
                         .map(|m| format!("{}#L{}: {}", m.artifact_id, m.line_number, m.line_text))
@@ -211,7 +222,12 @@ impl McpPagerServer {
             }
             "recall" => {
                 let q = args.get("q").and_then(Value::as_str).unwrap_or("");
-                mmu.build_ephemeral_tail_slot(AgentKind::GenericMcp, q, 5)
+                let top_k = args
+                    .get("k")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(5)
+                    .clamp(1, 50) as usize;
+                mmu.build_ephemeral_tail_slot(AgentKind::GenericMcp, q, top_k)
             }
             "fold" => {
                 let summary = args.get("q").and_then(Value::as_str).unwrap_or("completed");
@@ -252,11 +268,16 @@ impl McpPagerServer {
                         res.compressed_ahtl
                     );
                 }
+                let limit = args
+                    .get("k")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(10)
+                    .clamp(1, 256) as usize;
                 let events = mmu.bus.poll_since(0);
                 events
                     .iter()
                     .rev()
-                    .take(10)
+                    .take(limit)
                     .map(|e| e.ahtl_packet.clone())
                     .collect::<Vec<_>>()
                     .join("\n")

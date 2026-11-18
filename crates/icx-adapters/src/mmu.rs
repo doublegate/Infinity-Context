@@ -253,8 +253,8 @@ impl InfinityContextMmu {
             raw_text
         };
         let mut sanitized = SecretRedactor::sanitize(bounded_raw);
-        let mut was_redacted =
-            raw_text.len() > max_bytes || !bounded_raw.lines().eq(sanitized.lines());
+        let unredacted_normalized = bounded_raw.lines().collect::<Vec<_>>().join("\n");
+        let mut was_redacted = raw_text.len() > max_bytes || sanitized != unredacted_normalized;
         if sanitized.len() > max_bytes {
             was_redacted = true;
             let mut bound = max_bytes;
@@ -932,6 +932,12 @@ impl InfinityContextMmu {
     /// workspace lock (only mutating `self` after all components succeed).
     pub fn load_workspace_dir(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
         let _lock = Self::acquire_workspace_lock(icx_dir)?;
+        self.load_workspace_dir_unlocked(icx_dir)
+    }
+
+    /// Loads workspace state from `icx_dir` assuming the caller already holds
+    /// `Self::acquire_workspace_lock(icx_dir)`.
+    pub fn load_workspace_dir_unlocked(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
         let cas_path = icx_dir.join("cas_store.json");
         let new_cas = if cas_path.exists() {
             CasStore::load_from_dir(icx_dir)?
@@ -1069,6 +1075,12 @@ impl InfinityContextMmu {
     /// state into `icx_dir` under an exclusive workspace lock.
     pub fn save_workspace_dir(&self, icx_dir: &Path) -> Result<(), IcxError> {
         let _lock = Self::acquire_workspace_lock(icx_dir)?;
+        self.save_workspace_dir_unlocked(icx_dir)
+    }
+
+    /// Atomically persists workspace state into `icx_dir` assuming the caller already holds
+    /// `Self::acquire_workspace_lock(icx_dir)`.
+    pub fn save_workspace_dir_unlocked(&self, icx_dir: &Path) -> Result<(), IcxError> {
         self.cas.save_to_dir(icx_dir)?;
         self.graph.save_to_dir(icx_dir)?;
         let redacted_ids: Vec<u64> = self.redacted_artifacts.iter().map(|id| id.0).collect();
@@ -1085,5 +1097,20 @@ impl InfinityContextMmu {
         };
         let state_bytes = serde_json::to_vec(&state).map_err(Self::map_io_err)?;
         Self::write_atomic_file(icx_dir, "mmu_state.json", &state_bytes)
+    }
+
+    /// Executes an atomic read-modify-write transaction against `icx_dir` while holding a single
+    /// exclusive workspace lock across `load_workspace_dir_unlocked`, `op(self)`, and
+    /// `save_workspace_dir_unlocked`.
+    pub fn with_locked_workspace<T, E, F>(&mut self, icx_dir: &Path, op: F) -> Result<T, E>
+    where
+        E: From<IcxError>,
+        F: FnOnce(&mut Self) -> Result<T, E>,
+    {
+        let _lock = Self::acquire_workspace_lock(icx_dir).map_err(E::from)?;
+        self.load_workspace_dir_unlocked(icx_dir).map_err(E::from)?;
+        let out = op(self)?;
+        self.save_workspace_dir_unlocked(icx_dir).map_err(E::from)?;
+        Ok(out)
     }
 }

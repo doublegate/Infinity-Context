@@ -2003,7 +2003,7 @@ unprefixed_secret = {unpref_sec}
         let mut mmu = InfinityContextMmu::default();
         assert!(McpPagerServer::schema_token_estimate() < 180);
 
-        // 1. Verify `notifications/initialized` and `ping` JSON-RPC methods
+        // 1. Verify `notifications/initialized` (JSON-RPC 2.0 notification returns Null without `id`) and `ping`
         let ping_resp = McpPagerServer::handle_jsonrpc(
             r#"{"jsonrpc":"2.0","id":10,"method":"ping"}"#,
             &mut mmu,
@@ -2014,7 +2014,17 @@ unprefixed_secret = {unpref_sec}
             r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
             &mut mmu,
         );
-        assert!(notif_resp["result"].is_object());
+        assert!(notif_resp.is_null());
+        let notif_with_id = McpPagerServer::handle_jsonrpc(
+            r#"{"jsonrpc":"2.0","id":11,"method":"notifications/initialized"}"#,
+            &mut mmu,
+        );
+        assert!(notif_with_id["result"].is_object());
+
+        // Verify trailing blank lines (`\n\n`) do not falsely set `was_redacted = true`
+        let (_, trailing_blank_redacted) =
+            InfinityContextMmu::bound_and_sanitize_raw("clean line 1\nclean line 2\n\n", 4096);
+        assert!(!trailing_blank_redacted);
 
         // 2. Ingest a secret-containing artifact and a clean artifact
         let secret_res = mmu.ingest_payload(

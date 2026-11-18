@@ -1221,9 +1221,9 @@ All Infinity-Context SLO gates PASSED.
 | `icx encode-ahtl <FILE> [--dir <PATH>] [--profile <a\|b>]` | Redacts secrets, ingests `<FILE>` into `<PATH>` (default `.icx`), updates the HDC/Fractal/Bi-Temporal indices, and prints either a **Profile B** dual-channel packet (`⟦Δ:...⟧`, default `--profile b`) or a **Profile A** 6-section canonical wire packet (`⟦AHTL v1│#icx:<12-hex>│fc:<64-hex>│hv:<16-hex>│<64-braille>│...⟧`, `--profile a`). |
 | `icx decode-ahtl '<AHTL_PACKET>'` | Auto-detects Profile A or Profile B (`WirePacket::parse_auto`), validates checksums/headers, and prints the structured breakdown (Kind, Subject, Line Range, Deref ID, Slice Hint, Fractal FC, HDC Digest, 64-band Braille spectrum, and clauses). |
 | `icx hook --agent <claude-code\|codex\|agy\|hermes> --event <EVENT> [--dir <PATH>]` | Executes a synchronous `< 500 us` lifecycle hook, reading the harness's JSON payload from `stdin` and emitting the schema-validated response JSON on `stdout` (failing safe to `{}` on malformed input). |
-| `icx mcp-serve` | Runs the Single-Tool Polymorphic MCP Virtual Pager (`icx`) over `stdio` (JSON-RPC 2.0 `initialize`, `tools/list`, `tools/call`). |
-| `icx proxy-transform [--provider <anthropic\|openai>] [--dir <PATH>]` | Reads an outbound Anthropic (`/v1/messages`) or OpenAI (`/v1/chat/completions`, `/v1/responses`) JSON request from `stdin`, applies `WireProxyTransformer` against `<PATH>` (default `.icx`), and writes the Cache-Epoch-pinned JSON body to `stdout`. |
-| `icx proxy [--listen <ADDR:PORT>] [--provider <anthropic\|openai>] [--dir <PATH>]` | Runs the resident HTTP/1.1, HTTP/2 & SSE Cache-Epoch Reverse Proxy listening on `127.0.0.1:49380` (or `127.0.0.1:8787` / `/run/user/$UID/icx-proxy.sock`). |
+| `icx mcp-serve [--dir <PATH>]` | Runs the Single-Tool Polymorphic MCP Virtual Pager (`icx`) over `stdio` (JSON-RPC 2.0 `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call`), reloading and persisting `<PATH>` (or `ICX_DIR`, default `.icx`) transactionally on every operation. |
+| `icx proxy-transform [--provider <anthropic\|openai\|gemini>] [--dir <PATH>]` | Reads an outbound Anthropic (`/v1/messages`), OpenAI (`/v1/chat/completions`, `/v1/responses`), or Gemini (`/v1beta/models/*`) JSON request from `stdin`, applies `WireProxyTransformer` transactionally against `<PATH>` (default `.icx`), and writes the Cache-Epoch-pinned JSON body to `stdout`. |
+| `icx proxy [--listen <ADDR:PORT>] [--provider <anthropic\|openai\|gemini>] [--upstream <URL>] [--dir <PATH>] [--max-requests <N>]` | Runs the resident HTTP/1.1 & SSE Cache-Epoch Reverse Proxy listening on `127.0.0.1:49380` (or `ICX_PROXY_BIND`), forwarding transformed requests to `--upstream` / `ICX_UPSTREAM_URL` (or the provider's default upstream) and expanding inline `⟪!icx:deref(...)⟫` directives on SSE/JSON responses. |
 
 ---
 
@@ -1241,10 +1241,11 @@ After=network-online.target
 Type=simple
 WorkingDirectory=%h/Code/OSS_Public-Projects/Infinity-Context
 ExecStartPre=/usr/bin/env icx init --dir %h/.local/share/icx/global-mmu
-ExecStart=/usr/bin/env icx proxy
+ExecStart=/usr/bin/env icx proxy --listen 127.0.0.1:49380 --dir %h/.local/share/icx/global-mmu
 Restart=on-failure
 RestartSec=2s
 Environment="RUST_LOG=info"
+Environment="ICX_DIR=%h/.local/share/icx/global-mmu"
 Environment="ICX_PROXY_BIND=127.0.0.1:49380"
 Environment="ICX_SHM_PATH=/dev/shm/icx-fabric-v1"
 NoNewPrivileges=true
