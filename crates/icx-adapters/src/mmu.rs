@@ -274,6 +274,22 @@ impl InfinityContextMmu {
         (sanitized, was_redacted)
     }
 
+    fn truncate_agent_suffix(
+        map: &mut BTreeMap<usize, IndexedOccurrenceRecord>,
+        occurrence_idx: usize,
+        agent_u8: u8,
+    ) {
+        if map
+            .last_key_value()
+            .is_none_or(|(&k, _)| k < occurrence_idx)
+        {
+            return;
+        }
+        let mut tail = map.split_off(&occurrence_idx);
+        tail.retain(|_, entry| entry.0 != agent_u8);
+        map.append(&mut tail);
+    }
+
     /// Ingests or reuses a message at conversation position `occurrence_idx`. If `occurrence_idx`
     /// was already processed with the exact same `(agent, clean_subject, sanitized_artifact_id)`,
     /// reuses the cached `IngestResult` without duplicating DAG nodes or `/dev/shm` broadcasts.
@@ -328,10 +344,8 @@ impl InfinityContextMmu {
         }
         let agent_map = self.agent_occurrences.entry(agent as u8).or_default();
         let _ = agent_map.split_off(&occurrence_idx);
-        self.indexed_occurrences
-            .retain(|&idx, entry| idx < occurrence_idx || entry.0 != agent as u8);
-        self.reordered_occurrences
-            .retain(|&idx, entry| idx < occurrence_idx || entry.0 != agent as u8);
+        Self::truncate_agent_suffix(&mut self.indexed_occurrences, occurrence_idx, agent as u8);
+        Self::truncate_agent_suffix(&mut self.reordered_occurrences, occurrence_idx, agent as u8);
         let res = self.ingest_payload_for_subagent(
             agent,
             raw_subject,
