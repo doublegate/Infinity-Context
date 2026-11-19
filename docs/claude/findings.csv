@@ -8,7 +8,7 @@ ICX-AUD-006,High,integration,Hermes shim cannot load; hooks.yaml and events do n
 ICX-AUD-007,Medium,integration,agy config locations contradictory; schema and Stop reasons wrong; PreToolUse allow default,crates/icx-adapters/src/antigravity.rs:459;README.md:136,06,upstream docs,fixed,"5d0d1ab, 91ac661; docs"
 ICX-AUD-008,Medium,integration,MCP protocolVersion hard-coded 2024-11-05; no negotiation or server/discover,crates/icx-adapters/src/mcp.rs:154,06,spec,fixed,5d0d1ab
 ICX-AUD-009,Info,correctness,PreToolUse echo of output-only fields is dead code,crates/icx-adapters/src/claude.rs:71-80,05,upstream docs,fixed,"ffda7de, 91ac661"
-ICX-AUD-010,High,security,Repo-shipped .icx workspace auto-loaded and injected into agent context,crates/icx-cli/src/main.rs:130-143;274-296,05,PoC (private),fixed,"c03d9ea, 61cb0f2"
+ICX-AUD-010,High,security,Repo-shipped .icx workspace auto-loaded and injected into agent context,crates/icx-cli/src/main.rs:130-143;274-296,05,PoC (private),fixed,"c03d9ea, 61cb0f2, 4c9e7d7, 006c412"
 ICX-AUD-011,Medium-High,security,In-band trust markers bypass Tier-0 escaping (proxy and Hermes),crates/icx-proxy/src/wire.rs:225;crates/icx-adapters/src/hermes.rs:79-118,05,code path,fixed,"110e116, ffda7de, a3cfc33"
 ICX-AUD-012,Medium,security,Proxy has no client auth; /health and /sse-expand serve CAS data; any bind accepted,crates/icx-proxy/src/wire.rs:1981-2009,05,PoC (private),fixed,110e116
 ICX-AUD-013,Medium,privacy,icx init writes no .gitignore; workspace dir 0755,crates/icx-cli/src/main.rs:111-128,05,PoC,fixed,c03d9ea
@@ -36,7 +36,7 @@ ICX-AUD-035,Medium,licensing,PATENTS/CLA further restrictions vs GPLv3 s7/s10/s1
 ICX-AUD-036,Medium,licensing,10 arXiv non-exclusive PDFs redistributed; Zep NC-SA; Wikimedia/Unicode labels,REUSE.toml:108,09,arXiv license fields (counsel),partial,"8cdf2c9 (arXiv PDFs, Zep label); Wikimedia/Unicode labels open"
 ICX-AUD-037,Low,governance,SECURITY.md has no contact; CLA not a required check,SECURITY.md;.github/scripts/cla-check.sh,09,repo settings,partial,8cdf2c9 (SECURITY.md); CLA as required check is a repository setting
 ICX-AUD-038,Low,hygiene,Personal paths in public docs; large/duplicate binaries; patents/ only locally excluded,docs/deployment-and-agent-integration-guide.md,09,grep,partial,"8cdf2c9 (paths, patents/ ignore); large binaries and git history unchanged"
-ICX-AUD-039,Medium,testing,Mutation score 71.7% (redact.rs 68.1%); no proptest/fuzz/bench; weak asserts,crates/icx-codec/src/redact.rs,08,cargo-mutants,partial,"2c44cfd (proptest, fuzz); mutation re-run not done"
+ICX-AUD-039,Medium,testing,Mutation score 71.7% (redact.rs 68.1%); no proptest/fuzz/bench; weak asserts,crates/icx-codec/src/redact.rs,08,cargo-mutants,partial,"2c44cfd (proptest, fuzz); redact.rs mutation re-run 2026-11-19: 436 caught + 35 timeouts of 642 viable (73.4%, was 68.1%); 171 missed remain"
 ICX-AUD-040,Low,ci,Actions tag-pinned; unpinned llvm-cov install; unpinned toolchain; no deny.toml,.github/workflows/ci.yml:26-91,10,files,fixed,8cdf2c9
 ICX-AUD-041,Low,deps,Unused deps icx-codec+serde (proxy) and serde (cli),crates/icx-proxy/Cargo.toml;crates/icx-cli/Cargo.toml,10,cargo-machete+grep,fixed,110e116
 ICX-AUD-042,Low,correctness,Tail slot recalls the same artifact repeatedly,crates/icx-adapters/src/mmu.rs:755,02,PoC,fixed,494022a
