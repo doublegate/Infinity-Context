@@ -34,27 +34,34 @@ pub struct WorkspaceRoots {
 impl WorkspaceRoots {
     /// Resolves roots from `ICX_STATE_HOME` / `XDG_STATE_HOME`, `ICX_CONFIG_HOME` /
     /// `XDG_CONFIG_HOME`, and `XDG_RUNTIME_DIR`, falling back to `$HOME/.local/state/icx` and
-    /// `$HOME/.config/icx`.
+    /// `$HOME/.config/icx`. Only absolute paths are accepted. If no private location can be
+    /// determined the affected root is left empty, which makes every trust operation fail closed
+    /// (never a fallback to a shared directory such as `/tmp`).
     pub fn from_env() -> Self {
         let var = |k: &str| {
             std::env::var_os(k)
-                .filter(|v| !v.is_empty())
                 .map(PathBuf::from)
+                .filter(|v| v.is_absolute())
         };
-        let home = var("HOME").unwrap_or_else(std::env::temp_dir);
-        let state_dir = var("ICX_STATE_HOME").unwrap_or_else(|| {
-            var("XDG_STATE_HOME")
-                .unwrap_or_else(|| home.join(".local/state"))
-                .join("icx")
-        });
-        let config_dir = var("ICX_CONFIG_HOME").unwrap_or_else(|| {
-            var("XDG_CONFIG_HOME")
-                .unwrap_or_else(|| home.join(".config"))
-                .join("icx")
-        });
+        let home = var("HOME");
+        let under_home = |rel: &str| home.as_ref().map(|h| h.join(rel));
+        let state_dir = var("ICX_STATE_HOME")
+            .or_else(|| var("XDG_STATE_HOME").map(|d| d.join("icx")))
+            .or_else(|| under_home(".local/state/icx"))
+            .unwrap_or_default();
+        let config_dir = var("ICX_CONFIG_HOME")
+            .or_else(|| var("XDG_CONFIG_HOME").map(|d| d.join("icx")))
+            .or_else(|| under_home(".config/icx"))
+            .unwrap_or_default();
         let runtime_dir = var("XDG_RUNTIME_DIR")
             .map(|d| d.join("icx"))
-            .unwrap_or_else(|| state_dir.join("run"));
+            .unwrap_or_else(|| {
+                if state_dir.as_os_str().is_empty() {
+                    PathBuf::new()
+                } else {
+                    state_dir.join("run")
+                }
+            });
         Self {
             state_dir,
             config_dir,
@@ -161,7 +168,18 @@ pub fn resolve(
     })
 }
 
+fn require_absolute(dir: &Path, what: &str) -> Result<(), TrustError> {
+    if dir.is_absolute() {
+        Ok(())
+    } else {
+        Err(TrustError::Io(format!(
+            "cannot determine a private {what} directory (set HOME or the XDG base directories)"
+        )))
+    }
+}
+
 fn private_dir(dir: &Path) -> Result<(), TrustError> {
+    require_absolute(dir, "workspace")?;
     let mut b = std::fs::DirBuilder::new();
     b.recursive(true);
     #[cfg(unix)]
@@ -191,14 +209,17 @@ fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), TrustError> {
 
 /// Loads the per-install key, creating it (32 bytes from the OS CSPRNG, mode `0600`) on first use.
 pub fn install_key(roots: &WorkspaceRoots) -> Result<[u8; 32], TrustError> {
+    require_absolute(&roots.config_dir, "config")?;
     let path = roots.config_dir.join(KEY_FILE);
     if let Ok(bytes) = std::fs::read(&path) {
+        check_dir_security(&roots.config_dir)?;
         check_private_file(&path)?;
         return bytes
             .try_into()
             .map_err(|_| TrustError::Io("install.key is not 32 bytes".into()));
     }
     private_dir(&roots.config_dir)?;
+    check_dir_security(&roots.config_dir)?;
     let mut key = [0u8; 32];
     std::fs::File::open("/dev/urandom")
         .and_then(|mut f| f.read_exact(&mut key))
@@ -218,6 +239,7 @@ pub fn install_key(roots: &WorkspaceRoots) -> Result<[u8; 32], TrustError> {
         }
         // Another process won the creation race: use its key.
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            check_private_file(&path)?;
             let bytes = std::fs::read(&path).map_err(io_err)?;
             bytes
                 .try_into()
@@ -225,6 +247,12 @@ pub fn install_key(roots: &WorkspaceRoots) -> Result<[u8; 32], TrustError> {
         }
         Err(e) => Err(io_err(e)),
     }
+}
+
+/// Key used to MAC every saved store. It binds a trusted workspace to icx-written content, so a
+/// store replaced by `git pull` or a file copy is rejected even inside a sealed directory.
+pub fn store_seal_key(roots: &WorkspaceRoots) -> Result<[u8; 32], TrustError> {
+    derived_key(roots, "store-seal")
 }
 
 /// Derives a purpose-specific 32-byte key from the install key (e.g. `"provenance"`).
@@ -287,10 +315,8 @@ fn compute_seal(dir: &Path, roots: &WorkspaceRoots) -> Result<blake3::Hash, Trus
 }
 
 fn write_seal_and_ignore(dir: &Path, roots: &WorkspaceRoots) -> Result<(), TrustError> {
-    let gitignore = dir.join(".gitignore");
-    if !gitignore.exists() {
-        write_private_file(&gitignore, b"*\n")?;
-    }
+    // Always (re)write: a repository could ship its own `.icx/.gitignore` with `!` exceptions.
+    write_private_file(&dir.join(".gitignore"), b"*\n")?;
     let seal = compute_seal(dir, roots)?;
     write_private_file(&dir.join(SEAL_FILE), seal.to_hex().as_bytes())
 }

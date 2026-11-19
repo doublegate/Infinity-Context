@@ -148,6 +148,7 @@ dependencies = [
  "icx-proxy",
  "icx-store",
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
 ]

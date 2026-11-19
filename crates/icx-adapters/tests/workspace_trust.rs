@@ -162,3 +162,71 @@ fn explicit_and_env_directories_take_precedence_over_default() {
     assert_eq!(v.dir, cwd.join("envdir"));
     let _ = std::fs::remove_dir_all(&base);
 }
+
+#[test]
+fn unresolvable_roots_fail_closed_instead_of_using_a_shared_directory() {
+    let empty = WorkspaceRoots {
+        state_dir: PathBuf::new(),
+        config_dir: PathBuf::new(),
+        runtime_dir: PathBuf::new(),
+    };
+    let base = scratch("noroots");
+    assert!(workspace::prepare(&base.join("ws"), &empty).is_err());
+    assert!(workspace::install_key(&empty).is_err());
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[cfg(unix)]
+#[test]
+fn permissive_install_key_is_rejected() {
+    use std::os::unix::fs::PermissionsExt;
+    let base = scratch("keyperm");
+    let r = roots(&base);
+    workspace::install_key(&r).unwrap();
+    let key = r.config_dir.join("install.key");
+    std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(
+        workspace::install_key(&r),
+        Err(TrustError::PermissiveMode(0o644))
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[test]
+fn store_replaced_through_version_control_is_rejected_even_in_a_trusted_dir() {
+    // Security review follow-up: the OWNER seal binds the path only, so the store itself also
+    // carries a keyed MAC over (path, generation) written on every save.
+    use icx_adapters::mmu::InfinityContextMmu;
+    use icx_core::AgentKind;
+    let base = scratch("storeswap");
+    let r = roots(&base);
+    let ws = base.join("repo/.icx");
+    workspace::prepare(&ws, &r).unwrap();
+    let key = workspace::store_seal_key(&r).unwrap();
+
+    let mut mine = InfinityContextMmu::default();
+    mine.set_store_seal_key(Some(key));
+    mine.ingest_payload(AgentKind::ClaudeCode, "Bash:ls", "mine\n", false);
+    mine.save_workspace_dir(&ws).unwrap();
+    let mut reload = InfinityContextMmu::default();
+    reload.set_store_seal_key(Some(key));
+    reload.load_workspace_dir(&ws).expect("own store verifies");
+
+    // Simulate `git pull` replacing the store with one produced elsewhere (no install key).
+    let other = base.join("attacker_ws");
+    let mut attacker = InfinityContextMmu::default();
+    attacker.ingest_payload(AgentKind::ClaudeCode, "Bash:INJECT", "evil\n", false);
+    attacker.save_workspace_dir(&other).unwrap();
+    for side in ["", "-wal", "-shm"] {
+        let _ = std::fs::remove_file(ws.join(format!("icx.sqlite3{side}")));
+    }
+    std::fs::copy(other.join("icx.sqlite3"), ws.join("icx.sqlite3")).unwrap();
+    workspace::verify(&ws, &r).expect("path seal alone still passes");
+    let mut victim = InfinityContextMmu::default();
+    victim.set_store_seal_key(Some(key));
+    assert!(
+        victim.load_workspace_dir(&ws).is_err(),
+        "swapped store must be refused"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}

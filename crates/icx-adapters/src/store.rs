@@ -29,6 +29,16 @@ pub(crate) struct StoredWorkspace {
     pub mmu_state_json: Option<Vec<u8>>,
     pub hdc_snapshot: Option<Vec<u8>>,
     pub hdc_snapshot_events: Option<u64>,
+    pub seal: Option<Vec<u8>>,
+}
+
+/// Keyed MAC binding a store generation to its canonical workspace path.
+pub(crate) fn store_seal(key: &[u8; 32], canonical_dir: &Path, generation: u64) -> [u8; 32] {
+    let mut h = blake3::Hasher::new_keyed(key);
+    h.update(b"ICX_STORE_SEAL_V1\0");
+    h.update(canonical_dir.as_os_str().as_encoded_bytes());
+    h.update(&generation.to_le_bytes());
+    *h.finalize().as_bytes()
 }
 
 /// Derived state written atomically alongside new CAS rows.
@@ -39,6 +49,8 @@ pub(crate) struct DerivedState<'a> {
     pub mmu_state_json: &'a [u8],
     pub hdc_snapshot: &'a [u8],
     pub hdc_snapshot_events: u64,
+    /// `(seal key, canonical workspace dir)`; when set, the new generation is MAC-stamped.
+    pub seal: Option<(&'a [u8; 32], &'a Path)>,
 }
 
 fn db_err(e: impl std::fmt::Display) -> IcxError {
@@ -201,6 +213,7 @@ pub(crate) fn load(conn: &mut Connection) -> Result<StoredWorkspace, IcxError> {
     out.mmu_state_json = meta_blob(&tx, "mmu_state")?;
     out.hdc_snapshot = meta_blob(&tx, "hdc_index")?;
     out.hdc_snapshot_events = meta_u64(&tx, "hdc_index_events")?;
+    out.seal = meta_blob(&tx, "seal")?;
     tx.commit().map_err(db_err)?;
     Ok(out)
 }
@@ -282,6 +295,11 @@ pub(crate) fn save<'c>(
             i64::try_from(next_gen).unwrap_or(i64::MAX)
         ])
         .map_err(db_err)?;
+    if let Some((key, dir)) = derived.seal {
+        upsert
+            .execute(params!["seal", store_seal(key, dir, next_gen).as_slice()])
+            .map_err(db_err)?;
+    }
     drop(upsert);
     tx.commit().map_err(db_err)?;
     persisted.chunks.extend(new_chunks);

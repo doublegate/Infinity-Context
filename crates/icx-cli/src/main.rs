@@ -19,6 +19,9 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::time::Instant;
 
+#[cfg(unix)]
+mod daemon;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if let Err(err) = dispatch_cli_args(&args, io::stdin().lock()) {
@@ -34,6 +37,8 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
     match subcmd {
         "init" => run_init(tail),
         "trust" => run_trust(tail),
+        #[cfg(unix)]
+        "daemon" => run_daemon(tail),
         "deref" => run_deref(tail),
         "hook" => {
             let mut stdin_buf = String::new();
@@ -86,6 +91,8 @@ Subcommands:",
         "\
   init [--dir <PATH>]
       Create and seal a workspace (default: per-project under $XDG_STATE_HOME/icx/workspaces)
+  daemon [--dir <PATH>] [--idle-exit <SECS>]
+      Keep the workspace resident and serve hooks over a private Unix socket (fast path)
   trust --dir <PATH>
       Adopt an existing workspace you own (e.g. a v1.0.x `.icx/`): chmod 0700 + owner seal
   deref <HANDLE> [--lines <START:END>] [--dir <PATH>]
@@ -138,6 +145,16 @@ fn roots() -> &'static WorkspaceRoots {
     })
 }
 
+/// An MMU that MAC-stamps every save and rejects stores not written by this install.
+fn workspace_mmu() -> InfinityContextMmu {
+    let mut mmu = InfinityContextMmu::default();
+    match workspace::store_seal_key(roots()) {
+        Ok(key) => mmu.set_store_seal_key(Some(key)),
+        Err(e) => eprintln!("icx: store sealing unavailable: {e}"),
+    }
+    mmu
+}
+
 /// Trust state of a resolved workspace directory (ICX-AUD-010).
 #[derive(Debug)]
 enum WsState {
@@ -184,7 +201,7 @@ fn init_workspace_dir(icx_dir: &Path) -> Result<(), String> {
         workspace::prepare(icx_dir, roots()).map_err(|e| e.to_string())?;
     }
     let _guard = acquire_workspace_lock(icx_dir)?;
-    let mut mmu = InfinityContextMmu::default();
+    let mut mmu = workspace_mmu();
     mmu.load_workspace_dir_unlocked(icx_dir)
         .map_err(|e| e.to_string())?;
     mmu.save_workspace_dir_unlocked(icx_dir)
@@ -222,12 +239,89 @@ fn resolve_workspace_dir(cli_dir: Option<&str>) -> PathBuf {
     }
 }
 
+#[cfg(unix)]
+fn run_daemon(args: &[String]) -> Result<(), String> {
+    let mut opts = daemon::DaemonOptions::default();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--idle-exit" if i + 1 < args.len() => {
+                let secs: u64 = args[i + 1]
+                    .parse()
+                    .map_err(|e| format!("icx daemon error: invalid --idle-exit: {e}"))?;
+                opts.idle_exit = Some(std::time::Duration::from_secs(secs));
+                i += 2;
+            }
+            "--max-requests" if i + 1 < args.len() => {
+                opts.max_requests = Some(
+                    args[i + 1]
+                        .parse()
+                        .map_err(|e| format!("icx daemon error: invalid --max-requests: {e}"))?,
+                );
+                i += 2;
+            }
+            _ => i += 1,
+        }
+    }
+    let ws_dir = resolve_workspace_dir(parse_dir_flag(args));
+    match workspace_state(&ws_dir, true) {
+        WsState::Ready => {}
+        WsState::Absent => return Err("icx daemon error: workspace unavailable".into()),
+        WsState::Refused(r) => return Err(format!("icx daemon error: {r}")),
+    }
+    workspace::ensure_runtime_dir(roots()).map_err(|e| format!("icx daemon error: {e}"))?;
+    let socket = workspace::daemon_socket_path(&ws_dir, roots());
+    daemon::serve(&ws_dir, &socket, opts, workspace_mmu(), dispatch_agent_hook)
+        .map_err(|e| format!("icx daemon error: {e}"))
+}
+
+/// Starts `icx daemon --dir <ws> --idle-exit 900` detached (`ICX_DAEMON_AUTOSTART=1`). Errors are
+/// ignored: the current hook proceeds in-process either way.
+#[cfg(unix)]
+fn spawn_background_daemon(ws_dir: &Path) {
+    use std::process::{Command, Stdio};
+    if let Ok(exe) = env::current_exe() {
+        let _ = Command::new(exe)
+            .arg("daemon")
+            .arg("--dir")
+            .arg(ws_dir)
+            .args(["--idle-exit", "900"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+    }
+}
+
 fn run_trust(args: &[String]) -> Result<(), String> {
     let Some(dir) = parse_dir_flag(args) else {
         return Err("Usage: icx trust --dir <PATH>   (adopt an existing workspace you own)".into());
     };
     let dir = PathBuf::from(dir);
     workspace::trust(&dir, roots()).map_err(|e| format!("icx trust error: {e}"))?;
+    if dir.join(icx_adapters::store::DB_FILE).exists() || dir.join("cas_store.json").exists() {
+        // Re-stamp the existing store with this install's seal (content integrity is still
+        // verified by the BLAKE3 checks during load).
+        let mut unsealed = InfinityContextMmu::default();
+        unsealed
+            .load_workspace_dir(&dir)
+            .map_err(|e| format!("icx trust error: cannot load store: {e}"))?;
+        let key =
+            workspace::store_seal_key(roots()).map_err(|e| format!("icx trust error: {e}"))?;
+        unsealed.set_store_seal_key(Some(key));
+        unsealed
+            .save_workspace_dir(&dir)
+            .map_err(|e| format!("icx trust error: cannot seal store: {e}"))?;
+    }
+    if workspace::project_root(&dir) != dir
+        && dir.ancestors().skip(1).any(|p| p.join(".git").exists())
+    {
+        eprintln!(
+            "icx trust: note: {} is inside a git work tree; anything committed there can be replaced by a pull. \
+             The store is MAC-sealed, but the default out-of-repo location (omit --dir) is safer.",
+            dir.display()
+        );
+    }
     println!("⟪ICX:TRUST│dir={}│status=SEALED⟫", dir.display());
     Ok(())
 }
@@ -288,7 +382,7 @@ fn deref_from_workspace_dir(
             ));
         }
     }
-    let mut mmu = InfinityContextMmu::default();
+    let mut mmu = workspace_mmu();
     mmu.load_workspace_dir(icx_dir).map_err(|e| e.to_string())?;
     let id = mmu.resolve_handle(handle).map_err(|e| e.to_string())?;
     if let Some((start, end)) = line_range {
@@ -371,12 +465,22 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
         }
     }
 
-    let mut mmu = InfinityContextMmu::default();
+    let mut mmu = workspace_mmu();
     let agent = AgentKind::parse_agent(agent_str);
     let is_session_start = event_str.eq_ignore_ascii_case("SessionStart")
         || event_str.eq_ignore_ascii_case("session-start");
     let ws_dir = resolve_workspace_dir(dir_str);
     if matches!(workspace_state(&ws_dir, true), WsState::Ready) {
+        #[cfg(unix)]
+        if env::var_os("ICX_NO_DAEMON").is_none() {
+            let socket = workspace::daemon_socket_path(&ws_dir, roots());
+            if let Some(out) = daemon::try_hook(&socket, agent_str, event_str, stdin_buf) {
+                return Ok(out);
+            }
+            if env::var("ICX_DAEMON_AUTOSTART").is_ok_and(|v| v == "1") {
+                spawn_background_daemon(&ws_dir);
+            }
+        }
         let Ok(lock_guard) = InfinityContextMmu::acquire_workspace_lock(&ws_dir) else {
             eprintln!(
                 "icx hook warning: failed to acquire workspace lock in {}",
@@ -443,7 +547,7 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
     reader: R,
     mut writer: W,
 ) -> Result<(), String> {
-    let mut mmu = InfinityContextMmu::default();
+    let mut mmu = workspace_mmu();
     let ws_dir = resolve_workspace_dir(parse_dir_flag(args));
     let ws_ready = matches!(workspace_state(&ws_dir, true), WsState::Ready);
     for line in reader.lines() {
@@ -551,7 +655,7 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
             _ => i += 1,
         }
     }
-    let mut mmu = InfinityContextMmu::default();
+    let mut mmu = workspace_mmu();
     let ws_dir = resolve_workspace_dir(dir_str);
     let ws_ready = matches!(workspace_state(&ws_dir, true), WsState::Ready);
     let env_upstream = env::var("ICX_UPSTREAM_URL")
@@ -592,7 +696,7 @@ fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, S
             i += 1;
         }
     }
-    let mut mmu = InfinityContextMmu::default();
+    let mut mmu = workspace_mmu();
     let icx_dir = resolve_workspace_dir(dir_str);
     if matches!(workspace_state(&icx_dir, true), WsState::Ready) {
         return mmu
@@ -638,12 +742,12 @@ fn encode_payload_into_workspace_profile(
     profile_a: bool,
 ) -> Result<String, String> {
     if !matches!(workspace_state(icx_dir, true), WsState::Ready) {
-        let mut mmu = InfinityContextMmu::default();
+        let mut mmu = workspace_mmu();
         let res = mmu.ingest_payload(AgentKind::GenericMcp, subject, content, false);
         return render_ingested_profile(&mmu, res.compressed_ahtl, profile_a);
     }
 
-    let mut mmu = InfinityContextMmu::default();
+    let mut mmu = workspace_mmu();
     let res = mmu
         .with_locked_workspace(icx_dir, |mmu| {
             Ok::<_, icx_core::IcxError>(mmu.ingest_payload(
@@ -752,7 +856,7 @@ fn run_decode_ahtl(args: &[String]) -> Result<(), String> {
 }
 
 fn run_status(args: &[String]) {
-    let mut mmu = InfinityContextMmu::default();
+    let mut mmu = workspace_mmu();
     let ws_dir = resolve_workspace_dir(parse_dir_flag(args));
     if matches!(workspace_state(&ws_dir, false), WsState::Ready)
         && let Err(err) = mmu.load_workspace_dir(&ws_dir)
@@ -953,7 +1057,7 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         ));
     }
     if ws_dir.exists() && is_initialized && trust.is_ok() {
-        let mut mmu = InfinityContextMmu::default();
+        let mut mmu = workspace_mmu();
         // `load_workspace_dir` holds the workspace lock while reading the SQLite store (or
         // migrating a v1.0.x JSON workspace).
         match mmu.load_workspace_dir(&ws_dir) {
@@ -1354,6 +1458,62 @@ mod tests {
         rusqlite::Connection::open(dir.join(icx_adapters::store::DB_FILE)).expect("open store")
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn daemon_serves_hooks_over_private_socket_and_flushes_state_on_exit() {
+        let ws = std::env::temp_dir().join(format!("icx_cli_daemon_ws_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&ws);
+        init_workspace_dir(&ws).unwrap();
+        workspace::ensure_runtime_dir(roots()).unwrap();
+        let sock = workspace::daemon_socket_path(&ws, roots());
+        assert!(daemon::try_hook(&sock, "claude-code", "SessionStart", "{}").is_none());
+
+        let (ws2, sock2) = (ws.clone(), sock.clone());
+        let server = std::thread::spawn(move || {
+            daemon::serve(
+                &ws2,
+                &sock2,
+                daemon::DaemonOptions {
+                    idle_exit: None,
+                    max_requests: Some(3),
+                },
+                workspace_mmu(),
+                dispatch_agent_hook,
+            )
+        });
+        for _ in 0..400 {
+            if sock.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&sock).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+        let big = "test daemon::case ... FAILED\nerror[E0308]: mismatched types\n".repeat(80);
+        let post = serde_json::json!({
+            "tool_name": "Bash",
+            "tool_input": {"command": "cargo test daemon"},
+            "tool_response": {"stdout": big, "exit_code": 101}
+        })
+        .to_string();
+        let out = daemon::try_hook(&sock, "claude-code", "PostToolUse", &post).expect("reply");
+        assert!(out.contains("⟪ICX:STUB│#icx:"), "{out}");
+        let start = daemon::try_hook(&sock, "claude-code", "SessionStart", "{}").expect("reply");
+        assert!(start.contains("SessionStart"));
+        let _ = daemon::try_hook(&sock, "codex", "SessionStart", "{}").expect("reply");
+        server.join().unwrap().unwrap();
+        assert!(!sock.exists(), "socket removed on exit");
+
+        let mut fresh = workspace_mmu();
+        fresh.load_workspace_dir(&ws).unwrap();
+        assert!(fresh.cas.artifact_count() >= 1, "daemon flushed its state");
+        let _ = fs::remove_dir_all(&ws);
+    }
+
     #[test]
     fn cloned_repo_workspace_is_not_injected_into_agent_context_until_trusted() {
         // ICX-AUD-010 regression: a repository can ship a populated `.icx/`. Even when the hook is
@@ -1396,7 +1556,7 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp_dir);
         init_workspace_dir(&tmp_dir).expect("init_workspace_dir succeeds");
 
-        let mut mmu = InfinityContextMmu::default();
+        let mut mmu = workspace_mmu();
         mmu.load_workspace_dir(&tmp_dir).expect("load workspace");
         let sample = "alpha line 1\nbeta line 2\ngamma line 3\n";
         let (id, _) = mmu.cas.put_bytes(sample.as_bytes());

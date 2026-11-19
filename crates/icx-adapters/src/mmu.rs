@@ -90,6 +90,8 @@ pub struct InfinityContextMmu {
     persisted_ids: crate::store::PersistedIds,
     /// `(canonical workspace dir, store generation)` this MMU state mirrors, if any.
     loaded_generation: Option<(std::path::PathBuf, u64)>,
+    /// When set, saves MAC-stamp the store and loads reject stores without a valid stamp.
+    store_seal_key: Option<[u8; 32]>,
 }
 
 impl Default for InfinityContextMmu {
@@ -124,6 +126,7 @@ impl InfinityContextMmu {
             clock_ms: 1_794_880_800_000,
             persisted_ids: crate::store::PersistedIds::default(),
             loaded_generation: None,
+            store_seal_key: None,
         }
     }
 
@@ -1148,6 +1151,25 @@ impl InfinityContextMmu {
                 return Ok(());
             }
             let stored = crate::store::load(&mut conn)?;
+            if let Some(key) = &self.store_seal_key {
+                let expected = crate::store::store_seal(key, &canonical, stored.generation);
+                let valid = stored
+                    .seal
+                    .as_deref()
+                    .and_then(|s| <[u8; 32]>::try_from(s).ok())
+                    // `blake3::Hash` equality is constant-time.
+                    .is_some_and(|s| {
+                        blake3::Hash::from_bytes(s) == blake3::Hash::from_bytes(expected)
+                    });
+                if !valid {
+                    return Err(IcxError::Io(format!(
+                        "workspace store at {} was not written by this icx install (seal mismatch); \
+                         run `icx trust --dir {}` if you replaced it yourself",
+                        icx_dir.display(),
+                        icx_dir.display()
+                    )));
+                }
+            }
             let persisted = crate::store::PersistedIds {
                 chunks: stored.chunks.iter().map(|(id, _, _)| *id).collect(),
                 artifacts: stored.artifacts.iter().map(|a| a.id).collect(),
@@ -1204,6 +1226,13 @@ impl InfinityContextMmu {
                 || icx_dir.join("icx-fabric-v1.shm"),
                 std::path::PathBuf::from,
             )
+    }
+
+    /// Sets the key used to MAC-stamp and verify the SQLite store (see
+    /// `workspace::store_seal_key`). `None` disables store-seal verification (library use).
+    pub fn set_store_seal_key(&mut self, key: Option<[u8; 32]>) {
+        self.store_seal_key = key;
+        self.loaded_generation = None;
     }
 
     /// Returns the SQLite store generation of `icx_dir` (0 if never saved).
@@ -1416,12 +1445,18 @@ impl InfinityContextMmu {
         let graph_bytes = self.graph.to_json_bytes()?;
         let hdc_bytes = self.hdc_index.encode_snapshot();
         let mut conn = crate::store::open(icx_dir)?;
+        let canonical_for_seal =
+            std::fs::canonicalize(icx_dir).unwrap_or_else(|_| icx_dir.to_path_buf());
         let derived = crate::store::DerivedState {
             chunk_config: self.cas.chunk_config(),
             graph_json: &graph_bytes,
             mmu_state_json: &state_bytes,
             hdc_snapshot: &hdc_bytes,
             hdc_snapshot_events: self.hdc_events.len() as u64,
+            seal: self
+                .store_seal_key
+                .as_ref()
+                .map(|k| (k, canonical_for_seal.as_path())),
         };
         let next_gen = crate::store::save(
             &mut conn,
