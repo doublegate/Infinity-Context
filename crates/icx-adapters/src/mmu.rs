@@ -86,6 +86,10 @@ pub struct InfinityContextMmu {
     agent_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
     agent_reordered_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
     clock_ms: u64,
+    /// CAS rows known to be present in the SQLite store (keeps saves incremental).
+    persisted_ids: crate::store::PersistedIds,
+    /// `(canonical workspace dir, store generation)` this MMU state mirrors, if any.
+    loaded_generation: Option<(std::path::PathBuf, u64)>,
 }
 
 impl Default for InfinityContextMmu {
@@ -118,6 +122,8 @@ impl InfinityContextMmu {
             agent_occurrences: BTreeMap::new(),
             agent_reordered_occurrences: BTreeMap::new(),
             clock_ms: 1_794_880_800_000,
+            persisted_ids: crate::store::PersistedIds::default(),
+            loaded_generation: None,
         }
     }
 
@@ -1083,7 +1089,7 @@ impl InfinityContextMmu {
         let mem_guard = WORKSPACE_IO_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        std::fs::create_dir_all(icx_dir).map_err(Self::map_io_err)?;
+        crate::store::ensure_private_dir(icx_dir)?;
         let lock_path = icx_dir.join("cas_store.lock");
         let mut opts = std::fs::OpenOptions::new();
         opts.read(true).write(true).create(true).truncate(false);
@@ -1120,6 +1126,95 @@ impl InfinityContextMmu {
     /// Loads workspace state from `icx_dir` assuming the caller already holds
     /// `Self::acquire_workspace_lock(icx_dir)`.
     pub fn load_workspace_dir_unlocked(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
+        let canonical = std::fs::canonicalize(icx_dir).unwrap_or_else(|_| icx_dir.to_path_buf());
+        if crate::store::exists(icx_dir) {
+            let mut conn = crate::store::open(icx_dir)?;
+            let current_gen = crate::store::generation(&conn)?;
+            if self
+                .loaded_generation
+                .as_ref()
+                .is_some_and(|(d, g)| *d == canonical && *g == current_gen)
+            {
+                // No writer has touched the store since this MMU last loaded or saved it; only
+                // re-establish the per-directory binding (workspace hash + shared bus file).
+                self.workspace_hash = Self::workspace_hash_for(&canonical);
+                if self.bus.in_process_layout().is_some() {
+                    let shm_path = Self::shm_path_for(icx_dir);
+                    if shm_path.exists() {
+                        self.bus = SeqlockTelemetryBus::open_shared_file(&shm_path)
+                            .map_err(Self::map_io_err)?;
+                    }
+                }
+                return Ok(());
+            }
+            let stored = crate::store::load(&mut conn)?;
+            let persisted = crate::store::PersistedIds {
+                chunks: stored.chunks.iter().map(|(id, _, _)| *id).collect(),
+                artifacts: stored.artifacts.iter().map(|a| a.id).collect(),
+            };
+            let new_cas = CasStore::from_parts(
+                stored.chunk_config.unwrap_or_default(),
+                stored.chunks,
+                stored.artifacts,
+            )?;
+            let new_graph = match stored.graph_json {
+                Some(bytes) => BiTemporalGraph::from_json_bytes(&bytes)?,
+                None => BiTemporalGraph::new(),
+            };
+            let persisted_state: Option<PersistedMmuState> = match stored.mmu_state_json {
+                Some(bytes) => Some(serde_json::from_slice(&bytes).map_err(Self::map_io_err)?),
+                None => None,
+            };
+            let snapshot = match (stored.hdc_snapshot, stored.hdc_snapshot_events) {
+                (Some(bytes), Some(n)) => Some((
+                    HdcAssociativeIndex::decode_snapshot(&bytes).map_err(Self::map_io_err)?,
+                    n,
+                )),
+                _ => None,
+            };
+            self.apply_loaded(icx_dir, new_cas, new_graph, persisted_state, snapshot)?;
+            self.persisted_ids = persisted;
+            self.loaded_generation = Some((canonical, stored.generation));
+            return Ok(());
+        }
+        if icx_dir.join("cas_store.json").exists() {
+            // v1.0.x JSON workspace: load it, then migrate into the SQLite store. The legacy files
+            // are left in place (non-destructive); the store takes precedence from now on.
+            self.load_legacy_json_unlocked(icx_dir)?;
+            self.save_workspace_dir_unlocked(icx_dir)?;
+            return Ok(());
+        }
+        self.apply_loaded(icx_dir, CasStore::new(), BiTemporalGraph::new(), None, None)?;
+        self.persisted_ids = crate::store::PersistedIds::default();
+        self.loaded_generation = None;
+        Ok(())
+    }
+
+    fn workspace_hash_for(canonical_dir: &Path) -> u64 {
+        ArtifactId::hash_bytes(canonical_dir.to_string_lossy().as_bytes())
+            .0
+            .0
+    }
+
+    fn shm_path_for(icx_dir: &Path) -> std::path::PathBuf {
+        std::env::var("ICX_SHM_PATH")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .map_or_else(
+                || icx_dir.join("icx-fabric-v1.shm"),
+                std::path::PathBuf::from,
+            )
+    }
+
+    /// Returns the SQLite store generation of `icx_dir` (0 if never saved).
+    pub fn workspace_generation(icx_dir: &Path) -> Result<u64, IcxError> {
+        if !crate::store::exists(icx_dir) {
+            return Ok(0);
+        }
+        crate::store::generation(&crate::store::open(icx_dir)?)
+    }
+
+    fn load_legacy_json_unlocked(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
         let cas_path = icx_dir.join("cas_store.json");
         let new_cas = if cas_path.exists() {
             CasStore::load_from_dir(icx_dir)?
@@ -1139,13 +1234,39 @@ impl InfinityContextMmu {
         } else {
             None
         };
-        let shm_path = std::env::var("ICX_SHM_PATH")
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .map_or_else(
-                || icx_dir.join("icx-fabric-v1.shm"),
-                std::path::PathBuf::from,
-            );
+        self.apply_loaded(icx_dir, new_cas, new_graph, persisted_state, None)?;
+        self.persisted_ids = crate::store::PersistedIds::default();
+        self.loaded_generation = None;
+        Ok(())
+    }
+
+    /// Rebuilds the HDC index by re-encoding each recorded event from CAS. Only used when no
+    /// consistent persisted snapshot exists (legacy v1.0.x workspaces, first migration).
+    fn replay_hdc_events(&mut self, events: Vec<HdcEventRecord>) {
+        for (aid, subj, exit_code, force_anomaly) in events {
+            if let Ok(bytes) = self.cas.deref_bytes(aid) {
+                let content = String::from_utf8_lossy(&bytes);
+                let _ = self.hdc_index.observe_event_with_exit_code(
+                    aid,
+                    &subj,
+                    &content,
+                    exit_code,
+                    force_anomaly,
+                );
+                self.hdc_events.push((aid, subj, exit_code, force_anomaly));
+            }
+        }
+    }
+
+    fn apply_loaded(
+        &mut self,
+        icx_dir: &Path,
+        new_cas: CasStore,
+        new_graph: BiTemporalGraph,
+        persisted_state: Option<PersistedMmuState>,
+        hdc_snapshot: Option<(HdcAssociativeIndex, u64)>,
+    ) -> Result<(), IcxError> {
+        let shm_path = Self::shm_path_for(icx_dir);
         let new_bus = if shm_path.exists() {
             SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(Self::map_io_err)?
         } else {
@@ -1153,9 +1274,7 @@ impl InfinityContextMmu {
         };
 
         let canonical_ws = std::fs::canonicalize(icx_dir).unwrap_or_else(|_| icx_dir.to_path_buf());
-        self.workspace_hash = ArtifactId::hash_bytes(canonical_ws.to_string_lossy().as_bytes())
-            .0
-            .0;
+        self.workspace_hash = Self::workspace_hash_for(&canonical_ws);
         self.cas = new_cas;
         self.graph = new_graph;
         self.bus = new_bus;
@@ -1186,18 +1305,14 @@ impl InfinityContextMmu {
             self.epochs = st.epochs.unwrap_or_else(|| {
                 CacheEpochController::new(ICX_AHTL_LEGEND, EpochControllerConfig::default())
             });
-            for (aid, subj, exit_code, force_anomaly) in st.hdc_events {
-                if let Ok(bytes) = self.cas.deref_bytes(aid) {
-                    let content = String::from_utf8_lossy(&bytes);
-                    let _ = self.hdc_index.observe_event_with_exit_code(
-                        aid,
-                        &subj,
-                        &content,
-                        exit_code,
-                        force_anomaly,
-                    );
-                    self.hdc_events.push((aid, subj, exit_code, force_anomaly));
+            match hdc_snapshot {
+                Some((index, n)) if usize::try_from(n).ok() == Some(st.hdc_events.len()) => {
+                    // Fast path (ICX-AUD-001): restore the persisted index instead of
+                    // re-encoding every stored event.
+                    self.hdc_index = index;
+                    self.hdc_events = st.hdc_events;
                 }
+                _ => self.replay_hdc_events(st.hdc_events),
             }
             self.subagent_branches = st
                 .subagent_branches
@@ -1289,20 +1404,50 @@ impl InfinityContextMmu {
     /// `CacheEpochController`, `HdcAssociativeIndex` events, `redacted_artifacts`,
     /// `subagent_branches`, `agent_read_cursors`, `indexed_occurrences`, and logical `clock_ms`
     /// state into `icx_dir` under an exclusive workspace lock.
-    pub fn save_workspace_dir(&self, icx_dir: &Path) -> Result<(), IcxError> {
+    pub fn save_workspace_dir(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
         let _lock = Self::acquire_workspace_lock(icx_dir)?;
         self.save_workspace_dir_unlocked(icx_dir)
     }
 
     /// Atomically persists workspace state into `icx_dir` assuming the caller already holds
     /// `Self::acquire_workspace_lock(icx_dir)`.
-    pub fn save_workspace_dir_unlocked(&self, icx_dir: &Path) -> Result<(), IcxError> {
-        self.cas.save_to_dir(icx_dir)?;
-        self.graph.save_to_dir(icx_dir)?;
-        let redacted_ids: Vec<u64> = self.redacted_artifacts.iter().map(|id| id.0).collect();
-        let state = PersistedMmuState {
+    pub fn save_workspace_dir_unlocked(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
+        let state_bytes = serde_json::to_vec(&self.persisted_state()).map_err(Self::map_io_err)?;
+        let graph_bytes = self.graph.to_json_bytes()?;
+        let hdc_bytes = self.hdc_index.encode_snapshot();
+        let mut conn = crate::store::open(icx_dir)?;
+        let derived = crate::store::DerivedState {
+            chunk_config: self.cas.chunk_config(),
+            graph_json: &graph_bytes,
+            mmu_state_json: &state_bytes,
+            hdc_snapshot: &hdc_bytes,
+            hdc_snapshot_events: self.hdc_events.len() as u64,
+        };
+        let next_gen = crate::store::save(
+            &mut conn,
+            self.cas.chunk_entries(),
+            self.cas.artifact_entries(),
+            &mut self.persisted_ids,
+            &derived,
+        );
+        match next_gen {
+            Ok(g) => {
+                let canonical =
+                    std::fs::canonicalize(icx_dir).unwrap_or_else(|_| icx_dir.to_path_buf());
+                self.loaded_generation = Some((canonical, g));
+                Ok(())
+            }
+            Err(e) => {
+                self.loaded_generation = None;
+                Err(e)
+            }
+        }
+    }
+
+    fn persisted_state(&self) -> PersistedMmuState {
+        PersistedMmuState {
             clock_ms: self.clock_ms,
-            redacted_ids,
+            redacted_ids: self.redacted_artifacts.iter().map(|id| id.0).collect(),
             subagent_branches: self.subagent_branches.clone(),
             dag: self.dag.clone(),
             epochs: Some(self.epochs.clone()),
@@ -1312,8 +1457,17 @@ impl InfinityContextMmu {
             reordered_occurrences: self.reordered_occurrences.clone(),
             agent_occurrences: self.agent_occurrences.clone(),
             agent_reordered_occurrences: self.agent_reordered_occurrences.clone(),
-        };
-        let state_bytes = serde_json::to_vec(&state).map_err(Self::map_io_err)?;
+        }
+    }
+
+    /// Writes the v1.0.x three-file JSON workspace format. Retained only to exercise the
+    /// migration path in tests; production saves use the SQLite store.
+    #[doc(hidden)]
+    pub fn save_workspace_dir_legacy_json(&self, icx_dir: &Path) -> Result<(), IcxError> {
+        let _lock = Self::acquire_workspace_lock(icx_dir)?;
+        self.cas.save_to_dir(icx_dir)?;
+        self.graph.save_to_dir(icx_dir)?;
+        let state_bytes = serde_json::to_vec(&self.persisted_state()).map_err(Self::map_io_err)?;
         Self::write_atomic_file(icx_dir, "mmu_state.json", &state_bytes)
     }
 

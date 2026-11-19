@@ -280,6 +280,28 @@ impl FractalCoord {
     }
 }
 
+impl FractalCoord {
+    pub(crate) fn write_snapshot(&self, w: &mut crate::snapshot::Writer) {
+        for &c in &self.coords {
+            w.f64(c);
+        }
+        w.u32(self.depth);
+    }
+
+    pub(crate) fn read_snapshot(
+        r: &mut crate::snapshot::Reader<'_>,
+    ) -> Result<Self, crate::snapshot::SnapshotError> {
+        let mut coords = [0.0f64; 16];
+        for c in &mut coords {
+            *c = r.f64()?;
+        }
+        Ok(Self {
+            coords,
+            depth: r.u32()?,
+        })
+    }
+}
+
 /// Contractive IFS Trajectory Archive (`arXiv:2607.07144`) indexing historical `(ArtifactId, FractalCoord)`
 /// states by their 64-bit Morton Z-order prefix and $O(1)$ Chebyshev suffix distance.
 #[derive(Clone, Debug, Default)]
@@ -310,6 +332,30 @@ impl FractalTrajectoryArchive {
     #[inline]
     pub const fn current(&self) -> FractalCoord {
         self.current
+    }
+
+    pub(crate) fn write_snapshot(&self, w: &mut crate::snapshot::Writer) {
+        self.current.write_snapshot(w);
+        w.len(self.entries.len());
+        for (morton, aid, coord) in &self.entries {
+            w.u64(*morton);
+            w.u64(aid.0);
+            coord.write_snapshot(w);
+        }
+    }
+
+    pub(crate) fn read_snapshot(
+        r: &mut crate::snapshot::Reader<'_>,
+    ) -> Result<Self, crate::snapshot::SnapshotError> {
+        let current = FractalCoord::read_snapshot(r)?;
+        let n = r.len("archive.entries", crate::snapshot::MAX_SNAPSHOT_ITEMS)?;
+        let mut entries = Vec::with_capacity(n.min(4096));
+        for _ in 0..n {
+            let morton = r.u64()?;
+            let aid = ArtifactId(r.u64()?);
+            entries.push((morton, aid, FractalCoord::read_snapshot(r)?));
+        }
+        Ok(Self { current, entries })
     }
 
     /// Advances the active trajectory by `state_hv`, archives `(artifact_id, current)`, and returns the new coordinate.

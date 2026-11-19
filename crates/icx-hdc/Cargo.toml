@@ -13,3 +13,4 @@ workspace = true
 blake3.workspace = true
 icx-core.workspace = true
 serde.workspace = true
+thiserror.workspace = true

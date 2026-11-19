@@ -493,9 +493,36 @@ impl CasStore {
         let raw = fs::read(&final_path).map_err(|e| IcxError::Io(e.to_string()))?;
         let snapshot: CasSnapshot =
             serde_json::from_slice(&raw).map_err(|e| IcxError::Io(e.to_string()))?;
+        Self::from_parts(snapshot.chunk_config, snapshot.chunks, snapshot.artifacts)
+    }
 
+    /// Chunker configuration used by this store.
+    pub const fn chunk_config(&self) -> ChunkerConfig {
+        self.chunk_config
+    }
+
+    /// Iterates stored `(chunk_id, digest, bytes)` triples in id order (for persistence backends).
+    pub fn chunk_entries(&self) -> impl Iterator<Item = (ArtifactId, &Blake3Digest, &[u8])> {
+        self.chunks
+            .iter()
+            .map(|(&id, (dig, bytes))| (id, dig, bytes.as_slice()))
+    }
+
+    /// Iterates stored artifact metadata in id order (for persistence backends).
+    pub fn artifact_entries(&self) -> impl Iterator<Item = &StoredArtifact> {
+        self.artifacts.values()
+    }
+
+    /// Rebuilds a store from persisted parts, re-verifying every chunk digest, every artifact
+    /// digest, chunk/line-index consistency and the 64 MiB bound. Fails closed with
+    /// `IntegrityViolation` on any mismatch.
+    pub fn from_parts(
+        chunk_config: ChunkerConfig,
+        chunks: impl IntoIterator<Item = (ArtifactId, Blake3Digest, Vec<u8>)>,
+        artifacts: impl IntoIterator<Item = StoredArtifact>,
+    ) -> Result<Self, IcxError> {
         let mut verified_chunks = BTreeMap::new();
-        for (cid, cdigest, bytes) in snapshot.chunks {
+        for (cid, cdigest, bytes) in chunks {
             let (computed_id, computed_digest) = ArtifactId::hash_bytes(&bytes);
             if computed_id != cid
                 || computed_digest != cdigest
@@ -506,8 +533,8 @@ impl CasStore {
             verified_chunks.insert(cid, (cdigest, bytes));
         }
 
-        let mut store = Self::with_config(snapshot.chunk_config);
-        for art in snapshot.artifacts {
+        let mut store = Self::with_config(chunk_config);
+        for art in artifacts {
             let id = art.id;
             if ArtifactId::from_digest(&art.full_digest) != id
                 || art.chunk_ids.len() != art.line_index.len()

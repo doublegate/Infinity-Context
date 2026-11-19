@@ -8,6 +8,8 @@ pub mod codex;
 pub mod hermes;
 pub mod mcp;
 pub mod mmu;
+pub mod store;
+pub mod workspace;
 
 pub use antigravity::AntigravityAdapter;
 pub use claude::ClaudeCodeAdapter;

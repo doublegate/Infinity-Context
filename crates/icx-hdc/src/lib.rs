@@ -4,10 +4,12 @@
 
 pub mod fractal;
 pub mod hv;
+pub mod snapshot;
 pub mod surprise;
 
 pub use crate::fractal::{FractalCoord, FractalTrajectoryArchive};
 pub use crate::hv::{HdcBundler, Hypervector};
+pub use crate::snapshot::SnapshotError;
 pub use crate::surprise::{RetentionTier, SurpriseVerdict, TitansSurpriseGate};
 use icx_core::ArtifactId;
 use serde::{Deserialize, Serialize};
@@ -118,6 +120,70 @@ impl HdcAssociativeIndex {
     }
 
     /// Number of indexed historical artifacts.
+    /// Serializes the complete index state (entries, pre-screen summaries, fractal archive and
+    /// surprise gate) into a versioned binary snapshot, so a workspace can be restored without
+    /// re-encoding every stored event (ICX-AUD-001).
+    pub fn encode_snapshot(&self) -> Vec<u8> {
+        let mut w = snapshot::Writer::default();
+        w.buf.extend_from_slice(snapshot::SNAPSHOT_MAGIC);
+        w.len(self.entries.len());
+        for (e, s) in self.entries.iter().zip(&self.summaries) {
+            w.u64(e.artifact_id.0);
+            w.str(&e.subject);
+            e.hv.write_snapshot(&mut w);
+            e.fractal_coord.write_snapshot(&mut w);
+            w.f32(e.surprise);
+            w.u64(s.hv_sub64);
+            w.u32(s.subj_bloom32);
+            w.u16(s.quadrant_u16);
+            w.u8(s.surprise_q8);
+            w.u8(s.flags);
+        }
+        self.trajectory_archive.write_snapshot(&mut w);
+        self.surprise_gate.write_snapshot(&mut w);
+        w.buf
+    }
+
+    /// Restores an index from [`Self::encode_snapshot`] output. Fails closed on any truncation,
+    /// bound violation, bad magic, or trailing data.
+    pub fn decode_snapshot(bytes: &[u8]) -> Result<Self, SnapshotError> {
+        let mut r = snapshot::Reader::new(bytes);
+        r.expect_magic()?;
+        let n = r.len("index.entries", snapshot::MAX_SNAPSHOT_ITEMS)?;
+        let mut entries = Vec::with_capacity(n.min(4096));
+        let mut summaries = Vec::with_capacity(n.min(4096));
+        for _ in 0..n {
+            let artifact_id = ArtifactId(r.u64()?);
+            let subject = r.str("entry.subject")?;
+            let hv = Hypervector::read_snapshot(&mut r)?;
+            let fractal_coord = FractalCoord::read_snapshot(&mut r)?;
+            let surprise = r.f32()?;
+            entries.push(IndexedEntry::new(
+                artifact_id,
+                subject,
+                hv,
+                fractal_coord,
+                surprise,
+            ));
+            summaries.push(EntrySummary {
+                hv_sub64: r.u64()?,
+                subj_bloom32: r.u32()?,
+                quadrant_u16: r.u16()?,
+                surprise_q8: r.u8()?,
+                flags: r.u8()?,
+            });
+        }
+        let trajectory_archive = FractalTrajectoryArchive::read_snapshot(&mut r)?;
+        let surprise_gate = TitansSurpriseGate::read_snapshot(&mut r)?;
+        r.finish()?;
+        Ok(Self {
+            entries,
+            summaries,
+            trajectory_archive,
+            surprise_gate,
+        })
+    }
+
     pub fn len(&self) -> usize {
         self.entries.len()
     }
@@ -465,6 +531,54 @@ impl AssociativeMemoryIndex for HdcAssociativeIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn populated_index(n: u64) -> HdcAssociativeIndex {
+        let mut idx = HdcAssociativeIndex::new();
+        for i in 1..=n {
+            idx.observe_event_with_exit_code(
+                ArtifactId(i * 7919),
+                &format!("Bash:cargo test -p crate{i}"),
+                &format!("test m{i}::case ... ok\nerror[E0{i:03}]: mismatch at line {i}\n"),
+                if i % 5 == 0 { Some(101) } else { None },
+                i % 11 == 0,
+            );
+        }
+        idx
+    }
+
+    #[test]
+    fn snapshot_round_trip_preserves_queries_and_future_observations() {
+        let mut original = populated_index(150);
+        let bytes = original.encode_snapshot();
+        let mut restored = HdcAssociativeIndex::decode_snapshot(&bytes).expect("decode");
+        assert_eq!(restored.len(), original.len());
+        assert_eq!(restored.current_trajectory(), original.current_trajectory());
+        for q in ["E0042 mismatch", "cargo test crate17", "line 99"] {
+            assert_eq!(
+                original.query_associative(q, 5),
+                restored.query_associative(q, 5)
+            );
+        }
+        let a = original.observe_event(ArtifactId(1), "Bash:ls", "new event body", false);
+        let b = restored.observe_event(ArtifactId(1), "Bash:ls", "new event body", false);
+        assert_eq!(a.fractal_coord, b.fractal_coord);
+        assert_eq!(a.hologram_bytes, b.hologram_bytes);
+        assert_eq!(a.verdict, b.verdict);
+        assert_eq!(restored.encode_snapshot(), original.encode_snapshot());
+    }
+
+    #[test]
+    fn snapshot_decode_rejects_corrupt_and_truncated_input() {
+        let bytes = populated_index(3).encode_snapshot();
+        assert!(HdcAssociativeIndex::decode_snapshot(&[]).is_err());
+        assert!(HdcAssociativeIndex::decode_snapshot(&bytes[..bytes.len() - 1]).is_err());
+        let mut bad_magic = bytes.clone();
+        bad_magic[0] ^= 0xFF;
+        assert!(HdcAssociativeIndex::decode_snapshot(&bad_magic).is_err());
+        let mut trailing = bytes;
+        trailing.push(0);
+        assert!(HdcAssociativeIndex::decode_snapshot(&trailing).is_err());
+    }
 
     #[test]
     fn hdc_associative_index_tracks_empty_state_and_trajectory() {

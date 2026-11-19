@@ -539,6 +539,24 @@ impl Hypervector {
     }
 }
 
+impl Hypervector {
+    pub(crate) fn write_snapshot(&self, w: &mut crate::snapshot::Writer) {
+        for &word in &self.words {
+            w.u64(word);
+        }
+    }
+
+    pub(crate) fn read_snapshot(
+        r: &mut crate::snapshot::Reader<'_>,
+    ) -> Result<Self, crate::snapshot::SnapshotError> {
+        let mut words = [0u64; HV_WORDS];
+        for word in &mut words {
+            *word = r.u64()?;
+        }
+        Ok(Self { words })
+    }
+}
+
 /// Minimum similarity threshold (`0.15`) for a bundled fingerprint to remain considered active
 /// in `HdcBundler` and `TitansSurpriseGate`.
 pub const ACTIVE_BUNDLE_SIM_THRESHOLD: f32 = 0.15;
@@ -547,7 +565,8 @@ pub const ACTIVE_BUNDLE_SIM_THRESHOLD: f32 = 0.15;
 /// Prevents repetitive boilerplate from saturating associative memory.
 #[derive(Clone, Debug)]
 pub struct HdcBundler {
-    acc: [i16; HV_BITS],
+    // i32 counters (ICX-AUD-050): i16 saturated at +/-32,767 on long histories.
+    acc: Box<[i32; HV_BITS]>,
     readout: Hypervector,
     count: usize,
     seen_fingerprints: BTreeSet<u128>,
@@ -563,7 +582,7 @@ impl HdcBundler {
     /// Creates a new empty `HdcBundler`.
     pub fn new() -> Self {
         Self {
-            acc: [0i16; HV_BITS],
+            acc: Box::new([0i32; HV_BITS]),
             readout: Hypervector::zero(),
             count: 0,
             seen_fingerprints: BTreeSet::new(),
@@ -578,7 +597,7 @@ impl HdcBundler {
 
     /// Resets the accumulator, readout, and seen-fingerprint set to the empty zero state.
     pub fn reset(&mut self) {
-        self.acc = [0i16; HV_BITS];
+        self.acc.fill(0);
         self.readout = Hypervector::zero();
         self.count = 0;
         self.seen_fingerprints.clear();
@@ -670,23 +689,72 @@ impl HdcBundler {
         true
     }
 
+    /// Branch-free, auto-vectorizable majority accumulation (ICX-AUD-001 hot path).
+    ///
+    /// Exact-zero ties resolve by coordinate parity `((word_idx ^ bit) & 1) == 0`, which is the
+    /// per-word mask `0x5555...` for even words and `0xAAAA...` for odd words.
     fn accumulate_raw(&mut self, hv: &Hypervector, weight: i16) {
-        let w = weight.clamp(1, 64);
-        for word_idx in 0..HV_WORDS {
+        const EVEN_TIE: u64 = 0x5555_5555_5555_5555;
+        let w = i32::from(weight.clamp(1, 64));
+        for (word_idx, lane) in self.acc.as_chunks_mut::<64>().0.iter_mut().enumerate() {
             let word = hv.words[word_idx];
-            let base = word_idx * 64;
-            let mut out_word = 0u64;
-            for bit in 0..64 {
-                let delta = if ((word >> bit) & 1) != 0 { w } else { -w };
-                let val = self.acc[base + bit].saturating_add(delta);
-                self.acc[base + bit] = val;
-                if val > 0 || (val == 0 && ((word_idx ^ bit) & 1) == 0) {
-                    out_word |= 1u64 << bit;
-                }
+            // Pass 1: branch-free counter update (vectorizes to packed i32 adds).
+            for (bit, counter) in lane.iter_mut().enumerate() {
+                let set = ((word >> bit) & 1) as i32;
+                *counter = counter.saturating_add((2 * set - 1) * w);
             }
-            self.readout.words[word_idx] = out_word;
+            // Pass 2: pack signs into the readout word.
+            let mut positive = 0u64;
+            let mut zero = 0u64;
+            for (bit, &val) in lane.iter().enumerate() {
+                positive |= u64::from(val > 0) << bit;
+                zero |= u64::from(val == 0) << bit;
+            }
+            let tie = if word_idx & 1 == 0 {
+                EVEN_TIE
+            } else {
+                !EVEN_TIE
+            };
+            self.readout.words[word_idx] = positive | (zero & tie);
         }
         self.count += 1;
+    }
+
+    pub(crate) fn write_snapshot(&self, w: &mut crate::snapshot::Writer) {
+        for &c in self.acc.as_slice() {
+            w.i32(c);
+        }
+        self.readout.write_snapshot(w);
+        w.len(self.count);
+        w.len(self.seen_fingerprints.len());
+        for &fp in &self.seen_fingerprints {
+            w.u128(fp);
+        }
+    }
+
+    pub(crate) fn read_snapshot(
+        r: &mut crate::snapshot::Reader<'_>,
+    ) -> Result<Self, crate::snapshot::SnapshotError> {
+        let mut acc = Box::new([0i32; HV_BITS]);
+        for c in acc.as_mut_slice() {
+            *c = r.i32()?;
+        }
+        let readout = Hypervector::read_snapshot(r)?;
+        let count = r.len("bundler.count", u64::MAX)?;
+        let n = r.len(
+            "bundler.seen_fingerprints",
+            crate::snapshot::MAX_SNAPSHOT_ITEMS,
+        )?;
+        let mut seen_fingerprints = BTreeSet::new();
+        for _ in 0..n {
+            seen_fingerprints.insert(r.u128()?);
+        }
+        Ok(Self {
+            acc,
+            readout,
+            count,
+            seen_fingerprints,
+        })
     }
 
     /// Returns the current thresholded 10,240-bit `Hypervector` readout.
@@ -699,6 +767,46 @@ impl HdcBundler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundler_majority_survives_long_histories_without_counter_saturation() {
+        // ICX-AUD-050: i16 counters clamped at 32,767 (512 weight-64 votes) and flipped the
+        // readout after 513 opposing votes even though the true majority was 600 vs 520.
+        let a = Hypervector::from_seed("tok", "majority");
+        let not_a = Hypervector {
+            words: a.words.map(|w| !w),
+        };
+        let mut b = HdcBundler::new();
+        for _ in 0..600 {
+            b.add_weighted(&a, 64);
+        }
+        for _ in 0..520 {
+            b.add_weighted(&not_a, 64);
+        }
+        assert_eq!(b.finalize(), a);
+        for _ in 0..81 {
+            b.add_weighted(&not_a, 64);
+        }
+        assert_eq!(b.finalize(), not_a);
+    }
+
+    #[test]
+    fn accumulate_tie_break_matches_coordinate_parity_rule() {
+        let a = Hypervector::from_seed("tok", "tie");
+        let not_a = Hypervector {
+            words: a.words.map(|w| !w),
+        };
+        let mut b = HdcBundler::new();
+        b.add_weighted(&a, 3);
+        b.add_weighted(&not_a, 3);
+        let out = b.finalize();
+        for (word_idx, &word) in out.words.iter().enumerate() {
+            for bit in 0..64 {
+                let expect = ((word_idx ^ bit) & 1) == 0;
+                assert_eq!((word >> bit) & 1 == 1, expect, "word {word_idx} bit {bit}");
+            }
+        }
+    }
 
     #[test]
     fn hypervector_orthogonality_and_xor_self_inverse() {

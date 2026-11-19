@@ -508,8 +508,20 @@ impl BiTemporalGraph {
     pub fn load_from_dir(dir: &Path) -> Result<Self, IcxError> {
         let path = dir.join("bitemporal_graph.json");
         let bytes = fs::read(&path).map_err(|e| IcxError::Io(e.to_string()))?;
+        Self::from_json_bytes(&bytes)
+    }
+
+    /// Serializes the graph to compact JSON (for persistence backends).
+    pub fn to_json_bytes(&self) -> Result<Vec<u8>, IcxError> {
+        serde_json::to_vec(self).map_err(|e| IcxError::Io(e.to_string()))
+    }
+
+    /// Deserializes and validates a graph previously produced by [`Self::to_json_bytes`] or
+    /// stored as `bitemporal_graph.json`: drops empty edges, rejects duplicate edge ids,
+    /// re-derives entities, repairs bi-temporal interval ordering and clamps weights.
+    pub fn from_json_bytes(bytes: &[u8]) -> Result<Self, IcxError> {
         let mut loaded: Self =
-            serde_json::from_slice(&bytes).map_err(|e| IcxError::Io(e.to_string()))?;
+            serde_json::from_slice(bytes).map_err(|e| IcxError::Io(e.to_string()))?;
         loaded.entities.clear();
         loaded.edges.retain(|e| {
             !e.source_entity.trim().is_empty()

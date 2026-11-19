@@ -10,11 +10,14 @@ description = "Cross-agent lifecycle hook, ContextEngine, and Single-Tool Polymo
 workspace = true
 
 [dependencies]
+blake3.workspace = true
 icx-bus.workspace = true
 icx-codec.workspace = true
 icx-core.workspace = true
 icx-hdc.workspace = true
 icx-store.workspace = true
 serde.workspace = true
+rusqlite.workspace = true
+rustix.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
