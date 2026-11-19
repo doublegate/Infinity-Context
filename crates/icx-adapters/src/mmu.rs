@@ -96,6 +96,9 @@ pub struct InfinityContextMmu {
     store_seal_key: Option<[u8; 32]>,
     /// BLAKE3 digests of every icx-formatted block this MMU handed to an agent (ICX-AUD-011).
     emitted_blocks: BTreeSet<[u8; 32]>,
+    /// When `true`, event times come from the wall clock (milliseconds since the Unix epoch,
+    /// kept strictly monotonic); otherwise a deterministic logical counter (ICX-AUD-048).
+    wall_clock: bool,
 }
 
 impl Default for InfinityContextMmu {
@@ -132,6 +135,7 @@ impl InfinityContextMmu {
             loaded_generation: None,
             store_seal_key: None,
             emitted_blocks: BTreeSet::new(),
+            wall_clock: false,
         }
     }
 
@@ -587,7 +591,7 @@ impl InfinityContextMmu {
         force_anomaly: bool,
         subagent_id: Option<&str>,
     ) -> IngestResult {
-        self.clock_ms += 10;
+        self.clock_ms = self.next_clock_ms();
         let clean_subject = Self::sanitize_hook_label(raw_subject, "event");
         let subject = clean_subject.as_str();
         let (sanitized, body_redacted) =
@@ -1294,6 +1298,25 @@ impl InfinityContextMmu {
     pub fn is_forged_icx_block(&self, text: &str) -> bool {
         // Position-independent (security review): any delimiter anywhere counts.
         text.contains(['⟦', '⟧', '⟪', '⟫']) && !self.is_emitted(text)
+    }
+
+    /// Uses real wall-clock time for bi-temporal event timestamps (ICX-AUD-048). Off by default so
+    /// library use and tests stay deterministic (the core must not read the wall clock unless
+    /// asked); the CLI turns it on for real workspaces.
+    pub fn use_wall_clock(&mut self, enabled: bool) {
+        self.wall_clock = enabled;
+    }
+
+    /// Next event timestamp: wall clock (strictly increasing) or logical `+10` counter.
+    fn next_clock_ms(&self) -> u64 {
+        if self.wall_clock {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+            now.max(self.clock_ms.saturating_add(1))
+        } else {
+            self.clock_ms.saturating_add(10)
+        }
     }
 
     /// Sets the key used to MAC-stamp and verify the SQLite store (see

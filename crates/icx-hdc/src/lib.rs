@@ -39,6 +39,46 @@ struct EntrySummary {
     quadrant_u16: u16,
     surprise_q8: u8,
     flags: u8,
+    /// 256-bit Bloom filter over the entry's subject + content tokens (ICX-AUD-049): lets the
+    /// pre-screen find exact rare identifiers that a bundled hypervector dilutes.
+    content_bloom: [u64; 4],
+}
+
+/// Number of leading hypervector words compared in the Stage-1 pre-screen (16 x 64 = 1,024 bits;
+/// ICX-AUD-049: 64 bits left a single matching token below the noise floor).
+const PRESCREEN_WORDS: usize = 16;
+
+/// Splits text into the lowercase lookup tokens shared by indexing and querying.
+fn lookup_tokens(text: &str) -> impl Iterator<Item = String> + '_ {
+    text.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
+        .filter(|s| s.len() >= 2)
+        .map(str::to_ascii_lowercase)
+}
+
+/// Three bit positions (k = 3) in a 256-bit Bloom filter for `token` (FNV-1a 64).
+fn bloom_bits(token: &str) -> [u8; 3] {
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    for b in token.bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    [
+        (h & 0xFF) as u8,
+        ((h >> 21) & 0xFF) as u8,
+        ((h >> 42) & 0xFF) as u8,
+    ]
+}
+
+fn bloom_insert(bloom: &mut [u64; 4], token: &str) {
+    for bit in bloom_bits(token) {
+        bloom[usize::from(bit >> 6)] |= 1u64 << (bit & 63);
+    }
+}
+
+fn bloom_contains(bloom: &[u64; 4], token: &str) -> bool {
+    bloom_bits(token)
+        .iter()
+        .all(|&bit| bloom[usize::from(bit >> 6)] & (1u64 << (bit & 63)) != 0)
 }
 
 /// Entry stored in the `HdcAssociativeIndex`.
@@ -138,6 +178,9 @@ impl HdcAssociativeIndex {
             w.u16(s.quadrant_u16);
             w.u8(s.surprise_q8);
             w.u8(s.flags);
+            for &word in &s.content_bloom {
+                w.u64(word);
+            }
         }
         self.trajectory_archive.write_snapshot(&mut w);
         self.surprise_gate.write_snapshot(&mut w);
@@ -171,6 +214,7 @@ impl HdcAssociativeIndex {
                 quadrant_u16: r.u16()?,
                 surprise_q8: r.u8()?,
                 flags: r.u8()?,
+                content_bloom: [r.u64()?, r.u64()?, r.u64()?, r.u64()?],
             });
         }
         let trajectory_archive = FractalTrajectoryArchive::read_snapshot(&mut r)?;
@@ -331,7 +375,12 @@ impl HdcAssociativeIndex {
             current_trajectory,
             verdict.momentum_surprise,
         );
+        let mut content_bloom = [0u64; 4];
+        for tok in lookup_tokens(subject).chain(lookup_tokens(content)) {
+            bloom_insert(&mut content_bloom, &tok);
+        }
         self.summaries.push(EntrySummary {
+            content_bloom,
             hv_sub64: composite_hv.sub_hypervector_64(),
             subj_bloom32: Self::compute_subject_bloom32(entry.subject_lower()),
             quadrant_u16: quad_u16,
@@ -394,18 +443,26 @@ impl HdcAssociativeIndex {
     }
 
     #[inline]
-    fn score_entry(
-        &self,
-        e: &IndexedEntry,
-        q_hv: &Hypervector,
-        q_tokens: &[String],
-    ) -> AssociativeHit {
+    fn content_hits(summary: &EntrySummary, q_tokens: &[String]) -> usize {
+        q_tokens
+            .iter()
+            .filter(|t| bloom_contains(&summary.content_bloom, t))
+            .count()
+    }
+
+    fn score_entry(&self, idx: usize, q_hv: &Hypervector, q_tokens: &[String]) -> AssociativeHit {
+        let e = &self.entries[idx];
         let text_sim = q_hv.similarity(&e.hv);
         let lexical_overlap = q_tokens
             .iter()
             .filter(|t| Self::subject_matches_token(&e.subject_lower, t.as_str()))
             .count() as f32;
-        let hdc_sim = (text_sim + 0.25 * lexical_overlap).clamp(0.0, 1.0);
+        let content_frac = if q_tokens.is_empty() {
+            0.0
+        } else {
+            Self::content_hits(&self.summaries[idx], q_tokens) as f32 / q_tokens.len() as f32
+        };
+        let hdc_sim = (text_sim + 0.25 * lexical_overlap + 0.5 * content_frac).clamp(0.0, 1.0);
         let suffix = self
             .current_trajectory()
             .verified_suffix_depth(&e.fractal_coord);
@@ -429,28 +486,25 @@ impl HdcAssociativeIndex {
             return Vec::new();
         }
         let q_hv = Hypervector::encode_text(query_text);
-        let q_tokens: Vec<String> = query_text
-            .split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
-            .filter(|s| s.len() >= 2)
-            .map(str::to_ascii_lowercase)
-            .collect();
+        let q_tokens: Vec<String> = lookup_tokens(query_text).collect();
 
         let adaptive_floor = (self.entries.len() / 64).clamp(16, 512);
+        // Grows with the corpus (>= 4 * sqrt(n)) so recall does not collapse as n increases.
+        let sqrt_floor = ((self.entries.len() as f64).sqrt() * 4.0).ceil() as usize;
         let candidate_cap = top_k
             .saturating_mul(4)
             .clamp(16, 64)
             .max(adaptive_floor)
+            .max(sqrt_floor)
             .max(top_k)
             .min(self.entries.len());
 
         let mut hits: Vec<AssociativeHit> =
             if self.entries.len() <= 64 || candidate_cap == self.entries.len() {
-                self.entries
-                    .iter()
-                    .map(|e| self.score_entry(e, &q_hv, &q_tokens))
+                (0..self.entries.len())
+                    .map(|idx| self.score_entry(idx, &q_hv, &q_tokens))
                     .collect()
             } else {
-                let q_sub64 = q_hv.sub_hypervector_64();
                 let mut q_bloom32 = 0u32;
                 for tok in &q_tokens {
                     q_bloom32 |= Self::composite_token_bloom32(tok);
@@ -462,12 +516,19 @@ impl HdcAssociativeIndex {
                 let mut min_pos = 0usize;
 
                 for (idx, s) in self.summaries.iter().enumerate() {
-                    let sim64 = 64u32.saturating_sub((q_sub64 ^ s.hv_sub64).count_ones());
+                    let ham1024: u32 = q_hv.words[..PRESCREEN_WORDS]
+                        .iter()
+                        .zip(&self.entries[idx].hv.words[..PRESCREEN_WORDS])
+                        .map(|(a, b)| (a ^ b).count_ones())
+                        .sum();
+                    let sim1024 = (PRESCREEN_WORDS as u32 * 64).saturating_sub(ham1024);
+                    let content = Self::content_hits(s, &q_tokens) as u32;
                     let raw_bloom_hits = (q_bloom32 & s.subj_bloom32).count_ones();
                     let subj_density = s.subj_bloom32.count_ones().max(2);
                     let norm_bloom = (raw_bloom_hits * 64) / subj_density.max(q_bloom_bits);
                     let quad_sim = 16u32.saturating_sub((cur_quad ^ s.quadrant_u16).count_ones());
-                    let coarse = sim64 * 10
+                    let coarse = sim1024 / 2
+                        + content * 1200
                         + norm_bloom * 4
                         + (u32::from(s.surprise_q8) >> 1)
                         + quad_sim * 4
@@ -498,7 +559,7 @@ impl HdcAssociativeIndex {
 
                 candidates
                     .into_iter()
-                    .map(|(_, idx)| self.score_entry(&self.entries[idx], &q_hv, &q_tokens))
+                    .map(|(_, idx)| self.score_entry(idx, &q_hv, &q_tokens))
                     .collect()
             };
 
@@ -507,6 +568,10 @@ impl HdcAssociativeIndex {
                 .partial_cmp(&a.combined_score)
                 .unwrap_or(core::cmp::Ordering::Equal)
         });
+        // One hit per artifact (best score wins): repeated ingests of identical content must not
+        // crowd out distinct recalls (ICX-AUD-042).
+        let mut seen = std::collections::BTreeSet::new();
+        hits.retain(|h| seen.insert(h.artifact_id));
         hits.truncate(top_k);
         hits
     }

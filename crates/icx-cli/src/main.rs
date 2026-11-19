@@ -197,6 +197,8 @@ fn roots() -> &'static WorkspaceRoots {
 /// An MMU that MAC-stamps every save and rejects stores not written by this install.
 fn workspace_mmu() -> InfinityContextMmu {
     let mut mmu = InfinityContextMmu::default();
+    // Real workspaces record real event times in the bi-temporal graph (ICX-AUD-048).
+    mmu.use_wall_clock(true);
     match workspace::store_seal_key(roots()) {
         Ok(key) => mmu.set_store_seal_key(Some(key)),
         Err(e) => eprintln!("icx: store sealing unavailable: {e}"),

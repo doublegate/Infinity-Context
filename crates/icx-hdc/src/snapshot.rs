@@ -8,7 +8,7 @@
 use thiserror::Error;
 
 /// Snapshot file magic (`ICXHDC` + format version).
-pub(crate) const SNAPSHOT_MAGIC: &[u8; 8] = b"ICXHDC02";
+pub(crate) const SNAPSHOT_MAGIC: &[u8; 8] = b"ICXHDC03";
 /// Upper bound on any length-prefixed collection inside a snapshot.
 pub(crate) const MAX_SNAPSHOT_ITEMS: u64 = 16 * 1024 * 1024;
 /// Upper bound on any length-prefixed string inside a snapshot.

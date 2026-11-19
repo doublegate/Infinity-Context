@@ -131,3 +131,29 @@ fn sqlite_store_files_are_owner_only() {
     assert_eq!(db_mode, 0o600, "store must be 0600");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn wall_clock_mode_records_real_monotonic_timestamps() {
+    // ICX-AUD-048: bi-temporal edges used a synthetic counter starting at a constant.
+    let mut mmu = InfinityContextMmu::default();
+    mmu.use_wall_clock(true);
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    for i in 0..3 {
+        mmu.ingest_payload(
+            AgentKind::ClaudeCode,
+            "Bash:x",
+            &format!("status ok {i}\n"),
+            false,
+        );
+    }
+    let times: Vec<u64> = mmu.graph.edges().iter().map(|e| e.t_tx_start).collect();
+    assert_ne!(times.len(), 0, "graph recorded edges");
+    assert!(
+        times.iter().all(|&t| t >= before && t < before + 60_000),
+        "{times:?}"
+    );
+    assert!(times.windows(2).all(|w| w[1] >= w[0]), "{times:?}");
+}
