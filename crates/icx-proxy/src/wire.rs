@@ -95,6 +95,7 @@ impl WireProxyTransformer {
         mmu: &mut InfinityContextMmu,
     ) -> Result<String, serde_json::Error> {
         let mut root: Value = serde_json::from_str(body_json)?;
+        Self::neutralize_untrusted_markers(&mut root, mmu);
         let protect_tail = 2usize;
 
         let system_tool_breakpoints = Self::count_cache_breakpoints(root.get("system"))
@@ -184,6 +185,76 @@ impl WireProxyTransformer {
                 .map(|item| Self::count_cache_breakpoints(Some(item)))
                 .sum(),
             _ => 0,
+        }
+    }
+
+    /// Tier-0-escapes every string in the request's conversation (`messages`, `input`,
+    /// `contents`) that contains icx structural markers anywhere and is not byte-identical to an
+    /// icx-emitted block. System/developer messages and icx pager tool results are left as-is.
+    /// Runs before virtualization, so icx's own freshly generated packets are never escaped
+    /// (ICX-AUD-011, position-independent per security review).
+    fn neutralize_untrusted_markers(root: &mut Value, mmu: &InfinityContextMmu) {
+        fn walk(v: &mut Value, mmu: &InfinityContextMmu) {
+            match v {
+                Value::String(s) => {
+                    if mmu.is_forged_icx_block(s) {
+                        *s = InfinityContextMmu::escape_untrusted_delimiters(s);
+                    }
+                }
+                Value::Array(items) => items.iter_mut().for_each(|i| walk(i, mmu)),
+                Value::Object(map) => {
+                    let is_pager = map
+                        .get("name")
+                        .or_else(|| map.get("tool_name"))
+                        .and_then(Value::as_str)
+                        .is_some_and(InfinityContextMmu::is_icx_pager_tool);
+                    if is_pager {
+                        return;
+                    }
+                    for (k, child) in map.iter_mut() {
+                        if k != "cache_control" {
+                            walk(child, mmu);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        for key in ["messages", "input", "contents"] {
+            let Some(items) = root.get_mut(key).and_then(Value::as_array_mut) else {
+                continue;
+            };
+            let pager_ids: BTreeSet<String> = Self::collect_anthropic_pager_tool_use_ids(items)
+                .union(&Self::collect_openai_pager_call_ids(items))
+                .cloned()
+                .collect();
+            for item in items.iter_mut() {
+                let role = item.get("role").and_then(Value::as_str).unwrap_or("");
+                if role == "system" || role == "developer" {
+                    continue;
+                }
+                let refs_pager = ["tool_use_id", "call_id", "tool_call_id"].iter().any(|k| {
+                    item.get(*k)
+                        .and_then(Value::as_str)
+                        .is_some_and(|id| pager_ids.contains(id))
+                });
+                if refs_pager {
+                    continue;
+                }
+                if let Some(Value::Array(blocks)) = item.get_mut("content") {
+                    for block in blocks.iter_mut() {
+                        let block_is_pager = block
+                            .get("tool_use_id")
+                            .and_then(Value::as_str)
+                            .is_some_and(|id| pager_ids.contains(id));
+                        if !block_is_pager {
+                            walk(block, mmu);
+                        }
+                    }
+                } else {
+                    walk(item, mmu);
+                }
+            }
         }
     }
 
@@ -382,20 +453,24 @@ impl WireProxyTransformer {
         Some((s, e))
     }
 
+    /// Expanded CAS content is written into the assistant's response, so it gets no header
+    /// unless the artifact was redacted. It is always Tier-0 escaped so expanded text cannot
+    /// forge icx packets in later turns (ICX-AUD-011).
     fn attach_deref_provenance(
-        text: String,
+        text: &str,
         aid: icx_core::ArtifactId,
         mmu: &InfinityContextMmu,
     ) -> String {
+        let body = InfinityContextMmu::escape_untrusted_delimiters(text);
         if mmu.is_artifact_redacted(aid) {
             let exactness = if mmu.is_cas_artifact(aid) {
-                "post_sanitization_cas"
+                "post_redaction_cas"
             } else {
                 "merkle_dag_representation"
             };
-            format!("⟪ICX:PROVENANCE│id={aid}│redacted=true│exactness={exactness}⟫\n{text}")
+            format!("⟪ICX:PROVENANCE│id={aid}│redacted=true│exactness={exactness}⟫\n{body}")
         } else {
-            text
+            body
         }
     }
 
@@ -407,6 +482,7 @@ impl WireProxyTransformer {
         mmu: &mut InfinityContextMmu,
     ) -> Result<String, serde_json::Error> {
         let mut root: Value = serde_json::from_str(body_json)?;
+        Self::neutralize_untrusted_markers(&mut root, mmu);
         let protect_tail = 2usize;
 
         if let Some(messages) = root.get_mut("messages").and_then(Value::as_array_mut) {
@@ -436,6 +512,7 @@ impl WireProxyTransformer {
         mmu: &mut InfinityContextMmu,
     ) -> Result<String, serde_json::Error> {
         let mut root: Value = serde_json::from_str(body_json)?;
+        Self::neutralize_untrusted_markers(&mut root, mmu);
         let protect_tail = 2usize;
         let threshold = mmu.tool_virtualize_threshold;
 
@@ -580,13 +657,13 @@ impl WireProxyTransformer {
                         Some(r_spec) => match Self::parse_deref_range(r_spec) {
                             Some((s, e)) => mmu
                                 .deref_lines(aid, s, e)
-                                .map(|t| Self::attach_deref_provenance(t, aid, mmu))
+                                .map(|t| Self::attach_deref_provenance(&t, aid, mmu))
                                 .unwrap_or_else(|err| format!("⟪ICX:DEREF_ERR│{err}⟫")),
                             None => format!("⟪ICX:DEREF_ERR│invalid line range `{r_spec}`⟫"),
                         },
                         None => mmu
                             .deref_text(aid)
-                            .map(|t| Self::attach_deref_provenance(t, aid, mmu))
+                            .map(|t| Self::attach_deref_provenance(&t, aid, mmu))
                             .unwrap_or_else(|err| format!("⟪ICX:DEREF_ERR│{err}⟫")),
                     },
                     Err(err) => format!("⟪ICX:DEREF_ERR│{err}⟫"),
@@ -3182,7 +3259,7 @@ mod tests {
             &mmu,
         );
         assert!(redacted_deref_out.starts_with("⟪ICX:PROVENANCE│id=#icx:"));
-        assert!(redacted_deref_out.contains("│redacted=true│exactness=post_sanitization_cas⟫"));
+        assert!(redacted_deref_out.contains("│redacted=true│exactness=post_redaction_cas⟫"));
 
         // Verify repeated transformations on image-only array turns do not duplicate the tail slot
         let pass2_oai: Value = serde_json::from_str(

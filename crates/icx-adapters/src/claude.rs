@@ -65,21 +65,11 @@ impl ClaudeCodeAdapter {
                 })
             }
             "PreToolUse" | "pre-tool-use" => {
-                let mut hso = json!({
-                    "hookEventName": "PreToolUse"
-                });
-                if let Some(dec) = payload
-                    .get("permissionDecision")
-                    .and_then(Value::as_str)
-                    .filter(|s| !s.is_empty())
-                {
-                    hso["permissionDecision"] = Value::String(dec.to_owned());
-                }
-                if let Some(updated) = payload.get("updatedInput").filter(|v| !v.is_null()) {
-                    hso["updatedInput"] = updated.clone();
-                }
+                // `permissionDecision` / `updatedInput` are output-only fields; the input never
+                // carries them, so icx expresses no decision and leaves the tool input unchanged
+                // (ICX-AUD-009: the former stdin echo was dead code).
                 json!({
-                    "hookSpecificOutput": hso
+                    "hookSpecificOutput": { "hookEventName": "PreToolUse" }
                 })
             }
             "PostToolUse" | "post-tool-use" => {

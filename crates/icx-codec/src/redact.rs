@@ -11,44 +11,113 @@ use std::collections::BTreeMap;
 pub struct SecretRedactor;
 
 impl SecretRedactor {
-    /// Redacts known credential patterns, high-entropy unprefixed secrets, PEM/PGP private key
-    /// blocks, and escapes reserved AHTL structural delimiters (`⟪`, `⟫`, `⟦`, `⟧`) so untrusted
-    /// payloads can never leak secrets or forge system packets.
+    /// Model-facing sanitization: [`Self::redact`] followed by Tier-0 delimiter escaping, so
+    /// untrusted text can neither leak secrets nor forge AHTL packets/headers.
     pub fn sanitize(input: &str) -> String {
-        let escaped = Self::escape_ahtl_delimiters(input);
-        let mut lines_out = Vec::new();
-        let mut in_pem_block = false;
-        let mut in_pgp_block = false;
+        Self::escape_ahtl_delimiters(&Self::redact(input))
+    }
 
-        for line in escaped.lines() {
-            if line.contains("-----BEGIN ") && line.contains("PRIVATE KEY-----") {
-                in_pem_block = true;
-                lines_out.push("[REDACTED:PEM_PRIVATE_KEY]".to_owned());
-                continue;
-            }
-            if in_pem_block {
-                if line.contains("-----END ") && line.contains("PRIVATE KEY-----") {
-                    in_pem_block = false;
+    /// Storage-grade redaction (v1.1.0, ICX-AUD-021): removes credentials, private-key blocks and
+    /// high-entropy secrets while preserving everything else byte-for-byte (line endings,
+    /// trailing newline, and literal delimiters). For secret-free input the result equals the
+    /// input, which is what makes CAS dereferencing lossless.
+    pub fn redact(input: &str) -> String {
+        let mut out = String::with_capacity(input.len());
+        let mut block: Option<KeyBlock> = None;
+        let mut block_lines = 0usize;
+        let mut pending_value = false;
+        for segment in input.split_inclusive('\n') {
+            let (body, ending) = split_line_ending(segment);
+            if let Some(kind) = block {
+                block_lines += 1;
+                if kind.is_end(body) {
+                    block = None;
+                    continue;
                 }
-                continue;
-            }
-
-            if line.contains("-----BEGIN PGP ") && line.contains("PRIVATE KEY BLOCK-----") {
-                in_pgp_block = true;
-                lines_out.push("[REDACTED:PGP_PRIVATE_KEY]".to_owned());
-                continue;
-            }
-            if in_pgp_block {
-                if line.contains("-----END PGP ") && line.contains("PRIVATE KEY BLOCK-----") {
-                    in_pgp_block = false;
+                if block_lines < MAX_KEY_BLOCK_LINES {
+                    continue;
                 }
+                // Runaway/unterminated block: stop swallowing and resume normal processing.
+                block = None;
+            }
+            if let Some(inline) = Self::redact_inline_key_blocks(body) {
+                out.push_str(&Self::redact_line(&inline));
+                out.push_str(ending);
                 continue;
             }
-
-            lines_out.push(Self::redact_line(line));
+            if let Some(kind) = KeyBlock::begins(body) {
+                block = Some(kind);
+                block_lines = 0;
+                out.push_str(kind.marker());
+                out.push_str(ending);
+                continue;
+            }
+            let redacted = if pending_value && !body.trim().is_empty() {
+                pending_value = false;
+                Self::redact_bare_value_line(body)
+            } else {
+                Self::redact_line(body)
+            };
+            if Self::ends_with_sensitive_key(body) {
+                pending_value = true;
+            }
+            out.push_str(&redacted);
+            out.push_str(ending);
         }
+        out
+    }
 
-        lines_out.join("\n")
+    /// Redacts BEGIN..END private-key spans that start and end on the same line (e.g. a key
+    /// embedded in a JSON string with `\n` escapes). Returns `None` if the line has none.
+    fn redact_inline_key_blocks(line: &str) -> Option<String> {
+        let mut out = line.to_owned();
+        let mut changed = false;
+        for kind in [KeyBlock::Pem, KeyBlock::Pgp] {
+            while let Some(start) = kind.begin_index(&out) {
+                let Some(end) = kind.end_index_after(&out, start) else {
+                    break;
+                };
+                out.replace_range(start..end, kind.marker());
+                changed = true;
+            }
+        }
+        changed.then_some(out)
+    }
+
+    /// True if the line ends with a sensitive key whose value continues on the next line
+    /// (`"password":` / `password:`).
+    fn ends_with_sensitive_key(line: &str) -> bool {
+        let Some(head) = line.trim_end().strip_suffix(':') else {
+            return false;
+        };
+        let key = head
+            .trim()
+            .rsplit(|c: char| c.is_whitespace() || c == '{' || c == ',')
+            .next()
+            .unwrap_or("")
+            .trim_matches(|c: char| c == '"' || c == '\'');
+        !key.is_empty() && Self::is_sensitive_key_name(key)
+    }
+
+    /// Replaces the (possibly quoted) value on a continuation line, keeping indentation and any
+    /// trailing comma.
+    fn redact_bare_value_line(line: &str) -> String {
+        let indent_len = line.len() - line.trim_start().len();
+        let (indent, rest) = line.split_at(indent_len);
+        let rest_trim = rest.trim_end();
+        let (core, trailing_comma) = match rest_trim.strip_suffix(',') {
+            Some(c) => (c, ","),
+            None => (rest_trim, ""),
+        };
+        let quoted = core.len() >= 2
+            && ((core.starts_with('"') && core.ends_with('"'))
+                || (core.starts_with('\'') && core.ends_with('\'')));
+        if quoted {
+            let q = &core[..1];
+            format!("{indent}{q}[REDACTED:SECRET]{q}{trailing_comma}")
+        } else {
+            format!("{indent}[REDACTED:SECRET]{trailing_comma}")
+        }
     }
 
     /// Escapes literal `⟪`, `⟫`, `⟦`, `⟧` characters in untrusted inputs (`Tier 0`).
@@ -126,6 +195,21 @@ impl SecretRedactor {
             "PRIVATE_KEY",
             "BEARER_TOKEN",
             "TOKEN",
+            // v1.1.0 (ICX-AUD-015)
+            "ENCRYPTION_KEY",
+            "SIGNING_KEY",
+            "MASTER_KEY",
+            "CLIENT_KEY",
+            "HMAC_KEY",
+            "SSH_KEY",
+            "PASS",
+            "PASSPHRASE",
+            "CREDENTIAL",
+            "CREDENTIALS",
+            "DSN",
+            "COOKIE",
+            "SESSION_ID",
+            "SESSIONID",
         ];
         sensitive_suffixes
             .iter()
@@ -147,6 +231,9 @@ impl SecretRedactor {
 
         // 5. Redact 3-segment Base64URL JWT tokens (`eyJ... . eyJ... . ...`)
         current = Self::redact_jwt_tokens(&current);
+
+        // 5b. Structured vendor formats (SendGrid, Slack webhooks, Twilio)
+        current = Self::redact_structured_vendor_tokens(&current);
 
         // 6. Token-level prefix scan for 2025/2026 vendor credential formats (advancing cursor past short non-matches)
         let prefixes: &[(&str, &str, usize)] = &[
@@ -178,6 +265,13 @@ impl SecretRedactor {
             ("xoxr-", "[REDACTED:SLACK_TOKEN]", 14),
             ("xoxs-", "[REDACTED:SLACK_TOKEN]", 14),
             ("xoxo-", "[REDACTED:SLACK_TOKEN]", 14),
+            // v1.1.0 (ICX-AUD-015)
+            ("xapp-", "[REDACTED:SLACK_TOKEN]", 20),
+            ("glpat-", "[REDACTED:GITLAB_TOKEN]", 20),
+            ("glptt-", "[REDACTED:GITLAB_TOKEN]", 20),
+            ("dop_v1_", "[REDACTED:DIGITALOCEAN_TOKEN]", 40),
+            ("shpat_", "[REDACTED:SHOPIFY_TOKEN]", 30),
+            ("shpss_", "[REDACTED:SHOPIFY_TOKEN]", 30),
         ];
 
         for &(prefix, replacement, min_len) in prefixes {
@@ -476,55 +570,117 @@ impl SecretRedactor {
         out
     }
 
+    /// Redacts the password component of `scheme://user:password@host` for every URL scheme
+    /// (v1.1.0: previously database/broker schemes only, so `https://user:pass@` leaked).
     fn redact_connection_urls(line: &str) -> String {
-        let schemes = [
-            "postgres://",
-            "postgresql://",
-            "mysql://",
-            "mongodb://",
-            "mongodb+srv://",
-            "redis://",
-            "rediss://",
-            "amqp://",
-            "amqps://",
-        ];
         let mut out = line.to_owned();
-        for scheme in schemes {
-            let mut search_pos = 0usize;
-            while search_pos < out.len() {
-                let Some(rel_idx) = out[search_pos..].find(scheme) else {
-                    break;
-                };
-                let after_scheme = search_pos + rel_idx + scheme.len();
-                let rest = &out[after_scheme..];
-                let end_authority = rest
-                    .find(|c: char| {
-                        matches!(
-                            c,
-                            '/' | '?' | '#' | '"' | '\'' | '\\' | ')' | ']' | '}' | '>'
-                        ) || c.is_whitespace()
-                    })
-                    .unwrap_or(rest.len());
-                let authority = &rest[..end_authority];
-                if let Some(at_pos) = authority.rfind('@') {
-                    let userinfo = &authority[..at_pos];
-                    if let Some(colon_pos) = userinfo.find(':') {
-                        let pass_start = after_scheme + colon_pos + 1;
-                        let pass_end = after_scheme + at_pos;
-                        if pass_end > pass_start
-                            && !out[pass_start..pass_end].starts_with("[REDACTED:")
-                        {
-                            let replacement = "[REDACTED:URL_PASSWORD]";
-                            out.replace_range(pass_start..pass_end, replacement);
-                            search_pos = pass_start + replacement.len();
-                            continue;
-                        }
+        let mut search_pos = 0usize;
+        while search_pos < out.len() {
+            let Some(rel_idx) = out[search_pos..].find("://") else {
+                break;
+            };
+            let sep = search_pos + rel_idx;
+            let scheme_ok = out[..sep]
+                .chars()
+                .rev()
+                .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+                .last()
+                .is_some_and(|c| c.is_ascii_alphabetic());
+            let after_scheme = sep + 3;
+            if !scheme_ok {
+                search_pos = after_scheme;
+                continue;
+            }
+            let rest = &out[after_scheme..];
+            let end_authority = rest
+                .find(|c: char| {
+                    matches!(
+                        c,
+                        '/' | '?' | '#' | '"' | '\'' | '\\' | ')' | ']' | '}' | '>'
+                    ) || c.is_whitespace()
+                })
+                .unwrap_or(rest.len());
+            let authority = &rest[..end_authority];
+            if let Some(at_pos) = authority.rfind('@') {
+                let userinfo = &authority[..at_pos];
+                if let Some(colon_pos) = userinfo.find(':') {
+                    let pass_start = after_scheme + colon_pos + 1;
+                    let pass_end = after_scheme + at_pos;
+                    if pass_end > pass_start && !out[pass_start..pass_end].starts_with("[REDACTED:")
+                    {
+                        let replacement = "[REDACTED:URL_PASSWORD]";
+                        out.replace_range(pass_start..pass_end, replacement);
+                        search_pos = pass_start + replacement.len();
+                        continue;
                     }
                 }
-                search_pos = after_scheme + end_authority;
             }
+            search_pos = after_scheme + end_authority;
         }
         out
+    }
+
+    /// Redacts vendor formats the generic prefix scan cannot express: dotted SendGrid keys,
+    /// Slack webhook URLs, and Twilio `SK` + 32 hex API keys (v1.1.0, ICX-AUD-015).
+    fn redact_structured_vendor_tokens(line: &str) -> String {
+        let mut out = line.to_owned();
+        // SendGrid: SG.<22 urlsafe>.<43 urlsafe>
+        let mut pos = 0usize;
+        while let Some(rel) = out[pos..].find("SG.") {
+            let start = pos + rel;
+            let tok_len = out[start..]
+                .bytes()
+                .take_while(|&b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+                .count();
+            let tok = &out[start..start + tok_len];
+            if tok_len >= 60 && tok.matches('.').count() == 2 {
+                out.replace_range(start..start + tok_len, "[REDACTED:SENDGRID_KEY]");
+                pos = start + "[REDACTED:SENDGRID_KEY]".len();
+            } else {
+                pos = start + 3;
+            }
+        }
+        // Slack incoming webhooks
+        let hook = "https://hooks.slack.com/services/";
+        let mut pos = 0usize;
+        while let Some(rel) = out[pos..].find(hook) {
+            let path_start = pos + rel + hook.len();
+            let path_len = out[path_start..]
+                .bytes()
+                .take_while(|&b| b.is_ascii_alphanumeric() || b == b'/')
+                .count();
+            if path_len >= 20 {
+                out.replace_range(
+                    path_start..path_start + path_len,
+                    "[REDACTED:SLACK_WEBHOOK]",
+                );
+            }
+            pos = path_start;
+        }
+        // Twilio API key SID: SK + 32 lowercase hex, delimited
+        let bytes = out.clone();
+        let b = bytes.as_bytes();
+        let mut result = String::with_capacity(out.len());
+        let mut i = 0usize;
+        while i < b.len() {
+            let boundary_before = i == 0 || !b[i - 1].is_ascii_alphanumeric();
+            if boundary_before
+                && b[i..].starts_with(b"SK")
+                && b.len() >= i + 34
+                && b[i + 2..i + 34]
+                    .iter()
+                    .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+                && (b.len() == i + 34 || !b[i + 34].is_ascii_alphanumeric())
+            {
+                result.push_str("[REDACTED:TWILIO_KEY]");
+                i += 34;
+                continue;
+            }
+            let ch_len = bytes[i..].chars().next().map_or(1, char::len_utf8);
+            result.push_str(&bytes[i..i + ch_len]);
+            i += ch_len;
+        }
+        result
     }
 
     fn redact_jwt_tokens(line: &str) -> String {
@@ -705,6 +861,73 @@ impl SecretRedactor {
             return false;
         }
         Self::shannon_entropy(token) > 4.35
+    }
+}
+
+/// Maximum lines a private-key block may span before redaction stops swallowing input
+/// (ICX-AUD-016: an unterminated BEGIN must not delete the rest of a tool output).
+const MAX_KEY_BLOCK_LINES: usize = 200;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum KeyBlock {
+    Pem,
+    Pgp,
+}
+
+impl KeyBlock {
+    const fn marker(self) -> &'static str {
+        match self {
+            Self::Pem => "[REDACTED:PEM_PRIVATE_KEY]",
+            Self::Pgp => "[REDACTED:PGP_PRIVATE_KEY]",
+        }
+    }
+
+    fn begins(line: &str) -> Option<Self> {
+        if line.contains("-----BEGIN PGP ") && line.contains("PRIVATE KEY BLOCK-----") {
+            Some(Self::Pgp)
+        } else if line.contains("-----BEGIN ") && line.contains("PRIVATE KEY-----") {
+            Some(Self::Pem)
+        } else {
+            None
+        }
+    }
+
+    fn is_end(self, line: &str) -> bool {
+        match self {
+            Self::Pem => line.contains("-----END ") && line.contains("PRIVATE KEY-----"),
+            Self::Pgp => line.contains("-----END PGP ") && line.contains("PRIVATE KEY BLOCK-----"),
+        }
+    }
+
+    fn begin_index(self, line: &str) -> Option<usize> {
+        let (open, tail) = match self {
+            Self::Pem => ("-----BEGIN ", "PRIVATE KEY-----"),
+            Self::Pgp => ("-----BEGIN PGP ", "PRIVATE KEY BLOCK-----"),
+        };
+        let start = line.find(open)?;
+        line[start..].contains(tail).then_some(start)
+    }
+
+    fn end_index_after(self, line: &str, start: usize) -> Option<usize> {
+        let (close, tail) = match self {
+            Self::Pem => ("-----END ", "PRIVATE KEY-----"),
+            Self::Pgp => ("-----END PGP ", "PRIVATE KEY BLOCK-----"),
+        };
+        let rel = line[start..].find(close)?;
+        let after_close = start + rel;
+        let tail_rel = line[after_close..].find(tail)?;
+        Some(after_close + tail_rel + tail.len())
+    }
+}
+
+/// Splits a `split_inclusive('\n')` segment into its body and its exact line ending.
+fn split_line_ending(segment: &str) -> (&str, &str) {
+    if let Some(body) = segment.strip_suffix("\r\n") {
+        (body, "\r\n")
+    } else if let Some(body) = segment.strip_suffix('\n') {
+        (body, "\n")
+    } else {
+        (segment, "")
     }
 }
 

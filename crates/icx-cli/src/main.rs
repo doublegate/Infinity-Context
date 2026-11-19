@@ -1719,7 +1719,7 @@ mod tests {
         }
         for (aid, expected_text) in expected_artifacts {
             let recovered = deref_from_workspace_dir(&tmp_dir, &aid.to_string(), None).unwrap();
-            assert_eq!(recovered, expected_text.trim_end_matches('\n'));
+            assert_eq!(recovered, expected_text, "byte-exact deref (ICX-AUD-021)");
         }
 
         // Verify that a lingering `cas_store.lock` file on disk (e.g. after a crashed process

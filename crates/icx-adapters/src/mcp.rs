@@ -103,29 +103,25 @@ impl McpPagerServer {
         }
     }
 
+    /// Wraps dereferenced CAS content for a model (ICX-AUD-011, ICX-AUD-021): the stored bytes
+    /// are exact, but what the model sees is Tier-0 escaped and always preceded by a provenance
+    /// header declaring it untrusted data. `args.provenance` is accepted for compatibility.
     fn attach_provenance(
-        text: String,
+        text: &str,
         aid: icx_core::ArtifactId,
-        args: &Value,
+        _args: &Value,
         mmu: &InfinityContextMmu,
     ) -> String {
-        let want_prov = args
-            .get("provenance")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
         let is_redacted = mmu.is_artifact_redacted(aid);
         let exactness = if mmu.is_cas_artifact(aid) {
-            "post_sanitization_cas"
+            "post_redaction_cas"
         } else {
             "merkle_dag_representation"
         };
-        if want_prov || is_redacted {
-            format!(
-                "⟪ICX:PROVENANCE│id={aid}│redacted={is_redacted}│exactness={exactness}⟫\n{text}"
-            )
-        } else {
-            text
-        }
+        let body = InfinityContextMmu::escape_untrusted_delimiters(text);
+        format!(
+            "⟪ICX:PROVENANCE│id={aid}│redacted={is_redacted}│exactness={exactness}│trust=untrusted_data⟫\n{body}"
+        )
     }
 
     /// Processes a single JSON-RPC 2.0 MCP request line and returns a JSON-RPC 2.0 response.
@@ -233,7 +229,7 @@ impl McpPagerServer {
                 };
                 match mmu.resolve_handle(id_str) {
                     Ok(aid) => match mmu.deref_text(aid) {
-                        Ok(text) => (Self::attach_provenance(text, aid, args, mmu), false),
+                        Ok(text) => (Self::attach_provenance(&text, aid, args, mmu), false),
                         Err(e) => (Self::format_error(&e), true),
                     },
                     Err(e) => (Self::format_error(&e), true),
@@ -258,7 +254,7 @@ impl McpPagerServer {
 
                 match mmu.resolve_handle(id_str) {
                     Ok(aid) => match mmu.deref_lines(aid, range.0, range.1) {
-                        Ok(text) => (Self::attach_provenance(text, aid, args, mmu), false),
+                        Ok(text) => (Self::attach_provenance(&text, aid, args, mmu), false),
                         Err(e) => (Self::format_error(&e), true),
                     },
                     Err(e) => (Self::format_error(&e), true),
@@ -287,7 +283,12 @@ impl McpPagerServer {
                         matches
                             .iter()
                             .map(|m| {
-                                format!("{}#L{}: {}", m.artifact_id, m.line_number, m.line_text)
+                                format!(
+                                    "{}#L{}: {}",
+                                    m.artifact_id,
+                                    m.line_number,
+                                    InfinityContextMmu::escape_untrusted_delimiters(&m.line_text)
+                                )
                             })
                             .collect::<Vec<_>>()
                             .join("\n"),

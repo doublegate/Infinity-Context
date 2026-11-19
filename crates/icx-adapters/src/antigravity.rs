@@ -152,7 +152,21 @@ impl AntigravityAdapter {
     /// the trailing window of `path` (falling back to a full scan from offset 0 if a single record
     /// exceeds the 512 KiB tail window).
     pub fn read_transcript_step(path: &Path, target_step_idx: Option<u64>) -> Option<String> {
-        let mut file = File::open(path).ok()?;
+        // ICX-AUD-018: reject non-regular files (FIFOs, devices, symlinks) *before* opening, and
+        // open non-blocking without following symlinks so a swap between the check and the open
+        // cannot block the hook; then re-check the opened handle.
+        if !std::fs::symlink_metadata(path).ok()?.file_type().is_file() {
+            return None;
+        }
+        let mut opts = std::fs::OpenOptions::new();
+        opts.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let flags = rustix::fs::OFlags::NONBLOCK | rustix::fs::OFlags::NOFOLLOW;
+            opts.custom_flags(flags.bits().cast_signed());
+        }
+        let mut file: File = opts.open(path).ok()?;
         let meta = file.metadata().ok()?;
         if !meta.file_type().is_file() {
             return None;

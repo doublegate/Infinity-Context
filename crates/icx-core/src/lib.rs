@@ -241,6 +241,10 @@ pub enum IcxError {
 
     #[error("I/O error in Content-Addressed Store: {0}")]
     Io(String),
+
+    /// Two different contents map to the same 64-bit id (ICX-AUD-022). Never silently resolved.
+    #[error("64-bit id collision for `{0}`: stored content has a different BLAKE3 digest")]
+    HashCollision(ArtifactId),
 }
 
 #[cfg(test)]

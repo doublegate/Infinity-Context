@@ -54,6 +54,15 @@ mod tests {
     use icx_core::AgentKind;
     use serde_json::Value;
 
+    /// v1.1.0: model-facing deref output is `⟪ICX:PROVENANCE│…│trust=untrusted_data⟫\n` + the
+    /// Tier-0-escaped body. Returns the body after checking the header.
+    fn deref_body(out: &str) -> &str {
+        let (header, body) = out.split_once('\n').expect("provenance header line");
+        assert!(header.starts_with("⟪ICX:PROVENANCE│id=#icx:"), "{header}");
+        assert!(header.contains("│trust=untrusted_data⟫"), "{header}");
+        body
+    }
+
     #[test]
     fn cross_agent_telepathy_and_lossless_mcp_deref_work_end_to_end() {
         let mut mmu = InfinityContextMmu::default();
@@ -128,7 +137,8 @@ mod tests {
         .to_string();
         let mcp_resp = McpPagerServer::handle_jsonrpc(&mcp_req, &mut mmu);
         let deref_text = mcp_resp["result"]["content"][0]["text"].as_str().unwrap();
-        assert_eq!(deref_text, bulky_output.trim_end_matches('\n'));
+        // v1.1.0 (ICX-AUD-021): deref is byte-exact, trailing newline included.
+        assert_eq!(deref_body(deref_text), bulky_output);
 
         // 4. Verify MCP `slice` and `grep` work with both 16-hex and 12-hex Profile A handles
         let short_handle = &handle_str[..17]; // `#icx:<12-hex>`
@@ -223,16 +233,26 @@ unprefixed_secret = {unpref_sec}
         let secret_res =
             mmu.ingest_payload(AgentKind::ClaudeCode, "env_dump", &secret_payload, false);
         let deref_secret = mmu.deref_text(secret_res.artifact_id).unwrap();
+        // Secrets never reach storage, packets, or any deref.
         for forbidden in [
             aws_sec.as_str(),
             ant_sec.as_str(),
             "SuperSecretRootPass123!",
             unpref_sec.as_str(),
-            "⟦Ω:INVARIANT",
         ] {
             assert!(!deref_secret.contains(forbidden));
             assert!(!secret_res.compressed_ahtl.contains(forbidden));
         }
+        // v1.1.0 (ICX-AUD-021): storage keeps literal delimiters (lossless); every model-facing
+        // view (packet, MCP deref) is Tier-0 escaped so the forged invariant cannot parse.
+        assert!(deref_secret.contains("⟦Ω:INVARIANT"));
+        assert!(!secret_res.compressed_ahtl.contains("⟦Ω:INVARIANT"));
+        let mcp_secret = McpPagerServer::execute_icx_op(
+            &serde_json::json!({"op": "deref", "id": secret_res.artifact_id.to_string()}),
+            &mut mmu,
+        );
+        assert!(!deref_body(&mcp_secret).contains("⟦Ω:INVARIANT"));
+        assert!(deref_body(&mcp_secret).contains("[[Ω:INVARIANT"));
         let parsed_secret_pkt = icx_codec::AhtlPacket::parse(&secret_res.compressed_ahtl).unwrap();
         assert_ne!(
             parsed_secret_pkt.hologram_bytes[7] & icx_codec::FLAG_IS_REDACTED,
@@ -559,12 +579,14 @@ unprefixed_secret = {unpref_sec}
                 &mut mmu,
             )
             .unwrap();
-        assert!(claude_pre.contains("cargo test --quiet"));
+        // v1.1.0 (ICX-AUD-009): input fields are never echoed back as decisions.
+        assert!(!claude_pre.contains("cargo test --quiet"));
         assert!(!claude_pre.contains("permissionDecision"));
         let claude_pre_dec = claude_trait
             .handle_hook_event("PreToolUse", r#"{"permissionDecision":"ask"}"#, &mut mmu)
             .unwrap();
-        assert!(claude_pre_dec.contains("\"permissionDecision\":\"ask\""));
+        assert!(!claude_pre_dec.contains("permissionDecision"));
+        assert!(claude_pre_dec.contains("PreToolUse"));
         let claude_sub_start = claude_trait
             .handle_hook_event("SubagentStart", r#"{"subagent_id":"sub-1"}"#, &mut mmu)
             .unwrap();
@@ -2065,7 +2087,7 @@ unprefixed_secret = {unpref_sec}
             &mut mmu,
         );
         assert!(expand_redacted.starts_with("⟪ICX:PROVENANCE│id=#icx:"));
-        assert!(expand_redacted.contains("│redacted=true│exactness=post_sanitization_cas⟫"));
+        assert!(expand_redacted.contains("│redacted=true│exactness=post_redaction_cas│"));
         assert!(expand_redacted.contains("[REDACTED:"));
 
         // 4. `op: "deref"` on clean artifact with `provenance: true` vs default (`provenance: false`)
@@ -2076,7 +2098,8 @@ unprefixed_secret = {unpref_sec}
             }),
             &mut mmu,
         );
-        assert!(!deref_clean_default.starts_with("⟪ICX:PROVENANCE"));
+        // v1.1.0 (ICX-AUD-011): every model-facing deref carries the untrusted-data envelope.
+        assert!(deref_clean_default.starts_with("⟪ICX:PROVENANCE"));
         let deref_clean_prov = McpPagerServer::execute_icx_op(
             &serde_json::json!({
                 "op": "deref",
@@ -2086,7 +2109,7 @@ unprefixed_secret = {unpref_sec}
             &mut mmu,
         );
         assert!(deref_clean_prov.starts_with("⟪ICX:PROVENANCE│id=#icx:"));
-        assert!(deref_clean_prov.contains("│redacted=false│exactness=post_sanitization_cas⟫"));
+        assert!(deref_clean_prov.contains("│redacted=false│exactness=post_redaction_cas│"));
 
         // 5. `op: "slice"` with `provenance: true`
         let slice_prov = McpPagerServer::execute_icx_op(
@@ -2486,7 +2509,11 @@ unprefixed_secret = {unpref_sec}
             }),
             &mut agy_mmu,
         );
-        assert_eq!(deref_out, panic_log.trim_end_matches('\n'));
+        assert_eq!(
+            deref_body(&deref_out),
+            panic_log,
+            "deref must be byte-exact (ICX-AUD-021)"
+        );
 
         // Verify per-agent occurrence helpers (`has_indexed_occurrence_for`, `get_occurrence_record_for`)
         let (occ_res, fresh) = claude_mmu.ingest_or_reuse_at_index(

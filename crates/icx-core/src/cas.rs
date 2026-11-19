@@ -135,7 +135,7 @@ impl CasStore {
         let (artifact_id, full_digest) = ArtifactId::hash_bytes(raw);
         if let Some(existing) = self.artifacts.get(&artifact_id) {
             if existing.full_digest != full_digest {
-                return Err(IcxError::AmbiguousHandlePrefix(artifact_id.to_string()));
+                return Err(IcxError::HashCollision(artifact_id));
             }
             return Ok((artifact_id, full_digest));
         }
@@ -148,13 +148,13 @@ impl CasStore {
             if let Some((existing_cdigest, _)) = self.chunks.get(&cid)
                 && *existing_cdigest != cdigest
             {
-                return Err(IcxError::AmbiguousHandlePrefix(cid.to_string()));
+                return Err(IcxError::HashCollision(cid));
             }
             if let Some(batch_map) = &mut batch_chunk_digests
                 && let Some(prev_batch_digest) = batch_map.insert(cid, cdigest)
                 && prev_batch_digest != cdigest
             {
-                return Err(IcxError::AmbiguousHandlePrefix(cid.to_string()));
+                return Err(IcxError::HashCollision(cid));
             }
             precomputed_chunks.push((span, cid, cdigest));
         }
@@ -596,6 +596,23 @@ impl CasStore {
         Ok(store)
     }
 
+    /// Test-only helper: plants an artifact entry under `id` with a mismatching digest so the
+    /// collision path of [`Self::put_bytes_checked`] can be exercised (ICX-AUD-022).
+    #[cfg(test)]
+    pub fn plant_colliding_artifact_for_test(&mut self, id: ArtifactId) {
+        self.artifacts.insert(
+            id,
+            StoredArtifact {
+                id,
+                full_digest: Blake3Digest([0xAB; 32]),
+                total_bytes: 0,
+                total_lines: 0,
+                chunk_ids: Vec::new(),
+                line_index: Vec::new(),
+            },
+        );
+    }
+
     /// Test-only helper to simulate bit-rot in a chunk and verify `IntegrityViolation` detection.
     #[cfg(test)]
     pub fn corrupt_chunk_for_test(&mut self, artifact_id: ArtifactId) {
@@ -642,6 +659,18 @@ impl ContentAddressedStore for CasStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn colliding_id_with_different_content_is_a_typed_error_never_a_silent_reuse() {
+        let mut cas = CasStore::new();
+        let content = b"victim content\n";
+        let (id, _) = ArtifactId::hash_bytes(content);
+        cas.plant_colliding_artifact_for_test(id);
+        assert_eq!(
+            cas.put_bytes_checked(content),
+            Err(IcxError::HashCollision(id))
+        );
+    }
 
     #[test]
     fn cas_round_trips_bytes_and_line_slices_and_detects_tampering() {
@@ -779,7 +808,7 @@ mod tests {
         }
         assert!(matches!(
             cas.put_bytes_checked(text.as_bytes()),
-            Err(IcxError::AmbiguousHandlePrefix(_))
+            Err(IcxError::HashCollision(_))
         ));
         assert!(matches!(
             cas.verify_all_integrity(),
@@ -798,7 +827,7 @@ mod tests {
             .insert(fresh_cid, (fake_cdigest, fresh_payload.to_vec()));
         assert!(matches!(
             cas_chunk_col.put_bytes_checked(fresh_payload),
-            Err(IcxError::AmbiguousHandlePrefix(_))
+            Err(IcxError::HashCollision(_))
         ));
         assert!(matches!(
             cas_chunk_col.verify_all_integrity(),

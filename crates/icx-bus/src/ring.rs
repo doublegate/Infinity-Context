@@ -336,17 +336,25 @@ impl SeqlockTelemetryBus {
         {
             use std::os::unix::fs::OpenOptionsExt;
             opts.mode(0o600);
+            // ICX-AUD-019: never follow a planted symlink; don't leak the fd into children.
+            let flags = rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::CLOEXEC;
+            opts.custom_flags(flags.bits().cast_signed());
         }
         let file = opts.open(path.as_ref())?;
 
         let metadata = file.metadata()?;
         #[cfg(unix)]
         {
-            use std::os::unix::fs::{MetadataExt, PermissionsExt};
+            use std::os::unix::fs::MetadataExt;
+            if !metadata.file_type().is_file() {
+                return Err(BusError::InsecurePermissions(metadata.mode() & 0o7777));
+            }
+            if metadata.uid() != rustix::process::geteuid().as_raw() {
+                return Err(BusError::InsecurePermissions(metadata.mode() & 0o777));
+            }
             let mode = metadata.mode() & 0o777;
-            if metadata.len() == 0 && (mode & 0o077) != 0 {
-                file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
-            } else if (mode & 0o077) != 0 {
+            if (mode & 0o077) != 0 {
+                // Refuse instead of silently tightening a file someone else may have prepared.
                 return Err(BusError::InsecurePermissions(mode));
             }
         }

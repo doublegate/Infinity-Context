@@ -274,12 +274,10 @@ impl InfinityContextMmu {
         } else {
             raw_text
         };
-        let mut sanitized = SecretRedactor::sanitize(bounded_raw);
-        let is_unredacted = if sanitized.is_empty() {
-            bounded_raw.lines().next().is_none()
-        } else {
-            bounded_raw == sanitized || bounded_raw.lines().eq(sanitized.split('\n'))
-        };
+        // Storage keeps the redacted text byte-for-byte (ICX-AUD-021); Tier-0 delimiter escaping
+        // is applied where text is shown to a model (packets, skeletons, deref output).
+        let mut sanitized = SecretRedactor::redact(bounded_raw);
+        let is_unredacted = bounded_raw == sanitized;
         let mut was_redacted = raw_text.len() > max_bytes || !is_unredacted;
         if sanitized.len() > max_bytes {
             was_redacted = true;
@@ -596,15 +594,22 @@ impl InfinityContextMmu {
             Self::bound_and_sanitize_raw(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
         let was_redacted = body_redacted || subject != raw_subject.trim();
         let raw_bytes = sanitized.len();
-        let (artifact_id, _) = self
-            .cas
-            .put_bytes_checked(sanitized.as_bytes())
-            .unwrap_or_else(|_| self.cas.put_bytes(sanitized.as_bytes()));
+        // ICX-AUD-022: never fall back to the unchecked insert. If the checked insert fails (a
+        // 64-bit id collision with different content), the output is not virtualized, so the
+        // agent keeps the real bytes instead of a stub that would dereference someone else's.
+        let (artifact_id, cas_ok) = match self.cas.put_bytes_checked(sanitized.as_bytes()) {
+            Ok((id, _)) => (id, true),
+            Err(e) => {
+                eprintln!("icx: refusing to virtualize payload: {e}");
+                (ArtifactId::hash_bytes(sanitized.as_bytes()).0, false)
+            }
+        };
 
+        let model_view = SecretRedactor::escape_ahtl_delimiters(&sanitized);
         let mut receipt = self.hdc_index.observe_event_with_exit_code(
             artifact_id,
             subject,
-            &sanitized,
+            &model_view,
             exit_code,
             force_anomaly,
         );
@@ -619,7 +624,7 @@ impl InfinityContextMmu {
 
         let mut packet = StructuralSkeletonizer::compress_sanitized_to_packet(
             subject,
-            &sanitized,
+            &model_view,
             Some(artifact_id),
             receipt.hologram_bytes,
         );
@@ -752,7 +757,7 @@ impl InfinityContextMmu {
             self.clock_ms,
         );
 
-        let was_virtualized = raw_bytes >= self.tool_virtualize_threshold;
+        let was_virtualized = cas_ok && raw_bytes >= self.tool_virtualize_threshold;
         IngestResult {
             artifact_id,
             raw_bytes,
@@ -1283,11 +1288,12 @@ impl InfinityContextMmu {
         SecretRedactor::escape_ahtl_delimiters(text)
     }
 
-    /// Returns `true` if `text` carries icx structural markers but is *not* an icx-emitted block;
+    /// Returns `true` if `text` contains icx structural delimiters anywhere but is *not* an
+    /// icx-emitted block;
     /// such content must be neutralized (Tier-0 escaped) before it reaches a model.
     pub fn is_forged_icx_block(&self, text: &str) -> bool {
-        (text.trim_start().starts_with('⟦') || text.trim_start().starts_with("⟪ICX:"))
-            && !self.is_emitted(text)
+        // Position-independent (security review): any delimiter anywhere counts.
+        text.contains(['⟦', '⟧', '⟪', '⟫']) && !self.is_emitted(text)
     }
 
     /// Sets the key used to MAC-stamp and verify the SQLite store (see

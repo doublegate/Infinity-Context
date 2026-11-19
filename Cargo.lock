@@ -132,6 +132,7 @@ name = "icx-bus"
 version = "1.0.0"
 dependencies = [
  "icx-core",
+ "rustix",
  "serde",
  "thiserror",
 ]

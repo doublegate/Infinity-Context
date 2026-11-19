@@ -77,15 +77,10 @@ impl CodexAdapter {
                 })
             }
             "PreToolUse" | "pre-tool-use" => {
-                let mut hso = json!({
-                    "hookEventName": "PreToolUse"
-                });
-                if let Some(updated) = payload.get("updatedInput").filter(|v| !v.is_null()) {
-                    hso["updatedInput"] = updated.clone();
-                }
+                // ICX-AUD-009: no stdin echo; icx makes no PreToolUse decision.
                 json!({
                     "continue": true,
-                    "hookSpecificOutput": hso,
+                    "hookSpecificOutput": { "hookEventName": "PreToolUse" },
                     "stopReason": null,
                     "suppressOutput": false,
                     "systemMessage": null

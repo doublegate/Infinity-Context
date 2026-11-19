@@ -20,3 +20,9 @@ paths = [
 regexes = [
   '''(sk-proj-1234567890abcdefghijklmnop|ghp_abcdefghijklmnopqrstuvwxyz0123456789|secret_jwt_token_value_999|b3BlbnNzaC1rZXktdjEAAAAABG5vbmU=|-----BEGIN PGP PRIVATE KEY BLOCK-----)''',
 ]
+
+[[allowlists]]
+description = "v1.1.0 redactor recall fixtures: synthetic, non-functional credential-shaped strings only (ICX-AUD-015)"
+paths = [
+  '''^crates/icx-codec/tests/redact_v110\.rs$''',
+]
