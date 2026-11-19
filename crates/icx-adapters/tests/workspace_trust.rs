@@ -276,3 +276,28 @@ fn editing_any_persisted_row_of_a_sealed_store_is_rejected() {
     }
     let _ = std::fs::remove_dir_all(&base);
 }
+
+#[cfg(unix)]
+#[test]
+fn trust_tightens_contained_files_and_skips_symlinks() {
+    use std::os::unix::fs::PermissionsExt;
+    let base = scratch("tighten");
+    let r = roots(&base);
+    let dir = base.join("legacy");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("cas_store.json"), b"{}").unwrap();
+    std::fs::set_permissions(
+        dir.join("cas_store.json"),
+        std::fs::Permissions::from_mode(0o644),
+    )
+    .unwrap();
+    let outside = base.join("outside.txt");
+    std::fs::write(&outside, b"x").unwrap();
+    std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::os::unix::fs::symlink(&outside, dir.join("link")).unwrap();
+    workspace::trust(&dir, &r).unwrap();
+    let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&dir.join("cas_store.json")), 0o600);
+    assert_eq!(mode(&outside), 0o644, "symlink target must not be touched");
+    let _ = std::fs::remove_dir_all(&base);
+}

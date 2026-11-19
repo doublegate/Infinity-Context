@@ -348,14 +348,19 @@ fn run_trust(args: &[String]) -> Result<(), String> {
         return Err("Usage: icx trust --dir <PATH>   (adopt an existing workspace you own)".into());
     };
     let dir = PathBuf::from(dir);
-    workspace::trust(&dir, roots()).map_err(|e| format!("icx trust error: {e}"))?;
-    if dir.join(icx_adapters::store::DB_FILE).exists() || dir.join("cas_store.json").exists() {
-        // Re-stamp the existing store with this install's seal (content integrity is still
-        // verified by the BLAKE3 checks during load).
-        let mut unsealed = InfinityContextMmu::default();
+    // Load (and BLAKE3-verify) any existing store before adopting anything, so a store that
+    // cannot be read leaves the directory exactly as it was.
+    let has_store =
+        dir.join(icx_adapters::store::DB_FILE).exists() || dir.join("cas_store.json").exists();
+    let mut unsealed = InfinityContextMmu::default();
+    if has_store {
         unsealed
             .load_workspace_dir(&dir)
             .map_err(|e| format!("icx trust error: cannot load store: {e}"))?;
+    }
+    workspace::trust(&dir, roots()).map_err(|e| format!("icx trust error: {e}"))?;
+    if has_store {
+        // Re-stamp the store with this install's seal.
         let key =
             workspace::store_seal_key(roots()).map_err(|e| format!("icx trust error: {e}"))?;
         unsealed.set_store_seal_key(Some(key));
@@ -1781,6 +1786,18 @@ mod tests {
         let trusted = execute_hook(&args, "{}").unwrap();
         assert!(trusted.contains("INJECTED-MARKER-7731"), "{trusted}");
         let _ = fs::remove_dir_all(&repo);
+    }
+
+    #[test]
+    fn failed_trust_leaves_the_directory_unadopted() {
+        let dir = std::env::temp_dir().join(format!("icx_trust_fail_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("cas_store.json"), b"not json").unwrap();
+        let err = run_trust(&["--dir".into(), dir.to_string_lossy().into_owned()]).unwrap_err();
+        assert!(err.contains("cannot load store"), "{err}");
+        assert!(!dir.join("OWNER").exists(), "no seal written on failure");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -364,6 +364,17 @@ pub fn trust(dir: &Path, roots: &WorkspaceRoots) -> Result<(), TrustError> {
             return Err(TrustError::NotOwned);
         }
         std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(io_err)?;
+        // A v1.0.x `.icx/` was created with default modes (0644 files). Tighten the regular
+        // files this user owns; never follow symlinks or touch files owned by someone else.
+        for entry in std::fs::read_dir(dir).map_err(io_err)?.flatten() {
+            let Ok(emd) = std::fs::symlink_metadata(entry.path()) else {
+                continue;
+            };
+            if emd.is_file() && emd.uid() == current_uid() && emd.mode() & 0o077 != 0 {
+                std::fs::set_permissions(entry.path(), std::fs::Permissions::from_mode(0o600))
+                    .map_err(io_err)?;
+            }
+        }
     }
     write_seal_and_ignore(dir, roots)
 }
