@@ -34,6 +34,12 @@ pub enum BusError {
     UnsupportedVersion(u32),
     #[error("insecure shared memory file permissions (mode 0o{0:o} allows group/other access)")]
     InsecurePermissions(u32),
+    /// The writer's slot was already overwritten by a later lap; this event was dropped.
+    #[error("telepathy event {0} dropped: ring slot already lapped by a newer writer")]
+    SlotLapped(u64),
+    /// The slot stayed locked by a stalled writer; this event was dropped.
+    #[error("telepathy event {0} dropped: ring slot held by a stalled writer")]
+    SlotContended(u64),
 }
 
 /// 64-byte cache-line-aligned header at the start of the shared memory fabric (`docs/wire-protocol-and-shm-bus.md` §2.1).
@@ -250,6 +256,8 @@ enum BackingStore {
 #[derive(Clone, Debug)]
 pub struct SeqlockTelemetryBus {
     backing: BackingStore,
+    /// Publishes this handle had to drop (lapped or contended slot), ICX-AUD-054.
+    dropped: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl Default for SeqlockTelemetryBus {
@@ -323,6 +331,7 @@ impl SeqlockTelemetryBus {
     pub fn new_in_memory() -> Self {
         Self {
             backing: BackingStore::InProcess(Arc::new(FabricMemoryLayout::new())),
+            dropped: Arc::default(),
         }
     }
 
@@ -406,6 +415,7 @@ impl SeqlockTelemetryBus {
 
         Ok(Self {
             backing: BackingStore::SharedFile(store),
+            dropped: Arc::default(),
         })
     }
 
@@ -637,7 +647,7 @@ impl SeqlockTelemetryBus {
                 loop {
                     let cur = slot.seqlock.load(Ordering::Acquire);
                     if cur >= even_version {
-                        return Ok(seq + 1);
+                        return Err(BusError::SlotLapped(seq + 1));
                     }
                     if (cur & 1) == 0 {
                         if slot
@@ -655,7 +665,7 @@ impl SeqlockTelemetryBus {
                     } else if cur == stalled_odd {
                         spins += 1;
                         if spins >= MAX_WRITER_SPIN_ITERS {
-                            return Ok(seq + 1);
+                            return Err(BusError::SlotContended(seq + 1));
                         }
                     } else {
                         stalled_odd = cur;
@@ -779,7 +789,27 @@ impl SeqlockTelemetryBus {
             ahtl_packet,
             timestamp_ms,
         )
-        .unwrap_or_else(|_| self.write_sequence())
+        .unwrap_or_else(|_| {
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+            self.write_sequence()
+        })
+    }
+
+    /// Number of publishes this handle dropped because the slot was lapped or held by a stalled
+    /// writer (ICX-AUD-054). `publish` swallows those errors; this makes them observable.
+    pub fn dropped_publishes(&self) -> u64 {
+        self.dropped.load(Ordering::Relaxed)
+    }
+
+    /// Like [`Self::poll_since`], but also returns how many sequence numbers after `since_seq`
+    /// could not be delivered (overwritten by the ring before this reader caught up, or torn and
+    /// skipped). A non-zero count means the reader must not assume it saw every event.
+    pub fn poll_since_with_loss(&self, since_seq: u64) -> (Vec<TelepathyEvent>, u64) {
+        let head = self.write_sequence();
+        let events = self.poll_since(since_seq);
+        let expected = head.saturating_sub(since_seq);
+        let lost = expected.saturating_sub(events.len() as u64);
+        (events, lost)
     }
 
     /// Wait-free optimistic poll of all committed telepathy events with sequence number `> since_seq`.
