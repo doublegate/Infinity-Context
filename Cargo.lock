@@ -140,6 +140,7 @@ dependencies = [
 name = "icx-cli"
 version = "1.0.0"
 dependencies = [
+ "blake3",
  "icx-adapters",
  "icx-bus",
  "icx-codec",
@@ -186,10 +187,9 @@ dependencies = [
 name = "icx-proxy"
 version = "1.0.0"
 dependencies = [
+ "blake3",
  "icx-adapters",
- "icx-codec",
  "icx-core",
- "serde",
  "serde_json",
 ]
 

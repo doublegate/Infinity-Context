@@ -12,7 +12,7 @@ use icx_hdc::hv::Hypervector;
 use icx_proxy::{ProviderFormat, WireProxyTransformer};
 use std::env;
 use std::fs;
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, Read};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -41,8 +41,16 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
         "daemon" => run_daemon(tail),
         "deref" => run_deref(tail),
         "hook" => {
-            let mut stdin_buf = String::new();
-            let _ = reader.read_to_string(&mut stdin_buf);
+            let stdin_buf = match read_bounded(&mut reader, MAX_STDIN_BYTES) {
+                Ok(buf) => buf,
+                Err(e) => {
+                    // Fail open: the agent keeps its original output; nothing is buffered past
+                    // the bound (ICX-AUD-014).
+                    eprintln!("icx hook error: {e}");
+                    println!("{{}}");
+                    return Ok(());
+                }
+            };
             match execute_hook(tail, &stdin_buf) {
                 Ok(json_out) => println!("{json_out}"),
                 Err(e) => {
@@ -55,8 +63,8 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
         "mcp-serve" => serve_mcp_stream(tail, reader, io::stdout().lock()),
         "proxy" => run_proxy_server(tail),
         "proxy-transform" => {
-            let mut stdin_buf = String::new();
-            let _ = reader.read_to_string(&mut stdin_buf);
+            let stdin_buf = read_bounded(&mut reader, MAX_STDIN_BYTES)
+                .map_err(|e| format!("proxy-transform error: {e}"))?;
             let transformed = execute_proxy_transform(tail, &stdin_buf)?;
             println!("{transformed}");
             Ok(())
@@ -74,6 +82,44 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
             Ok(())
         }
     }
+}
+
+/// Largest hook / proxy-transform stdin accepted: the 64 MiB ingest bound plus JSON envelope.
+const MAX_STDIN_BYTES: u64 = icx_core::ICX_MAX_INGEST_BYTES as u64 + 64 * 1024;
+/// Largest single JSON-RPC line accepted by `mcp-serve`.
+const MAX_MCP_LINE_BYTES: u64 = 4 * 1024 * 1024;
+
+/// Reads all of `reader` as UTF-8, refusing (without buffering past the bound) anything larger
+/// than `max` bytes.
+fn read_bounded<R: io::Read>(reader: R, max: u64) -> Result<String, String> {
+    let mut buf = Vec::new();
+    reader
+        .take(max.saturating_add(1))
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("stdin read failed: {e}"))?;
+    if buf.len() as u64 > max {
+        return Err(format!("stdin exceeds the {max}-byte input bound"));
+    }
+    String::from_utf8(buf).map_err(|_| "stdin is not valid UTF-8".to_owned())
+}
+
+/// Reads one `\n`-terminated line of at most `max` bytes. Returns `Ok(None)` at EOF and
+/// `Err(())` for an over-long line, whose remainder is discarded so the stream resynchronizes.
+fn read_bounded_line<R: BufRead>(
+    reader: &mut R,
+    max: u64,
+) -> io::Result<Option<Result<String, ()>>> {
+    let mut line = Vec::new();
+    let n = Read::take(&mut *reader, max.saturating_add(1)).read_until(b'\n', &mut line)?;
+    if n == 0 {
+        return Ok(None);
+    }
+    if line.len() as u64 > max && line.last() != Some(&b'\n') {
+        let mut sink = Vec::new();
+        reader.read_until(b'\n', &mut sink)?;
+        return Ok(Some(Err(())));
+    }
+    Ok(Some(String::from_utf8(line).map_err(|_| ())))
 }
 
 fn print_help() {
@@ -102,7 +148,9 @@ Subcommands:",
   mcp-serve [--dir <PATH>]
       Run the Single-Tool Polymorphic MCP Virtual Pager (`icx`) over stdio (JSON-RPC 2.0)
   proxy [--listen <HOST:PORT>] [--provider <anthropic|openai|gemini>] [--upstream <URL>] [--dir <PATH>] [--max-requests <N>]
-      Run the Cache-Epoch HTTP/1.1 & SSE reverse proxy (default 127.0.0.1:49380)
+        [--allow-remote] [--insecure-no-auth]
+      Run the Cache-Epoch HTTP/1.1 & SSE reverse proxy (default 127.0.0.1:49380). Requests must
+      carry the install token (base URL http://HOST:PORT/t/<token> or header x-icx-token)
   proxy-transform [--provider <anthropic|openai|gemini>] [--dir <PATH>]
       Transform an outbound Anthropic (`/v1/messages`), OpenAI (`/v1/chat/completions`, `/v1/responses`), or Gemini (`/v1beta/models/*`) JSON request
   encode-ahtl <FILE> [--dir <PATH>]
@@ -544,14 +592,27 @@ fn mcp_tool_error_response(req_line: &str, err_msg: &str) -> serde_json::Value {
 
 fn serve_mcp_stream<R: BufRead, W: io::Write>(
     args: &[String],
-    reader: R,
+    mut reader: R,
     mut writer: W,
 ) -> Result<(), String> {
     let mut mmu = workspace_mmu();
     let ws_dir = resolve_workspace_dir(parse_dir_flag(args));
     let ws_ready = matches!(workspace_state(&ws_dir, true), WsState::Ready);
-    for line in reader.lines() {
-        let Ok(req_line) = line else { break };
+    loop {
+        let req_line = match read_bounded_line(&mut reader, MAX_MCP_LINE_BYTES) {
+            Ok(None) | Err(_) => break,
+            Ok(Some(Ok(line))) => line,
+            Ok(Some(Err(()))) => {
+                let err = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": null,
+                    "error": {"code": -32600, "message": "request line too long or not UTF-8"}
+                });
+                writeln!(writer, "{err}").map_err(|e| format!("mcp-serve write error: {e}"))?;
+                continue;
+            }
+        };
+        let req_line = req_line.trim_end_matches(['\r', '\n']).to_owned();
         if req_line.trim().is_empty() {
             continue;
         }
@@ -620,9 +681,19 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
     let mut upstream_str: Option<&str> = None;
     let mut dir_str: Option<&str> = None;
     let mut max_requests: Option<usize> = None;
+    let mut allow_remote = false;
+    let mut no_auth = false;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
+            "--allow-remote" => {
+                allow_remote = true;
+                i += 1;
+            }
+            "--insecure-no-auth" => {
+                no_auth = true;
+                i += 1;
+            }
             "--listen" if i + 1 < args.len() => {
                 listen_addr = &args[i + 1];
                 i += 2;
@@ -662,14 +733,44 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
         .ok()
         .filter(|s| !s.trim().is_empty());
     let effective_upstream = upstream_str.or(env_upstream.as_deref()).or(Some("auto"));
+    // ICX-AUD-012: loopback only unless explicitly allowed.
+    let resolved: Vec<std::net::SocketAddr> = std::net::ToSocketAddrs::to_socket_addrs(listen_addr)
+        .map_err(|e| format!("proxy error: invalid --listen `{listen_addr}`: {e}"))?
+        .collect();
+    if !allow_remote && resolved.iter().any(|a| !a.ip().is_loopback()) {
+        return Err(format!(
+            "proxy error: refusing non-loopback bind `{listen_addr}` (it would expose your workspace and \
+             forward requests with your API key); pass --allow-remote to override"
+        ));
+    }
+    let token = if no_auth {
+        eprintln!(
+            "icx proxy: WARNING: --insecure-no-auth: any local process can use this proxy and read workspace content"
+        );
+        None
+    } else {
+        let key = workspace::derived_key(roots(), "proxy-token")
+            .map_err(|e| format!("proxy error: cannot derive proxy token: {e}"))?;
+        Some(blake3::Hash::from_bytes(key).to_hex().to_string())
+    };
     let listener =
         TcpListener::bind(listen_addr).map_err(|e| format!("proxy bind `{listen_addr}`: {e}"))?;
-    WireProxyTransformer::serve_http_listener_with_config(
+    let local = listener
+        .local_addr()
+        .map_or_else(|_| listen_addr.to_owned(), |a| a.to_string());
+    match &token {
+        Some(t) => eprintln!(
+            "icx proxy: listening on http://{local}; set ANTHROPIC_BASE_URL / OPENAI_BASE_URL to http://{local}/t/{t}"
+        ),
+        None => eprintln!("icx proxy: listening on http://{local} (no auth)"),
+    }
+    WireProxyTransformer::serve_http_listener_authenticated(
         &listener,
         provider,
         effective_upstream,
         ws_ready.then_some(ws_dir.as_path()),
         max_requests,
+        token.as_deref(),
         &mut mmu,
     )
     .map_err(|e| format!("proxy serve error: {e}"))?;
@@ -1512,6 +1613,31 @@ mod tests {
         fresh.load_workspace_dir(&ws).unwrap();
         assert!(fresh.cas.artifact_count() >= 1, "daemon flushed its state");
         let _ = fs::remove_dir_all(&ws);
+    }
+
+    #[test]
+    fn stdin_and_mcp_lines_are_bounded() {
+        assert_eq!(read_bounded(io::Cursor::new("abc"), 3).unwrap(), "abc");
+        assert!(read_bounded(io::Cursor::new("abcd"), 3).is_err());
+        let mut r = io::Cursor::new("short\nthis-line-is-too-long\nok\n");
+        assert_eq!(
+            read_bounded_line(&mut r, 8).unwrap(),
+            Some(Ok("short\n".into()))
+        );
+        assert_eq!(read_bounded_line(&mut r, 8).unwrap(), Some(Err(())));
+        assert_eq!(
+            read_bounded_line(&mut r, 8).unwrap(),
+            Some(Ok("ok\n".into()))
+        );
+        assert_eq!(read_bounded_line(&mut r, 8).unwrap(), None);
+        let mut out = Vec::new();
+        serve_mcp_stream(
+            &[],
+            io::Cursor::new(format!("{}\n", "x".repeat(5 * 1024 * 1024))),
+            &mut out,
+        )
+        .unwrap();
+        assert!(String::from_utf8_lossy(&out).contains("-32600"));
     }
 
     #[test]

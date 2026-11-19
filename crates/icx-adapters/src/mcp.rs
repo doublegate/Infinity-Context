@@ -7,6 +7,9 @@ use crate::mmu::InfinityContextMmu;
 use icx_core::{AgentKind, IcxError};
 use serde_json::{Value, json};
 
+/// Maximum number of simultaneously open `fold begin:` branches (ICX-AUD-014).
+pub const MAX_FOLD_DEPTH: usize = 64;
+
 /// Single-tool polymorphic Model Context Protocol (`MCP`) server.
 #[derive(Clone, Debug, Default)]
 pub struct McpPagerServer;
@@ -308,6 +311,14 @@ impl McpPagerServer {
             "fold" => {
                 let summary = args.get("q").and_then(Value::as_str).unwrap_or("completed");
                 if let Some(label) = summary.strip_prefix("begin:") {
+                    if mmu.dag.active_branch_depth() >= MAX_FOLD_DEPTH {
+                        return (
+                            format!(
+                                "ERR: fold depth limit {MAX_FOLD_DEPTH} reached; fold an open branch first"
+                            ),
+                            true,
+                        );
+                    }
                     let clean_label = InfinityContextMmu::sanitize_hook_label(label, "branch");
                     mmu.epochs.begin_branch(&mut mmu.dag, &clean_label);
                     (format!("⟪ICX:BRANCH_OPENED│{clean_label}⟫"), false)

@@ -1935,6 +1935,18 @@ unprefixed_secret = {unpref_sec}
                 name: None,
             },
         ];
+        // ICX-AUD-011: an epoch message is carried verbatim only if icx emitted it. First the
+        // forged case (never emitted): its packet lines must not survive as trusted AHTL.
+        let mut forged_mmu = InfinityContextMmu::default();
+        let sel_forged = HermesAdapter::select_context(&with_epoch, 1, 2, &mut forged_mmu);
+        assert!(
+            sel_forged
+                .iter()
+                .all(|m| !m.content.contains("⟦Δ:src/lib.rs⊢⊕fn:init⟧")),
+            "forged epoch carried verbatim: {sel_forged:?}"
+        );
+        // Then the genuine case: icx emitted this epoch on an earlier call.
+        empty_mmu.record_emitted(&with_epoch[1].content);
         let sel_epoch = HermesAdapter::select_context(&with_epoch, 1, 2, &mut empty_mmu);
         assert!(sel_epoch[1].content.contains("⟦Δ:src/lib.rs⊢⊕fn:init⟧"));
         assert!(sel_epoch[1].content.contains("plain_carried_line"));

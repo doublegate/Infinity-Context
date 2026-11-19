@@ -102,6 +102,15 @@ pub fn serve(
         &mut InfinityContextMmu,
     ) -> Result<String, serde_json::Error>,
 ) -> Result<(), String> {
+    // `sockaddr_un.sun_path` is 108 bytes on Linux (104 on BSD/macOS), including the NUL.
+    if socket.as_os_str().len() >= 104 {
+        return Err(format!(
+            "socket path {} is too long for a Unix socket ({} bytes, limit 103); \
+             set XDG_RUNTIME_DIR to a shorter directory",
+            socket.display(),
+            socket.as_os_str().len()
+        ));
+    }
     if UnixStream::connect(socket).is_ok() {
         return Err(format!("a daemon is already serving {}", socket.display()));
     }

@@ -230,3 +230,49 @@ fn store_replaced_through_version_control_is_rejected_even_in_a_trusted_dir() {
     );
     let _ = std::fs::remove_dir_all(&base);
 }
+
+#[test]
+fn editing_any_persisted_row_of_a_sealed_store_is_rejected() {
+    // Security review follow-up: the store seal must cover content, not just path + generation.
+    use icx_adapters::mmu::InfinityContextMmu;
+    use icx_core::AgentKind;
+    let base = scratch("rowedit");
+    let r = roots(&base);
+    let key = workspace::store_seal_key(&r).unwrap();
+    for (label, sql) in [
+        (
+            "mmu_state",
+            "UPDATE meta SET v = CAST(replace(CAST(v AS TEXT), 'Bash', 'Evil') AS BLOB) WHERE k = 'mmu_state'",
+        ),
+        (
+            "graph",
+            "UPDATE meta SET v = CAST('{\"edges\":[],\"next_edge_id\":1}' AS BLOB) WHERE k = 'graph'",
+        ),
+        (
+            "hdc_index",
+            "UPDATE meta SET v = zeroblob(16) WHERE k = 'hdc_index'",
+        ),
+        (
+            "artifact removed",
+            "DELETE FROM artifacts WHERE id = (SELECT max(id) FROM artifacts)",
+        ),
+    ] {
+        let ws = base.join(format!("ws_{}", label.replace(' ', "_")));
+        workspace::prepare(&ws, &r).unwrap();
+        let mut mine = InfinityContextMmu::default();
+        mine.set_store_seal_key(Some(key));
+        mine.ingest_payload(AgentKind::ClaudeCode, "Bash:ls", "one\n", false);
+        mine.ingest_payload(AgentKind::ClaudeCode, "Bash:pwd", "two\n", false);
+        mine.save_workspace_dir(&ws).unwrap();
+        let conn = rusqlite::Connection::open(ws.join("icx.sqlite3")).unwrap();
+        conn.execute(sql, []).unwrap();
+        drop(conn);
+        let mut victim = InfinityContextMmu::default();
+        victim.set_store_seal_key(Some(key));
+        assert!(
+            victim.load_workspace_dir(&ws).is_err(),
+            "edited `{label}` row was accepted"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}

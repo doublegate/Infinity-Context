@@ -137,6 +137,7 @@ impl CodexAdapter {
                             res.compressed_ahtl.len(),
                             res.compressed_ahtl
                         );
+                        mmu.record_emitted(&stub);
                         json!({
                             "hookEventName": "PostToolUse",
                             "updatedMCPToolOutput": stub

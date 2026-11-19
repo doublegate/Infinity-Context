@@ -30,14 +30,46 @@ pub(crate) struct StoredWorkspace {
     pub hdc_snapshot: Option<Vec<u8>>,
     pub hdc_snapshot_events: Option<u64>,
     pub seal: Option<Vec<u8>>,
+    pub chunk_config_raw: Option<Vec<u8>>,
 }
 
-/// Keyed MAC binding a store generation to its canonical workspace path.
-pub(crate) fn store_seal(key: &[u8; 32], canonical_dir: &Path, generation: u64) -> [u8; 32] {
+/// Digest of every persisted component: chunker config, graph, MMU state, HDC snapshot and its
+/// event count, plus each artifact's `(id, full BLAKE3 digest)` in id order. Chunks are covered
+/// transitively: `CasStore::from_parts` verifies every chunk digest and reassembles each artifact
+/// to its full digest.
+pub(crate) fn state_digest(
+    chunk_config_json: &[u8],
+    graph_json: &[u8],
+    mmu_state_json: &[u8],
+    hdc_snapshot: &[u8],
+    hdc_snapshot_events: u64,
+    artifacts: impl Iterator<Item = (ArtifactId, Blake3Digest)>,
+) -> [u8; 32] {
+    let mut h = blake3::Hasher::new();
+    for part in [chunk_config_json, graph_json, mmu_state_json, hdc_snapshot] {
+        h.update(&(part.len() as u64).to_le_bytes());
+        h.update(part);
+    }
+    h.update(&hdc_snapshot_events.to_le_bytes());
+    for (id, digest) in artifacts {
+        h.update(&id.0.to_le_bytes());
+        h.update(&digest.0);
+    }
+    *h.finalize().as_bytes()
+}
+
+/// Keyed MAC binding a store generation and its full content digest to its canonical path.
+pub(crate) fn store_seal(
+    key: &[u8; 32],
+    canonical_dir: &Path,
+    generation: u64,
+    state_digest: &[u8; 32],
+) -> [u8; 32] {
     let mut h = blake3::Hasher::new_keyed(key);
-    h.update(b"ICX_STORE_SEAL_V1\0");
+    h.update(b"ICX_STORE_SEAL_V2\0");
     h.update(canonical_dir.as_os_str().as_encoded_bytes());
     h.update(&generation.to_le_bytes());
+    h.update(state_digest);
     *h.finalize().as_bytes()
 }
 
@@ -173,6 +205,7 @@ pub(crate) fn load(conn: &mut Connection) -> Result<StoredWorkspace, IcxError> {
     };
     if let Some(cfg) = meta_blob(&tx, "chunk_config")? {
         out.chunk_config = Some(serde_json::from_slice(&cfg).map_err(db_err)?);
+        out.chunk_config_raw = Some(cfg);
     }
     {
         let mut stmt = tx
@@ -215,6 +248,8 @@ pub(crate) fn load(conn: &mut Connection) -> Result<StoredWorkspace, IcxError> {
     out.hdc_snapshot_events = meta_u64(&tx, "hdc_index_events")?;
     out.seal = meta_blob(&tx, "seal")?;
     tx.commit().map_err(db_err)?;
+    // SQLite orders INTEGER ids as signed i64; the in-memory store orders them as u64.
+    out.artifacts.sort_by_key(|a| a.id.0);
     Ok(out)
 }
 
@@ -237,6 +272,7 @@ pub(crate) fn save<'c>(
     let tx = conn.transaction().map_err(db_err)?;
     let mut new_chunks = Vec::new();
     let mut new_artifacts = Vec::new();
+    let mut all_artifacts = Vec::new();
     {
         let mut ins_chunk = tx
             .prepare_cached("INSERT OR IGNORE INTO chunks (id, digest, bytes) VALUES (?1, ?2, ?3)")
@@ -254,6 +290,7 @@ pub(crate) fn save<'c>(
             .prepare_cached("INSERT OR IGNORE INTO artifacts (id, meta) VALUES (?1, ?2)")
             .map_err(db_err)?;
         for art in artifacts {
+            all_artifacts.push((art.id, art.full_digest));
             if persisted.artifacts.contains(&art.id) {
                 continue;
             }
@@ -296,8 +333,20 @@ pub(crate) fn save<'c>(
         ])
         .map_err(db_err)?;
     if let Some((key, dir)) = derived.seal {
+        all_artifacts.sort_by_key(|(id, _)| id.0);
+        let digest = state_digest(
+            &cfg,
+            derived.graph_json,
+            derived.mmu_state_json,
+            derived.hdc_snapshot,
+            derived.hdc_snapshot_events,
+            all_artifacts.into_iter(),
+        );
         upsert
-            .execute(params!["seal", store_seal(key, dir, next_gen).as_slice()])
+            .execute(params![
+                "seal",
+                store_seal(key, dir, next_gen, &digest).as_slice()
+            ])
             .map_err(db_err)?;
     }
     drop(upsert);

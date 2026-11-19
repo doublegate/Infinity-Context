@@ -64,6 +64,8 @@ struct PersistedMmuState {
     agent_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
     #[serde(default)]
     agent_reordered_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
+    #[serde(default)]
+    emitted_blocks: BTreeSet<[u8; 32]>,
 }
 
 /// The central Virtual Context Memory Management Unit (`MMU`).
@@ -92,6 +94,8 @@ pub struct InfinityContextMmu {
     loaded_generation: Option<(std::path::PathBuf, u64)>,
     /// When set, saves MAC-stamp the store and loads reject stores without a valid stamp.
     store_seal_key: Option<[u8; 32]>,
+    /// BLAKE3 digests of every icx-formatted block this MMU handed to an agent (ICX-AUD-011).
+    emitted_blocks: BTreeSet<[u8; 32]>,
 }
 
 impl Default for InfinityContextMmu {
@@ -127,6 +131,7 @@ impl InfinityContextMmu {
             persisted_ids: crate::store::PersistedIds::default(),
             loaded_generation: None,
             store_seal_key: None,
+            emitted_blocks: BTreeSet::new(),
         }
     }
 
@@ -767,6 +772,17 @@ impl InfinityContextMmu {
         query: &str,
         top_k: usize,
     ) -> String {
+        let slot = self.build_ephemeral_tail_slot_inner(requesting_agent, query, top_k);
+        self.record_emitted(&slot);
+        slot
+    }
+
+    fn build_ephemeral_tail_slot_inner(
+        &mut self,
+        requesting_agent: AgentKind,
+        query: &str,
+        top_k: usize,
+    ) -> String {
         let mut lines = Vec::new();
         lines.push(format!(
             "⟪ICX:TAIL_SLOT│agent={}│epochs={}│cas_artifacts={}⟫",
@@ -1074,9 +1090,13 @@ impl InfinityContextMmu {
                 .fold_branch(&mut self.dag, &clean_summary)
                 .expect("active subagent branch must fold");
             self.sync_global_dag_root();
-            return format!("⟪ICX:SUBAGENT_FOLDED│{bid}│{clean_id}│{clean_summary}⟫");
+            let frame = format!("⟪ICX:SUBAGENT_FOLDED│{bid}│{clean_id}│{clean_summary}⟫");
+            self.record_emitted(&frame);
+            return frame;
         }
-        format!("⟪ICX:SUBAGENT_STOP│{clean_summary}⟫")
+        let frame = format!("⟪ICX:SUBAGENT_STOP│{clean_summary}⟫");
+        self.record_emitted(&frame);
+        frame
     }
 
     fn map_io_err(err: impl std::fmt::Display) -> IcxError {
@@ -1152,7 +1172,16 @@ impl InfinityContextMmu {
             }
             let stored = crate::store::load(&mut conn)?;
             if let Some(key) = &self.store_seal_key {
-                let expected = crate::store::store_seal(key, &canonical, stored.generation);
+                let digest = crate::store::state_digest(
+                    stored.chunk_config_raw.as_deref().unwrap_or_default(),
+                    stored.graph_json.as_deref().unwrap_or_default(),
+                    stored.mmu_state_json.as_deref().unwrap_or_default(),
+                    stored.hdc_snapshot.as_deref().unwrap_or_default(),
+                    stored.hdc_snapshot_events.unwrap_or(0),
+                    stored.artifacts.iter().map(|a| (a.id, a.full_digest)),
+                );
+                let expected =
+                    crate::store::store_seal(key, &canonical, stored.generation, &digest);
                 let valid = stored
                     .seal
                     .as_deref()
@@ -1226,6 +1255,39 @@ impl InfinityContextMmu {
                 || icx_dir.join("icx-fabric-v1.shm"),
                 std::path::PathBuf::from,
             )
+    }
+
+    /// Upper bound on remembered emitted-block digests (oldest-first eviction is not needed in
+    /// practice: one digest per emitted stub, 32 bytes each).
+    pub const MAX_EMITTED_BLOCKS: usize = 1_000_000;
+
+    /// Records that `text` (an icx-formatted block) was handed to an agent, so it can later be
+    /// recognized as icx's own output when the agent sends it back in history. Content that
+    /// merely *looks* like icx output (starts with `⟦` / `⟪ICX:`) but was never emitted is
+    /// treated as untrusted (ICX-AUD-011).
+    pub fn record_emitted(&mut self, text: &str) {
+        if self.emitted_blocks.len() < Self::MAX_EMITTED_BLOCKS {
+            self.emitted_blocks
+                .insert(*blake3::hash(text.as_bytes()).as_bytes());
+        }
+    }
+
+    /// Returns `true` only if `text` is byte-identical to a block this MMU emitted.
+    pub fn is_emitted(&self, text: &str) -> bool {
+        self.emitted_blocks
+            .contains(blake3::hash(text.as_bytes()).as_bytes())
+    }
+
+    /// Tier-0 escape of icx structural delimiters for untrusted text (`⟪⟫⟦⟧`).
+    pub fn escape_untrusted_delimiters(text: &str) -> String {
+        SecretRedactor::escape_ahtl_delimiters(text)
+    }
+
+    /// Returns `true` if `text` carries icx structural markers but is *not* an icx-emitted block;
+    /// such content must be neutralized (Tier-0 escaped) before it reaches a model.
+    pub fn is_forged_icx_block(&self, text: &str) -> bool {
+        (text.trim_start().starts_with('⟦') || text.trim_start().starts_with("⟪ICX:"))
+            && !self.is_emitted(text)
     }
 
     /// Sets the key used to MAC-stamp and verify the SQLite store (see
@@ -1343,6 +1405,7 @@ impl InfinityContextMmu {
                 }
                 _ => self.replay_hdc_events(st.hdc_events),
             }
+            self.emitted_blocks = st.emitted_blocks;
             self.subagent_branches = st
                 .subagent_branches
                 .into_iter()
@@ -1492,6 +1555,7 @@ impl InfinityContextMmu {
             reordered_occurrences: self.reordered_occurrences.clone(),
             agent_occurrences: self.agent_occurrences.clone(),
             agent_reordered_occurrences: self.agent_reordered_occurrences.clone(),
+            emitted_blocks: self.emitted_blocks.clone(),
         }
     }
 

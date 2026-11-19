@@ -10,8 +10,7 @@ description = "Wire-level Cache-Epoch request transformer for Anthropic Messages
 workspace = true
 
 [dependencies]
+blake3.workspace = true
 icx-adapters.workspace = true
-icx-codec.workspace = true
 icx-core.workspace = true
-serde.workspace = true
 serde_json.workspace = true

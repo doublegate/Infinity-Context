@@ -123,6 +123,7 @@ impl ClaudeCodeAdapter {
                             res.compressed_ahtl.len(),
                             res.compressed_ahtl
                         );
+                        mmu.record_emitted(&stub);
                         let mut hso = json!({
                             "hookEventName": "PostToolUse",
                             "updatedToolOutput": stub
