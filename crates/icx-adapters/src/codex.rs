@@ -102,11 +102,9 @@ impl CodexAdapter {
                     })
                 } else {
                     let subject = InfinityContextMmu::extract_hook_subject(&payload, "codex_tool");
-                    let raw_output = match payload.get("tool_response").filter(|v| !v.is_null()) {
-                        Some(Value::String(s)) => s.clone(),
-                        Some(other) => other.to_string(),
-                        None => String::new(),
-                    };
+                    let raw_output = crate::claude::tool_output_text(
+                        payload.get("tool_response").filter(|v| !v.is_null()),
+                    );
                     let exit_code = InfinityContextMmu::extract_exit_code(&payload);
                     let explicit_sub_id = ["subagent_id", "agent_id"]
                         .into_iter()
@@ -138,10 +136,10 @@ impl CodexAdapter {
                             "updatedMCPToolOutput": stub
                         })
                     } else {
-                        json!({
-                            "hookEventName": "PostToolUse",
-                            "additionalContext": res.compressed_ahtl
-                        })
+                        // ICX-AUD-005: Codex appends `additionalContext` next to the full native
+                        // tool output, so repeating the compressed packet only adds tokens. The
+                        // output is still ingested (recall, deref, tail slots).
+                        json!({ "hookEventName": "PostToolUse" })
                     };
 
                     json!({
@@ -176,11 +174,13 @@ impl CodexAdapter {
                 let subagent_id = ["subagent_id", "agent_id"]
                     .into_iter()
                     .find_map(|k| payload.get(k).and_then(Value::as_str));
-                let summary = ["summary", "outcome"]
+                let summary_raw = ["last_assistant_message", "summary", "outcome"]
                     .into_iter()
                     .find_map(|k| payload.get(k).and_then(Value::as_str))
+                    .filter(|s| !s.trim().is_empty())
                     .unwrap_or("subagent_completed");
-                let folded_msg = mmu.finish_subagent(AgentKind::Codex, subagent_id, summary);
+                let summary: String = summary_raw.chars().take(240).collect();
+                let folded_msg = mmu.finish_subagent(AgentKind::Codex, subagent_id, &summary);
                 json!({
                     "continue": true,
                     "stopReason": null,

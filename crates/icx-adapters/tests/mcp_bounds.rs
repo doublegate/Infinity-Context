@@ -22,3 +22,64 @@ fn nested_fold_branches_are_bounded() {
     let folded = McpPagerServer::execute_icx_op(&json!({"op": "fold", "q": "done"}), &mut mmu);
     assert!(folded.contains("BRANCH_FOLDED"), "{folded}");
 }
+
+// --- v1.1.0 MCP dual-era protocol support (ICX-AUD-008) ---------------------------------------
+
+fn rpc(req: &serde_json::Value) -> serde_json::Value {
+    let mut mmu = InfinityContextMmu::default();
+    McpPagerServer::handle_jsonrpc(&req.to_string(), &mut mmu)
+}
+
+#[test]
+fn legacy_initialize_negotiates_the_requested_supported_version() {
+    for v in ["2024-11-05", "2025-06-18", "2025-11-25"] {
+        let r = rpc(
+            &json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion": v}}),
+        );
+        assert_eq!(r["result"]["protocolVersion"], v);
+    }
+    let r = rpc(
+        &json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"1999-01-01"}}),
+    );
+    assert_eq!(
+        r["result"]["protocolVersion"], "2025-11-25",
+        "falls back to latest legacy"
+    );
+}
+
+#[test]
+fn server_discover_advertises_versions_capabilities_and_identity() {
+    let r = rpc(
+        &json!({"jsonrpc":"2.0","id":"d1","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}),
+    );
+    let res = &r["result"];
+    assert_eq!(res["resultType"], "complete");
+    assert!(
+        res["supportedVersions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "2026-07-28")
+    );
+    assert!(res["capabilities"]["tools"].is_object());
+    assert_eq!(
+        res["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+        "infinity-context-mmu"
+    );
+}
+
+#[test]
+fn modern_requests_carry_result_type_and_reject_unknown_versions() {
+    let ok = rpc(
+        &json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}),
+    );
+    assert_eq!(ok["result"]["resultType"], "complete");
+    assert_eq!(ok["result"]["tools"][0]["name"], "icx");
+    assert!(ok["result"]["ttlMs"].is_number());
+    let bad = rpc(
+        &json!({"jsonrpc":"2.0","id":3,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"1900-01-01"}}}),
+    );
+    assert_eq!(bad["error"]["code"], -32022);
+    assert_eq!(bad["error"]["data"]["requested"], "1900-01-01");
+    assert!(bad["error"]["data"]["supported"].as_array().unwrap().len() >= 2);
+}

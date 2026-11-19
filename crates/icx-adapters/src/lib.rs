@@ -208,7 +208,7 @@ mod tests {
         );
         assert!(branch_slice.contains("subtask_loop"));
 
-        // 5. Verify Antigravity `Stop` hook continues on `MAX_TOKEN_BUDGET_EXCEEDED`
+        // 5. Verify Antigravity `Stop` on budget exhaustion is honoured (v1.1.0, ICX-AUD-007)
         let stop_stdin = serde_json::json!({
             "terminationReason": "MAX_TOKEN_BUDGET_EXCEEDED",
             "continuationActive": false
@@ -216,7 +216,7 @@ mod tests {
         .to_string();
         let stop_stdout = AntigravityAdapter::handle_hook("Stop", &stop_stdin, &mut mmu).unwrap();
         let stop_val: Value = serde_json::from_str(&stop_stdout).unwrap();
-        assert_eq!(stop_val["decision"], "continue");
+        assert_eq!(stop_val["decision"], "stop");
 
         // 6. Verify 0% secret leakage and delimiter neutralization across CAS, DAG, HDC, Graph, and Bus
         let aws_sec = ["wJalrXUtnFEMI/K7MDENG/", "bPxRfiCYEXAMPLEKEY"].concat();
@@ -281,10 +281,12 @@ unprefixed_secret = {unpref_sec}
         assert_eq!(cp_short, "{}");
         let cp_none = ClaudeCodeAdapter::handle_hook("PostToolUse", "{}", &mut mmu).unwrap();
         assert_eq!(cp_none, "{}");
+        // v1.1.0 (ICX-AUD-004): PreCompact returns plain-text compaction instructions;
+        // PostCompact has no model-facing output (its systemMessage would be discarded).
         let cpre = ClaudeCodeAdapter::handle_hook("PreCompact", "{}", &mut mmu).unwrap();
-        assert!(cpre.contains("systemMessage"));
+        assert!(cpre.contains("#icx:") && !cpre.contains("systemMessage"));
         let cpost = ClaudeCodeAdapter::handle_hook("PostCompact", "{}", &mut mmu).unwrap();
-        assert!(cpost.contains("systemMessage"));
+        assert_eq!(cpost, "{}");
         assert_eq!(
             ClaudeCodeAdapter::handle_hook("UnknownEvent", "{}", &mut mmu).unwrap(),
             "{}"
@@ -641,7 +643,9 @@ unprefixed_secret = {unpref_sec}
         let claude_sub_stop = claude_trait
             .handle_hook_event("SubagentStop", r#"{"summary":"done_sub_1"}"#, &mut mmu)
             .unwrap();
-        assert!(claude_sub_stop.contains("ICX:SUBAGENT_FOLDED"));
+        // v1.1.0: SubagentStop folds the branch but emits nothing (additionalContext would keep
+        // the subagent running).
+        assert_eq!(claude_sub_stop, "{}");
         let _ = claude_trait
             .handle_hook_event(
                 "SubagentStart",
@@ -656,7 +660,7 @@ unprefixed_secret = {unpref_sec}
                 &mut mmu,
             )
             .unwrap();
-        assert!(stop_zero.contains("ICX:SUBAGENT_FOLDED"));
+        assert_eq!(stop_zero, "{}");
         let claude_sub_stop_empty = claude_trait
             .handle_hook_event(
                 "SubagentStop",
@@ -664,7 +668,7 @@ unprefixed_secret = {unpref_sec}
                 &mut mmu,
             )
             .unwrap();
-        assert!(claude_sub_stop_empty.contains("ICX:SUBAGENT_STOP"));
+        assert_eq!(claude_sub_stop_empty, "{}");
 
         let codex_trait: &dyn AgentHookAdapter = &CodexAdapter;
         assert_eq!(codex_trait.agent_kind(), AgentKind::Codex);
@@ -765,7 +769,7 @@ unprefixed_secret = {unpref_sec}
                 &mut mmu,
             )
             .unwrap();
-        assert!(stop_a.contains("ICX:SUBAGENT_FOLDED"));
+        assert_eq!(stop_a, "{}");
         assert_eq!(mmu.dag.node_count(), nodes_before_subs + 2);
         // Stopping sub-B via Codex session-end folds any remaining open subagents
         let session_end_out = codex_trait
@@ -1168,11 +1172,13 @@ unprefixed_secret = {unpref_sec}
             &mut mmu,
         )
         .unwrap();
+        // v1.1.0 (ICX-AUD-007): budget exhaustion is honoured; icx seals an epoch and never
+        // forces `decision: "continue"`.
+        let sealed_before = mmu.epochs.sealed_epoch_count();
         let stop_cont_val: Value = serde_json::from_str(&stop_cont).unwrap();
-        assert_eq!(stop_cont_val["decision"], "continue");
-        let stop_reason = stop_cont_val["reason"].as_str().unwrap();
-        assert!(stop_reason.contains("⟪ICX:EPOCH_FOLDED│#icx:"));
-        assert!(stop_reason.contains("│Resume from sealed AHTL state⟫"));
+        assert_eq!(stop_cont_val["decision"], "stop");
+        assert!(stop_cont_val.get("reason").is_none());
+        assert!(mmu.epochs.sealed_epoch_count() >= sealed_before);
         assert_eq!(
             AntigravityAdapter::handle_hook("SessionEnd", "{}", &mut mmu).unwrap(),
             "{}"
@@ -1873,7 +1879,7 @@ unprefixed_secret = {unpref_sec}
             &mut empty_mmu,
         )
         .unwrap();
-        assert!(empty_stop.contains("#icx:0000000000000000"));
+        assert_eq!(empty_stop, r#"{"decision":"stop"}"#);
         assert_eq!(
             AntigravityAdapter::handle_hook("PostToolUse", "{}", &mut empty_mmu).unwrap(),
             "{}"

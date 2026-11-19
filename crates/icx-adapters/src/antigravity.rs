@@ -3,7 +3,8 @@
 //! Exploits `SessionStart`, `PreInvocation`, and `PostInvocation` `injectSteps` with
 //! `metadata.user_markdown = ""` so non-human `AHTL` frames are completely invisible in the human
 //! chat UI while injected directly into the model's context, plus `Stop` continuation across
-//! `MAX_TOKEN_BUDGET_EXCEEDED` and `MAX_INVOCATIONS`.
+//! `max_steps_exceeded` / `error` (and the legacy `MAX_*` reasons) by sealing an epoch; it never
+//! overrides a stop.
 
 use crate::codex::CodexRolloutTailer;
 use crate::mmu::InfinityContextMmu;
@@ -460,42 +461,28 @@ impl AntigravityAdapter {
                 })
             }
             "Stop" | "stop" => {
+                // ICX-AUD-007: `decision: "continue"` makes agy keep running. v1.0.x returned it
+                // when the user's step/token budget ran out, silently overriding that limit.
+                // v1.1.0 always lets the stop happen and only preserves state: open subagents
+                // are folded and the active window is sealed into an epoch, so the next session
+                // resumes from it.
                 let reason = payload
                     .get("terminationReason")
                     .and_then(Value::as_str)
                     .unwrap_or("");
-                let cont_active = payload
-                    .get("continuationActive")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-
-                if !cont_active
-                    && (reason == "MAX_TOKEN_BUDGET_EXCEEDED" || reason == "MAX_INVOCATIONS")
-                {
-                    mmu.fold_all_open_subagents(AgentKind::AntigravityCli, "budget_rollover");
-                    let ep_id = mmu.force_rollover_and_sync_dag_root();
-                    let ep_handle = ep_id
-                        .map(|id| id.to_string())
-                        .unwrap_or_else(|| "#icx:0000000000000000".to_owned());
-                    let tail = Self::attach_conversation_id(
-                        mmu.build_ephemeral_tail_slot(
-                            AgentKind::AntigravityCli,
-                            "epoch_rollover",
-                            3,
-                        ),
-                        &payload,
-                    );
-                    json!({
-                        "decision": "continue",
-                        "reason": format!(
-                            "⟪ICX:EPOCH_FOLDED│{ep_handle}│Resume from sealed AHTL state⟫\n⟪ICX:EPOCH_ROLLOVER⟫\n{tail}"
-                        )
-                    })
+                mmu.fold_all_open_subagents(AgentKind::AntigravityCli, "agy_stop");
+                if matches!(
+                    reason,
+                    "max_steps_exceeded"
+                        | "error"
+                        | "MAX_TOKEN_BUDGET_EXCEEDED"
+                        | "MAX_INVOCATIONS"
+                ) {
+                    let _ = mmu.force_rollover_and_sync_dag_root();
                 } else {
-                    json!({
-                        "decision": "stop"
-                    })
+                    let _ = mmu.rollover_and_sync_dag_root();
                 }
+                json!({ "decision": "stop" })
             }
             "SessionEnd" | "session-end" => {
                 mmu.fold_all_open_subagents(AgentKind::AntigravityCli, "session_ended");
