@@ -1482,7 +1482,20 @@ fn run_benchmark() -> Result<(), String> {
 
     // 6. FastCDC + BLAKE3 CAS Ingest (64 KB) Benchmark (release ceiling: <= 250 us)
     let mut cas_bench = icx_core::cas::CasStore::new();
-    let cas_payload_64k = "pub fn fastcdc_kernel_step(x: u64) -> u64 { x.wrapping_mul(6364136223846793005).wrapping_add(1) }\n".repeat(660);
+    // Varied lines (ICX-AUD-027): a repeated line never hits a content-defined cut point, so
+    // the old fixture always measured a single chunk.
+    let mut cas_payload_64k = String::with_capacity(66_000);
+    let mut state = 0x9E37_79B9_7F4A_7C15_u64;
+    while cas_payload_64k.len() < 64_600 {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        cas_payload_64k.push_str(&format!(
+            "pub fn kernel_{state:016x}(x: u64) -> u64 {{ x.rotate_left({}) ^ 0x{:08x} }}\n",
+            state % 63,
+            state >> 40
+        ));
+    }
     let t_cas = Instant::now();
     let (cas_aid, _) = cas_bench
         .put_bytes_checked(cas_payload_64k.as_bytes())
