@@ -1,5 +1,7 @@
 # Downloaded Primary Research Papers — Index & Technical Synthesis
 
+> **Corrections:** this index is kept as written; verified corrections to its titles, attributions and figures are in [corrections-2026-11-18.md](../corrections-2026-11-18.md).
+
 **Location:** `ref-docs/papers/`  
 **Papers indexed:** 22 arXiv primary sources. **PDFs redistributed here:** 12 (11 under CC BY 4.0, 1 under CC BY-NC-SA 4.0). The other 10 are published on arXiv under the arXiv non-exclusive distribution license, which does not permit redistribution, so they are linked to their arXiv abstract pages instead (v1.1.0, ICX-AUD-036).  
 

@@ -1,5 +1,7 @@
 # Infinity-Context (`icx`) — Deep Research Technical Report
 
+> **Corrections:** this report is kept as written; verified corrections to its citations and figures are in [corrections-2026-11-18.md](corrections-2026-11-18.md), and current values are in [docs/numbers.md](../docs/numbers.md).
+
 **Generated:** 2026-11-16  
 **Mode:** Augment & Autonomous Deep Research (building on [ref-docs/initial-concept.md](initial-concept.md))  
 **Source Count:** 38 distinct sources (22 primary arXiv research papers downloaded as PDFs in [ref-docs/papers/](papers/INDEX.md), 9 shipped local agent binaries & SQLite databases analyzed via Reverse-Engineer-Anything (`rea`) with cryptographic Evidence IDs in [ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md](agent-internals/rea-binary-and-sqlite-forensics.md), and 7+ open-source reference repositories analyzed in [ref-docs/prior-art/github-and-industry-landscape.md](prior-art/github-and-industry-landscape.md)).

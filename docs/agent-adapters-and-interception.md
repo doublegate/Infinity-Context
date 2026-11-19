@@ -1,91 +1,120 @@
 # Agent Adapters, Wire Proxy & Interception Specification
 
-**References:** [ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md](../ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md), [ref-docs/agent-internals/cross-agent-hook-and-wire-matrix.md](../ref-docs/agent-internals/cross-agent-hook-and-wire-matrix.md)  
-**Target Crates:** `crates/icx-adapters`, `crates/icx-proxy`
+**References:** [ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md](../ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md), [ref-docs/agent-internals/cross-agent-hook-and-wire-matrix.md](../ref-docs/agent-internals/cross-agent-hook-and-wire-matrix.md), [docs/deployment-and-agent-integration-guide.md](deployment-and-agent-integration-guide.md)  
+**Target Crates:** `crates/icx-adapters`, `crates/icx-proxy`  
+**Release:** `v1.1.0`
 
 ---
 
 ## 1. Purpose
 
-`crates/icx-adapters` and `crates/icx-proxy` connect the **Infinity-Context (`icx`)** Virtual Context MMU to every agent CLI and IDE on the workstation. They implement four concrete native adapters (**Claude Code**, **OpenAI Codex CLI**, **Google Antigravity CLI (`agy`)**, **Hermes Agent**), a generic fallback adapter for the remaining 14+ MCP/hook harnesses, an **HTTP/2 & SSE Cache-Epoch Reverse Proxy**, and a **SQLite WAL / JSONL Live Tailer**.
+`crates/icx-adapters` and `crates/icx-proxy` connect the **Infinity-Context (`icx`)** Virtual Context MMU to agent CLIs. They implement four native hook adapters (**Claude Code**, **OpenAI Codex CLI**, **Google Antigravity CLI (`agy`)**, **Hermes Agent**), the single-tool MCP pager (`McpPagerServer`), and an **HTTP/1.1 & SSE Cache-Epoch reverse proxy** (`WireProxyTransformer`).
+
+Hook contracts below were checked against upstream documentation on 2026-11-18 (Claude Code 2.1.328, codex-cli 0.170.0, agy 1.5.11, Hermes source `dc394c6`). `crates/icx-adapters/tests/claude_contract.rs` pins the Claude Code output shapes; the other adapters are covered by unit tests, not by fixtures captured from live agent runs.
+
+Common behaviour of `icx hook --agent <agent> --event <EVENT>`:
+
+- The workspace is resolved as `--dir` > `ICX_DIR` > the per-project default under `$XDG_STATE_HOME/icx/workspaces/`. A repository-local `.icx/` is never loaded implicitly.
+- If an `icx daemon` serves the workspace, the hook is forwarded over its private Unix socket; otherwise it runs in-process under the workspace lock. `ICX_NO_DAEMON=1` disables the daemon path.
+- stdin is bounded. The process always exits 0. On malformed input or internal errors it prints `{}` (or a non-replacing response), so the agent keeps its original behaviour.
+- Outputs of the `icx` pager tool itself (`InfinityContextMmu::is_icx_pager_tool`) are never re-stubbed.
+- Content is redacted (`SecretRedactor::redact`) before it reaches the store, index, or bus. Model-facing text is additionally Tier-0 delimiter-escaped.
 
 ---
 
 ## 2. Claude Code Adapter (`ClaudeCodeAdapter`)
 
-**Verified Binary Target:** `~/.local/share/claude/versions/2.1.326` (`ev_be2e252614342586f9de78e5f08eb70de8465f18310bc03a948abe986a60ef72`)
+Upstream reference: <https://code.claude.com/docs/en/hooks>.
 
 ### 2.1 Hook Event Handling (`icx hook --agent claude-code --event <event>`)
 
 1. **`SessionStart`:**
-   - Reads `{session_id, cwd, transcript_path}` from `stdin`.
-   - Queries `/dev/shm/icx-fabric-v1` and `icx-store` for the workspace's active Cache Epochs and cross-agent telepathy commits.
-   - Emits:
+   - Returns the AHTL legend and the initial tail slot in `hookSpecificOutput.additionalContext`:
+
      ```json
      {
        "hookSpecificOutput": {
          "hookEventName": "SessionStart",
-         "additionalContext": "⟪ICX:LEGEND│Δ=code_mut│Ψ=tool_stub│Ω=invariant│Θ=xagent│Φ=folded_branch│↦=deref_via_icx_tool⟫\n⟪ICX:v1│ep=0001│root=9f4ac1e2│τ=1794880800⟫..."
+         "additionalContext": "⟪ICX:LEGEND│Δ=code_mut│Ψ=tool_stub│Ω=invariant│Θ=xagent│Φ=folded_branch│↦=deref_via_icx_tool⟫\n⟪ICX:TAIL_SLOT│agent=claude-code│...⟫"
        }
      }
      ```
+
 2. **`UserPromptSubmit`:**
-   - Reads `{session_id, prompt, cwd}` from `stdin`.
-   - Computes 10,240-bit HDC query hypervector + HippoRAG PPR walk + `/dev/shm` unseen sibling agent commits.
-   - Returns the **Ephemeral Tail Slot** AHTL frame in `hookSpecificOutput.additionalContext`.
-3. **`PostToolUse` (In-Flight Tool Output Virtualization):**
-   - Reads `{tool_name, tool_input, tool_response, tool_use_id, session_id}` from `stdin`.
-   - If serialized `tool_response` length $> 2,048$ bytes:
+   - Reads `prompt`, builds the tail slot (HDC query + fractal suffix + PPR walk + unseen sibling bus frames), and returns it in `hookSpecificOutput.additionalContext`.
+3. **`PostToolUse` (in-flight tool output virtualization):**
+   - Reads `tool_name`, `tool_input`, and `tool_response`. If the output is at or above `tool_virtualize_threshold` (default 512 bytes):
      1. Redacts secrets via `SecretRedactor`.
-     2. Chunks and commits raw bytes into `CasStore` -> obtains `#icx:<hex16>`.
-     3. Runs `StructuralSkeletonizer` + `TitansSurpriseGate` + `AhtlEncoder` -> produces compact `AHTL` stub (`<= 120` tokens).
-     4. Publishes summary delta to `/dev/shm/icx-fabric-v1`.
-     5. Returns:
+     2. Chunks and commits the bytes into `CasStore`, obtaining `#icx:<16-hex>`.
+     3. Runs `StructuralSkeletonizer`, the Titans-inspired `TitansSurpriseGate` heuristic, and `AhtlEncoder` to produce a compact stub.
+     4. Publishes a summary frame on the bus.
+     5. Returns `updatedToolOutput` **in the tool's own output shape**. Claude Code ignores a replacement whose shape does not match the tool's output. For Bash the object `{stdout, stderr, interrupted, isImage}` is returned with the stub in `stdout`; for other object outputs all fields are kept and the largest string leaf is replaced. MCP tools (`mcp__*`) additionally get `updatedMCPToolOutput` (string):
+
         ```json
         {
           "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
-            "updatedToolOutput": "⟪ICX:STUB│#icx:7a2e91f0ab12cd34│raw=64,120B→298B│lines=1..1420⟫\n⟦Ψ:Bash⊢exit=0⋮✓pass=84⋮↦#icx:7a2e91f0ab12cd34(L1-1420)⋮Ψ:⠞⠧a9f1⟧"
+            "updatedToolOutput": {
+              "stdout": "⟪ICX:STUB│#icx:7a2e91f0ab12cd34│raw=64120B→298B│lines=1..1420⟫\n⟦Ψ:Bash:cargo_test#L1-1420⊢✓pass:84⋮bytes:64120↦#icx:7a2e91f0ab12cd34⋮Ψ:⠞⠧⡁⢂⟧",
+              "stderr": "",
+              "interrupted": false,
+              "isImage": false
+            }
           }
         }
         ```
-4. **`PreCompact` & `PostCompact`:**
-   - On `PreCompact`: Checkpoints all unsealed `L1` turns into a sealed `L3 CacheEpochNode` in the Merkle-DAG.
-   - On `PostCompact`: Injects the lossless Merkle-DAG Epoch Frame + active `#icx:<hash>` table of contents via `systemMessage` so zero exact identifiers or line numbers are lost across compaction.
+
+   - Below the threshold the response is `{}`.
+4. **`PreToolUse`:** returns only `{"hookSpecificOutput":{"hookEventName":"PreToolUse"}}`. icx makes no permission decision and does not modify the tool input; registering this hook is unnecessary.
+5. **`SubagentStart` / `SubagentStop`:**
+   - `SubagentStart` opens an isolated subagent branch and returns a tail slot in `additionalContext`.
+   - `SubagentStop` reads `last_assistant_message`, folds the branch into an `L2` node, and returns `{}`. Any decision or `additionalContext` here would keep the subagent running.
+6. **`PreCompact` & `PostCompact`:**
+   - `PreCompact` seals the active window into an `L3` `CacheEpochNode` and prints **plain stdout** (not JSON), which Claude Code uses as compaction instructions: keep every `#icx:` handle and icx packet verbatim, followed by the current context map. Output stays under Claude Code's 10,000-character limit. (`systemMessage` is discarded on this event.)
+   - `PostCompact` stores `compact_summary` in the workspace, seals the epoch, and returns `{}`.
+   - icx never blocks compaction.
+7. **`SessionEnd`:** folds open subagent branches, seals the epoch, returns `{}`.
+8. **`Stop`:** not handled; returns `{}`.
 
 ---
 
 ## 3. OpenAI Codex CLI Adapter (`CodexAdapter`)
 
-**Verified Binary Target:** `~/.codex/packages/standalone/releases/0.169.0-x86_64-unknown-linux-musl/bin/codex` (`ev_7cda5928199ea58224bdedbbd14892ff224515db64f7679457f633d5e7d816d3`)
+Upstream reference: the Codex hooks documentation (developers.openai.com/codex/hooks). Hooks are configured in `~/.codex/hooks.json` with PascalCase event names, a string `command`, and `timeout` in seconds; hooks are enabled by default (`codex_hooks` is a deprecated feature alias).
 
 ### 3.1 Hook & Wire Integration
-1. **`session-start` & `user-prompt-submit`:**
-   - Validates against Codex's embedded `session-start.command.output` and `user-prompt-submit.command.output` JSON schemas (`hookSpecificOutput.additionalContext`, `systemMessage`, `continue: true`).
-2. **`post-tool-use`:**
-   - Uses `hookSpecificOutput.updatedMCPToolOutput` for MCP tools and `hookSpecificOutput.additionalContext` + `systemMessage` for native unified exec tools, while storing full outputs in CAS.
-3. **`pre-compact` & `post-compact`:**
-   - Emits `{"continue": true, "systemMessage": "⟪ICX:LCM_CHECKPOINT│...⟫"}` matching `pre-compact.command.output`.
-4. **SQLite & Rollout Tailer (`CodexWalTailer`):**
-   - Watches `~/.codex/state_5.sqlite` (`ev_3e4a7d4314b4d31f13103a257120fda8c23e0a884187421d7a47b4a75f1c29a5`) for active `threads.rollout_path` and ingests `RolloutItemWire` JSONL entries in real time.
+
+1. **`SessionStart`, `UserPromptSubmit` & `SubagentStart`:**
+   - Return `{"continue": true, "hookSpecificOutput": {"hookEventName": ..., "additionalContext": ...}, ...}` with the legend and/or tail slot.
+2. **`PostToolUse`:**
+   - Ingests the tool output (store, index, bus) in every case.
+   - For MCP tools at or above the threshold, returns `hookSpecificOutput.updatedMCPToolOutput` with the stub. Upstream documents this field as "parsed but not supported yet", so it currently has no effect.
+   - For built-in tools, returns only `{"hookEventName": "PostToolUse"}`. v1.0.x appended `additionalContext`, which Codex adds next to the full native output and which therefore only increased tokens; that was removed.
+   - **Net effect:** through hooks alone, icx does not shrink tool output in Codex; the model still sees the full native output. Use the wire proxy (§6) to reduce what Codex resends.
+3. **`PreToolUse`:** returns `continue: true` with no decision and no input change.
+4. **`SubagentStop`:** reads `last_assistant_message` and folds the subagent branch; the fold frame is returned in `systemMessage`.
+5. **`PreCompact`, `PostCompact` & `SessionEnd`:** seal the epoch and return `{"continue": true, "systemMessage": "<deterministic prefix>"}`.
+6. **`PreModelRequest` / `PostModelRequest`:** not used. Upstream defines them as diagnostic only; they cannot change the request.
+7. **Rollout tailer (`CodexRolloutTailer`):** a bounded JSONL reader for `~/.codex/sessions/**/rollout-*.jsonl`. **Known limitations:** it is not wired into the `icx` CLI in `v1.1.0` (only the library and tests use it), and it does not read zstd-compressed `.jsonl.zst` rollouts, which current Codex versions write.
 
 ---
 
 ## 4. Google Antigravity CLI (`agy`) Adapter (`AntigravityAdapter`)
 
-**Verified Binary Target:** `~/.local/bin/agy` (`ev_e0bd52156323af13cc80956727b105639c42d36bc491e0c89dd1b2f81f4da090`, `ev_4f48383ea6a5027ec066fb32443128db1261d36ffde9074e9aef47adccfd50f7`)
+Upstream reference: <https://antigravity.google/docs/hooks>. Hooks are configured in a workspace `.agents/hooks.json` or the global `~/.gemini/config/hooks.json` as named groups of events; each handler has a single `command` string, optional `type` (default `"command"`), `timeout` in seconds (default 30), and `enabled`. The documented events are `SessionStart`, `PreToolUse`, `PostToolUse`, `PreInvocation`, `PostInvocation`, and `Stop`. (Gemini CLI event names such as `BeforeModel`, `AfterTool`, or `PreCompress` do not apply to agy.)
 
 ### 4.1 camelCase Protojson Hook Contract
-1. **`SessionStart` & `PreInvocation`:**
-   - Parses `{conversationId, workspacePaths, transcriptPath, artifactDirectoryPath, modelName, lastUserInput, hookEventName, cwd}`.
-   - Runs HDC/PPR/Fractal recall + `/dev/shm` cross-agent poll.
-   - Emits UI-silent `systemMessage` (`metadata.user_markdown: ""`):
+
+1. **`SessionStart`, `PreInvocation` & `PostInvocation`:**
+   - Read `conversationId`, `transcriptPath`, `lastUserInput` (or `prompt` / `query`), and related fields.
+   - Build the tail slot (HDC/PPR/fractal recall + unseen bus frames) and return it as an injected system message with `"terminationBehavior": ""`:
+
      ```json
      {
        "injectSteps": [
          {
            "systemMessage": {
-             "systemMessage": "⟪ICX:TAIL_SLOT│conv=983dcb21⟫\n⟦Θ:codex-desktop@crates/icx-core/src/dag.rs⊢⊕fn:seal_epoch↦#icx:19fa0042⟧",
+             "systemMessage": "⟪ICX:TAIL_SLOT│conv=983dcb21⟫\n⟦Θ:codex-desktop@crates/icx-core/src/dag.rs⊢⊕fn:seal_epoch↦#icx:19fa0042b7c3d5e6⟧",
              "metadata": {
                "user_markdown": ""
              }
@@ -95,42 +124,55 @@
        "terminationBehavior": ""
      }
      ```
+
+   - The `metadata.user_markdown` key is intended to keep the frame out of the chat UI; it is not documented upstream, so that effect is unverified.
+   - `PostInvocation` never sets `force_continue` (v1.0.x did when the input carried `forceContinue`).
 2. **`PreToolUse`:**
-   - Supports `"overwrite"` to bound runaway command outputs (e.g., automatically piping unbounded log dumps through `icx capture-pipe` when appropriate) while returning `{"decision": "allow"}`.
+   - agy requires a `decision`. icx always returns `{"decision": "allow"}`, expressing no opinion, and never modifies the tool call. v1.0.x echoed `decision` / `overwrite` from its input; that was removed. Registering this hook is unnecessary.
 3. **`PostToolUse`:**
-   - Reads the latest step from `transcriptPath` (`transcript_full.jsonl` or `conversations/<id>.db` `steps.step_payload`), commits to `CasStore`, and broadcasts to `/dev/shm`.
-4. **`Stop` (Infinite Horizon Continuation):**
-   - If `terminationReason == "MAX_TOKEN_BUDGET_EXCEEDED"` or `"MAX_INVOCATIONS"` and `!continuationActive`, folds the current trajectory epoch into `MerkleContextDag` and returns:
+   - Ingests `toolCall.args` and the tool response. When the payload omits the response, reads the matching step from the last `512 KiB` of `transcriptPath`. The transcript is opened non-blocking without following symlinks, and only regular files are read. Returns `{}`.
+4. **`Stop`:**
+   - Always returns `{"decision": "stop"}`; icx never keeps the agent running. It folds open subagents and seals the active window into an epoch (forced on `max_steps_exceeded` or `error`), so the next session resumes from that state:
+
      ```json
      {
-       "decision": "continue",
-       "reason": "⟪ICX:EPOCH_FOLDED│#icx:88ef1209│Resume from sealed AHTL state⟫"
+       "decision": "stop"
      }
      ```
+
+   - v1.0.x returned `"continue"` on `MAX_TOKEN_BUDGET_EXCEEDED` / `MAX_INVOCATIONS`, overriding the user's budget; that was removed.
+5. **`SubagentStart`, `SubagentStop` & `SessionEnd`:** handled by the adapter (branch isolation and folding), but not part of agy's published event list.
 
 ---
 
 ## 5. Hermes Agent Adapter (`HermesAdapter`)
 
-**Verified Target:** `~/.hermes/hermes-agent/agent/context_engine.py` & `memory_provider.py` (`ev_55f2f031e94c568896ee3d6653a29fb05932581b058229e8bf3aebc614652511`)
+Target: the Hermes `ContextEngine` ABC (`agent/context_engine.py`) and `MemoryProvider.on_pre_compress` (`agent/memory_provider.py`).
 
-- Provides a Python shim plugin (`plugins/context_engine/infinity_context/`) that delegates `select_context()`, `prune_tool_results_only()`, `compress()`, and `on_turn_complete()` over Unix Domain Socket / `/dev/shm` to `icxd`.
-- `select_context()` replaces historical message blocks with **Cache-Epoch-Pinned AHTL Frames** + the **Ephemeral Tail Slot** on every provider request without mutating Hermes's `state.db` `messages` table.
+- `HermesAdapter` implements the context-engine logic in Rust: `select_context`, `prune_tool_results_only`, `compress`, `on_turn_complete`, `on_pre_compress` (checkpoint API version 2), and `SessionStart`, all reachable through `icx hook --agent hermes --event <name>` with a JSON payload on stdin. The JSON contract is listed in the [deployment guide §2.5](deployment-and-agent-integration-guide.md#25-hermes-agent-configuration-contextengine-plugin).
+- **No Python plugin or shim ships in this repository.** To use icx with Hermes, a user must write a `ContextEngine` plugin that calls `icx hook --agent hermes ...`. The plugin must implement the abstract `name` property, `update_from_response`, `should_compress`, and `compress`; `select_context`, `on_turn_complete`, and `prune_tool_results_only` are optional. Hermes loads context-engine plugins from `plugins/context_engine/<name>/` or `$HERMES_HOME/plugins/<name>/`, selected by `context.engine` in `~/.hermes/config.yaml`.
+- Hermes has no `hooks.yaml`. Its shell hooks (under `hooks:` in `config.yaml`, snake_case events such as `pre_tool_call` and `on_session_start`) and gateway hooks (`~/.hermes/hooks/<name>/HOOK.yaml`) are not handled by icx.
+- `select_context` replaces middle-history messages with one `icx_cache_epoch` system message plus an `icx_tail_slot` message, without touching Hermes's `state.db` `messages` table. Preserved verbatim: the protected head and tail, `icx` pager results, messages with structured non-text content, and complete `tool_calls` groups.
 
 ---
 
 ## 6. Wire-Level Reverse Proxy (`crates/icx-proxy`)
 
-`icx-proxy` listens on `127.0.0.1:49380` (and `/run/user/$UID/icx-proxy.sock`) and exposes three upstream-compatible routes:
-- `POST /anthropic/v1/messages` (for `ANTHROPIC_BASE_URL=http://127.0.0.1:49380/anthropic`)
-- `POST /openai/v1/responses` & `POST /openai/v1/chat/completions` (for `OPENAI_BASE_URL=http://127.0.0.1:49380/openai/v1`)
-- `POST /gemini/v1beta/models/*` (for `GEMINI_API_BASE_URL`)
+`icx proxy` is an HTTP/1.1 listener (upstream requests are sent over HTTPS through `curl`).
+
+- **Bind:** `127.0.0.1:49380` by default (or `ICX_PROXY_BIND`). Non-loopback binds are refused unless `--allow-remote` is passed.
+- **Authentication:** every request must carry the per-install token, as the path prefix `/t/<token>` or the header `x-icx-token: <token>`; otherwise the proxy answers `401`. The header is removed before forwarding. The token is derived from `install.key` and printed at startup (`set ANTHROPIC_BASE_URL / OPENAI_BASE_URL to http://127.0.0.1:49380/t/<token>`). `--insecure-no-auth` disables the check and is not recommended.
+- **Routing:** after the token prefix is removed, the provider is selected by an optional route prefix (`/anthropic`, `/openai`, `/gemini`, stripped before forwarding), by the API path (`/v1/messages`, `/v1/responses`, `/v1/chat/completions`, `/v1beta/models/*`), or by `--provider`. Typical base URLs:
+  - `ANTHROPIC_BASE_URL=http://127.0.0.1:49380/t/<token>`
+  - `OPENAI_BASE_URL=http://127.0.0.1:49380/t/<token>/v1`
+- **Upstream:** `--upstream` / `ICX_UPSTREAM_URL`, else the provider default (`https://api.anthropic.com`, `https://api.openai.com`, `https://generativelanguage.googleapis.com`).
 
 ### Proxy Transformations
+
 1. **Outbound Request Pass:**
-   - Identifies the conversation/session from headers or system prompt hash.
-   - Replaces raw oversized middle-history tool results with their cached `AHTL` Epoch Frames (`Zone 1`), ensuring `Zone 0` and `Zone 1` remain 100% byte-identical across turns.
-   - Injects Anthropic `cache_control: {"type": "ephemeral"}` on the last block of the latest sealed Cache Epoch.
-   - Appends the `Ephemeral Tail Slot` (`<= 1,024` tokens) containing HDC/PPR/Fractal recall and `/dev/shm` cross-agent telepathy updates to the final user message.
-2. **Inbound Streaming SSE Pass:**
-   - Monitors streaming assistant deltas for inline dereference directives (`⟪!icx:deref(#icx:...)⟫`) if direct proxy expansion is enabled.
+   - Tier-0-escapes forged icx markers (`⟦ ⟧ ⟪ ⟫`) anywhere in any non-system message, including the latest one, unless the block is byte-identical to one icx emitted. System/developer messages and `icx` pager results are left as-is.
+   - Replaces oversized middle-history content outside the last 2 messages with deterministic AHTL packets, exempting `icx` pager outputs. Folded messages are normalized to content-block form, so folded history stays byte-stable across turns.
+   - **Anthropic:** keeps every client `cache_control` breakpoint; adds at most one icx breakpoint, on the last content block of the folded region, only while the request has fewer than 4 breakpoints; uses a 1-hour TTL when a later client breakpoint uses one.
+   - Appends the Ephemeral Tail Slot (HDC/PPR/fractal recall and unseen bus frames) to the final message, replacing any earlier tail slot.
+2. **Inbound Response Pass:**
+   - Expands inline dereference directives (`⟪!icx:deref(#icx:<16-hex>)⟫` or `⟪!icx:deref(#icx:<16-hex>,start:end)⟫`) in SSE and JSON responses. Expanded content is escaped before it is returned.
