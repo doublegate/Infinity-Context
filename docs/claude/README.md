@@ -22,6 +22,7 @@ Start with [`00-executive-summary.md`](00-executive-summary.md).
 | [09-docs-citations-governance.md](09-docs-citations-governance.md) | W9: cross-doc consistency, citations, licensing |
 | [10-ci-supply-chain.md](10-ci-supply-chain.md) | W10: workflows, pinning, dependencies |
 | [11-enhancements-and-optimizations.md](11-enhancements-and-optimizations.md) | Forward-looking improvements |
+| [12-v1.1.0-remediation-status.md](12-v1.1.0-remediation-status.md) | Per-finding status after the v1.1.0 release work |
 | [findings.csv](findings.csv) | Every finding: ID, severity, location, evidence type (ticket-ready) |
 
 ## Method
