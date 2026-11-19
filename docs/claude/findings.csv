@@ -1,52 +1,52 @@
 id,severity,category,title,primary_location,doc,evidence,status,v1_1_0
 ICX-AUD-001,Critical,performance,Real hook latency grows linearly with history; load re-encodes all HDC state,crates/icx-adapters/src/mmu.rs:1122;crates/icx-hdc/src/hv.rs:638,07,measured+perf,fixed,"c03d9ea, 61cb0f2"
-ICX-AUD-002,High,claims,>=94% prefix-cache hit rate is an artifact of 22.8 KB padding,crates/icx-cli/src/main.rs:1156,07,PoC,fixed,2c44cfd
+ICX-AUD-002,High,claims,>=94% prefix-cache hit rate is an artifact of 22.8 KB padding,crates/icx-cli/src/main.rs:1156,07,PoC,fixed,37db9a2
 ICX-AUD-003,High,integration,Anthropic proxy cache strategy likely reduces cache hits (message-level cache_control; strips client breakpoints; rewrites history),crates/icx-proxy/src/wire.rs:93-131,06,docs+code (partly inferred),fixed,110e116
-ICX-AUD-004,High,integration,Claude Code hook outputs routed to user or discarded; SubagentStop reads wrong field,crates/icx-adapters/src/claude.rs:155-180,06,upstream docs,fixed,5d0d1ab
-ICX-AUD-005,High,integration,Codex updatedMCPToolOutput unsupported; additionalContext adds tokens; documented config wrong; zstd rollouts unsupported,crates/icx-adapters/src/codex.rs;docs/deployment-and-agent-integration-guide.md:286-345,06,upstream docs+local,partial,5d0d1ab; upstream Codex does not apply updatedMCPToolOutput; rollout tailer zstd not implemented
+ICX-AUD-004,High,integration,Claude Code hook outputs routed to user or discarded; SubagentStop reads wrong field,crates/icx-adapters/src/claude.rs:155-180,06,upstream docs,fixed,129988d
+ICX-AUD-005,High,integration,Codex updatedMCPToolOutput unsupported; additionalContext adds tokens; documented config wrong; zstd rollouts unsupported,crates/icx-adapters/src/codex.rs;docs/deployment-and-agent-integration-guide.md:286-345,06,upstream docs+local,partial,129988d; upstream Codex does not apply updatedMCPToolOutput; rollout tailer zstd not implemented
 ICX-AUD-006,High,integration,Hermes shim cannot load; hooks.yaml and events do not exist upstream,docs/deployment-and-agent-integration-guide.md:465-598,06,local source,partial,docs only; no Hermes shim ships
-ICX-AUD-007,Medium,integration,agy config locations contradictory; schema and Stop reasons wrong; PreToolUse allow default,crates/icx-adapters/src/antigravity.rs:459;README.md:136,06,upstream docs,fixed,"5d0d1ab, 91ac661; docs"
-ICX-AUD-008,Medium,integration,MCP protocolVersion hard-coded 2024-11-05; no negotiation or server/discover,crates/icx-adapters/src/mcp.rs:154,06,spec,fixed,5d0d1ab
-ICX-AUD-009,Info,correctness,PreToolUse echo of output-only fields is dead code,crates/icx-adapters/src/claude.rs:71-80,05,upstream docs,fixed,"ffda7de, 91ac661"
-ICX-AUD-010,High,security,Repo-shipped .icx workspace auto-loaded and injected into agent context,crates/icx-cli/src/main.rs:130-143;274-296,05,PoC (private),fixed,"c03d9ea, 61cb0f2, 4c9e7d7, 006c412"
-ICX-AUD-011,Medium-High,security,In-band trust markers bypass Tier-0 escaping (proxy and Hermes),crates/icx-proxy/src/wire.rs:225;crates/icx-adapters/src/hermes.rs:79-118,05,code path,fixed,"110e116, ffda7de, a3cfc33"
+ICX-AUD-007,Medium,integration,agy config locations contradictory; schema and Stop reasons wrong; PreToolUse allow default,crates/icx-adapters/src/antigravity.rs:459;README.md:136,06,upstream docs,fixed,"129988d, c35f15c; docs"
+ICX-AUD-008,Medium,integration,MCP protocolVersion hard-coded 2024-11-05; no negotiation or server/discover,crates/icx-adapters/src/mcp.rs:154,06,spec,fixed,129988d
+ICX-AUD-009,Info,correctness,PreToolUse echo of output-only fields is dead code,crates/icx-adapters/src/claude.rs:71-80,05,upstream docs,fixed,"684a4ab, c35f15c"
+ICX-AUD-010,High,security,Repo-shipped .icx workspace auto-loaded and injected into agent context,crates/icx-cli/src/main.rs:130-143;274-296,05,PoC (private),fixed,"c03d9ea, 61cb0f2, 7dd8e00, 1fa72ca"
+ICX-AUD-011,Medium-High,security,In-band trust markers bypass Tier-0 escaping (proxy and Hermes),crates/icx-proxy/src/wire.rs:225;crates/icx-adapters/src/hermes.rs:79-118,05,code path,fixed,"110e116, 684a4ab, e0f225b"
 ICX-AUD-012,Medium,security,Proxy has no client auth; /health and /sse-expand serve CAS data; any bind accepted,crates/icx-proxy/src/wire.rs:1981-2009,05,PoC (private),fixed,110e116
 ICX-AUD-013,Medium,privacy,icx init writes no .gitignore; workspace dir 0755,crates/icx-cli/src/main.rs:111-128,05,PoC,fixed,c03d9ea
 ICX-AUD-014,Medium,dos,Unbounded hook stdin (300 MiB -> 1.12 GB RSS / 4.32 s),crates/icx-cli/src/main.rs:36,05,measured,fixed,110e116
-ICX-AUD-015,Medium,security,Secret redactor recall gaps (URL userinfo; dotted tokens; multi-line),crates/icx-codec/src/redact.rs:408;480;669,05,PoC,fixed,ffda7de
-ICX-AUD-016,Medium,data-loss,Single-line PEM block deletes rest of input,crates/icx-codec/src/redact.rs:24-34,05,PoC+mutants,fixed,ffda7de
+ICX-AUD-015,Medium,security,Secret redactor recall gaps (URL userinfo; dotted tokens; multi-line),crates/icx-codec/src/redact.rs:408;480;669,05,PoC,fixed,684a4ab
+ICX-AUD-016,Medium,data-loss,Single-line PEM block deletes rest of input,crates/icx-codec/src/redact.rs:24-34,05,PoC+mutants,fixed,684a4ab
 ICX-AUD-017,Medium,docs-security,Threat model documents absent controls (XDG/UDS/SO_PEERCRED/loopback/bounded streaming),docs/security-and-threat-model.md:11-24,05,code search,fixed,docs (threat model rewrite)
-ICX-AUD-018,Low,dos,agy hook hangs on FIFO transcriptPath,crates/icx-adapters/src/antigravity.rs:155,05,PoC,fixed,ffda7de
-ICX-AUD-019,Low,hardening,Bus file open lacks O_NOFOLLOW and owner check,crates/icx-bus/src/ring.rs:332-352,04,code,fixed,ffda7de
+ICX-AUD-018,Low,dos,agy hook hangs on FIFO transcriptPath,crates/icx-adapters/src/antigravity.rs:155,05,PoC,fixed,684a4ab
+ICX-AUD-019,Low,hardening,Bus file open lacks O_NOFOLLOW and owner check,crates/icx-bus/src/ring.rs:332-352,04,code,fixed,684a4ab
 ICX-AUD-020,Low,security,curl header temp file with API keys survives crash,crates/icx-proxy/src/wire.rs:1718-1751,05,code+semgrep,fixed,110e116
-ICX-AUD-021,High,claims,Store not lossless: CRLF/trailing newline/delimiter escaping collapse distinct inputs,crates/icx-codec/src/redact.rs:17-66,02,PoC,fixed,ffda7de
-ICX-AUD-022,Medium,integrity,put_bytes truncates silently; MMU falls back from checked to unchecked on any error,crates/icx-adapters/src/mmu.rs:585-588;crates/icx-core/src/cas.rs:197,02,PoC,fixed,ffda7de
-ICX-AUD-023,Low,integrity,64-bit ArtifactId as primary key; DAG insert overwrites on collision,crates/icx-core/src/dag.rs:510,02,analysis,fixed,a3cfc33
-ICX-AUD-024,Low,spec,Epoch header written decimal and parsed hex,crates/icx-core/src/dag.rs:736;crates/icx-codec/src/ahtl.rs:812,01,PoC,fixed,a3cfc33
-ICX-AUD-025,Low,spec,Unescaped slice_hint enables stream-level packet forgery,crates/icx-codec/src/ahtl.rs:449-454,01,PoC,fixed,a3cfc33
-ICX-AUD-026,Low,robustness,Unbounded clause recursion aborts process,crates/icx-codec/src/ahtl.rs:133-135,01,PoC,fixed,a3cfc33
-ICX-AUD-027,Low,performance,CDC benchmark input is a single chunk; low-bit Gear masks,crates/icx-core/src/chunker.rs:59-60,02,PoC,fixed,"494022a, a9ac580"
-ICX-AUD-028,Medium,claims,Benchmark numbers inconsistent; AVX-512 timings on non-AVX-512 host; native-CPU builds,docs/performance.md;docs/ahtl/04:188,07,measured,fixed,2c44cfd; docs
-ICX-AUD-030,Medium,spec,AHTL PDF Chapter 08 stale (v0.3.0) under v1.0.0 cover,docs/ahtl/AHTL_v1_Complete_Technical_Specification_Volume.pdf,01,git+pdftotext,fixed,5316142
+ICX-AUD-021,High,claims,Store not lossless: CRLF/trailing newline/delimiter escaping collapse distinct inputs,crates/icx-codec/src/redact.rs:17-66,02,PoC,fixed,684a4ab
+ICX-AUD-022,Medium,integrity,put_bytes truncates silently; MMU falls back from checked to unchecked on any error,crates/icx-adapters/src/mmu.rs:585-588;crates/icx-core/src/cas.rs:197,02,PoC,fixed,684a4ab
+ICX-AUD-023,Low,integrity,64-bit ArtifactId as primary key; DAG insert overwrites on collision,crates/icx-core/src/dag.rs:510,02,analysis,fixed,e0f225b
+ICX-AUD-024,Low,spec,Epoch header written decimal and parsed hex,crates/icx-core/src/dag.rs:736;crates/icx-codec/src/ahtl.rs:812,01,PoC,fixed,e0f225b
+ICX-AUD-025,Low,spec,Unescaped slice_hint enables stream-level packet forgery,crates/icx-codec/src/ahtl.rs:449-454,01,PoC,fixed,e0f225b
+ICX-AUD-026,Low,robustness,Unbounded clause recursion aborts process,crates/icx-codec/src/ahtl.rs:133-135,01,PoC,fixed,e0f225b
+ICX-AUD-027,Low,performance,CDC benchmark input is a single chunk; low-bit Gear masks,crates/icx-core/src/chunker.rs:59-60,02,PoC,fixed,"046b461, 0bfeb18"
+ICX-AUD-028,Medium,claims,Benchmark numbers inconsistent; AVX-512 timings on non-AVX-512 host; native-CPU builds,docs/performance.md;docs/ahtl/04:188,07,measured,fixed,37db9a2; docs
+ICX-AUD-030,Medium,spec,AHTL PDF Chapter 08 stale (v0.3.0) under v1.0.0 cover,docs/ahtl/AHTL_v1_Complete_Technical_Specification_Volume.pdf,01,git+pdftotext,fixed,4ad33b2
 ICX-AUD-031,Medium,docs,Cross-document numeric contradictions incl. epoch defaults 4096 vs 16384/8192,crates/icx-core/src/epoch.rs:21-29,09,code+docs,fixed,docs; docs/numbers.md
 ICX-AUD-032,Low,docs,Exactness review self-contradictions and wrong 48-bit birthday figure,ref-docs/ahtl-exactness-review-and-analysis.md:82;95;193,01,analysis,partial,corrections in ref-docs/corrections-2026-11-18.md; review text unchanged (immutable corpus)
 ICX-AUD-033,Medium,citations,Mistitled ACM paper; misattributed 10x/4-8x; unsourced 19.0%; 128-bit claim,ref-docs/papers/INDEX.md:46-60;docs/adr/0003,09,arXiv+PDF text,fixed,ref-docs/corrections-2026-11-18.md (immutable corpus)
-ICX-AUD-034,Medium,licensing,Cargo vs REUSE vs LICENSING.md license declarations disagree; GPL s13 misstatement,Cargo.toml:18;REUSE.toml:44-50;LICENSING.md:23,09,documents (counsel),fixed,8cdf2c9
+ICX-AUD-034,Medium,licensing,Cargo vs REUSE vs LICENSING.md license declarations disagree; GPL s13 misstatement,Cargo.toml:18;REUSE.toml:44-50;LICENSING.md:23,09,documents (counsel),fixed,8b1dc28
 ICX-AUD-035,Medium,licensing,PATENTS/CLA further restrictions vs GPLv3 s7/s10/s11; patent-pending unsubstantiated,PATENTS.md:28-32;CLA.md:33,09,documents (counsel),deferred,owner decision: governance text not redrafted
-ICX-AUD-036,Medium,licensing,10 arXiv non-exclusive PDFs redistributed; Zep NC-SA; Wikimedia/Unicode labels,REUSE.toml:108,09,arXiv license fields (counsel),partial,"8cdf2c9 (arXiv PDFs, Zep label); Wikimedia/Unicode labels open"
-ICX-AUD-037,Low,governance,SECURITY.md has no contact; CLA not a required check,SECURITY.md;.github/scripts/cla-check.sh,09,repo settings,partial,8cdf2c9 (SECURITY.md); CLA as required check is a repository setting
-ICX-AUD-038,Low,hygiene,Personal paths in public docs; large/duplicate binaries; patents/ only locally excluded,docs/deployment-and-agent-integration-guide.md,09,grep,partial,"8cdf2c9 (paths, patents/ ignore); large binaries and git history unchanged"
-ICX-AUD-039,Medium,testing,Mutation score 71.7% (redact.rs 68.1%); no proptest/fuzz/bench; weak asserts,crates/icx-codec/src/redact.rs,08,cargo-mutants,partial,"2c44cfd (proptest, fuzz); redact.rs mutation re-run 2026-11-19: 436 caught + 35 timeouts of 642 viable (73.4%, was 68.1%); 171 missed remain"
-ICX-AUD-040,Low,ci,Actions tag-pinned; unpinned llvm-cov install; unpinned toolchain; no deny.toml,.github/workflows/ci.yml:26-91,10,files,fixed,8cdf2c9
+ICX-AUD-036,Medium,licensing,10 arXiv non-exclusive PDFs redistributed; Zep NC-SA; Wikimedia/Unicode labels,REUSE.toml:108,09,arXiv license fields (counsel),partial,"8b1dc28 (arXiv PDFs, Zep label); Wikimedia/Unicode labels open"
+ICX-AUD-037,Low,governance,SECURITY.md has no contact; CLA not a required check,SECURITY.md;.github/scripts/cla-check.sh,09,repo settings,partial,8b1dc28 (SECURITY.md); CLA as required check is a repository setting
+ICX-AUD-038,Low,hygiene,Personal paths in public docs; large/duplicate binaries; patents/ only locally excluded,docs/deployment-and-agent-integration-guide.md,09,grep,partial,"8b1dc28 (paths, patents/ ignore); large binaries and git history unchanged"
+ICX-AUD-039,Medium,testing,Mutation score 71.7% (redact.rs 68.1%); no proptest/fuzz/bench; weak asserts,crates/icx-codec/src/redact.rs,08,cargo-mutants,partial,"37db9a2 (proptest, fuzz); redact.rs mutation re-run 2026-11-19: 436 caught + 35 timeouts of 642 viable (73.4%, was 68.1%); 171 missed remain"
+ICX-AUD-040,Low,ci,Actions tag-pinned; unpinned llvm-cov install; unpinned toolchain; no deny.toml,.github/workflows/ci.yml:26-91,10,files,fixed,8b1dc28
 ICX-AUD-041,Low,deps,Unused deps icx-codec+serde (proxy) and serde (cli),crates/icx-proxy/Cargo.toml;crates/icx-cli/Cargo.toml,10,cargo-machete+grep,fixed,110e116
-ICX-AUD-042,Low,correctness,Tail slot recalls the same artifact repeatedly,crates/icx-adapters/src/mmu.rs:755,02,PoC,fixed,494022a
-ICX-AUD-046,Medium,claims,Bus is not /dev/shm lock-free shared memory (file pread/pwrite + writer lock),crates/icx-bus/src/ring.rs:244;686-747,04,code,fixed,d1b2188; docs
+ICX-AUD-042,Low,correctness,Tail slot recalls the same artifact repeatedly,crates/icx-adapters/src/mmu.rs:755,02,PoC,fixed,046b461
+ICX-AUD-046,Medium,claims,Bus is not /dev/shm lock-free shared memory (file pread/pwrite + writer lock),crates/icx-bus/src/ring.rs:244;686-747,04,code,fixed,b404ca6; docs
 ICX-AUD-047,Medium,integrity,Three-file save not atomic; DAG/epochs not verified on load,crates/icx-adapters/src/mmu.rs:1299-1320,02,code,fixed,c03d9ea
-ICX-AUD-048,Medium,claims,Bi-temporal timestamps are a synthetic counter,crates/icx-adapters/src/mmu.rs:120;578,02,code,fixed,494022a (opt-in wall clock)
-ICX-AUD-049,High,claims,Associative recall collapses with corpus size (top-1 5.1% at 1k docs),crates/icx-hdc/src/lib.rs:361-430,03,PoC,fixed,494022a
+ICX-AUD-048,Medium,claims,Bi-temporal timestamps are a synthetic counter,crates/icx-adapters/src/mmu.rs:120;578,02,code,fixed,046b461 (opt-in wall clock)
+ICX-AUD-049,High,claims,Associative recall collapses with corpus size (top-1 5.1% at 1k docs),crates/icx-hdc/src/lib.rs:361-430,03,PoC,fixed,046b461
 ICX-AUD-050,Medium,algorithm,i16 bundler saturation; scalar per-bit accumulate dominates CPU,crates/icx-hdc/src/hv.rs:673-690,03,code+perf,fixed,c03d9ea
 ICX-AUD-051,Low,naming,Titans surprise gate is a hand-tuned heuristic,crates/icx-hdc/src/surprise.rs:36,03,paper comparison,fixed,docs: Titans-inspired naming
 ICX-AUD-052,Low,algorithm,Fractal suffix depth inferred from distance (false positives),crates/icx-hdc/src/fractal.rs:88,03,code,open,deferred
-ICX-AUD-053,Low,algorithm,hv_digest_u64 linear fold collides trivially,crates/icx-hdc/src/hv.rs:482,03,code+test,fixed,a3cfc33 (documented)
-ICX-AUD-054,Medium,correctness,Bus drops events while returning success; readers skip gaps silently,crates/icx-bus/src/ring.rs:631-651;753-799,04,PoC,fixed,d1b2188
-ICX-AUD-055,Low,claims,4-agent propagation latency not measured cross-process,crates/icx-adapters/src/lib.rs:2360,04,code,fixed,d1b2188 (two-handle file-backed test)
+ICX-AUD-053,Low,algorithm,hv_digest_u64 linear fold collides trivially,crates/icx-hdc/src/hv.rs:482,03,code+test,fixed,e0f225b (documented)
+ICX-AUD-054,Medium,correctness,Bus drops events while returning success; readers skip gaps silently,crates/icx-bus/src/ring.rs:631-651;753-799,04,PoC,fixed,b404ca6
+ICX-AUD-055,Low,claims,4-agent propagation latency not measured cross-process,crates/icx-adapters/src/lib.rs:2360,04,code,fixed,b404ca6 (two-handle file-backed test)
