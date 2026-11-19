@@ -224,6 +224,16 @@ pub fn install_key(roots: &WorkspaceRoots) -> Result<[u8; 32], TrustError> {
     std::fs::File::open("/dev/urandom")
         .and_then(|mut f| f.read_exact(&mut key))
         .map_err(io_err)?;
+    // Publish atomically: write a private temp file, then hard-link it into place. `link` fails
+    // if the key already exists, so a concurrent first use can never observe a partially written
+    // key (it either wins the link or reads the winner's complete file).
+    let tmp = roots.config_dir.join(format!(
+        ".{KEY_FILE}.{}.{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos())
+    ));
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create_new(true);
     #[cfg(unix)]
@@ -231,13 +241,19 @@ pub fn install_key(roots: &WorkspaceRoots) -> Result<[u8; 32], TrustError> {
         use std::os::unix::fs::OpenOptionsExt;
         opts.mode(0o600);
     }
-    match opts.open(&path) {
-        Ok(mut f) => {
-            f.write_all(&key).map_err(io_err)?;
-            f.sync_all().map_err(io_err)?;
-            Ok(key)
-        }
-        // Another process won the creation race: use its key.
+    let written = opts.open(&tmp).and_then(|mut f| {
+        f.write_all(&key)?;
+        f.sync_all()
+    });
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(io_err(e));
+    }
+    let linked = std::fs::hard_link(&tmp, &path);
+    let _ = std::fs::remove_file(&tmp);
+    match linked {
+        Ok(()) => Ok(key),
+        // Another process won the creation race: use its (complete) key.
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
             check_private_file(&path)?;
             let bytes = std::fs::read(&path).map_err(io_err)?;

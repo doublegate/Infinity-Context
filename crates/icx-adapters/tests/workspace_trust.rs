@@ -301,3 +301,57 @@ fn trust_tightens_contained_files_and_skips_symlinks() {
     assert_eq!(mode(&outside), 0o644, "symlink target must not be touched");
     let _ = std::fs::remove_dir_all(&base);
 }
+
+#[cfg(unix)]
+#[test]
+fn trust_and_key_errors_fail_closed() {
+    use std::os::unix::fs::PermissionsExt;
+    let base = scratch("errors");
+    let r = roots(&base);
+    // Trusting a regular file, or a symlink to a directory, is refused.
+    let file = base.join("not-a-dir");
+    std::fs::write(&file, b"x").unwrap();
+    assert_eq!(workspace::trust(&file, &r), Err(TrustError::NotDirectory));
+    let real = base.join("real-dir");
+    std::fs::create_dir_all(&real).unwrap();
+    let link = base.join("link-dir");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    assert_eq!(workspace::trust(&link, &r), Err(TrustError::NotDirectory));
+    // A truncated install key is an error, never silently replaced.
+    std::fs::create_dir_all(&r.config_dir).unwrap();
+    std::fs::set_permissions(&r.config_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let key = r.config_dir.join("install.key");
+    std::fs::write(&key, b"short").unwrap();
+    std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert!(matches!(workspace::install_key(&r), Err(TrustError::Io(m)) if m.contains("32 bytes")));
+    assert_eq!(std::fs::read(&key).unwrap(), b"short");
+    // A config root that is a file is refused.
+    let r2 = WorkspaceRoots {
+        config_dir: file.clone(),
+        ..roots(&base)
+    };
+    assert!(workspace::install_key(&r2).is_err());
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[test]
+fn concurrent_first_use_of_the_install_key_agrees_on_one_key() {
+    // Two hooks firing at first use used to race: one could read the key file after it was
+    // created but before its 32 bytes were written.
+    for round in 0..40 {
+        let base = scratch(&format!("keyrace{round}"));
+        let r = roots(&base);
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let r = r.clone();
+                std::thread::spawn(move || workspace::install_key(&r))
+            })
+            .collect();
+        let keys: Vec<_> = handles
+            .into_iter()
+            .map(|h| h.join().unwrap().expect("no torn key reads"))
+            .collect();
+        assert!(keys.windows(2).all(|w| w[0] == w[1]));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}

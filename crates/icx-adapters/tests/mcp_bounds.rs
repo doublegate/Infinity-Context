@@ -83,3 +83,17 @@ fn modern_requests_carry_result_type_and_reject_unknown_versions() {
     assert_eq!(bad["error"]["data"]["requested"], "1900-01-01");
     assert!(bad["error"]["data"]["supported"].as_array().unwrap().len() >= 2);
 }
+
+#[test]
+fn unknown_tool_names_are_reported_as_errors() {
+    let r = rpc(
+        &json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"rm_rf","arguments":{}}}),
+    );
+    assert_eq!(r["result"]["isError"], true);
+    assert!(
+        r["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("unknown tool")
+    );
+}

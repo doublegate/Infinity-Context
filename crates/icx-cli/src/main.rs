@@ -1663,6 +1663,101 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn daemon_rejects_overlong_socket_paths() {
+        let ws = std::env::temp_dir();
+        let long = ws.join("s".repeat(120));
+        let err = daemon::serve(
+            &ws,
+            &long,
+            daemon::DaemonOptions::default(),
+            workspace_mmu(),
+            dispatch_agent_hook,
+        )
+        .unwrap_err();
+        assert!(err.contains("too long"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn daemon_handles_bad_requests_refuses_a_second_instance_and_idle_exits_after_flushing() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::os::unix::net::UnixStream;
+        let ws = std::env::temp_dir().join(format!("icx_cli_daemon_idle_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&ws);
+        init_workspace_dir(&ws).unwrap();
+        workspace::ensure_runtime_dir(roots()).unwrap();
+        let sock = workspace::daemon_socket_path(&ws, roots());
+        let gen_before = workspace_mmu_generation(&ws);
+        let (ws2, sock2) = (ws.clone(), sock.clone());
+        let server = std::thread::spawn(move || {
+            daemon::serve(
+                &ws2,
+                &sock2,
+                daemon::DaemonOptions {
+                    idle_exit: Some(std::time::Duration::from_millis(400)),
+                    max_requests: None,
+                },
+                workspace_mmu(),
+                dispatch_agent_hook,
+            )
+        });
+        for _ in 0..400 {
+            if sock.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        // A second daemon on the same socket is refused.
+        let dup = daemon::serve(
+            &ws,
+            &sock,
+            daemon::DaemonOptions::default(),
+            workspace_mmu(),
+            dispatch_agent_hook,
+        )
+        .unwrap_err();
+        assert!(dup.contains("already serving"), "{dup}");
+
+        let raw = |line: &str| -> serde_json::Value {
+            let mut s = UnixStream::connect(&sock).unwrap();
+            s.write_all(line.as_bytes()).unwrap();
+            let mut out = String::new();
+            BufReader::new(s).read_line(&mut out).unwrap();
+            serde_json::from_str(&out).unwrap()
+        };
+        let bad = raw("not json\n");
+        assert_eq!(bad["ok"], false);
+        assert!(bad["out"].as_str().unwrap().contains("malformed request"));
+        let old = raw("{\"v\":99,\"agent\":\"codex\",\"event\":\"x\",\"payload\":\"\"}\n");
+        assert_eq!(old["out"], "unsupported protocol version");
+        let err = raw(
+            "{\"v\":1,\"agent\":\"claude-code\",\"event\":\"PostToolUse\",\"payload\":\"{bad\"}\n",
+        );
+        assert_eq!(err["ok"], false, "dispatch error is reported, not a crash");
+        // An empty connection is ignored.
+        drop(UnixStream::connect(&sock).unwrap());
+        let post = serde_json::json!({
+            "tool_name": "Bash",
+            "tool_response": {"stdout": "line of output\n".repeat(400)}
+        })
+        .to_string();
+        assert!(daemon::try_hook(&sock, "claude-code", "PostToolUse", &post).is_some());
+
+        // Quiet-period flush, then idle exit; the socket is removed.
+        server.join().unwrap().unwrap();
+        assert!(!sock.exists());
+        assert!(
+            workspace_mmu_generation(&ws) > gen_before,
+            "state was flushed"
+        );
+        let _ = fs::remove_dir_all(&ws);
+    }
+
+    fn workspace_mmu_generation(ws: &Path) -> u64 {
+        InfinityContextMmu::workspace_generation(ws).unwrap()
+    }
+
+    #[test]
     fn daemon_serves_hooks_over_private_socket_and_flushes_state_on_exit() {
         let ws = std::env::temp_dir().join(format!("icx_cli_daemon_ws_{}", std::process::id()));
         let _ = fs::remove_dir_all(&ws);

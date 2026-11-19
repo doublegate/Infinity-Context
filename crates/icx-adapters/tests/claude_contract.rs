@@ -150,3 +150,42 @@ fn subagent_stop_folds_with_last_assistant_message_and_never_keeps_it_running() 
         "fold summary recorded"
     );
 }
+
+#[test]
+fn array_and_non_textual_responses_keep_a_valid_shape() {
+    let mut mmu = InfinityContextMmu::default();
+    // Array-shaped output (e.g. MCP content blocks returned by a built-in wrapper).
+    let arr = json!({"tool_name": "Grep", "tool_response": [{"type": "text", "text": big_log()}, {"n": 3}]});
+    let out: Value = serde_json::from_str(&run("PostToolUse", &arr, &mut mmu)).unwrap();
+    let updated = &out["hookSpecificOutput"]["updatedToolOutput"];
+    assert!(updated.is_array());
+    assert!(
+        updated[0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("⟪ICX:STUB│")
+    );
+    assert_eq!(updated[1]["n"], 3);
+    // An object with no string leaf at all falls back to a plain stub string.
+    let numbers: Vec<u64> = (0..2_000).collect();
+    let nums = json!({"tool_name": "Stats", "tool_response": {"values": numbers}});
+    let out: Value = serde_json::from_str(&run("PostToolUse", &nums, &mut mmu)).unwrap();
+    if let Some(updated) = out["hookSpecificOutput"].get("updatedToolOutput") {
+        assert!(updated.is_string() || updated.is_object(), "{updated}");
+    }
+}
+
+#[test]
+fn precompact_instructions_are_capped_on_large_workspaces() {
+    let mut mmu = InfinityContextMmu::default();
+    for i in 0..60 {
+        let payload = json!({
+            "tool_name": "Bash",
+            "tool_input": {"command": format!("cargo test suite_{i}")},
+            "tool_response": {"stdout": format!("{}\n{}", "x".repeat(200), big_log())}
+        });
+        run("PostToolUse", &payload, &mut mmu);
+    }
+    let out = run("PreCompact", &json!({"trigger": "auto"}), &mut mmu);
+    assert!(out.chars().count() <= 9_000, "{}", out.chars().count());
+}
