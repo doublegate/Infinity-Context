@@ -184,6 +184,13 @@ $$\text{acc}[b] \leftarrow \operatorname{sat\_i16}\Big(\text{acc}[b] + (2 V_b - 
 
 ### 6.1 AVX-512 `VPOPCNTDQ` & ARM NEON `CNT` Distance Engine
 
+> **Measurement status (v1.1.0, ICX-AUD-031):** the per-pair timings below are analytical
+> instruction-count estimates for what a compiler *may* emit; they were not measured. icx contains
+> no SIMD intrinsics (`unsafe_code = "forbid"`), and the development machine (Intel i9-10850K,
+> Comet Lake) has AVX2 but no AVX-512. The measured figure is `icx benchmark`'s Hamming scan:
+> about 62-74 µs per 1,000 nodes (roughly 62-74 ns per pair including loop overhead), release
+> build, default target CPU.
+
 Computing the exact 10,240-bit Hamming distance $d_H(A, B) = \sum_{w=0}^{159} \operatorname{popcnt}(A.\text{words}[w] \oplus B.\text{words}[w])$ compiles under `-C target-cpu=native` to:
 - **x86-64 AVX-512 (`VPOPCNTDQ`):** 20 `vpxorq zmm` + 20 `vpopcntq zmm` + tree horizontal sum ($\sim 3.8\text{ ns}$ per pair in L1 cache; $\sim 12\text{ ns}$ in L3 scan).
 - **x86-64 AVX2 (Harley–Seal / `VPSHUFB` nibble LUT + `POPCNT`):** 160 unrolled `xorq` + `popcntq` instructions ($\sim 9.2\text{ ns}$ per pair).

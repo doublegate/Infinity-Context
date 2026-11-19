@@ -123,6 +123,8 @@ $$P_{\text{coll}}(N, B) \le \frac{N(N - 1)}{2^{B+1}}$$
 | **$B = 128\text{ bits}$** | `IcxHandle` (Cluster Wire) | $1.47 \times 10^{-31}$ | $1.47 \times 10^{-29}$ | $1.47 \times 10^{-27}$ | **Full 256-bit `Blake3Digest` verification** |
 | **$B = 256\text{ bits}$** | `Blake3Digest([u8; 32])` | $< 10^{-69}$ | $< 10^{-67}$ | $< 10^{-65}$ | Cryptographic root of trust (`IcxError::IntegrityViolation`) |
 
+**Write-side collision rule (v1.1.0, ICX-AUD-022/-023):** if a new payload's 64-bit `ArtifactId` already names a stored artifact whose full 256-bit digest differs, `CasStore::put_bytes_checked` returns `Err(IcxError::HashCollision(id))`; the MMU then leaves the payload in context instead of virtualizing it, and never falls back to an unchecked insert. `MerkleContextDag` likewise refuses to overwrite a different node that shares an id.
+
 Crucially, `CasStore::deref_bytes` (`crates/icx-core/src/cas.rs`) **never trusts the short handle alone**—it verifies the full 256-bit `Blake3Digest` on every single `FastCDC` chunk and on the reassembled top-level artifact before returning a single byte:
 
 ```rust

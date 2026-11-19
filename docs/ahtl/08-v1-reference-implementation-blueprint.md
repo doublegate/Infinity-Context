@@ -18,10 +18,10 @@ The **Infinity-Context (`icx`)** workspace (`v1.0.0`) is structured as an 8-crat
 | Crate | Layer | Key Exported Types | Normative Responsibility in `AHTL v1.0` |
 | :--- | :---: | :--- | :--- |
 | **`icx-core`** | L0 | `ArtifactId`, `Blake3Digest`, `AgentKind`, `ChunkerConfig`, `CasStore`, `DagNode`, `MerkleContextDag`, `CacheEpochController`, `AssembledWindow` | FastCDC gear-hash chunking, 256-bit BLAKE3 CAS with fail-closed integrity verification, 4-tier `LCM` Merkle-DAG, and 4-zone Prefix-Cache-Locked Epoch Controller. |
-| **`icx-hdc`** | L1 | `Hypervector`, `HdcBundler`, `FractalCoord`, `TitansSurpriseGate`, `RetentionTier`, `HdcAssociativeIndex`, `AssociativeHit`, `ObservationReceipt` | 10,240-bit Boolean hypercube $Q_{10240}$ algebra, Infini-attention Delta-Rule bundler, $[-1, +1]^{16}$ Contractive IFS Chaos-Game trajectory coordinates, and Titans Surprise momentum tracker. |
+| **`icx-hdc`** | L1 | `Hypervector`, `HdcBundler`, `FractalCoord`, `TitansSurpriseGate`, `RetentionTier`, `HdcAssociativeIndex`, `AssociativeHit`, `ObservationReceipt` | 10,240-bit Boolean hypercube $Q_{10240}$ algebra, Infini-attention Delta-Rule bundler, $[-1, +1]^{16}$ Contractive IFS Chaos-Game trajectory coordinates, and a Titans-inspired surprise momentum heuristic (not the paper's learned memory). |
 | **`icx-codec`** | L1 | `AhtlPacket`, `AhtlWirePacketV1`, `AhtlClause`, `EpochHeader`, `WirePacket`, `AhtlStream`, `PacketKind`, `ClauseOp`, `CodecError`, `ChannelBHologram`, `byte_to_braille_utf8`, `braille_utf8_to_byte`, `SecretRedactor`, `StructuralSkeletonizer`, `ContextCodec` | Pre-ingestion 4-tier secret redaction, Shannon entropy filter & delimiter escaping, $O(N)$ multi-language skeletonizers (code, logs, diffs), ISO 11548-1 Braille-256 (`8`-byte & `64`-byte) bijection, and `AHTL v1.0` Dual-Profile (`Profile A` & `Profile B`) wire serializer/parser. |
 | **`icx-store`** | L1 | `BiTemporalGraph`, `BiTemporalEdge`, `PprRankedNode` | Bi-Temporal Knowledge Graph (`t_valid`, `t_invalid`, `t_tx_start`, `t_tx_end`) with functional contradiction invalidation and HippoRAG Personalized PageRank (`PPR`). |
-| **`icx-bus`** | L1 | `SeqlockTelemetryBus`, `TelepathyEvent`, `FabricHeader`, `SeqlockSlot` | Lock-free 64-byte-aligned 100% safe `AtomicU32`/`AtomicU64` Seqlock ring buffer (`/dev/shm` positional I/O + in-memory) broadcasting `⟦Θ:agent@subj⊢...⟧` frames, 256-bit HDC sketches, and Q15 Fractal coordinates across agents. |
+| **`icx-bus`** | L1 | `SeqlockTelemetryBus`, `TelepathyEvent`, `FabricHeader`, `SeqlockSlot` | 64-byte-aligned, 100% safe Rust seqlock ring buffer: in-process atomics, or a file-backed ring using positional I/O under a writer mutex and file lock (not mmap, not lock-free; v1.1.0 reports dropped and missed events) broadcasting `⟦Θ:agent@subj⊢...⟧` frames, 256-bit HDC sketches, and Q15 Fractal coordinates across agents. |
 | **`icx-adapters`** | L2 | `InfinityContextMmu`, `ClaudeCodeAdapter`, `CodexAdapter`, `AntigravityAdapter`, `HermesAdapter`, `McpPagerServer` | Central Virtual Context MMU orchestrator (`ingest_payload`, `build_ephemeral_tail_slot`), lifecycle hook adapters, and Single-Tool Polymorphic MCP Pager (`icx`). |
 | **`icx-proxy`** | L2 | `WireProxyTransformer`, `ProviderFormat` | Outbound HTTP/2 JSON wire transformer injecting Anthropic `cache_control: {"type": "ephemeral"}` breakpoints and OpenAI 1024-token prefix alignment. |
 | **`icx-cli`** | L3 | `icx` binary (`init`, `deref`, `hook`, `mcp-serve`, `proxy-transform`, `encode-ahtl`, `decode-ahtl`, `status`, `benchmark`, `doctor`) | Unified command-line interface, sub-millisecond hook dispatcher, and automated benchmark/verification suite. |
@@ -72,7 +72,7 @@ impl AhtlWirePacketV1 {
     pub fn render(&self) -> String {
         let mut handle_field = self.cas_handle_string();
         if let Some(hint) = &self.slice_hint {
-            if !hint.is_empty() {
+            if is_valid_slice_map(hint) {
                 handle_field.push('(');
                 handle_field.push_str(hint);
                 handle_field.push(')');
@@ -110,7 +110,7 @@ impl AhtlWirePacketV1 {
             let (h_part, hint_part) = with_hint
                 .split_once('(')
                 .ok_or_else(|| CodecError::MalformedHandle(handle_field.to_owned()))?;
-            if hint_part.is_empty() {
+            if !is_valid_slice_map(hint_part) {
                 return Err(CodecError::MalformedHandle(handle_field.to_owned()));
             }
             (h_part, Some(hint_part.to_owned()))
@@ -186,7 +186,14 @@ pub fn spectral_bands_64(&self) -> [u8; 64] {
 
 ## 3. Hardware SIMD Intrinsics Blueprint (`x86_64` AVX-512 & `aarch64` NEON)
 
-When compiling on x86-64 hosts with `avx512vl` and `avx512vpopcntdq` (or AVX2 + hardware `POPCNT` on Comet Lake i9-10850K), the 160-word Hamming distance loop in `Hypervector::hamming_distance` is unrolled into 20 SIMD register operations:
+> **Measurement status (v1.1.0, ICX-AUD-031):** this section describes code generation the
+> compiler may produce from safe Rust; the timings in chapter 4 §6.1 are analytical estimates for what a compiler *may* emit; they were not measured. icx contains
+> no SIMD intrinsics (`unsafe_code = "forbid"`), and the development machine (Intel i9-10850K,
+> Comet Lake) has AVX2 but no AVX-512. The measured figure is `icx benchmark`'s Hamming scan:
+> about 62-74 µs per 1,000 nodes (roughly 62-74 ns per pair including loop overhead), release
+> build, default target CPU.
+
+When compiling on x86-64 hosts with `avx512vl` and `avx512vpopcntdq` (on the AVX2-only Comet Lake i9-10850K development machine, AVX2 + `POPCNT` at best), the 160-word Hamming distance loop in `Hypervector::hamming_distance` is unrolled into 20 SIMD register operations:
 
 ```rust
 #[inline(always)]
