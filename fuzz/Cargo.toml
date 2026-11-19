@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 DoubleGate
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# cargo-fuzz targets for icx's untrusted-input parsers (ICX-AUD-039).
+# Run: cargo +nightly fuzz run <target> -- -max_total_time=60
+
+[package]
+name = "icx-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+icx-codec = { path = "../crates/icx-codec" }
+icx-hdc = { path = "../crates/icx-hdc" }
+icx-adapters = { path = "../crates/icx-adapters" }
+
+[[bin]]
+name = "ahtl_stream"
+path = "fuzz_targets/ahtl_stream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "hdc_snapshot"
+path = "fuzz_targets/hdc_snapshot.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mcp_jsonrpc"
+path = "fuzz_targets/mcp_jsonrpc.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "redact"
+path = "fuzz_targets/redact.rs"
+test = false
+doc = false
+bench = false

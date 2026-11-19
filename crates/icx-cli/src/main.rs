@@ -1277,6 +1277,48 @@ fn check_slo(passed: bool, label: &str, measured: &str, failures: &mut Vec<Strin
     }
 }
 
+/// Deterministic, deliberately non-repetitive tool output for the informational ratio line.
+fn varied_tool_log_fixture() -> String {
+    let mut out = String::new();
+    let words = [
+        "buffer", "parser", "epoch", "cursor", "ledger", "socket", "window", "digest",
+    ];
+    for i in 0..120usize {
+        let w = words[i % words.len()];
+        let v = words[(i * 5 + 3) % words.len()];
+        out.push_str(&format!(
+            "warning: unused variable `{w}_{v}_{i}`\n  --> crates/icx-{w}/src/{v}.rs:{}:{}\n",
+            17 + i * 7 % 400,
+            5 + i % 31
+        ));
+    }
+    out.push_str("diff --git a/src/lib.rs b/src/lib.rs\n@@ -40,7 +40,9 @@\n");
+    for i in 0..60usize {
+        out.push_str(&format!(
+            "-    let x{i} = old_call({i});\n+    let x{i} = new_call({i}, ctx);\n"
+        ));
+    }
+    for (name, msg) in [
+        (
+            "cas::collision",
+            "assertion `left == right` failed: left 3 right 4",
+        ),
+        ("mmu::fold", "called `Option::unwrap()` on a `None` value"),
+        (
+            "wire::sse",
+            "index out of bounds: the len is 12 but the index is 12",
+        ),
+    ] {
+        out.push_str(&format!(
+            "test {name} ... FAILED\nthread '{name}' panicked: {msg}\n"
+        ));
+    }
+    out
+}
+
+/// Gate for the byte-weighted prefix-reuse proxy, all turns included (ICX-AUD-002).
+const PREFIX_REUSE_FLOOR_PCT: f64 = 90.0;
+
 fn run_benchmark() -> Result<(), String> {
     println!("=== Infinity-Context (icx) SLO & Accuracy Benchmark Suite ===");
     // Note: Under debug/coverage (`cfg!(debug_assertions)`) builds, compiler optimizations are
@@ -1422,11 +1464,21 @@ fn run_benchmark() -> Result<(), String> {
         ratio >= 10.0 && codec_us <= 400.0 * scale,
         "AHTL Compression Ratio           ",
         &format!(
-            "{ratio:.1}x ({} B -> {} B in {codec_us:.2} us)",
+            "{ratio:.1}x on a repetitive 1,200-line test log ({} B -> {} B in {codec_us:.2} us)",
             log_fixture.len(),
             rendered.len()
         ),
         &mut failures,
+    );
+    // ICX-AUD-028: also report (without gating) a varied log, closer to real tool output.
+    let varied = varied_tool_log_fixture();
+    let varied_pkt =
+        StructuralSkeletonizer::compress_sanitized_to_packet("cargo_build", &varied, None, [0; 8]);
+    println!(
+        "  [INFO] AHTL ratio, varied log      : {:.1}x ({} B -> {} B; skeleton + handle, full text via deref, not a lossless encoding)",
+        varied.len() as f64 / varied_pkt.render().len().max(1) as f64,
+        varied.len(),
+        varied_pkt.render().len()
     );
 
     // 6. FastCDC + BLAKE3 CAS Ingest (64 KB) Benchmark (release ceiling: <= 250 us)
@@ -1517,6 +1569,7 @@ fn run_benchmark() -> Result<(), String> {
 
     let mut prev_prefix = String::new();
     let mut hit_ratios = Vec::new();
+    let (mut reused_bytes, mut total_bytes) = (0usize, 0usize);
     let mut planted_handle = ArtifactId(0);
 
     for turn in 0..50u32 {
@@ -1537,8 +1590,14 @@ fn run_benchmark() -> Result<(), String> {
 
         let prev_epochs = mmu.epochs.sealed_epoch_count();
         let win = mmu.assemble_prompt_window(AgentKind::ClaudeCode, "allocate_quantum_page");
-        if !prev_prefix.is_empty() && win.sealed_epochs.len() == prev_epochs {
-            hit_ratios.push(win.prefix_cache_hit_ratio(&prev_prefix));
+        if !prev_prefix.is_empty() {
+            // ICX-AUD-002: every turn counts, including the turns where an epoch seals.
+            let (reused, total) = win.prefix_reuse_bytes(&prev_prefix);
+            reused_bytes += reused;
+            total_bytes += total;
+            if win.sealed_epochs.len() == prev_epochs {
+                hit_ratios.push(win.prefix_cache_hit_ratio(&prev_prefix));
+            }
         }
         prev_prefix = win.deterministic_prefix();
     }
@@ -1550,13 +1609,16 @@ fn run_benchmark() -> Result<(), String> {
         .expect("cold grep");
     assert_ne!(grep_hits.len(), 0);
 
-    let avg_cache_hit = hit_ratios.iter().sum::<f64>() / (hit_ratios.len() as f64) * 100.0;
+    let steady_state = hit_ratios.iter().sum::<f64>() / (hit_ratios.len().max(1) as f64) * 100.0;
+    let all_turns = reused_bytes as f64 / total_bytes.max(1) as f64 * 100.0;
     let sim_elapsed = t2.elapsed();
     check_slo(
-        avg_cache_hit >= 90.0,
+        all_turns >= PREFIX_REUSE_FLOOR_PCT,
         "50-Turn NIH + Cache-Epoch        ",
         &format!(
-            "{avg_cache_hit:.2}% prefix cache hit rate, 100% lossless passkey recovery ({:.2} ms)",
+            "{all_turns:.2}% byte-weighted prefix reuse over all turns \
+             ({steady_state:.2}% excluding seal turns; synthetic transcript, byte proxy), \
+             lossless passkey recovery ({:.2} ms)",
             sim_elapsed.as_secs_f64() * 1_000.0
         ),
         &mut failures,

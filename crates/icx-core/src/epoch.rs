@@ -62,6 +62,20 @@ pub struct AssembledWindow {
 }
 
 impl AssembledWindow {
+    /// `(reused, total)` bytes: the length of the byte-identical common prefix with the previous
+    /// turn's prefix, and this turn's prefix length. Summing both across *every* turn (seal turns
+    /// included) gives the byte-weighted reuse rate reported by `icx benchmark` (ICX-AUD-002).
+    /// This is a byte proxy for provider prompt caching, not a measured provider cache hit.
+    pub fn prefix_reuse_bytes(&self, previous_prefix: &str) -> (usize, usize) {
+        let current_prefix = self.deterministic_prefix();
+        let common = current_prefix
+            .bytes()
+            .zip(previous_prefix.bytes())
+            .take_while(|(a, b)| a == b)
+            .count();
+        (common, current_prefix.len())
+    }
+
     /// Fraction of the prompt prefix that is byte-identical to the prior turn's cached prefix.
     pub fn prefix_cache_hit_ratio(&self, previous_prefix: &str) -> f64 {
         let current_prefix = self.deterministic_prefix();
