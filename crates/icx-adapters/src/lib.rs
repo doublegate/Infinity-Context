@@ -1034,7 +1034,7 @@ unprefixed_secret = {unpref_sec}
         assert!(agy_start.contains("⟪ICX:TAIL_SLOT│conv=conv-983dcb21│"));
         assert!(agy_start.contains(r#""terminationBehavior":"""#));
 
-        // 2. Antigravity PreToolUse decision + overwrite pass-through
+        // 2. Antigravity PreToolUse: input fields are never echoed back as decisions (v1.1.0)
         let agy_pre_ow = AntigravityAdapter::handle_hook(
             "PreToolUse",
             r#"{"decision":"ask","overwrite":{"CommandLine":"cargo test | icx capture-pipe"}}"#,
@@ -1042,11 +1042,8 @@ unprefixed_secret = {unpref_sec}
         )
         .unwrap();
         let agy_pre_val: Value = serde_json::from_str(&agy_pre_ow).unwrap();
-        assert_eq!(agy_pre_val["decision"], "ask");
-        assert_eq!(
-            agy_pre_val["overwrite"]["CommandLine"],
-            "cargo test | icx capture-pipe"
-        );
+        assert_eq!(agy_pre_val["decision"], "allow");
+        assert!(agy_pre_val.get("overwrite").is_none());
 
         // 3. Antigravity PostInvocation with and without forceContinue
         let agy_post_inv = AntigravityAdapter::handle_hook(
@@ -1056,7 +1053,7 @@ unprefixed_secret = {unpref_sec}
         )
         .unwrap();
         let agy_post_inv_val: Value = serde_json::from_str(&agy_post_inv).unwrap();
-        assert_eq!(agy_post_inv_val["terminationBehavior"], "force_continue");
+        assert_eq!(agy_post_inv_val["terminationBehavior"], "");
         let agy_post_inv_idle =
             AntigravityAdapter::handle_hook("post-invocation", "{}", &mut mmu).unwrap();
         let agy_post_inv_idle_val: Value = serde_json::from_str(&agy_post_inv_idle).unwrap();

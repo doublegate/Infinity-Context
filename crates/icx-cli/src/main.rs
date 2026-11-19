@@ -134,8 +134,7 @@ Subcommands:",
         env!("CARGO_PKG_VERSION")
     );
     println!(
-        "\
-  init [--dir <PATH>]
+        "  init [--dir <PATH>]
       Create and seal a workspace (default: per-project under $XDG_STATE_HOME/icx/workspaces)
   daemon [--dir <PATH>] [--idle-exit <SECS>]
       Keep the workspace resident and serve hooks over a private Unix socket (fast path)

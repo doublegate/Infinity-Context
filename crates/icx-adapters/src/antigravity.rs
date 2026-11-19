@@ -280,17 +280,9 @@ impl AntigravityAdapter {
                     mmu.build_ephemeral_tail_slot(AgentKind::AntigravityCli, query, 3),
                     &payload,
                 );
-                let term_behavior = if payload
-                    .get("forceContinue")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false)
-                    || payload.get("terminationBehavior").and_then(Value::as_str)
-                        == Some("force_continue")
-                {
-                    "force_continue"
-                } else {
-                    ""
-                };
+                // ICX-AUD-007/-009: icx never forces the agent to keep running, and never turns
+                // input fields into control decisions (v1.0.x echoed `forceContinue`).
+                let term_behavior = "";
                 json!({
                     "injectSteps": [
                         {
@@ -306,24 +298,10 @@ impl AntigravityAdapter {
                 })
             }
             "PreToolUse" | "pre-tool-use" => {
-                let decision = payload
-                    .get("decision")
-                    .and_then(Value::as_str)
-                    .filter(|d| matches!(*d, "allow" | "deny" | "ask"))
-                    .unwrap_or("allow");
-                if let Some(overwrite) = payload
-                    .get("overwrite")
-                    .filter(|v| v.as_object().is_some_and(|o| !o.is_empty()))
-                {
-                    json!({
-                        "decision": decision,
-                        "overwrite": overwrite
-                    })
-                } else {
-                    json!({
-                        "decision": decision
-                    })
-                }
+                // `decision` is required by agy. "allow" defers to the next hook or the default
+                // policy, so icx expresses no opinion. v1.0.x echoed `decision` / `overwrite`
+                // from the hook input back as its own decision (ICX-AUD-009 class).
+                json!({ "decision": "allow" })
             }
             "PostToolUse" | "post-tool-use" => {
                 let tool_name = payload
