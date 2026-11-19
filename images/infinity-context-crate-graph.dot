@@ -15,7 +15,7 @@ digraph InfinityContextCrateGraph {
     label=<
         <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6">
         <TR><TD ALIGN="CENTER"><FONT COLOR="#f0f6fc" POINT-SIZE="17" FACE="JetBrains Mono,Consolas,monospace"><B>Infinity-Context (icx) &#8212; 8-Crate Workspace &amp; Subsystem Dependency DAG</B>&#160;&#160;&#160;</FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="10" FACE="JetBrains Mono,Consolas,monospace">(Strict acyclic crate hierarchy &#183; unsafe_code = forbid except isolated POSIX /dev/shm seqlock in icx-bus)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="10" FACE="JetBrains Mono,Consolas,monospace">(Strict acyclic crate hierarchy &#183; unsafe_code = forbid except isolated seqlock ring bus in icx-bus)&#160;&#160;&#160;</FONT></TD></TR>
         </TABLE>>
 
     node [shape=none fontname="JetBrains Mono,Consolas,Courier New,monospace" fontsize=10 margin="0"]
@@ -79,10 +79,10 @@ digraph InfinityContextCrateGraph {
     icx_bus [label=<
         <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#f85149" BGCOLOR="#0d1117">
         <TR><TD ALIGN="CENTER"><FONT COLOR="#f85149" POINT-SIZE="11"><B>icx-bus</B>&#160;&#160;&#160;</FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[POSIX /dev/shm Seqlock]&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[Seqlock Ring Bus]&#160;&#160;&#160;</FONT></TD></TR>
         <HR/>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SeqlockTelemetryBus&#160;&#160;&#160;</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SeqlockSlot (2,048 B)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SeqlockSlot (4,096 B)&#160;&#160;&#160;</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Only crate permitting unsafe&#160;&#160;&#160;</FONT></TD></TR>
         </TABLE>>]
 

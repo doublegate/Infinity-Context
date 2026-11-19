@@ -212,9 +212,9 @@ def build_wide_banner_3x1(banner_img: Image.Image, target_w: int = 1500, target_
 
     # 3 Metric Pills
     pills = [
-        ("72.1x Token Compression", (168, 85, 247)),
+        ("214x synthetic Compression", (168, 85, 247)),
         ("100% Lossless BLAKE3 CAS", (16, 185, 129)),
-        ("94.38% Prefix-Cache Hit", (245, 158, 11)),
+        ("95.5% byte reuse (proxy)", (245, 158, 11)),
     ]
     px = rx
     py = 362
@@ -328,10 +328,10 @@ def build_social_preview_png(logo_img: Image.Image, banner_img: Image.Image) -> 
 
     # Metric pill badges along the bottom
     badges = [
-        ("72.1x AHTL Compression", (168, 85, 247)),
+        ("214x AHTL (synthetic)", (168, 85, 247)),
         ("100% Lossless BLAKE3 CAS", (16, 185, 129)),
-        ("94.38% Prefix-Cache Hit", (245, 158, 11)),
-        ("< 50 us SIMD HDC Scan", (56, 189, 248)),
+        ("95.5% byte reuse (proxy)", (245, 158, 11)),
+        ("HDC Scan ~62 us / 1K nodes", (56, 189, 248)),
     ]
     bx = 72
     by = 448
@@ -386,13 +386,13 @@ def build_social_preview_png(logo_img: Image.Image, banner_img: Image.Image) -> 
   <text x="96" y="326" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="19" font-weight="600">«AHTLv1 #icx:7bf8239fb7c504f1 !0.84 @0123:0210 ⟦⣿⣷⣯⣟⡿⢿⣻⣽⟧</text>
   <text x="96" y="360" fill="#34d399" font-family="JetBrains Mono, monospace" font-size="19" font-weight="600">  §fn:verify_ed25519_token(tok:&amp;[u8])-&gt;Result&lt;Claims,AuthErr&gt; !err:401»</text>
   <rect x="72" y="424" width="268" height="64" rx="12" fill="#0f172a" stroke="#a855f7" stroke-width="2"/>
-  <text x="206" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">72.1x AHTL Compression</text>
+  <text x="206" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">214x AHTL (synthetic)</text>
   <rect x="360" y="424" width="268" height="64" rx="12" fill="#0f172a" stroke="#10b981" stroke-width="2"/>
   <text x="494" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">100% Lossless BLAKE3</text>
   <rect x="648" y="424" width="268" height="64" rx="12" fill="#0f172a" stroke="#f59e0b" stroke-width="2"/>
-  <text x="782" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">94.38% Prefix-Cache Hit</text>
+  <text x="782" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">95.5% byte reuse (proxy)</text>
   <rect x="936" y="424" width="272" height="64" rx="12" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
-  <text x="1072" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">&lt; 50 us SIMD HDC Scan</text>
+  <text x="1072" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">HDC Scan ~62 us / 1K nodes</text>
   <text x="72" y="556" fill="#94a3b8" font-family="JetBrains Mono, monospace" font-size="17">Claude Code  *  OpenAI Codex CLI  *  Google Antigravity (agy)  *  Hermes Agent  *  MCP / ACP</text>
 </svg>
 """
@@ -562,7 +562,7 @@ def generate_graphviz_relationship_graphs() -> None:
     label=<
         <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6">
         <TR><TD ALIGN="CENTER"><FONT COLOR="#f0f6fc" POINT-SIZE="18" FACE="JetBrains Mono,Consolas,monospace"><B>Infinity-Context (icx) &#8212; 5-Plane Virtual Context MMU Architecture</B></FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="11" FACE="JetBrains Mono,Consolas,monospace">(72.1&#215; AHTL compression &#183; 100% lossless BLAKE3 Merkle-DAG &#183; 10,240-bit HDC &#183; 94.38% prefix-cache hit &#183; &lt;300ns /dev/shm seqlock)</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="11" FACE="JetBrains Mono,Consolas,monospace">(214x synthetic AHTL compression &#183; lossless (post-redaction) BLAKE3 CAS &#183; 10,240-bit HDC &#183; 95.5% byte reuse (proxy) &#183; ~60 ns in-process publish /dev/shm seqlock)</FONT></TD></TR>
         </TABLE>>
 
     node [shape=none fontname="JetBrains Mono,Consolas,Courier New,monospace" fontsize=10 margin="0"]
@@ -608,8 +608,8 @@ def generate_graphviz_relationship_graphs() -> None:
         <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#58a6ff" BGCOLOR="#0d1117">
         <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff" POINT-SIZE="11"><B>Google Antigravity (agy)</B></FONT></TD></TR>
         <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; ~/.gemini/hooks.json (exit code 0)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; AdditionalContext JSON Envelope</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; ~/.gemini/config/hooks.json (exit code 0)</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; injectSteps JSON Envelope</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Protobuf Jetski State Sync</FONT></TD></TR>
         </TABLE>>]
 
@@ -649,7 +649,7 @@ def generate_graphviz_relationship_graphs() -> None:
         <HR/>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; &lt;&lt;AHTLv1 #icx:hash !surp @fcga [Braille-256] $...&gt;&gt;</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; U+2800..U+28FF Bijection (8 bits/glyph, 64-bit sketch)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Verified 72.1&#215; Token Reduction in 197.85 &#956;s</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 214&#215; packet ratio on a synthetic test log</FONT></TD></TR>
         </TABLE>>]
 
     // =================================================================
@@ -661,7 +661,7 @@ def generate_graphviz_relationship_graphs() -> None:
         <HR/>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Gear-Hash Content-Defined Chunking</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 128-Bit #icx:&lt;16-hex&gt; Handle</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; zstd -3 Compressed Blob Store</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SQLite store (icx.sqlite3, WAL)</FONT></TD></TR>
         </TABLE>>]
 
     merkle_dag [label=<
@@ -703,16 +703,16 @@ def generate_graphviz_relationship_graphs() -> None:
         <HR/>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Byte-Frozen Prefix Epochs (0 Mid-Session Edits)</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Anthropic 4-Slot cache_control: ephemeral</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; OpenAI 1,024-Token Aligned Prefix (94.38% Hit)</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; OpenAI 1,024-Token Aligned Prefix (95.5% byte reuse, proxy)</FONT></TD></TR>
         </TABLE>>]
 
     shm_bus [label=<
         <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#f85149" BGCOLOR="#161b22">
         <TR><TD ALIGN="CENTER"><FONT COLOR="#f85149" POINT-SIZE="12"><B>Plane 5: /dev/shm Seqlock Telepathy Bus (icx-bus)</B></FONT></TD></TR>
         <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; /dev/shm/icx-fabric-v1.shm (1 MiB Lock-Free Ring)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 512 &#215; 2,048-Byte Cache-Aligned Atomic Slots</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; &lt;300 ns Cross-Agent HDC &amp; Handle Broadcast</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; icx-fabric-v1.shm (256-slot seqlock ring file)</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 256 &#215; 4,096-Byte Cache-Aligned Atomic Slots</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; ~38 us file-backed Cross-Agent HDC &amp; Handle Broadcast</FONT></TD></TR>
         </TABLE>>]
 
     // =================================================================
@@ -769,7 +769,7 @@ def generate_graphviz_relationship_graphs() -> None:
     label=<
         <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6">
         <TR><TD ALIGN="CENTER"><FONT COLOR="#f0f6fc" POINT-SIZE="17" FACE="JetBrains Mono,Consolas,monospace"><B>Infinity-Context (icx) &#8212; 8-Crate Workspace &amp; Subsystem Dependency DAG</B></FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="10" FACE="JetBrains Mono,Consolas,monospace">(Strict acyclic crate hierarchy &#183; unsafe_code = forbid except isolated POSIX /dev/shm seqlock in icx-bus)</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="10" FACE="JetBrains Mono,Consolas,monospace">(Strict acyclic crate hierarchy &#183; unsafe_code = forbid except isolated seqlock ring bus in icx-bus)</FONT></TD></TR>
         </TABLE>>
 
     node [shape=none fontname="JetBrains Mono,Consolas,Courier New,monospace" fontsize=10 margin="0"]
@@ -833,10 +833,10 @@ def generate_graphviz_relationship_graphs() -> None:
     icx_bus [label=<
         <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#f85149" BGCOLOR="#0d1117">
         <TR><TD ALIGN="CENTER"><FONT COLOR="#f85149" POINT-SIZE="11"><B>icx-bus</B></FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[POSIX /dev/shm Seqlock]</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[Seqlock Ring Bus]</FONT></TD></TR>
         <HR/>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SeqlockTelemetryBus</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SeqlockSlot (2,048 B)</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SeqlockSlot (4,096 B)</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Only crate permitting unsafe</FONT></TD></TR>
         </TABLE>>]
 
@@ -939,7 +939,7 @@ flowchart TB
     direction LR
     CC["Claude Code CLI<br/>PostToolUse / UserPromptSubmit<br/>PreCompact / SessionStart / Stop"]
     CX["OpenAI Codex CLI<br/>~/.codex/hooks.json<br/>state_5.sqlite + Wire Proxy"]
-    AG["Google Antigravity (agy)<br/>~/.gemini/hooks.json (exit 0)<br/>AdditionalContext Envelope"]
+    AG["Google Antigravity (agy)<br/>~/.gemini/config/hooks.json (exit 0)<br/>injectSteps Envelope"]
     HM["Hermes Agent + MCP<br/>MemoryProvider Bridge<br/>state.db + mind.db"]
   end
 
@@ -947,7 +947,7 @@ flowchart TB
     direction LR
     RED["SecretRedactor<br/>Sanitizes API Keys &amp;<br/>Prompt-Injection Guards"]
     SKEL["StructuralSkeletonizer<br/>Extracts §fn / §ty / §mod<br/>Preserves !err / !panic"]
-    AHTL["AhtlPacket Codec<br/>«AHTLv1 #icx:hash !surp @fcga<br/>⟦Braille-256⟧ §...» (72.1x)"]
+    AHTL["AhtlPacket Codec<br/>«AHTLv1 #icx:hash !surp @fcga<br/>⟦Braille-256⟧ §...» (214x synthetic)"]
   end
 
   subgraph P2["Plane 2: Virtual Context Memory & Merkle-DAG (icx-core)"]
@@ -958,15 +958,15 @@ flowchart TB
 
   subgraph P3["Plane 3: Associative Recall & Temporal Graph (icx-hdc + icx-store)"]
     direction LR
-    HDC["10,240-Bit Hypervector VSA<br/>Infini-Attention Delta Bundler<br/>POPCNT Scan (< 50 us / 1K nodes)"]
+    HDC["10,240-Bit Hypervector VSA<br/>Infini-Attention Delta Bundler<br/>POPCNT Scan (~62 us / 1K nodes)"]
     FCGA["Contractive IFS FractalCoord<br/>+ TitansSurpriseGate<br/>Momentum S_t = eta*S_{t-1} + (1-eta)*surp"]
     PPR["Bi-Temporal Graph + HippoRAG PPR<br/>Valid [t_valid, t_invalid)<br/>Tx [t_created, t_expired)"]
   end
 
   subgraph P45["Plane 4 & Plane 5: Cache-Epoch Wire Proxy & /dev/shm Seqlock Fabric"]
     direction LR
-    EPOCH["CacheEpochController + WireProxyTransformer<br/>Byte-Frozen Prefix Epochs (>= 94% Cache Hit)<br/>Anthropic 4-Slot &amp; OpenAI 1024-Tok Prefix"]
-    SHM["SeqlockTelemetryBus (icx-bus)<br/>/dev/shm/icx-fabric-v1.shm (1 MiB Ring)<br/>< 300 ns Cross-Agent Telepathy"]
+    EPOCH["CacheEpochController + WireProxyTransformer<br/>Byte-Frozen Prefix Epochs (95.5% byte reuse, proxy)<br/>Anthropic 4-Slot &amp; OpenAI 1024-Tok Prefix"]
+    SHM["SeqlockTelemetryBus (icx-bus)<br/>icx-fabric-v1.shm (256-slot seqlock ring file)<br/>~38 us file-backed Cross-Agent Telepathy"]
   end
 
   CC & CX & AG & HM --> RED
@@ -1033,9 +1033,9 @@ flowchart LR
   Hook->>HDC: Hypervector::from_text() + FractalCoord::project() + TitansSurpriseGate::observe()
   HDC->>HDC: BiTemporalGraph::upsert_node() + PersonalizedPageRank
   Hook->>Codec: AhtlPacket::encode() (Braille-256 + §fn/§ty + !err)
-  Codec-->>Hook: Compact AHTL Packet (72.1x smaller)
+  Codec-->>Hook: Compact AHTL Packet (214x synthetic)
   Hook->>SHM: SeqlockTelemetryBus::publish(SeqlockSlot [2048 B])
-  SHM-->>Agent: Cross-Agent Telepathy Broadcast (< 300 ns)
+  SHM-->>Agent: Cross-Agent Telepathy Broadcast (~38 us file-backed)
   Hook-->>Agent: Return JSON Envelope (updatedMCPToolOutput / AdditionalContext, exit 0)
 """,
         encoding="utf-8",
@@ -1063,7 +1063,7 @@ This directory contains normative Mermaid (`.mmd`) diagram sources for **Infinit
 - [`five-plane-architecture.mmd`](five-plane-architecture.mmd) — Complete 5-plane Virtual Context MMU dataflow across Claude Code, OpenAI Codex CLI, Google Antigravity CLI (`agy`), and Hermes Agent.
 - [`crate-and-agent-relationships.mmd`](crate-and-agent-relationships.mmd) — Strict acyclic 8-crate Rust workspace dependency graph (`icx-core` through `icx-cli`).
 - [`synchronous-hook-and-shm-flow.mmd`](synchronous-hook-and-shm-flow.mmd) — Sequence diagram of synchronous `PostToolUse` / `UserPromptSubmit` hook interception, BLAKE3 CAS storage, AHTL encoding, and `/dev/shm` Seqlock broadcast.
-- [`cache-epoch-lifecycle.mmd`](cache-epoch-lifecycle.mmd) — State machine of the Prefix-Cache-Locked Epoch Controller (`>= 94%` KV-cache hit rate).
+- [`cache-epoch-lifecycle.mmd`](cache-epoch-lifecycle.mmd) — State machine of the Prefix-Cache-Locked Epoch Controller (95.5% prefix byte reuse, synthetic proxy).
 
 High-resolution Graphviz (`.dot`, `.png`, `.svg`) relationship diagrams live in [`../../images/`](../../images/), and vector theme-adaptive SVGs live in [`../images/`](../images/).
 """,

@@ -11,7 +11,7 @@
 <polygon fill="#0d1117" stroke="none" points="-43.2,28.8 -43.2,-957.32 1288.95,-957.32 1288.95,28.8 -43.2,28.8"/>
 <text xml:space="preserve" text-anchor="start" x="244.88" y="-903.37" font-family="JetBrains Mono,Consolas,monospace" font-weight="bold" font-size="17.00" fill="#f0f6fc">Infinity&#45;Context (icx) — 8&#45;Crate Workspace &amp; Subsystem Dependency DAG</text>
 <text xml:space="preserve" text-anchor="start" x="969.38" y="-903.37" font-family="JetBrains Mono,Consolas,monospace" font-size="17.00" fill="#f0f6fc">   </text>
-<text xml:space="preserve" text-anchor="start" x="298.88" y="-871.27" font-family="JetBrains Mono,Consolas,monospace" font-size="10.00" fill="#8b949e">(Strict acyclic crate hierarchy · unsafe_code = forbid except isolated POSIX /dev/shm seqlock in icx&#45;bus)   </text>
+<text xml:space="preserve" text-anchor="start" x="316.88" y="-871.27" font-family="JetBrains Mono,Consolas,monospace" font-size="10.00" fill="#8b949e">(Strict acyclic crate hierarchy · unsafe_code = forbid except isolated seqlock ring bus in icx&#45;bus)   </text>
 <!-- icx_cli -->
 <g id="node1" class="node">
 <title>icx_cli</title>
@@ -114,9 +114,9 @@
 <polygon fill="none" stroke="#f85149" stroke-width="2" points="561.75,-1 561.75,-107.75 747,-107.75 747,-1 561.75,-1"/>
 <text xml:space="preserve" text-anchor="start" x="620.62" y="-92.3" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-weight="bold" font-size="11.00" fill="#f85149">icx&#45;bus</text>
 <text xml:space="preserve" text-anchor="start" x="667.88" y="-92.3" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="11.00" fill="#f85149">   </text>
-<text xml:space="preserve" text-anchor="start" x="593.62" y="-71.5" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="8.00" fill="#8b949e">[POSIX /dev/shm Seqlock]   </text>
+<text xml:space="preserve" text-anchor="start" x="607.12" y="-71.5" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="8.00" fill="#8b949e">[Seqlock Ring Bus]   </text>
 <text xml:space="preserve" text-anchor="start" x="567.75" y="-51" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• SeqlockTelemetryBus   </text>
-<text xml:space="preserve" text-anchor="start" x="567.75" y="-30.5" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• SeqlockSlot (2,048 B)   </text>
+<text xml:space="preserve" text-anchor="start" x="567.75" y="-30.5" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• SeqlockSlot (4,096 B)   </text>
 <text xml:space="preserve" text-anchor="start" x="567.75" y="-10" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• Only crate permitting unsafe   </text>
 </g>
 <!-- icx_cli&#45;&gt;icx_bus -->

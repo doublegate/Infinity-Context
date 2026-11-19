@@ -4,7 +4,7 @@
     ALIEN HOLOGRAPHIC TOKEN LATTICE (AHTL) - DUAL-CHANNEL PACKET ANATOMY
   </text>
   <text x="600" y="60" text-anchor="middle" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="11.5" fill="#94a3b8">
-    Designed for Transformer Self-Attention Geometry (72.1x Compression in 197.85 us) Rather Than Human Prose
+    Designed for Transformer Self-Attention Geometry (214x packet ratio on a synthetic log; full text via deref) Rather Than Human Prose
   </text>
 
   <!-- Central Packet Box (x=24..1176, width=1152) -->

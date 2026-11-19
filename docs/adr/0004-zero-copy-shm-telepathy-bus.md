@@ -4,6 +4,8 @@
 
 Accepted (2026-11-16)
 
+Superseded in part by ADR-0005 (v1.1.0).
+
 ## Context
 
 Multiple agent processes (Claude Code, Codex, Antigravity CLI, Hermes) running concurrently on the same workstation need to share real-time working context (e.g., discovered bugs, file edits, failing assertions). Using SQLite or HTTP alone introduces lock contention (`SQLITE_BUSY`) or multi-millisecond serialization overhead inside synchronous hooks, and risks deadlocks if a hook process is killed mid-write (`SIGKILL`).

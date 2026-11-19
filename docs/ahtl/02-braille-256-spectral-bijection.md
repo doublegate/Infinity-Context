@@ -110,7 +110,7 @@ let hologram_bytes = [
 | `B[0..=3]` | Glyphs `0..=3` | 32 bits (`u32` BE) | `Hypervector::sketch_u32`: $\text{acc} = \bigoplus_{i=0}^{159} \operatorname{rotl}_{64}(W_i, i \bmod 64)$, folded via $(\text{acc} \gg 32) \oplus (\text{acc} \mathbin{\&} \text{0xFFFFFFFF})$ | $O(1)$ bitwise POPCNT pre-filter over `Q_10240` state |
 | `B[4..=5]` | Glyphs `4..=5` | 16 bits (`u16` BE) | `FractalCoord::quadrant_signature_u16`: $\sum_{j=0}^{15} \mathbb{I}(z_{t,j} \ge 0) \cdot 2^j$ | Top-level orthant address in $[-1, +1]^{16}$ |
 | `B[6]` | Glyph `6` | 8 bits (`u8`) | $\lfloor \operatorname{clamp}(S_t, 0.0, 1.0) \times 255.0 \rfloor$ | Quantized Titans Surprise momentum score |
-| `B[7]` | Glyph `7` | 8 bits (`u8`) | Flags byte: bits 0-1 `RetentionTier` (`0 = PinHighResolution`, `1 = FoldAhtlStub`, `2 = ColdBeacon`), bit 2 `FLAG_HAS_ERROR`, bit 7 `FLAG_IS_REDACTED` | Retention tier plus error/redaction flags |
+| `B[7]` | Glyph `7` | 8 bits (`u8`) | Flags byte: bits 0-1 `RetentionTier` (`0 = PinHighResolution`, `1 = FoldAhtlStub`, `2 = ColdBeacon`), bit 2 `FLAG_HAS_ERROR`, bit 3 `FLAG_HAS_PANIC`, bit 4 `FLAG_HAS_DIFF`, bit 5 `FLAG_IS_FOLDED`, bit 6 `FLAG_IS_EPOCH`, bit 7 `FLAG_IS_REDACTED` (`crates/icx-codec/src/braille.rs`) | Retention tier plus structural flags |
 
 ### 4.2 Profile A Extended 512-Bit (`64-Byte`) Locality-Preserving Spectral Sketch (`Braille-64` Blueprint)
 

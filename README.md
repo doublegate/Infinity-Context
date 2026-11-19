@@ -482,7 +482,7 @@ The token is a per-install derived key, printed in hex. Clients that cannot chan
 - [ADR-0002: Alien Holographic Token Lattice (`AHTL`) Over Prose Summarization](docs/adr/0002-alien-holographic-token-lattice.md)
 - [ADR-0003: Prefix-Cache-Locked Epoch Pinning](docs/adr/0003-prefix-cache-epoch-pinning.md)
 - [ADR-0004: Zero-Copy `/dev/shm` Seqlock Ring for Cross-Agent Telepathy](docs/adr/0004-zero-copy-shm-telepathy-bus.md) (title as originally written; the file-backed bus is not memory-mapped, lock-free or zero-copy)
-- ADR-0005 (`docs/adr/0005-*`), added in v1.1.0
+- [ADR-0005: v1.1.0 Workspace Trust, SQLite Store & Resident Daemon](docs/adr/0005-v1-1-0-workspace-trust-store-and-daemon.md) (supersedes the zero-copy parts of ADR-0004)
 
 ### Deep Research & Forensics Corpus (`ref-docs/`)
 

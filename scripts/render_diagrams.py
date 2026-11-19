@@ -51,7 +51,7 @@ def render_architecture_svg(dark: bool) -> str:
     INFINITY-CONTEXT (ICX) - FIVE-PLANE CROSS-AGENT VIRTUAL CONTEXT MMU
   </text>
   <text x="600" y="65" text-anchor="middle" font-family="{FONT_SANS}" font-size="11.5" fill="{text_muted}">
-    72.1x AHTL Symbolic Compression  |  100% Lossless BLAKE3 Merkle-DAG  |  94.38% Prefix-Cache Hit Rate  |  &lt; 300ns /dev/shm Seqlock Bus
+    214x synthetic AHTL Symbolic Compression  |  Lossless (post-redaction) BLAKE3 CAS  |  95.5% byte reuse (proxy)  |  ~60 ns in-process publish Seqlock Bus
   </text>
 
   <!-- Top Row: 4 Agent Harnesses (each 270px wide, 24px gap: 24 + 270 + 24 + 270 + 24 + 270 + 24 + 270 = 1176) -->
@@ -71,8 +71,8 @@ def render_architecture_svg(dark: bool) -> str:
     <rect x="588" y="0" width="270" height="94" rx="10" fill="{panel_bg}" stroke="{indigo}" stroke-width="2"/>
     <text x="723" y="25" text-anchor="middle" font-family="{FONT_MONO}" font-size="13.5" font-weight="700" fill="{indigo}">Antigravity CLI (agy)</text>
     <text x="723" y="45" text-anchor="middle" font-family="{FONT_SANS}" font-size="11" fill="{text_main}">Go + C++ Hybrid Agent Harness</text>
-    <text x="723" y="64" text-anchor="middle" font-family="{FONT_MONO}" font-size="10" fill="{text_muted}">~/.gemini/hooks.json (exit code 0)</text>
-    <text x="723" y="81" text-anchor="middle" font-family="{FONT_MONO}" font-size="10" fill="{text_muted}">AdditionalContext JSON Envelope</text>
+    <text x="723" y="64" text-anchor="middle" font-family="{FONT_MONO}" font-size="10" fill="{text_muted}">~/.gemini/config/hooks.json (exit code 0)</text>
+    <text x="723" y="81" text-anchor="middle" font-family="{FONT_MONO}" font-size="10" fill="{text_muted}">injectSteps JSON Envelope</text>
 
     <rect x="882" y="0" width="270" height="94" rx="10" fill="{panel_bg}" stroke="{amber}" stroke-width="2"/>
     <text x="1017" y="25" text-anchor="middle" font-family="{FONT_MONO}" font-size="13.5" font-weight="700" fill="{amber}">Hermes Agent + MCP</text>
@@ -93,7 +93,7 @@ def render_architecture_svg(dark: bool) -> str:
     Native Lifecycle Hooks &amp; Polymorphic MCP Pager (icx-adapters)
   </text>
   <text x="306" y="275" text-anchor="middle" font-family="{FONT_SANS}" font-size="11" fill="{text_main}">
-    Synchronous &lt; 450us Tool Output Virtualizer + Single-Tool MCP Server (icx)
+    Synchronous Tool Output Virtualizer + Single-Tool MCP Server (icx)
   </text>
   <text x="306" y="295" text-anchor="middle" font-family="{FONT_MONO}" font-size="10" fill="{text_muted}">
     ops: deref(#icx:id) | slice(0..N) | search(q,k) | fold(task) | status
@@ -130,10 +130,10 @@ def render_architecture_svg(dark: bool) -> str:
     * Pre-Hash SecretRedactor: strips sk-ant-*, sk-proj-*, ghp_*, AWS, PEM &amp; role tags
   </text>
   <text x="46" y="475" font-family="{FONT_SANS}" font-size="10.8" fill="{text_main}">
-    * Single-Pass StructuralSkeletonizer: extracts $fn / $ty / $mod / !err (72.1x ratio)
+    * Single-Pass StructuralSkeletonizer: extracts $fn / $ty / $mod / !err (214x synthetic ratio)
   </text>
   <text x="46" y="496" font-family="{FONT_SANS}" font-size="10.8" fill="{text_main}">
-    * Titans Surprise Gate (arXiv:2501.00663): Momentum S_t = eta*S_(t-1) + (1-eta)*g_t
+    * Titans-inspired surprise gate (heuristic): Momentum S_t = eta*S_(t-1) + (1-eta)*g_t
   </text>
 
   <!-- Plane 2: Lossless Context Management (LCM) BLAKE3 Merkle-DAG -->
@@ -149,13 +149,13 @@ def render_architecture_svg(dark: bool) -> str:
     Every #icx:&lt;16-hex&gt; Handle Verifies 256-Bit BLAKE3 Digest on Read (100% Lossless)
   </text>
   <text x="634" y="454" font-family="{FONT_SANS}" font-size="10.8" fill="{text_main}">
-    * Gear-Hash FastCDC Chunking (min=1KB, avg=4KB, max=16KB) + zstd -3 CAS Store
+    * Gear-Hash FastCDC Chunking (min=2KB, avg=8KB, max=64KB), SQLite CAS store
   </text>
   <text x="634" y="475" font-family="{FONT_SANS}" font-size="10.8" fill="{text_main}">
-    * Context-Folding (arXiv:2510.11967): folds completed subtasks (90% token savings)
+    * Context-Folding (arXiv:2510.11967): folds completed subtasks (subtask detail stays recoverable)
   </text>
   <text x="634" y="496" font-family="{FONT_SANS}" font-size="10.8" fill="{text_main}">
-    * CacheEpochController: guarantees 94.38% prefix-cache hit rate across turns
+    * CacheEpochController: measured 95.5% prefix byte reuse (synthetic proxy) across turns
   </text>
 
   <!-- Connectors to Plane 3 -->
@@ -165,7 +165,7 @@ def render_architecture_svg(dark: bool) -> str:
   <!-- Row 4: Plane 3 (10,240-Bit HDC, Fractal IFS & Bi-Temporal PPR Index) -->
   <rect x="24" y="550" width="1152" height="108" rx="10" fill="{panel_bg}" stroke="{cyan}" stroke-width="2"/>
   <text x="600" y="574" text-anchor="middle" font-family="{FONT_MONO}" font-size="13.5" font-weight="700" fill="{cyan}">
-    PLANE 3: Sub-50us Associative Retrieval &amp; Temporal Graph Substrate (icx-hdc &amp; icx-store)
+    PLANE 3: Two-Stage Associative Retrieval &amp; Temporal Graph Substrate (icx-hdc &amp; icx-store)
   </text>
   <g transform="translate(42, 586)">
     <rect x="0" y="0" width="356" height="58" rx="6" fill="{card_bg}" stroke="{panel_border}" stroke-width="1"/>
@@ -181,16 +181,16 @@ def render_architecture_svg(dark: bool) -> str:
     <text x="938" y="43" text-anchor="middle" font-family="{FONT_SANS}" font-size="10.2" fill="{text_muted}">[t_valid, t_invalid) Window + Personalized PageRank</text>
   </g>
 
-  <!-- Row 5: Plane 5 (/dev/shm Lock-Free Seqlock Ring Bus) -->
+  <!-- Row 5: Plane 5 (/dev/shm Seqlock Ring Bus) -->
   <rect x="24" y="676" width="1152" height="86" rx="10" fill="{panel_bg}" stroke="{rose}" stroke-width="2"/>
   <text x="600" y="701" text-anchor="middle" font-family="{FONT_MONO}" font-size="13.5" font-weight="700" fill="{rose}">
-    PLANE 5: /dev/shm/icx-fabric-v1.shm Lock-Free Seqlock Cross-Agent Telepathy Bus (icx-bus)
+    PLANE 5: Seqlock Cross-Agent Telepathy Bus (icx-bus)
   </text>
   <text x="600" y="723" text-anchor="middle" font-family="{FONT_SANS}" font-size="11.2" fill="{text_main}">
-    64-Byte Cache-Line Aligned AtomicU64 Seqlock Ring (512 x 2,048B Slots)  |  Wait-Free Optimistic Readers  |  &lt; 300ns Broadcast
+    64-Byte Cache-Line Aligned AtomicU64 Seqlock Ring (256 x 4,096 B Slots)  |  Wait-Free Optimistic Readers  |  ~38 us file-backed Broadcast
   </text>
   <text x="600" y="744" text-anchor="middle" font-family="{FONT_MONO}" font-size="10.2" fill="{text_muted}">
-    [SeqlockSlot: agent=claude-code | #icx:7bf8239fb7c504f1 | hv_sketch=1024b] ===&gt; Instant Zero-Copy Recall in Codex, agy &amp; Hermes
+    [SeqlockSlot: agent=claude-code | #icx:7bf8239fb7c504f1 | hv_sketch=1024b] ===&gt; Recall in Codex, agy &amp; Hermes
   </text>
 </svg>
 """
@@ -203,7 +203,7 @@ def render_ahtl_anatomy_svg() -> str:
     ALIEN HOLOGRAPHIC TOKEN LATTICE (AHTL) - DUAL-CHANNEL PACKET ANATOMY
   </text>
   <text x="600" y="60" text-anchor="middle" font-family="{FONT_SANS}" font-size="11.5" fill="#94a3b8">
-    Designed for Transformer Self-Attention Geometry (72.1x Compression in 197.85 us) Rather Than Human Prose
+    Designed for Transformer Self-Attention Geometry (214x packet ratio on a synthetic log; full text via deref) Rather Than Human Prose
   </text>
 
   <!-- Central Packet Box (x=24..1176, width=1152) -->
@@ -278,7 +278,7 @@ def render_cache_epoch_svg() -> str:
     FOUR-ZONE PREFIX-CACHE-LOCKED VIRTUAL CONTEXT WINDOW (arXiv:2610.28577)
   </text>
   <text x="600" y="58" text-anchor="middle" font-family="{FONT_SANS}" font-size="11.5" fill="#94a3b8">
-    Zones 0 &amp; 1 Are Cryptographically Sealed &amp; Strictly Append-Only (Sustaining 94.38% Provider KV-Cache Hit Rate)
+    Zones 0 &amp; 1 Are Cryptographically Sealed &amp; Strictly Append-Only (95.5% byte reuse on the synthetic benchmark)
   </text>
 
   <!-- Memory Map Bar (total width 1152: 230 + 14 + 424 + 14 + 230 + 14 + 226 = 1152) -->
@@ -294,7 +294,7 @@ def render_cache_epoch_svg() -> str:
     <rect x="244" y="0" width="424" height="112" rx="8" fill="#10b981" fill-opacity="0.18" stroke="#10b981" stroke-width="2"/>
     <text x="456" y="27" text-anchor="middle" font-family="{FONT_MONO}" font-size="12.5" font-weight="700" fill="#34d399">ZONE 1: SEALED CACHE EPOCHS (E_0 .. E_k)</text>
     <text x="456" y="49" text-anchor="middle" font-family="{FONT_SANS}" font-size="10.8" fill="#e2e8f0">Immutable L3 Merkle-DAG AHTL Frames + L2 Folded Subtasks</text>
-    <text x="456" y="68" text-anchor="middle" font-family="{FONT_SANS}" font-size="10.8" fill="#e2e8f0">Never Mutated Mid-Session  |  Rolls Over Only at 16K Threshold</text>
+    <text x="456" y="68" text-anchor="middle" font-family="{FONT_SANS}" font-size="10.8" fill="#e2e8f0">Never Mutated Mid-Session  |  Rolls Over at the Epoch Threshold</text>
     <text x="456" y="90" text-anchor="middle" font-family="{FONT_MONO}" font-size="9.8" fill="#34d399">[Breakpoints 1..3: 100% Byte-Identical Prefix Hit]</text>
 
     <!-- Zone 2 -->
@@ -308,14 +308,14 @@ def render_cache_epoch_svg() -> str:
     <rect x="926" y="0" width="226" height="112" rx="8" fill="#f97316" fill-opacity="0.18" stroke="#f97316" stroke-width="2"/>
     <text x="1039" y="27" text-anchor="middle" font-family="{FONT_MONO}" font-size="12.5" font-weight="700" fill="#fb923c">ZONE 3: TAIL SLOT</text>
     <text x="1039" y="49" text-anchor="middle" font-family="{FONT_SANS}" font-size="10.8" fill="#e2e8f0">Dynamic HDC + Fractal</text>
-    <text x="1039" y="68" text-anchor="middle" font-family="{FONT_SANS}" font-size="10.8" fill="#e2e8f0">+ PPR + /dev/shm Recall</text>
+    <text x="1039" y="68" text-anchor="middle" font-family="{FONT_SANS}" font-size="10.8" fill="#e2e8f0">+ PPR + Bus Recall</text>
     <text x="1039" y="90" text-anchor="middle" font-family="{FONT_MONO}" font-size="9.8" fill="#fdba74">[Ephemeral Tail &lt;= 1K tok]</text>
   </g>
 
   <!-- Bracket showing Cached Prefix vs Dynamic Tail -->
   <path d="M 24 208 L 24 222 L 936 222 L 936 208" fill="none" stroke="#10b981" stroke-width="2.5"/>
   <text x="480" y="246" text-anchor="middle" font-family="{FONT_MONO}" font-size="12" font-weight="700" fill="#34d399">
-    &lt;--- 94.38% CACHED PREFIX (Zero Re-Prefill Compute  |  75%-90% Provider Token Discount) ---&gt;
+    &lt;--- 95.5% byte reuse (proxy) CACHED PREFIX ---&gt;
   </text>
 
   <path d="M 950 208 L 950 222 L 1176 222 L 1176 208" fill="none" stroke="#f97316" stroke-width="2.5"/>
@@ -327,7 +327,7 @@ def render_cache_epoch_svg() -> str:
     Why it works: Injecting recalled memories into the System Prompt invalidates every KV-cache block after byte 0.
   </text>
   <text x="600" y="302" text-anchor="middle" font-family="{FONT_SANS}" font-size="11.2" fill="#94a3b8">
-    Infinity-Context keeps Zones 0..1 100% byte-frozen and appends all dynamic AHTL recall &amp; /dev/shm telepathy in Zone 3.
+    Infinity-Context keeps Zones 0..1 100% byte-frozen and appends all dynamic AHTL recall &amp; bus telepathy in Zone 3.
   </text>
 </svg>
 """
