@@ -86,6 +86,22 @@ impl ClauseOp {
 
 /// A single relational clause inside an `AhtlPacket`, optionally carrying a causal implication
 /// chain (`⇒`, `U+21D2`).
+/// Maximum number of `⇒` links materialized when parsing a causal clause chain (ICX-AUD-026).
+pub const MAX_CLAUSE_CHAIN: usize = 64;
+
+/// Returns `true` if `hint` matches the normative `SliceMap` production:
+/// `"L" UInt "-" UInt` or `"B" UInt ":" UInt` (ICX-AUD-025).
+pub fn is_valid_slice_map(hint: &str) -> bool {
+    let num = |s: &str| !s.is_empty() && s.len() <= 20 && s.bytes().all(|b| b.is_ascii_digit());
+    if let Some(rest) = hint.strip_prefix('L') {
+        rest.split_once('-').is_some_and(|(a, b)| num(a) && num(b))
+    } else if let Some(rest) = hint.strip_prefix('B') {
+        rest.split_once(':').is_some_and(|(a, b)| num(a) && num(b))
+    } else {
+        false
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AhtlClause {
     pub op: ClauseOp,
@@ -131,10 +147,25 @@ impl AhtlClause {
 
     /// Parses a single clause string, recursively resolving `⇒` causal implication chains.
     pub fn parse(raw: &str) -> Self {
-        let (head_raw, implies) = match raw.split_once('⇒') {
-            Some((h, tail)) => (h, Some(Box::new(Self::parse(tail)))),
-            None => (raw, None),
-        };
+        // ICX-AUD-026: iterative and bounded. At most `MAX_CLAUSE_CHAIN` links are built (any
+        // further `⇒` stays literal in the last link), so neither parsing nor dropping the
+        // resulting `Box` chain can recurse deeply enough to overflow a stack.
+        let mut node: Option<Box<Self>> = None;
+        for segment in raw
+            .splitn(MAX_CLAUSE_CHAIN, '⇒')
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+        {
+            let mut clause = Self::parse_link(segment);
+            clause.implies = node;
+            node = Some(Box::new(clause));
+        }
+        node.map_or_else(|| Self::parse_link(""), |b| *b)
+    }
+
+    fn parse_link(head_raw: &str) -> Self {
+        let implies = None;
         let mut chars = head_raw.chars();
         let first = chars.next();
         let (op, rest) = match first {
@@ -447,7 +478,7 @@ impl AhtlPacket {
             out.push('↦');
             out.push_str(&handle_str);
             if let Some(hint) = &self.slice_hint {
-                if !hint.is_empty() {
+                if is_valid_slice_map(hint) {
                     out.push('(');
                     out.push_str(hint);
                     out.push(')');
@@ -506,7 +537,7 @@ impl AhtlPacket {
                     let (h_part, hint_part) = with_hint
                         .split_once('(')
                         .ok_or_else(|| CodecError::MalformedHandle(deref_tail.to_owned()))?;
-                    if hint_part.is_empty() {
+                    if !is_valid_slice_map(hint_part) {
                         return Err(CodecError::MalformedHandle(deref_tail.to_owned()));
                     }
                     (h_part, Some(hint_part.to_owned()))
@@ -634,7 +665,7 @@ impl AhtlWirePacketV1 {
     pub fn render(&self) -> String {
         let mut handle_field = self.cas_handle_string();
         if let Some(hint) = &self.slice_hint {
-            if !hint.is_empty() {
+            if is_valid_slice_map(hint) {
                 handle_field.push('(');
                 handle_field.push_str(hint);
                 handle_field.push(')');
@@ -671,7 +702,7 @@ impl AhtlWirePacketV1 {
             let (h_part, hint_part) = with_hint
                 .split_once('(')
                 .ok_or_else(|| CodecError::MalformedHandle(handle_field.to_owned()))?;
-            if hint_part.is_empty() {
+            if !is_valid_slice_map(hint_part) {
                 return Err(CodecError::MalformedHandle(handle_field.to_owned()));
             }
             (h_part, Some(hint_part.to_owned()))
@@ -789,7 +820,7 @@ pub enum EpochCountKind {
 /// (`docs/ahtl/01-formal-grammar-and-packet-specification.md` §1.2).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EpochHeader {
-    pub epoch_id: u16,
+    pub epoch_id: u32,
     pub merkle_root_hex: String,
     pub count_kind: EpochCountKind,
 }
@@ -820,11 +851,12 @@ impl EpochHeader {
             .next()
             .and_then(|s| s.strip_prefix("ep="))
             .ok_or(CodecError::MalformedEpochHeader)?;
-        if ep_part.len() != 4 || !ep_part.bytes().all(|b| b.is_ascii_hexdigit()) {
+        // `Hex4` minimum width, up to 8 hex digits (u32) so long sessions never overflow.
+        if !(4..=8).contains(&ep_part.len()) || !ep_part.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(CodecError::MalformedEpochHeader);
         }
         let epoch_id =
-            u16::from_str_radix(ep_part, 16).map_err(|_| CodecError::MalformedEpochHeader)?;
+            u32::from_str_radix(ep_part, 16).map_err(|_| CodecError::MalformedEpochHeader)?;
 
         let root_part = parts
             .next()

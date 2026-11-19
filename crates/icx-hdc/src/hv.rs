@@ -478,6 +478,11 @@ impl Hypervector {
     }
 
     /// Computes the 64-bit rotational XOR-tree parity fold (`hv:<16-hex>` in Profile A).
+    ///
+    /// This is a **linear, non-cryptographic sketch** for display and coarse comparison only:
+    /// distinct vectors collide trivially (all-zero and all-ones share a digest), so equal `hv:`
+    /// values must never be treated as identity (ICX-AUD-053). Use
+    /// [`Self::dedup_fingerprint_u128`] or a BLAKE3 digest of the words for identity.
     #[inline]
     pub fn hv_digest_u64(&self) -> u64 {
         let mut acc = 0u64;

@@ -507,9 +507,23 @@ impl MerkleContextDag {
             .entry((agent as u8, raw_artifact))
             .or_default()
             .push((role.to_owned(), ordinal, id));
-        self.nodes.insert(id, node);
+        self.insert_node_checked(id, node);
         self.record_node_in_active_scope(id);
         id
+    }
+
+    /// Inserts `node` under `id`, refusing to overwrite a *different* node that happens to share
+    /// the 64-bit id (ICX-AUD-023). Re-inserting an identical node is a no-op. Returns `false`
+    /// (and keeps the existing node) on a collision.
+    fn insert_node_checked(&mut self, id: ArtifactId, node: DagNode) -> bool {
+        if let Some(existing) = self.nodes.get(&id)
+            && existing.digest() != node.digest()
+        {
+            eprintln!("icx: refusing to overwrite DAG node {id}: 64-bit id collision");
+            return false;
+        }
+        self.nodes.insert(id, node);
+        true
     }
 
     /// Appends a structured `L1` `ToolArtifactNode` to the innermost active branch or main trunk,
@@ -523,7 +537,7 @@ impl MerkleContextDag {
         let id = ArtifactId::from_digest(&dag_digest);
         node.id = id;
         node.dag_digest = dag_digest;
-        self.nodes.insert(id, DagNode::ToolArtifact(node));
+        self.insert_node_checked(id, DagNode::ToolArtifact(node));
         self.record_node_in_active_scope(id);
         id
     }
@@ -581,7 +595,7 @@ impl MerkleContextDag {
             raw_tokens_saved,
         };
 
-        self.nodes.insert(id, node);
+        self.insert_node_checked(id, node);
         self.record_node_in_active_scope(id);
         Ok(id)
     }
@@ -733,7 +747,7 @@ impl MerkleContextDag {
         let id = ArtifactId::from_digest(&merkle_root);
         let root_short = &merkle_root.to_hex()[..8];
         let ahtl_frame = format!(
-            "⟪ICX:v1│ep={epoch_index:04}│root={root_short}│nodes={}⟫\n{}",
+            "⟪ICX:v1│ep={epoch_index:04x}│root={root_short}│nodes={}⟫\n{}",
             valid_children.len(),
             body_packets.join("\n")
         );
@@ -748,7 +762,7 @@ impl MerkleContextDag {
             compressed_tokens,
             ahtl_frame,
         };
-        self.nodes.insert(id, epoch_node.clone());
+        self.insert_node_checked(id, epoch_node.clone());
         epoch_node
     }
 
@@ -826,7 +840,7 @@ impl MerkleContextDag {
         let id = ArtifactId::from_digest(&merkle_root);
         let root_short = &merkle_root.to_hex()[..8];
         let ahtl_frame = format!(
-            "⟪ICX:v1│ep={first_epoch_index:04}│root={root_short}│folded={}⟫\n{}",
+            "⟪ICX:v1│ep={first_epoch_index:04x}│root={root_short}│folded={}⟫\n{}",
             flat_l3_ids.len(),
             summary_lines.join("\n")
         );
@@ -846,7 +860,7 @@ impl MerkleContextDag {
     /// Inserts a pre-built `DagNode` into the DAG.
     pub(crate) fn insert_node(&mut self, node: DagNode) -> ArtifactId {
         let id = node.id();
-        self.nodes.insert(id, node);
+        self.insert_node_checked(id, node);
         id
     }
 
@@ -855,7 +869,7 @@ impl MerkleContextDag {
     /// retaining every child epoch and leaf in the DAG.
     pub fn fold_epochs(&mut self, epoch_ids: &[ArtifactId]) -> Result<DagNode, IcxError> {
         let folded_epoch = self.build_folded_epoch(epoch_ids)?;
-        self.nodes.insert(folded_epoch.id(), folded_epoch.clone());
+        self.insert_node_checked(folded_epoch.id(), folded_epoch.clone());
         Ok(folded_epoch)
     }
 
@@ -1086,7 +1100,7 @@ impl MerkleContextDag {
                     let recomputed = Blake3Digest(*hasher.finalize().as_bytes());
                     let root_short = &recomputed.to_hex()[..8];
                     let expected_frame = format!(
-                        "⟪ICX:v1│ep={epoch_index:04}│root={root_short}│nodes={}⟫\n{}",
+                        "⟪ICX:v1│ep={epoch_index:04x}│root={root_short}│nodes={}⟫\n{}",
                         child_nodes.len(),
                         body_packets.join("\n")
                     );
@@ -1133,6 +1147,31 @@ impl MerkleContextDag {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn colliding_dag_id_never_overwrites_an_existing_node() {
+        let mut dag = MerkleContextDag::new();
+        let t = dag.append_turn(
+            AgentKind::ClaudeCode,
+            "user",
+            ArtifactId(7),
+            "a".into(),
+            0.1,
+            1,
+        );
+        let original = dag.get_node(t).cloned().unwrap();
+        let mut other_dag = MerkleContextDag::new();
+        let other_id =
+            other_dag.append_turn(AgentKind::Codex, "tool", ArtifactId(9), "b".into(), 0.9, 2);
+        let impostor = other_dag.get_node(other_id).cloned().unwrap();
+        assert_ne!(impostor.digest(), original.digest());
+        assert!(!dag.insert_node_checked(t, impostor));
+        assert_eq!(dag.get_node(t), Some(&original));
+        assert!(
+            dag.insert_node_checked(t, original.clone()),
+            "identical re-insert is fine"
+        );
+    }
 
     #[test]
     fn context_folding_collapses_subtrajectory_and_preserves_child_turns() {

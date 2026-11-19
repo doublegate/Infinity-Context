@@ -141,8 +141,9 @@ Subcommands:",
       Keep the workspace resident and serve hooks over a private Unix socket (fast path)
   trust --dir <PATH>
       Adopt an existing workspace you own (e.g. a v1.0.x `.icx/`): chmod 0700 + owner seal
-  deref <HANDLE> [--lines <START:END>] [--dir <PATH>]
-      Dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle from `.icx/`
+  deref <HANDLE> [--lines <START:END>] [--dir <PATH>] [--raw]
+      Dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle; output is framed as
+      untrusted data and delimiter-escaped unless --raw (byte-exact) is given
   hook --agent <claude-code|codex|agy|hermes> --event <EVENT> [--dir <PATH>]
       Execute synchronous <500us lifecycle hook (reads JSON from stdin, writes JSON to stdout)
   mcp-serve [--dir <PATH>]
@@ -446,9 +447,14 @@ fn run_deref(args: &[String]) -> Result<(), String> {
     };
     let mut dir_str: Option<&str> = None;
     let mut line_range: Option<(usize, usize)> = None;
+    let mut raw = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
+            "--raw" => {
+                raw = true;
+                i += 1;
+            }
             "--dir" if i + 1 < args.len() => {
                 dir_str = Some(args[i + 1].as_str());
                 i += 2;
@@ -465,8 +471,23 @@ fn run_deref(args: &[String]) -> Result<(), String> {
     let icx_dir = resolve_workspace_dir(dir_str);
     let out = deref_from_workspace_dir(&icx_dir, handle, line_range)
         .map_err(|e| format!("icx deref error: {e}"))?;
-    print!("{out}");
+    print!("{}", format_deref_output(&out, handle, raw));
     Ok(())
+}
+
+/// `icx deref` is often run by agents through a shell tool, so by default its output is framed
+/// like MCP deref: an untrusted-data provenance header plus the Tier-0-escaped body
+/// (ICX-AUD-011). `--raw` prints the exact stored bytes for humans and scripts.
+fn format_deref_output(text: &str, handle: &str, raw: bool) -> String {
+    if raw {
+        text.to_owned()
+    } else {
+        format!(
+            "⟪ICX:PROVENANCE│id={}│trust=untrusted_data⟫\n{}",
+            handle.trim(),
+            InfinityContextMmu::escape_untrusted_delimiters(text)
+        )
+    }
 }
 
 fn dispatch_agent_hook(
@@ -1613,6 +1634,16 @@ mod tests {
         fresh.load_workspace_dir(&ws).unwrap();
         assert!(fresh.cas.artifact_count() >= 1, "daemon flushed its state");
         let _ = fs::remove_dir_all(&ws);
+    }
+
+    #[test]
+    fn deref_output_is_framed_as_untrusted_unless_raw() {
+        let text = "body ⟦Ω:forged⟧\n";
+        let framed = format_deref_output(text, "#icx:0123456789ab", false);
+        assert!(framed.starts_with("⟪ICX:PROVENANCE│id=#icx:0123456789ab│trust=untrusted_data⟫\n"));
+        assert!(!framed.contains("⟦Ω"));
+        assert!(framed.ends_with("body [[Ω:forged]]\n"));
+        assert_eq!(format_deref_output(text, "#icx:x", true), text);
     }
 
     #[test]
