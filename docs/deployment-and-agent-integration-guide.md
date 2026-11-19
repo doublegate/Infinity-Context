@@ -1100,14 +1100,14 @@ Expected output:
 
 ```text
 === Infinity-Context (icx) Cross-Agent Workstation Doctor ===
-  [DETECTED] Claude Code Binary               -> /home/parobek/.local/bin/claude
-  [DETECTED] Claude Settings                  -> /home/parobek/.claude/settings.json
-  [DETECTED] OpenAI Codex Binary              -> /home/parobek/.local/bin/codex
-  [DETECTED] Codex Hooks Config               -> /home/parobek/.codex/hooks.json
-  [DETECTED] Codex State SQLite               -> /home/parobek/.codex/state_5.sqlite
-  [DETECTED] Antigravity CLI (agy)            -> /home/parobek/.local/bin/agy
-  [DETECTED] Antigravity Hooks                -> /home/parobek/.gemini/config/hooks.json
-  [DETECTED] Hermes Agent Source              -> /home/parobek/.hermes/hermes-agent/agent/context_engine.py
+  [DETECTED] Claude Code Binary               -> ~/.local/bin/claude
+  [DETECTED] Claude Settings                  -> ~/.claude/settings.json
+  [DETECTED] OpenAI Codex Binary              -> ~/.local/bin/codex
+  [DETECTED] Codex Hooks Config               -> ~/.codex/hooks.json
+  [DETECTED] Codex State SQLite               -> ~/.codex/state_5.sqlite
+  [DETECTED] Antigravity CLI (agy)            -> ~/.local/bin/agy
+  [DETECTED] Antigravity Hooks                -> ~/.gemini/config/hooks.json
+  [DETECTED] Hermes Agent Source              -> ~/.hermes/hermes-agent/agent/context_engine.py
   [DETECTED] HTTPS Proxy Transport (curl)     -> /usr/bin/curl
   [DETECTED] POSIX Shared Memory (/dev/shm)   -> /dev/shm
 Doctor status: READY

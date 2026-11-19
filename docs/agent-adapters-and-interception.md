@@ -13,7 +13,7 @@
 
 ## 2. Claude Code Adapter (`ClaudeCodeAdapter`)
 
-**Verified Binary Target:** `/home/parobek/.local/share/claude/versions/2.1.326` (`ev_be2e252614342586f9de78e5f08eb70de8465f18310bc03a948abe986a60ef72`)
+**Verified Binary Target:** `~/.local/share/claude/versions/2.1.326` (`ev_be2e252614342586f9de78e5f08eb70de8465f18310bc03a948abe986a60ef72`)
 
 ### 2.1 Hook Event Handling (`icx hook --agent claude-code --event <event>`)
 
@@ -57,7 +57,7 @@
 
 ## 3. OpenAI Codex CLI Adapter (`CodexAdapter`)
 
-**Verified Binary Target:** `/home/parobek/.codex/packages/standalone/releases/0.169.0-x86_64-unknown-linux-musl/bin/codex` (`ev_7cda5928199ea58224bdedbbd14892ff224515db64f7679457f633d5e7d816d3`)
+**Verified Binary Target:** `~/.codex/packages/standalone/releases/0.169.0-x86_64-unknown-linux-musl/bin/codex` (`ev_7cda5928199ea58224bdedbbd14892ff224515db64f7679457f633d5e7d816d3`)
 
 ### 3.1 Hook & Wire Integration
 1. **`session-start` & `user-prompt-submit`:**
@@ -73,7 +73,7 @@
 
 ## 4. Google Antigravity CLI (`agy`) Adapter (`AntigravityAdapter`)
 
-**Verified Binary Target:** `/home/parobek/.local/bin/agy` (`ev_e0bd52156323af13cc80956727b105639c42d36bc491e0c89dd1b2f81f4da090`, `ev_4f48383ea6a5027ec066fb32443128db1261d36ffde9074e9aef47adccfd50f7`)
+**Verified Binary Target:** `~/.local/bin/agy` (`ev_e0bd52156323af13cc80956727b105639c42d36bc491e0c89dd1b2f81f4da090`, `ev_4f48383ea6a5027ec066fb32443128db1261d36ffde9074e9aef47adccfd50f7`)
 
 ### 4.1 camelCase Protojson Hook Contract
 1. **`SessionStart` & `PreInvocation`:**
@@ -112,7 +112,7 @@
 
 ## 5. Hermes Agent Adapter (`HermesAdapter`)
 
-**Verified Target:** `/home/parobek/.hermes/hermes-agent/agent/context_engine.py` & `memory_provider.py` (`ev_55f2f031e94c568896ee3d6653a29fb05932581b058229e8bf3aebc614652511`)
+**Verified Target:** `~/.hermes/hermes-agent/agent/context_engine.py` & `memory_provider.py` (`ev_55f2f031e94c568896ee3d6653a29fb05932581b058229e8bf3aebc614652511`)
 
 - Provides a Python shim plugin (`plugins/context_engine/infinity_context/`) that delegates `select_context()`, `prune_tool_results_only()`, `compress()`, and `on_turn_complete()` over Unix Domain Socket / `/dev/shm` to `icxd`.
 - `select_context()` replaces historical message blocks with **Cache-Epoch-Pinned AHTL Frames** + the **Ephemeral Tail Slot** on every provider request without mutating Hermes's `state.db` `messages` table.

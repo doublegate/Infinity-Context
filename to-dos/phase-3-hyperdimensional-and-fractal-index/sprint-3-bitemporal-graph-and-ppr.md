@@ -30,5 +30,5 @@
 - [x] A query seeded on `module_a` retrieves artifacts linked to `module_c` across a 2-hop chain `module_a -> trait_b -> module_c` while ignoring invalidated historical edges.
 
 **Dependencies:** T-33-001  
-**Reference:** `docs/hyperdimensional-and-fractal-index.md` §5.2; `ref-docs/papers/2405.14831-HippoRAG.pdf`  
+**Reference:** `docs/hyperdimensional-and-fractal-index.md` §5.2; <https://arxiv.org/abs/2405.14831> (PDF not redistributed: arXiv non-exclusive license)  
 **Estimated Complexity:** M

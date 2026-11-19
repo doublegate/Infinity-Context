@@ -353,7 +353,7 @@ All diagrams are organized into [`images/generated/`](images/generated/) (first-
 ### 5.2 Hyperdimensional Computing & Fractal IFS References Used in `crates/icx-hdc`
 12. **Kanerva, Pentti** (2009). "Hyperdimensional Computing: An Introduction to Computing in Distributed Representation with High-Dimensional Random Vectors". *Cognitive Computation*, 1(2): 139–159.
 13. **Plate, Tony A.** (1995). "Holographic Reduced Representations". *IEEE Transactions on Neural Networks*, 6(3): 623–641.
-14. **Munkhdalai, Tsendsuren; Faruqui, Manaal; Gopal, Siddharth** (2024). "Leave No Context Behind: Efficient Infinite Context Transformers with Infini-attention". `arXiv:2404.07143` ([local PDF](../papers/2404.07143-Infini-Attention.pdf)).
+14. **Munkhdalai, Tsendsuren; Faruqui, Manaal; Gopal, Siddharth** (2024). "Leave No Context Behind: Efficient Infinite Context Transformers with Infini-attention". `arXiv:2404.07143` ([local PDF](https://arxiv.org/abs/2404.07143)).
 15. **Gusev, Ilya** (2026). "Fractal KV-Cache Archives via Contractive Iterated Function Systems". `arXiv:2607.07144` ([local PDF](../papers/2607.07144-Fractal-KV-Cache-Archives.pdf)).
 16. **Behrouz, Ali; Zhong, Peilin; Mirrokni, Vahab** (2025). "Titans: Learning to Memorize at Test Time". `arXiv:2501.00663` ([local PDF](../papers/2501.00663-Titans-Learning-to-Memorize-at-Test-Time.pdf)).
 

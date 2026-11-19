@@ -30,14 +30,15 @@ Produces:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
-ARTIFACT_DIR = Path(
-    "/home/parobek/.gemini/antigravity-cli/brain/983dcb21-394a-4055-987e-cef3297267bb"
-)
+# Directory holding the source banner/logo renders; set ICX_ASSET_SOURCE_DIR to regenerate.
+ARTIFACT_DIR = Path(os.environ.get("ICX_ASSET_SOURCE_DIR", str(ROOT / "assets" / "source")))
 SOURCE_BANNER = ARTIFACT_DIR / "infinity_context_banner_v2_1794884203552.jpg"
 SOURCE_LOGO = ARTIFACT_DIR / "infinity_context_logo_1794884172799.jpg"
 

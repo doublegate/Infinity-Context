@@ -3,7 +3,7 @@ name = "icx-proxy"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+license = "GPL-3.0-or-later AND AGPL-3.0-or-later"
 description = "Wire-level Cache-Epoch request transformer for Anthropic Messages and OpenAI Responses/Chat APIs."
 
 [lints]

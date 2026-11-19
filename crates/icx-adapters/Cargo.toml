@@ -3,7 +3,7 @@ name = "icx-adapters"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+license = "GPL-3.0-or-later AND AGPL-3.0-or-later"
 description = "Cross-agent lifecycle hook, ContextEngine, and Single-Tool Polymorphic MCP Pager adapters for Claude Code, Codex, Antigravity CLI (agy), and Hermes."
 
 [lints]

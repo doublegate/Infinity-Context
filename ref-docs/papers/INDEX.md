@@ -1,9 +1,9 @@
 # Downloaded Primary Research Papers — Index & Technical Synthesis
 
 **Location:** `ref-docs/papers/`  
-**Total Downloaded PDFs:** 22 peer-reviewed / arXiv primary sources (all verified valid PDF documents on disk)  
+**Papers indexed:** 22 arXiv primary sources. **PDFs redistributed here:** 12 (11 under CC BY 4.0, 1 under CC BY-NC-SA 4.0). The other 10 are published on arXiv under the arXiv non-exclusive distribution license, which does not permit redistribution, so they are linked to their arXiv abstract pages instead (v1.1.0, ICX-AUD-036).  
 
-This index catalogs the 22 foundational academic papers downloaded into `ref-docs/papers/` and maps their mathematical models, algorithms, and systems insights directly to the **Infinity-Context (`icx`)** Rust architecture.
+This index catalogs the 22 foundational academic papers and maps their mathematical models, algorithms, and systems insights directly to the **Infinity-Context (`icx`)** Rust architecture.
 
 ---
 
@@ -19,7 +19,7 @@ This index catalogs the 22 foundational academic papers downloaded into `ref-doc
 - **Core Contribution:** Treats arbitrarily long prompts as external environment variables rather than static token buffers, enabling the model to programmatically slice, inspect, and recursively invoke sub-queries over sub-spans of the context.
 - **Integration in Infinity-Context:** Implemented as deterministic, zero-hallucination Rust primitives in `icx-Core` and exposed via the single virtualized MCP gateway (`icx_deref`, `icx_slice`, `icx_grep_cold`, `icx_map`).
 
-### 1.3 [2510.11967-Context-Folding.pdf](2510.11967-Context-Folding.pdf)
+### 1.3 [arXiv:2510.11967 Context-Folding](https://arxiv.org/abs/2510.11967)
 - **Title:** *Scaling Long-Horizon LLM Agent via Context-Folding* (`arXiv:2510.11967`, Oct 2025)
 - **Core Contribution:** Introduces dynamic trajectory branching (`branch` -> execute sub-trajectory with full local detail -> `fold` back into main trajectory as a compact state commit). Prevents intermediate debugging dead-ends and verbose exploration from polluting the main trunk context.
 - **Integration in Infinity-Context:** Directly powers **Sub-Trajectory Folding** in `icx-core`: whenever an agent enters a multi-step build/test/debug loop (or spawns a subagent via `SubagentStart` / `SubagentStop`), `icx` opens a branch epoch and folds the entire intermediate loop into a single 40-token AHTL state commit upon completion.
@@ -38,7 +38,7 @@ This index catalogs the 22 foundational academic papers downloaded into `ref-doc
 
 ## 2. Prefix-Cache Engineering, KV-Cache Sparsity & Neural Compression
 
-### 2.1 [2610.28577-Cache-Engineering-for-Agents.pdf](2610.28577-Cache-Engineering-for-Agents.pdf)
+### 2.1 [arXiv:2610.28577 Cache-Engineering-for-Agents](https://arxiv.org/abs/2610.28577)
 - **Title:** *Cache Engineering for Agents* (`arXiv:2610.28577`, Fu et al., Oct 2026)
 - **Core Contribution:** Demonstrates that naive text-level context editing invalidates provider prefix caches, causing catastrophic re-prefill latency and cost. Introduces explicit cache manipulation primitives (`drop` and `repos` with RoPE positional continuity) and prefix-preserving cache block alignment.
 - **Integration in Infinity-Context:** Inspires the **Prefix-Cache-Locked Epoch Controller (`CacheEpochController`)** in `icx-core` and `icx-proxy`. Context is partitioned into immutable, hash-locked epochs aligned to provider cache block sizes; middle-history edits are strictly forbidden except at amortized epoch compaction boundaries, while dynamic recall is injected exclusively into the **Ephemeral Tail Slot** after the cached prefix.
@@ -60,7 +60,7 @@ This index catalogs the 22 foundational academic papers downloaded into `ref-doc
 - **Core Contribution:** Applies multi-stage Residual Vector Quantization (RVQ) with non-contiguous channel grouping to compress high-dimensional representations into compact discrete codebook indices at 5.5x–8x compression with negligible fidelity loss.
 - **Integration in Infinity-Context:** Used to quantize dense semantic embeddings into 8-byte RVQ codes embedded directly inside AHTL token packets (`⟦Ψ:RVQ[...]⟧`) and used as the discrete alphabet driving the Fractal Chaos-Game Archive.
 
-### 2.5 [2403.12968-LLMLingua-2.pdf](2403.12968-LLMLingua-2.pdf)
+### 2.5 [arXiv:2403.12968 LLMLingua-2](https://arxiv.org/abs/2403.12968)
 - **Title:** *LLMLingua-2: Data Distillation for Efficient and Faithful Task-Agnostic Prompt Compression* (`arXiv:2403.12968`, Pan et al., Mar 2024)
 - **Core Contribution:** Formulates prompt compression as token-level binary classification over bidirectional context, preserving high-information-gain tokens while stripping predictable syntactic glue at 2x–5x compression.
 - **Integration in Infinity-Context:** Combined with AST/structural parsing and BPE-vocabulary bit-packing in `crates/icx-codec` to achieve **12x–40x compression** by stripping not only English glue words, but replacing verbose syntax with single-token AHTL relational operators.
@@ -70,7 +70,7 @@ This index catalogs the 22 foundational academic papers downloaded into `ref-doc
 - **Core Contribution:** Compresses an entire retrieved document chunk into a single dense modality token projected into the LLM's embedding space.
 - **Integration in Infinity-Context:** Inspires our **Single-Token Micro-Handle (`#icx:<id>`) + HDC Signature** design: cold historical blocks occupy as few as 8–16 tokens in the active prompt while carrying their full semantic topology and an instant dereference pointer.
 
-### 2.7 [2401.03462-Activation-Beacon.pdf](2401.03462-Activation-Beacon.pdf) & [2307.06945-ICAE-In-Context-Autoencoder.pdf](2307.06945-ICAE-In-Context-Autoencoder.pdf)
+### 2.7 [2401.03462-Activation-Beacon.pdf](2401.03462-Activation-Beacon.pdf) & [arXiv:2307.06945 ICAE-In-Context-Autoencoder](https://arxiv.org/abs/2307.06945)
 - **Titles:** *Long Context Compression with Activation Beacon* (`arXiv:2401.03462`, Jan 2024) & *In-Context Autoencoder (ICAE) for Context Compression* (`arXiv:2307.06945`, Jul 2023)
 - **Core Contribution:** Condense sliding windows of raw tokens into compact "beacon" / "memory slot" representations that condition downstream self-attention layers.
 - **Integration in Infinity-Context:** Architectural blueprint for our **Holographic Beacon Frames** placed at the header of each Cache Epoch.
@@ -85,13 +85,13 @@ This index catalogs the 22 foundational academic papers downloaded into `ref-doc
   $$S_t = \eta_t S_{t-1} - \theta_t \nabla \ell(M_{t-1}; k_t, v_t), \quad M_t = (1 - \alpha_t) M_{t-1} + S_t$$
 - **Integration in Infinity-Context:** Directly implemented in `crates/icx-hdc/src/surprise.rs` (`TitansSurpriseGate`). As tokens/events stream through `icx`, the Surprise Gate computes instantaneous associative novelty $g_t$ against the HDC/HRR memory matrix, applies momentum $\eta_t$ so the causal aftermath of a bug/error is captured in full, and gates eviction via $(1 - \alpha_t)$.
 
-### 3.2 [2404.07143-Infini-Attention.pdf](2404.07143-Infini-Attention.pdf)
+### 3.2 [arXiv:2404.07143 Infini-Attention](https://arxiv.org/abs/2404.07143)
 - **Title:** *Leave No Context Behind: Efficient Infinite Context Transformers with Infini-attention* (`arXiv:2404.07143`, Munkhdalai et al., Google, Apr 2024)
 - **Core Contribution:** Combines local masked dot-product attention with a bounded associative linear memory matrix $M_s = M_{s-1} + \sigma(K)^T V$ updated using the delta rule:
   $$M_s = M_{s-1} + \sigma(K)^T \left(V - \frac{\sigma(K) M_{s-1}}{\sigma(K) z_{s-1}}\right)$$
 - **Integration in Infinity-Context:** We use the **Delta-Rule Associative Update** in our HDC/HRR hypervector memory (`icx-hdc`): before bundling a new context hypervector into an epoch's associative memory trace, we subtract its projection already present in memory so repeated boilerplate never saturates the hypervector!
 
-### 3.3 [2404.14469-SnapKV.pdf](2404.14469-SnapKV.pdf), [2406.02069-PyramidKV.pdf](2406.02069-PyramidKV.pdf), [2410.10819-DuoAttention.pdf](2410.10819-DuoAttention.pdf) & [2406.10774-Quest-Query-Aware-Sparsity.pdf](2406.10774-Quest-Query-Aware-Sparsity.pdf)
+### 3.3 [2404.14469-SnapKV.pdf](2404.14469-SnapKV.pdf), [arXiv:2406.02069 PyramidKV](https://arxiv.org/abs/2406.02069), [arXiv:2410.10819 DuoAttention](https://arxiv.org/abs/2410.10819) & [arXiv:2406.10774 Quest-Query-Aware-Sparsity](https://arxiv.org/abs/2406.10774)
 - **Titles:**
   - *SnapKV: LLM Knows What You are Looking for Before Generation* (`arXiv:2404.14469`)
   - *PyramidKV: Dynamic KV Cache Compression based on Pyramidal Information Funneling* (`arXiv:2406.02069`)
@@ -109,7 +109,7 @@ This index catalogs the 22 foundational academic papers downloaded into `ref-doc
 
 ## 4. Neurobiological & Temporal Knowledge Graph Memory
 
-### 4.1 [2405.14831-HippoRAG.pdf](2405.14831-HippoRAG.pdf)
+### 4.1 [arXiv:2405.14831 HippoRAG](https://arxiv.org/abs/2405.14831)
 - **Title:** *HippoRAG: Neurobiologically Inspired Long-Term Memory for Large Language Models* (`arXiv:2405.14831`, Gutierrez et al., May 2024)
 - **Core Contribution:** Models the mammalian hippocampus (rapid pattern-separated indexing) and neocortex (dense schema storage) by extracting open-information-extraction (OpenIE) triples into a knowledge graph and running **Personalized PageRank (PPR)** seeded on query entities to achieve single-step multi-hop retrieval.
 - **Integration in Infinity-Context:** Implemented in `crates/icx-store/src/graph.rs` (`PersonalizedPageRank`): when an agent touches `file_A.rs` which calls `trait_B` implemented in `crate_C`, PPR walks the cross-session code/event graph in `< 200 µs` and pre-fetches the historical bug note on `crate_C` without requiring lexical overlap with `file_A.rs`.
@@ -119,7 +119,7 @@ This index catalogs the 22 foundational academic papers downloaded into `ref-doc
 - **Core Contribution:** Introduces the **Graphiti Bi-Temporal Model**, tracking both *transaction time* ($t_{\text{created}}, t_{\text{expired}}$ — when the agent learned/superseded a fact) and *valid time* ($t_{\text{valid}}, t_{\text{invalid}}$ — when the fact was true in the workspace/codebase). Automatically invalidates contradicted edges while preserving historical provenance.
 - **Integration in Infinity-Context:** Every fact, symbol signature, and architectural decision in `icx-store` carries bi-temporal intervals `[t_valid, t_invalid)` and `[t_tx_start, t_tx_end)` plus git commit SHA provenance. When a function is refactored or a hypothesis fails, its old edge is marked `t_invalid = now` so agents never hallucinate from stale pre-refactor context.
 
-### 4.3 [2502.12110-A-MEM-Agentic-Memory.pdf](2502.12110-A-MEM-Agentic-Memory.pdf)
+### 4.3 [arXiv:2502.12110 A-MEM-Agentic-Memory](https://arxiv.org/abs/2502.12110)
 - **Title:** *A-MEM: Agentic Memory for LLM Agents* (`arXiv:2502.12110`, NeurIPS 2025)
 - **Core Contribution:** Zettelkasten-inspired self-evolving atomic memory notes with dynamic cross-linking and retroactive neighborhood refinement when new observations arrive.
 - **Integration in Infinity-Context:** Drives background asynchronous memory link refinement in `icxd` during idle inter-turn windows.
