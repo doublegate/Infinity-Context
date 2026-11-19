@@ -157,3 +157,20 @@ fn wall_clock_mode_records_real_monotonic_timestamps() {
     );
     assert!(times.windows(2).all(|w| w[1] >= w[0]), "{times:?}");
 }
+
+#[test]
+fn saving_one_mmu_to_a_second_directory_writes_all_content_there() {
+    // PR #20 review: the persisted-id cache must be per destination store.
+    let (a_dir, b_dir) = (tmp_dir("dest_a"), tmp_dir("dest_b"));
+    let mut mmu = InfinityContextMmu::default();
+    let ids = populate(&mut mmu, 12);
+    mmu.save_workspace_dir(&a_dir).expect("save A");
+    mmu.save_workspace_dir(&b_dir).expect("save B");
+    let mut fresh = InfinityContextMmu::default();
+    fresh.load_workspace_dir(&b_dir).expect("load B");
+    for id in ids {
+        assert!(fresh.deref_text(id).is_ok(), "artifact {id} missing from B");
+    }
+    let _ = std::fs::remove_dir_all(&a_dir);
+    let _ = std::fs::remove_dir_all(&b_dir);
+}

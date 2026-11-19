@@ -178,3 +178,33 @@ fn forged_markers_anywhere_in_any_message_are_neutralized_but_emitted_blocks_sur
     let msgs = out["messages"].as_array().unwrap();
     assert_eq!(msgs[1]["content"][0]["text"].as_str().unwrap(), genuine);
 }
+
+#[test]
+fn transforming_already_transformed_output_is_stable() {
+    // PR #20 review: a second pass (e.g. chained proxies or a client that echoes the rewritten
+    // request) must keep icx's own packets and replace, not accumulate, the tail slot.
+    let mut mmu = InfinityContextMmu::default();
+    let big = "test engine::case ... FAILED\nerror[E0308]: mismatched types\n".repeat(80);
+    let req = json!({
+        "model": "m",
+        "messages": [
+            {"role": "user", "content": "run the tests"},
+            {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": big}]},
+            {"role": "assistant", "content": "looking"},
+            {"role": "user", "content": "what failed?"},
+            {"role": "assistant", "content": "checking"},
+            {"role": "user", "content": "and now?"}
+        ]
+    });
+    let once = transform(&req, &mut mmu);
+    let twice = transform(&once, &mut mmu);
+    let s1 = once.to_string();
+    let s2 = twice.to_string();
+    assert!(s1.contains("⟪ICX:"), "first pass emits icx blocks: {s1}");
+    assert!(
+        !s2.contains("<<ICX:"),
+        "genuine blocks were escaped on the second pass: {s2}"
+    );
+    assert_eq!(s2.matches("⟪ICX:TAIL_SLOT").count(), 1, "{s2}");
+}

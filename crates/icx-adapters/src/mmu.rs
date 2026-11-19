@@ -1550,6 +1550,15 @@ impl InfinityContextMmu {
                 .as_ref()
                 .map(|k| (k, canonical_for_seal.as_path())),
         };
+        // The persisted-id cache describes the store it was loaded from or last saved to. A
+        // different destination has none of those rows, so write everything (PR #20 review).
+        if self
+            .loaded_generation
+            .as_ref()
+            .is_none_or(|(path, _)| *path != canonical_for_seal)
+        {
+            self.persisted_ids = crate::store::PersistedIds::default();
+        }
         let next_gen = crate::store::save(
             &mut conn,
             self.cas.chunk_entries(),

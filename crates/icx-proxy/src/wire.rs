@@ -166,6 +166,7 @@ impl WireProxyTransformer {
             }
         }
 
+        Self::register_emitted_output(&mut root, mmu);
         serde_json::to_string(&root)
     }
 
@@ -194,14 +195,37 @@ impl WireProxyTransformer {
     /// Runs before virtualization, so icx's own freshly generated packets are never escaped
     /// (ICX-AUD-011, position-independent per security review).
     fn neutralize_untrusted_markers(root: &mut Value, mmu: &InfinityContextMmu) {
-        fn walk(v: &mut Value, mmu: &InfinityContextMmu) {
+        Self::visit_conversation_strings(root, &mut |s: &mut String| {
+            if mmu.is_forged_icx_block(s) {
+                *s = InfinityContextMmu::escape_untrusted_delimiters(s);
+            }
+        });
+    }
+
+    /// Registers every conversation string that still carries icx delimiters after a transform
+    /// as icx-emitted. Sound because `neutralize_untrusted_markers` ran first: any delimiter left
+    /// in a non-system, non-pager string was produced by icx (stubs, packets, the tail slot and
+    /// the text it was appended to). Makes a second pass over the transformer's own output
+    /// idempotent (PR #20 review): packets stay intact and the tail slot is replaced.
+    fn register_emitted_output(root: &mut Value, mmu: &mut InfinityContextMmu) {
+        let mut emitted = Vec::new();
+        Self::visit_conversation_strings(root, &mut |s: &mut String| {
+            if s.contains(['⟦', '⟧', '⟪', '⟫']) {
+                emitted.push(s.clone());
+            }
+        });
+        for s in &emitted {
+            mmu.record_emitted(s);
+        }
+    }
+
+    /// Visits every string in the conversation arrays (`messages`, `input`, `contents`), skipping
+    /// system/developer messages, icx pager tool calls/results and `cache_control` objects.
+    fn visit_conversation_strings(root: &mut Value, f: &mut dyn FnMut(&mut String)) {
+        fn walk(v: &mut Value, f: &mut dyn FnMut(&mut String)) {
             match v {
-                Value::String(s) => {
-                    if mmu.is_forged_icx_block(s) {
-                        *s = InfinityContextMmu::escape_untrusted_delimiters(s);
-                    }
-                }
-                Value::Array(items) => items.iter_mut().for_each(|i| walk(i, mmu)),
+                Value::String(s) => f(s),
+                Value::Array(items) => items.iter_mut().for_each(|i| walk(i, f)),
                 Value::Object(map) => {
                     let is_pager = map
                         .get("name")
@@ -213,7 +237,7 @@ impl WireProxyTransformer {
                     }
                     for (k, child) in map.iter_mut() {
                         if k != "cache_control" {
-                            walk(child, mmu);
+                            walk(child, f);
                         }
                     }
                 }
@@ -248,11 +272,11 @@ impl WireProxyTransformer {
                             .and_then(Value::as_str)
                             .is_some_and(|id| pager_ids.contains(id));
                         if !block_is_pager {
-                            walk(block, mmu);
+                            walk(block, f);
                         }
                     }
                 } else {
-                    walk(item, mmu);
+                    walk(item, f);
                 }
             }
         }
@@ -501,6 +525,7 @@ impl WireProxyTransformer {
             }
         }
 
+        Self::register_emitted_output(&mut root, mmu);
         serde_json::to_string(&root)
     }
 
@@ -629,6 +654,7 @@ impl WireProxyTransformer {
             }
         }
 
+        Self::register_emitted_output(&mut root, mmu);
         serde_json::to_string(&root)
     }
 
