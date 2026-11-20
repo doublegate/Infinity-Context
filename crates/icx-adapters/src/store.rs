@@ -316,8 +316,19 @@ pub(crate) fn save<'c>(
     artifacts: impl Iterator<Item = &'c StoredArtifact>,
     persisted: &mut PersistedIds,
     derived: &DerivedState<'_>,
+    expected_generation: u64,
 ) -> Result<u64, IcxError> {
     let tx = conn.transaction().map_err(db_err)?;
+    // Optimistic concurrency (PR #20 review): the caller's state must describe the generation on
+    // disk. Sealing a snapshot that predates another writer's commit would cover only the
+    // caller's rows while the tables hold both, producing a store that cannot load.
+    let on_disk = generation(&tx)?;
+    if on_disk != expected_generation {
+        return Err(db_err(format!(
+            "store changed since it was loaded (generation {on_disk}, expected \
+             {expected_generation}); reload before saving"
+        )));
+    }
     // Rows are append-only, so a table smaller than the cache means rows were removed behind
     // this process (restore, manual edit). Re-insert everything rather than seal a store that
     // can no longer load (PR #20 review).
@@ -372,7 +383,7 @@ pub(crate) fn save<'c>(
             new_emitted.push(*d);
         }
     }
-    let next_gen = generation(&tx)?.saturating_add(1);
+    let next_gen = on_disk.saturating_add(1);
     let cfg = serde_json::to_vec(&derived.chunk_config).map_err(db_err)?;
     let mut upsert = tx
         .prepare_cached(

@@ -292,3 +292,9 @@ fn quoted_continuation_values_containing_separators_are_redacted() {
     let nested = "\"credentials\":\n  \"username\": \"alice\"\n";
     assert_eq!(SecretRedactor::redact(nested), nested);
 }
+
+#[test]
+fn long_letters_only_url_tokens_are_redacted() {
+    let token = "QwErTyUiOpAsDfGhJkLzXcVbNmQwErTyUi";
+    assert_redacted(&format!("https://{token}@github.com/o/r.git"), token);
+}

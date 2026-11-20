@@ -96,6 +96,8 @@ pub struct InfinityContextMmu {
     loaded_generation: Option<(std::path::PathBuf, u64)>,
     /// When set, saves MAC-stamp the store and loads reject stores without a valid stamp.
     store_seal_key: Option<[u8; 32]>,
+    /// Set when the seal key changes: the next load skips the unchanged-generation fast path.
+    reload_required: bool,
     /// BLAKE3 digests of every icx-formatted block this MMU handed to an agent (ICX-AUD-011).
     emitted_blocks: BTreeSet<[u8; 32]>,
     /// When `true`, event times come from the wall clock (milliseconds since the Unix epoch,
@@ -136,6 +138,7 @@ impl InfinityContextMmu {
             persisted_ids: crate::store::PersistedIds::default(),
             loaded_generation: None,
             store_seal_key: None,
+            reload_required: false,
             emitted_blocks: BTreeSet::new(),
             wall_clock: false,
         }
@@ -1167,10 +1170,11 @@ impl InfinityContextMmu {
         if crate::store::exists(icx_dir) {
             let mut conn = crate::store::open(icx_dir)?;
             let current_gen = crate::store::generation(&conn)?;
-            if self
-                .loaded_generation
-                .as_ref()
-                .is_some_and(|(d, g)| *d == canonical && *g == current_gen)
+            if !self.reload_required
+                && self
+                    .loaded_generation
+                    .as_ref()
+                    .is_some_and(|(d, g)| *d == canonical && *g == current_gen)
             {
                 // No writer has touched the store since this MMU last loaded or saved it; only
                 // re-establish the per-directory binding (workspace hash + shared bus file).
@@ -1243,6 +1247,7 @@ impl InfinityContextMmu {
             self.emitted_blocks.extend(stored.emitted);
             self.persisted_ids = persisted;
             self.loaded_generation = Some((canonical, stored.generation));
+            self.reload_required = false;
             return Ok(());
         }
         if icx_dir.join("cas_store.json").exists() {
@@ -1331,15 +1336,17 @@ impl InfinityContextMmu {
     /// `workspace::store_seal_key`). `None` disables store-seal verification (library use).
     pub fn set_store_seal_key(&mut self, key: Option<[u8; 32]>) {
         self.store_seal_key = key;
-        self.loaded_generation = None;
+        // The next load must re-verify under the new key; the mirrored generation stays known so
+        // a save can still detect a concurrent writer.
+        self.reload_required = true;
     }
 
-    /// Returns the SQLite store generation of `icx_dir` (0 if never saved).
     /// The store generation this MMU mirrors (last loaded or saved), if any.
     pub fn mirrored_generation(&self) -> Option<u64> {
         self.loaded_generation.as_ref().map(|(_, g)| *g)
     }
 
+    /// Returns the SQLite store generation of `icx_dir` (0 if never saved).
     pub fn workspace_generation(icx_dir: &Path) -> Result<u64, IcxError> {
         if !crate::store::exists(icx_dir) {
             return Ok(0);
@@ -1577,12 +1584,20 @@ impl InfinityContextMmu {
         {
             self.persisted_ids = crate::store::PersistedIds::default();
         }
+        // The generation this state was loaded from or last saved as; 0 (a new store) when it
+        // mirrors no store at this path.
+        let expected_generation = self
+            .loaded_generation
+            .as_ref()
+            .filter(|(path, _)| *path == canonical_for_seal)
+            .map_or(0, |(_, g)| *g);
         let next_gen = crate::store::save(
             &mut conn,
             self.cas.chunk_entries(),
             self.cas.artifact_entries(),
             &mut self.persisted_ids,
             &derived,
+            expected_generation,
         );
         match next_gen {
             Ok(g) => {

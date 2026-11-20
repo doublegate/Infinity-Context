@@ -276,3 +276,25 @@ fn a_save_repairs_rows_deleted_behind_a_long_lived_mmu() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn saving_a_stale_snapshot_over_a_newer_store_is_refused() {
+    // PR #20 review (Antigravity): sealing in-memory state that predates another writer's commit
+    // would write a seal that does not cover the rows on disk. The save must refuse instead.
+    let dir = tmp_dir("stale");
+    let mut a = InfinityContextMmu::default();
+    populate(&mut a, 3);
+    a.save_workspace_dir(&dir).unwrap();
+    let mut b = InfinityContextMmu::default();
+    b.load_workspace_dir(&dir).unwrap();
+    b.ingest_payload(AgentKind::Codex, "Bash:ls", "from b\n", false);
+    b.save_workspace_dir(&dir).unwrap();
+    a.ingest_payload(AgentKind::Codex, "Bash:pwd", "from a\n", false);
+    let err = a.save_workspace_dir(&dir).unwrap_err();
+    assert!(err.to_string().contains("changed"), "{err}");
+    // After reloading, A can save again.
+    a.load_workspace_dir(&dir).unwrap();
+    a.ingest_payload(AgentKind::Codex, "Bash:pwd", "from a\n", false);
+    a.save_workspace_dir(&dir).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+}

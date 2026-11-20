@@ -143,7 +143,7 @@ Measured on the development machine (Intel i9-10850K, Linux):
 
 | Path | Result | Source |
 | :--- | :--- | :--- |
-| In-process publish | 59.3 ns per slot over 1,000 publishes | `icx benchmark` (synthetic, single thread) |
+| In-process publish | 58.3 ns per slot over 1,000 publishes | `icx benchmark` (synthetic, single thread) |
 | File-backed publish to visible in a second handle | worst case 38 µs over 200 events | two-handle test modelling two agent processes (ICX-AUD-055) |
 
 These are component measurements, not end-to-end agent latencies. A writer waiting on the file

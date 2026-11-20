@@ -651,17 +651,17 @@ impl SecretRedactor {
         out
     }
 
-    /// A colon-less URL userinfo that is a credential rather than a login name: at least 16
-    /// characters of token alphabet mixing letters and digits (`git`, `alice`, `deploy-bot` are
-    /// kept).
+    /// A colon-less URL userinfo that is a credential rather than a login name: token alphabet
+    /// only, and either 16+ characters mixing letters and digits or 32+ characters of any kind
+    /// (`git`, `alice`, `deploy-bot` are kept).
     fn looks_like_url_token(userinfo: &str) -> bool {
-        userinfo.len() >= 16
-            && !userinfo.starts_with("[REDACTED:")
+        let token_chars = !userinfo.starts_with("[REDACTED:")
             && userinfo
                 .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '~' | '%'))
-            && userinfo.chars().any(|c| c.is_ascii_digit())
-            && userinfo.chars().any(|c| c.is_ascii_alphabetic())
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '~' | '%'));
+        let mixed = userinfo.chars().any(|c| c.is_ascii_digit())
+            && userinfo.chars().any(|c| c.is_ascii_alphabetic());
+        token_chars && ((userinfo.len() >= 16 && mixed) || userinfo.len() >= 32)
     }
 
     /// Redacts vendor formats the generic prefix scan cannot express: dotted SendGrid keys,
