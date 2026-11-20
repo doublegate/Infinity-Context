@@ -5,7 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [1.1.0] - 2026-11-18
+## [1.1.0] - 2026-11-20
 
 Remediation release for the adversarial audit of v1.0.0 in [`docs/claude/`](docs/claude/README.md).
 Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
