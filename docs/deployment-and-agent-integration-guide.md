@@ -772,12 +772,12 @@ Measured on a development workstation (Intel i9-10850K, Linux). `icx benchmark` 
 | :--- | :--- | :--- |
 | **Hook cost vs. workspace size (in-process)** | 338 artifacts: 940 ms in v1.0.x, 14 ms in v1.1.0. About 2,000 artifacts: 69–72 ms. | Load and save per hook call. |
 | **Hook cost via `icx daemon`** | Median 3.1 ms; p90 3.4 ms in a burst; about 19 ms when a request overlaps a flush. | Workspace stays resident. |
-| **Synthetic hook round-trip (`icx benchmark`)** | 258.23 us (`PostToolUse` virtualization) | In-process, no agent. |
+| **Synthetic hook round-trip (`icx benchmark`)** | 244.05 us (`PostToolUse` virtualization) | In-process, no agent. |
 | **AHTL size reduction** | 214.0x on a repetitive 1,200-line test log (61,413 B -> 287 B); 159.8x on a varied log (14,700 B -> 92 B). | A packet is a skeleton plus a handle, not a lossless encoding; the full text is retrieved with `deref`. Real outputs vary. |
 | **Prefix reuse (50-turn synthetic transcript)** | 95.46% byte-weighted prefix reuse over all turns (95.38% excluding seal turns). Gate: `>= 90%`. | A byte-level proxy, not a measured provider cache hit rate. |
 | **HDC unique-token recall (1,000 log documents)** | top-1 5.1% -> 99.0%, top-5 5.6% -> 99.7% (v1.0.x -> v1.1.0); query time 24 -> 69 us. | Gate test: recall@5 `>= 95%` at n=300. |
-| **Two-stage HDC + CSR PPR** | 54.71 us (two-stage query), 111.52 us (201-node CSR PPR) | Synthetic. |
-| **Bus publish -> visible (file-backed, two handles)** | Worst case 38 us over 200 events | In-process ring: 59.3 ns per slot publish (synthetic). |
+| **Two-stage HDC + CSR PPR** | 49.00 us (two-stage query), 109.78 us (201-node CSR PPR) | Synthetic. |
+| **Bus publish -> visible (file-backed, two handles)** | Worst case 38 us over 200 events | In-process ring: 58.3 ns per slot publish (synthetic). |
 | **Post-compaction recoverability** | Stored content is returned byte-exact (post-redaction) by `deref` | Verified by BLAKE3 content addressing; redacted secrets are not recoverable by design. |
 
 ### 6.2 Architecture Trade-Off Matrix
@@ -1038,16 +1038,16 @@ Output from the `v1.1.0` measurement run (i9-10850K, Linux; numbers vary by mach
 
 ```text
 === Infinity-Context (icx) SLO & Accuracy Benchmark Suite ===
-  [PASS] 10,240-bit HDC Bind (^) + Permute: 46.87 ns / op (1,000 ops)
-  [PASS] 10,240-bit HDC Hamming Scan      : 61.77 us / 1,000 nodes (617.71 us / 10k nodes, min_dist=4931)
-  [PASS] Fractal IFS Suffix Match         : 24.44 ns / pair (shared_depth=6)
-  [PASS] Two-Stage HDC + CSR PPR          : 54.71 us (two-stage query), 111.52 us (201-node CSR PPR)
-  [PASS] AHTL Compression Ratio           : 214.0x on a repetitive 1,200-line test log (61413 B -> 287 B in 50.22 us)
+  [PASS] 10,240-bit HDC Bind (^) + Permute: 46.82 ns / op (1,000 ops)
+  [PASS] 10,240-bit HDC Hamming Scan      : 64.20 us / 1,000 nodes (642.05 us / 10k nodes, min_dist=4931)
+  [PASS] Fractal IFS Suffix Match         : 24.27 ns / pair (shared_depth=6)
+  [PASS] Two-Stage HDC + CSR PPR          : 49.00 us (two-stage query), 109.78 us (201-node CSR PPR)
+  [PASS] AHTL Compression Ratio           : 214.0x on a repetitive 1,200-line test log (61413 B -> 287 B in 44.43 us)
   [INFO] AHTL ratio, varied log      : 159.8x (14700 B -> 92 B; skeleton + handle, full text via deref, not a lossless encoding)
-  [PASS] FastCDC + BLAKE3 CAS Ingest (64K): 91.23 us (64680 B across 1 chunks)
-  [PASS] Atomic Seqlock Broadcast         : 59.3 ns / slot (1,000 publishes)
-  [PASS] Full Synchronous Hook Round-Trip : 258.23 us (PostToolUse virtualization)
-  [PASS] 50-Turn NIH + Cache-Epoch        : 95.46% byte-weighted prefix reuse over all turns (95.38% excluding seal turns; synthetic transcript, byte proxy), lossless passkey recovery (18.02 ms)
+  [PASS] FastCDC + BLAKE3 CAS Ingest (64K): 86.72 us (64659 B across 8 chunks)
+  [PASS] Atomic Seqlock Broadcast         : 58.3 ns / slot (1,000 publishes)
+  [PASS] Full Synchronous Hook Round-Trip : 244.05 us (PostToolUse virtualization)
+  [PASS] 50-Turn NIH + Cache-Epoch        : 95.46% byte-weighted prefix reuse over all turns (95.38% excluding seal turns; synthetic transcript, byte proxy), lossless passkey recovery (18.13 ms)
 All Infinity-Context SLO gates PASSED.
 ```
 

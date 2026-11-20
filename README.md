@@ -29,7 +29,7 @@
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.100%2B%20(Edition%202024)-f97316.svg?logo=rust" alt="Rust: 1.100+ (Edition 2024)"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/unsafe_code-forbid-16a34a.svg" alt="unsafe_code: forbid"></a>
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v1.1.0-2563eb.svg" alt="Release: v1.1.0"></a>
-  <a href="docs/numbers.md"><img src="https://img.shields.io/badge/in--process%20seqlock-59.3%20ns%20%2F%20publish-0d9488.svg" alt="In-process seqlock publish: 59.3 ns (synthetic)"></a>
+  <a href="docs/numbers.md"><img src="https://img.shields.io/badge/in--process%20seqlock-58.3%20ns%20%2F%20publish-0d9488.svg" alt="In-process seqlock publish: 58.3 ns (synthetic)"></a>
   <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20MCP-475569.svg" alt="Supported Agents"></a>
 </p>
 
@@ -94,11 +94,11 @@ All figures below come from the synthetic in-process benchmark (`icx benchmark`)
 
 | Plane / Subsystem | Technical Capability | Measured (v1.1.0) |
 | :--- | :--- | :--- |
-| **Plane 1: `icx-codec` (`AHTL`)** | Dual-profile symbolic codec (`Profile A` `AhtlWirePacketV1` and `Profile B` `AhtlPacket`, `EpochHeader` with hex epoch ids, `AhtlStream`, `ContextCodec`); clause chains bounded at 64 links (`MAX_CLAUSE_CHAIN`), parsed iteratively; validated `slice_hint`s; Braille-256 byte bijection (`U+2800..U+28FF`, 8-byte and 64-byte sketches); `StructuralSkeletonizer` for Rust, Python, TS/JS, Go, C/C++, test logs and diffs; and a 4-tier `SecretRedactor` (Shannon entropy gate above 4.35 bits/char). | 214.0x inline ratio on a repetitive 1,200-line test log (50.22 µs); 159.8x on a varied log. A packet is a skeleton plus a handle; the full text is recovered with `deref`. |
-| **Plane 2: `icx-core` (`LCM`)** | FastCDC content-defined chunking with spread masks (mean chunk 10.6 KiB for an 8 KiB target), BLAKE3 content-addressed storage with 48-bit (`#icx:<12-hex>`) and 64-bit (`#icx:<16-hex>`) handles, a handle collision refused with `IcxError::HashCollision` instead of overwriting, a Merkle-DAG (`L1` turn/tool, `L2` branch, `L3` epoch, `L4` fold), and nested context folding (depth at most 64). One SQLite file (WAL) per workspace, saved in one transaction and sealed with a keyed BLAKE3 MAC. | `deref` returns the exact stored (post-redaction) bytes; FastCDC + BLAKE3 ingest of 64 KiB in 91.23 µs. |
-| **Plane 3: `icx-hdc` & `icx-store`** | 10,240-bit binary spatter code hypervectors (`[u64; 160]`), a delta-rule bundler inspired by Infini-attention, contractive IFS fractal coordinates (`fc:<64-hex>`), a Titans-inspired surprise gate (momentum-smoothed novelty from hypervector distance plus diagnostic and exit-code signals; not the learned neural memory of Behrouz et al.), and a bi-temporal graph with HippoRAG-style Personalized PageRank. | Hamming scan 61.77 µs per 1,000 nodes. Unique-token recall on 1,000 log documents: top-1 99.0%, top-5 99.7% (v1.0.0: 5.1% and 5.6%). |
+| **Plane 1: `icx-codec` (`AHTL`)** | Dual-profile symbolic codec (`Profile A` `AhtlWirePacketV1` and `Profile B` `AhtlPacket`, `EpochHeader` with hex epoch ids, `AhtlStream`, `ContextCodec`); clause chains bounded at 64 links (`MAX_CLAUSE_CHAIN`), parsed iteratively; validated `slice_hint`s; Braille-256 byte bijection (`U+2800..U+28FF`, 8-byte and 64-byte sketches); `StructuralSkeletonizer` for Rust, Python, TS/JS, Go, C/C++, test logs and diffs; and a 4-tier `SecretRedactor` (Shannon entropy gate above 4.35 bits/char). | 214.0x inline ratio on a repetitive 1,200-line test log (44.43 µs); 159.8x on a varied log. A packet is a skeleton plus a handle; the full text is recovered with `deref`. |
+| **Plane 2: `icx-core` (`LCM`)** | FastCDC content-defined chunking with spread masks (mean chunk 10.6 KiB for an 8 KiB target), BLAKE3 content-addressed storage with 48-bit (`#icx:<12-hex>`) and 64-bit (`#icx:<16-hex>`) handles, a handle collision refused with `IcxError::HashCollision` instead of overwriting, a Merkle-DAG (`L1` turn/tool, `L2` branch, `L3` epoch, `L4` fold), and nested context folding (depth at most 64). One SQLite file (WAL) per workspace, saved in one transaction and sealed with a keyed BLAKE3 MAC. | `deref` returns the exact stored (post-redaction) bytes; FastCDC + BLAKE3 ingest of 64 KiB in 86.72 µs. |
+| **Plane 3: `icx-hdc` & `icx-store`** | 10,240-bit binary spatter code hypervectors (`[u64; 160]`), a delta-rule bundler inspired by Infini-attention, contractive IFS fractal coordinates (`fc:<64-hex>`), a Titans-inspired surprise gate (momentum-smoothed novelty from hypervector distance plus diagnostic and exit-code signals; not the learned neural memory of Behrouz et al.), and a bi-temporal graph with HippoRAG-style Personalized PageRank. | Hamming scan 64.20 µs per 1,000 nodes. Unique-token recall on 1,000 log documents: top-1 99.0%, top-5 99.7% (v1.0.0: 5.1% and 5.6%). |
 | **Plane 4: `icx-proxy`** | Prefix-cache-locked epoch controller and `WireProxyTransformer`. Client `cache_control` breakpoints are preserved; icx adds at most one, on a content block, keeps the total at 4 or fewer, and inherits a 1h TTL when the client uses one. Folded history is byte-stable across turns. The HTTP proxy binds to loopback and requires a per-install token. | 95.46% byte-weighted prefix reuse over all turns of a synthetic 50-turn transcript (95.38% excluding seal turns). This is a byte proxy, not a measured provider cache hit rate. |
-| **Plane 5: `icx-bus` & `icx-adapters`** | In-process seqlock ring of 256 slots of 4,096 bytes built on atomics. The file-backed variant uses `pread`/`pwrite` under a writer mutex and a file lock; it is not memory-mapped, not lock-free and not zero-copy, and readers are optimistic (seqlock version check). Publishes report drops and readers report missed sequence numbers. Adapters cover Claude Code, Codex CLI, Antigravity CLI (`agy`), Hermes Agent, and a single-tool MCP pager (`icx`). | 59.3 ns per in-process publish; file-backed publish-to-visible worst case 38 µs over 200 events. |
+| **Plane 5: `icx-bus` & `icx-adapters`** | In-process seqlock ring of 256 slots of 4,096 bytes built on atomics. The file-backed variant uses `pread`/`pwrite` under a writer mutex and a file lock; it is not memory-mapped, not lock-free and not zero-copy, and readers are optimistic (seqlock version check). Publishes report drops and readers report missed sequence numbers. Adapters cover Claude Code, Codex CLI, Antigravity CLI (`agy`), Hermes Agent, and a single-tool MCP pager (`icx`). | 58.3 ns per in-process publish; file-backed publish-to-visible worst case 38 µs over 200 events. |
 
 ---
 
@@ -291,20 +291,20 @@ Run `cargo run --release -p icx-cli -- benchmark` to execute the built-in suite.
 
 ```text
 === Infinity-Context (icx) SLO & Accuracy Benchmark Suite ===
-  [PASS] 10,240-bit HDC Bind (^) + Permute: 46.87 ns / op (1,000 ops)
-  [PASS] 10,240-bit HDC Hamming Scan      : 61.77 us / 1,000 nodes (617.71 us / 10k nodes, min_dist=4931)
-  [PASS] Fractal IFS Suffix Match         : 24.44 ns / pair (shared_depth=6)
-  [PASS] Two-Stage HDC + CSR PPR          : 54.71 us (two-stage query), 111.52 us (201-node CSR PPR)
-  [PASS] AHTL Compression Ratio           : 214.0x on a repetitive 1,200-line test log (61413 B -> 287 B in 50.22 us)
+  [PASS] 10,240-bit HDC Bind (^) + Permute: 46.82 ns / op (1,000 ops)
+  [PASS] 10,240-bit HDC Hamming Scan      : 64.20 us / 1,000 nodes (642.05 us / 10k nodes, min_dist=4931)
+  [PASS] Fractal IFS Suffix Match         : 24.27 ns / pair (shared_depth=6)
+  [PASS] Two-Stage HDC + CSR PPR          : 49.00 us (two-stage query), 109.78 us (201-node CSR PPR)
+  [PASS] AHTL Compression Ratio           : 214.0x on a repetitive 1,200-line test log (61413 B -> 287 B in 44.43 us)
   [INFO] AHTL ratio, varied log      : 159.8x (14700 B -> 92 B; skeleton + handle, full text via deref, not a lossless encoding)
-  [PASS] FastCDC + BLAKE3 CAS Ingest (64K): 91.23 us (64680 B across 1 chunks)
-  [PASS] Atomic Seqlock Broadcast         : 59.3 ns / slot (1,000 publishes)
-  [PASS] Full Synchronous Hook Round-Trip : 258.23 us (PostToolUse virtualization)
-  [PASS] 50-Turn NIH + Cache-Epoch        : 95.46% byte-weighted prefix reuse over all turns (95.38% excluding seal turns; synthetic transcript, byte proxy), lossless passkey recovery (18.02 ms)
+  [PASS] FastCDC + BLAKE3 CAS Ingest (64K): 86.72 us (64659 B across 8 chunks)
+  [PASS] Atomic Seqlock Broadcast         : 58.3 ns / slot (1,000 publishes)
+  [PASS] Full Synchronous Hook Round-Trip : 244.05 us (PostToolUse virtualization)
+  [PASS] 50-Turn NIH + Cache-Epoch        : 95.46% byte-weighted prefix reuse over all turns (95.38% excluding seal turns; synthetic transcript, byte proxy), lossless passkey recovery (18.13 ms)
 All Infinity-Context SLO gates PASSED.
 ```
 
-The 258.23 µs hook figure is one in-process `PostToolUse` call against a fresh in-memory MMU with no persisted workspace. Real hook cost was measured separately on the audit workspaces:
+The 244.05 µs hook figure is one in-process `PostToolUse` call against a fresh in-memory MMU with no persisted workspace. Real hook cost was measured separately on the audit workspaces:
 
 | Measurement (i9-10850K, Linux) | v1.0.0 | v1.1.0 |
 | :--- | :--- | :--- |

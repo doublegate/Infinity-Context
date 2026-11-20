@@ -22,19 +22,19 @@ Release-build gates apply as written; CI multiplies the time ceilings by 3 and d
 
 | Metric | v1.1.0 value | Fixture / how measured | Release gate | Source |
 | :--- | :--- | :--- | :--- | :--- |
-| HDC bind (`^`) + permute | 46.87 ns / op | 1,000 ops on 10,240-bit vectors | at most 100 ns | `icx benchmark` |
-| HDC Hamming scan | 61.77 µs / 1,000 nodes (617.71 µs / 10,000 nodes) | synthetic nodes, `min_dist=4931` | at most 150 µs per 1,000 nodes | `icx benchmark` |
-| Fractal IFS suffix match | 24.44 ns / pair | `shared_depth=6` | at most 50 ns and depth at least 6 | `icx benchmark` |
-| Two-stage HDC query | 54.71 µs | synthetic index | at most 200 µs | `icx benchmark` |
-| CSR Personalized PageRank | 111.52 µs | 201-node graph, 8 iterations | at most 400 µs | `icx benchmark` |
-| AHTL inline ratio, repetitive log | 214.0x (61,413 B to 287 B) in 50.22 µs | repetitive 1,200-line test log | ratio at least 10x, time at most 400 µs | `icx benchmark` |
+| HDC bind (`^`) + permute | 46.82 ns / op | 1,000 ops on 10,240-bit vectors | at most 100 ns | `icx benchmark` |
+| HDC Hamming scan | 64.20 µs / 1,000 nodes (642.05 µs / 10,000 nodes) | synthetic nodes, `min_dist=4931` | at most 150 µs per 1,000 nodes | `icx benchmark` |
+| Fractal IFS suffix match | 24.27 ns / pair | `shared_depth=6` | at most 50 ns and depth at least 6 | `icx benchmark` |
+| Two-stage HDC query | 49.00 µs | synthetic index | at most 200 µs | `icx benchmark` |
+| CSR Personalized PageRank | 109.78 µs | 201-node graph, 8 iterations | at most 400 µs | `icx benchmark` |
+| AHTL inline ratio, repetitive log | 214.0x (61,413 B to 287 B) in 44.43 µs | repetitive 1,200-line test log | ratio at least 10x, time at most 400 µs | `icx benchmark` |
 | AHTL inline ratio, varied log | 159.8x (14,700 B to 92 B) | varied log; informational, not gated | none | `icx benchmark` |
-| FastCDC + BLAKE3 CAS ingest | 91.23 µs | 64,680 B, 1 chunk | at most 250 µs | `icx benchmark` |
-| In-process seqlock publish | 59.3 ns / slot | 1,000 publishes, in-memory ring | at most 5,000 ns | `icx benchmark` |
-| Synchronous hook round trip | 258.23 µs | one Claude Code `PostToolUse` on a fresh in-memory MMU (no persisted workspace) | at most 1,000 µs | `icx benchmark` |
+| FastCDC + BLAKE3 CAS ingest | 86.72 µs | 64,659 B, 8 chunks | at most 250 µs | `icx benchmark` |
+| In-process seqlock publish | 58.3 ns / slot | 1,000 publishes, in-memory ring | at most 5,000 ns | `icx benchmark` |
+| Synchronous hook round trip | 244.05 µs | one Claude Code `PostToolUse` on a fresh in-memory MMU (no persisted workspace) | at most 1,000 µs | `icx benchmark` |
 | Byte-weighted prefix reuse, all turns | 95.46% | synthetic 50-turn transcript, seal turns included; a byte proxy, not a provider cache hit rate | at least 90% (`PREFIX_REUSE_FLOOR_PCT`) | `icx benchmark` |
 | Byte-weighted prefix reuse, excluding seal turns | 95.38% | same transcript | none | `icx benchmark` |
-| Passkey recovery in the 50-turn run | recovered (18.02 ms for the run) | planted passkey, recovered by `deref` and cold grep | must be recovered | `icx benchmark` |
+| Passkey recovery in the 50-turn run | recovered (18.13 ms for the run) | planted passkey, recovered by `deref` and cold grep | must be recovered | `icx benchmark` |
 
 The AHTL ratio is the size of a skeleton plus a handle relative to the input. It is not a
 lossless encoding: the model sees the skeleton until it dereferences the handle, and the full

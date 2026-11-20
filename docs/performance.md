@@ -17,15 +17,15 @@ ceilings are multiplied by 3 in CI and by 100 in debug builds.
 
 | Operation | Gate (release, local) | Measured v1.1.0 |
 | :--- | ---: | ---: |
-| HDC 10,240-bit bind (`^`) + permute | `<= 100 ns` | 46.87 ns / op |
-| HDC Hamming scan, 1,000 nodes | `<= 150 µs` | 61.77 µs (617.71 µs / 10k nodes) |
-| Fractal IFS suffix match | `<= 50 ns`, shared depth `>= 6` | 24.44 ns / pair |
-| Two-stage HDC query / 201-node CSR PPR | `<= 200 µs` / `<= 400 µs` | 54.71 µs / 111.52 µs |
-| AHTL compression on a repetitive 1,200-line test log | ratio `>= 10x`, `<= 400 µs` | 214.0x (61,413 B to 287 B) in 50.22 µs |
+| HDC 10,240-bit bind (`^`) + permute | `<= 100 ns` | 46.82 ns / op |
+| HDC Hamming scan, 1,000 nodes | `<= 150 µs` | 64.20 µs (642.05 µs / 10k nodes) |
+| Fractal IFS suffix match | `<= 50 ns`, shared depth `>= 6` | 24.27 ns / pair |
+| Two-stage HDC query / 201-node CSR PPR | `<= 200 µs` / `<= 400 µs` | 49.00 µs / 109.78 µs |
+| AHTL compression on a repetitive 1,200-line test log | ratio `>= 10x`, `<= 400 µs` | 214.0x (61,413 B to 287 B) in 44.43 µs |
 | AHTL ratio on a varied log (informational, not gated) | none | 159.8x (14,700 B to 92 B) |
-| FastCDC + BLAKE3 CAS ingest, 64 KiB | `<= 250 µs` | 91.23 µs |
-| Telepathy ring publish, in-process backend | `<= 5 µs` | 59.3 ns / slot |
-| Hook round-trip (`PostToolUse` virtualization, in-process MMU) | `<= 1,000 µs` | 258.23 µs |
+| FastCDC + BLAKE3 CAS ingest, 64 KiB | `<= 250 µs` | 86.72 µs |
+| Telepathy ring publish, in-process backend | `<= 5 µs` | 58.3 ns / slot |
+| Hook round-trip (`PostToolUse` virtualization, in-process MMU) | `<= 1,000 µs` | 244.05 µs |
 | 50-turn synthetic transcript: byte-weighted prefix reuse | `>= 90%` | 95.46% over all turns (95.38% excluding seal turns) |
 
 **Compression ratio.** An AHTL packet is a structural skeleton plus a `#icx:` handle, not a
