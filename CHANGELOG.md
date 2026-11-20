@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Release workflow (`.github/workflows/release.yml`): a version-tag push builds static musl
+  Linux x86-64 binaries (baseline and x86-64-v3), writes `SHA256SUMS`, attests build provenance
+  and attaches them to a draft GitHub release whose notes are the tag's CHANGELOG section.
+
 ## [1.1.0] - 2026-11-20
 
 Remediation release for the adversarial audit of v1.0.0 in [`docs/claude/`](docs/claude/README.md).

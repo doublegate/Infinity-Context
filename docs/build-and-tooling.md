@@ -65,6 +65,7 @@ cargo +nightly fuzz run ahtl_stream    # also: hdc_snapshot, mcp_jsonrpc, redact
 | `ci.yml` secret scan | gitleaks (pinned version, SHA-256-verified download) over the git history |
 | `reuse.yml` | REUSE 3.3 licensing lint |
 | `cla.yml`, `antigravity-review.yml` | Contributor-agreement check and PR review automation |
+| `release.yml` | On a `vX.Y.Z` tag push (or a manual run naming an existing tag): checks the tag matches the `icx-cli` version and has a CHANGELOG section, runs `cargo test --workspace --locked`, builds static musl binaries for baseline x86-64 and x86-64-v3, smoke-tests them, packages them with the license texts, writes `SHA256SUMS`, attests build provenance, and attaches everything to the release. A new release is created as a draft with the CHANGELOG section as notes; assets already attached to an existing release are never replaced |
 
 Supply-chain rules (ICX-AUD-040):
 

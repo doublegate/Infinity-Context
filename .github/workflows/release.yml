@@ -1,0 +1,240 @@
+# SPDX-FileCopyrightText: 2026 DoubleGate
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Release build: on a version-tag push (or a manual run against an existing tag), runs the test
+# gate, builds static musl `icx` binaries for x86-64 (baseline) and x86-64-v3 (AVX2), packages
+# them with the license texts, writes SHA256SUMS, attests build provenance and attaches
+# everything to a GitHub release for the tag.
+#
+# A new release is created as a DRAFT with the tag's CHANGELOG section as its notes, so the notes
+# can be reviewed before publishing. If the release already exists, only assets it does not yet
+# have are uploaded; an asset that is already attached is never replaced (a published version is
+# immutable — cut a new tag instead).
+
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and release (for example v1.2.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: 1.100.0
+
+jobs:
+  gate:
+    name: Verify tag and run tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - name: Resolve tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          tag="${INPUT_TAG:-$REF_NAME}"
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "ERROR: '$tag' is not a vMAJOR.MINOR.PATCH[-PRE] tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          save-if: false
+      - name: Tag must match the workspace version and have a CHANGELOG entry
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          manifest="$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "icx-cli") | .version')"
+          if [ "$manifest" != "$VERSION" ]; then
+            echo "ERROR: tag version $VERSION != icx-cli version $manifest" >&2
+            exit 1
+          fi
+          if ! grep -Fq "## [$VERSION]" CHANGELOG.md; then
+            echo "ERROR: CHANGELOG.md has no '## [$VERSION]' section" >&2
+            exit 1
+          fi
+      - name: Run tests
+        run: cargo test --workspace --locked
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - label: x86_64-unknown-linux-musl
+            rustflags: ""
+          - label: x86_64_v3-unknown-linux-musl
+            rustflags: "-C target-cpu=x86-64-v3"
+    env:
+      TARGET: x86_64-unknown-linux-musl
+      TAG: ${{ needs.gate.outputs.tag }}
+      LABEL: ${{ matrix.label }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: refs/tags/${{ needs.gate.outputs.tag }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: x86_64-unknown-linux-musl
+      - name: Install musl C toolchain (bundled SQLite)
+        run: |
+          if ! command -v musl-gcc >/dev/null; then
+            sudo apt-get update -q
+            sudo apt-get install -y -q musl-tools
+          fi
+      - name: Build static binary
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
+          CC_x86_64_unknown_linux_musl: musl-gcc
+        run: cargo build --release --locked -p icx-cli --target "$TARGET"
+      - name: Check the binary is static and runs
+        run: |
+          bin="target/$TARGET/release/icx"
+          file "$bin"
+          if ! file "$bin" | grep -Eq 'static(ally|-pie) linked'; then
+            echo "ERROR: $bin is not statically linked" >&2
+            exit 1
+          fi
+          if [ "$LABEL" = x86_64_v3-unknown-linux-musl ] && ! grep -qw avx2 /proc/cpuinfo; then
+            echo "::warning::runner CPU lacks AVX2; skipping the v3 smoke run"
+            exit 0
+          fi
+          smoke="$(mktemp -d)"
+          mkdir -p "$smoke/home" "$smoke/proj"
+          (
+            cd "$smoke/proj"
+            export HOME="$smoke/home" XDG_STATE_HOME="$smoke/home/.local/state" \
+              XDG_CONFIG_HOME="$smoke/home/.config" XDG_RUNTIME_DIR="$smoke/run"
+            mkdir -m 0700 "$XDG_RUNTIME_DIR"
+            "$GITHUB_WORKSPACE/$bin" doctor
+            "$GITHUB_WORKSPACE/$bin" init
+            "$GITHUB_WORKSPACE/$bin" status
+          )
+      - name: Package
+        run: |
+          name="icx-$TAG-$LABEL"
+          mkdir -p "dist/$name/LICENSES"
+          install -m 0755 "target/$TARGET/release/icx" "dist/$name/icx"
+          strip "dist/$name/icx"
+          cp LICENSE COPYING README.md CHANGELOG.md "dist/$name/"
+          cp LICENSES/GPL-3.0-or-later.txt LICENSES/AGPL-3.0-or-later.txt "dist/$name/LICENSES/"
+          epoch="$(git log -1 --format=%ct)"
+          tar -C dist --owner=0 --group=0 --numeric-owner --sort=name --mtime="@$epoch" \
+            -cf - "$name" | gzip -n > "dist/$name.tar.gz"
+          tar tzf "dist/$name.tar.gz"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.label }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish release assets
+    needs: [gate, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      TAG: ${{ needs.gate.outputs.tag }}
+      VERSION: ${{ needs.gate.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: refs/tags/${{ needs.gate.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Write SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum -- *.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.tar.gz
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          awk -v hdr="## [$VERSION]" '
+            index($0, hdr) == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          {
+            echo
+            echo "## Downloads"
+            echo
+            echo "Static Linux x86-64 binaries (musl). The \`x86_64_v3\` build needs AVX2"
+            echo "(Intel Haswell / AMD Zen or newer) and exits with \"illegal instruction\" on older"
+            echo "CPUs; use the baseline \`x86_64\` build there. Verify with"
+            echo "\`sha256sum -c SHA256SUMS --ignore-missing\` or"
+            echo "\`gh attestation verify <file> --repo $GH_REPO\`."
+            echo "Corresponding source for both binaries is this tag."
+          } >> notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "ERROR: empty release notes for $VERSION" >&2
+            exit 1
+          fi
+      - name: Create draft release or add missing assets
+        run: |
+          assets=(dist/*.tar.gz dist/SHA256SUMS)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            existing="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+            missing=()
+            for f in "${assets[@]}"; do
+              if grep -Fxq "$(basename "$f")" <<<"$existing"; then
+                echo "already attached, not replaced: $(basename "$f")"
+              else
+                missing+=("$f")
+              fi
+            done
+            if [ "${#missing[@]}" -gt 0 ]; then
+              gh release upload "$TAG" "${missing[@]}"
+            fi
+          else
+            prerelease=()
+            [[ "$TAG" == *-* ]] && prerelease=(--prerelease)
+            gh release create "$TAG" --verify-tag --draft "${prerelease[@]}" \
+              --title "icx $TAG" --notes-file notes.md "${assets[@]}"
+            echo "::notice::Draft release $TAG created; review the notes and publish it."
+          fi
