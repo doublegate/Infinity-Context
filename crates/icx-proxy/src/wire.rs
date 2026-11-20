@@ -222,18 +222,51 @@ impl WireProxyTransformer {
     /// Visits every string in the conversation arrays (`messages`, `input`, `contents`), skipping
     /// system/developer messages, icx pager tool calls/results and `cache_control` objects.
     fn visit_conversation_strings(root: &mut Value, f: &mut dyn FnMut(&mut String)) {
-        /// Only a structural tool-call/-result block names a tool; the same field inside tool
-        /// output (e.g. a Gemini `functionResponse.response` object) is data (PR #20 review).
-        fn is_pager_block(map: &serde_json::Map<String, Value>, parent_key: Option<&str>) -> bool {
-            let structural = matches!(
-                parent_key,
-                Some("functionCall" | "functionResponse" | "function")
-            ) || map.get("type").and_then(Value::as_str).is_some_and(|t| {
-                matches!(
-                    t,
-                    "tool_use" | "mcp_tool_use" | "function_call" | "mcp_call" | "custom_tool_call"
-                )
-            });
+        /// Where a value sits in the request. Pager status is decided only at these structural
+        /// positions; everything below a tool's arguments, input or response is `Data`, so a
+        /// pager-shaped object inside tool output is never exempt (PR #20 review).
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        enum Ctx {
+            /// A conversation item (message, Responses API item, Gemini content).
+            Item,
+            /// An Anthropic content block (`item.content[i]`).
+            Block,
+            /// A Gemini part (`item.parts[i]`).
+            Part,
+            /// An OpenAI chat tool call (`item.tool_calls[i]`).
+            ToolCall,
+            /// `part.functionCall` / `part.functionResponse` / `tool_call.function`.
+            Function,
+            Data,
+        }
+        fn child_ctx(ctx: Ctx, key: &str) -> Ctx {
+            match (ctx, key) {
+                (Ctx::Item, "content") => Ctx::Block,
+                (Ctx::Item, "parts") => Ctx::Part,
+                (Ctx::Item, "tool_calls") => Ctx::ToolCall,
+                (Ctx::Part, "functionCall" | "functionResponse") | (Ctx::ToolCall, "function") => {
+                    Ctx::Function
+                }
+                _ => Ctx::Data,
+            }
+        }
+        fn is_pager_block(map: &serde_json::Map<String, Value>, ctx: Ctx) -> bool {
+            let structural = match ctx {
+                Ctx::Function => true,
+                Ctx::Item | Ctx::Block => {
+                    map.get("type").and_then(Value::as_str).is_some_and(|t| {
+                        matches!(
+                            t,
+                            "tool_use"
+                                | "mcp_tool_use"
+                                | "function_call"
+                                | "mcp_call"
+                                | "custom_tool_call"
+                        )
+                    })
+                }
+                Ctx::Part | Ctx::ToolCall | Ctx::Data => false,
+            };
             structural
                 && map
                     .get("name")
@@ -241,17 +274,19 @@ impl WireProxyTransformer {
                     .and_then(Value::as_str)
                     .is_some_and(InfinityContextMmu::is_icx_pager_tool)
         }
-        fn walk(v: &mut Value, f: &mut dyn FnMut(&mut String), parent_key: Option<&str>) {
+        fn walk(v: &mut Value, f: &mut dyn FnMut(&mut String), ctx: Ctx) {
             match v {
                 Value::String(s) => f(s),
-                Value::Array(items) => items.iter_mut().for_each(|i| walk(i, f, None)),
+                // Array elements keep the position their container key gave them.
+                Value::Array(items) => items.iter_mut().for_each(|i| walk(i, f, ctx)),
                 Value::Object(map) => {
-                    if is_pager_block(map, parent_key) {
+                    if is_pager_block(map, ctx) {
                         return;
                     }
                     for (k, child) in map.iter_mut() {
                         if k != "cache_control" {
-                            walk(child, f, Some(k.as_str()));
+                            let next = child_ctx(ctx, k);
+                            walk(child, f, next);
                         }
                     }
                 }
@@ -286,11 +321,11 @@ impl WireProxyTransformer {
                             .and_then(Value::as_str)
                             .is_some_and(|id| pager_ids.contains(id));
                         if !block_is_pager {
-                            walk(block, f, None);
+                            walk(block, f, Ctx::Block);
                         }
                     }
                 } else {
-                    walk(item, f, None);
+                    walk(item, f, Ctx::Item);
                 }
             }
         }

@@ -202,3 +202,20 @@ fn token_only_url_userinfo_is_redacted_but_plain_usernames_are_kept() {
         assert_eq!(SecretRedactor::redact(keep), keep);
     }
 }
+
+#[test]
+fn continuation_values_that_look_like_assignments_are_still_redacted() {
+    // Security review follow-up: base64 padding and `a=b`-shaped secrets are values, not entries.
+    for value in [
+        "c2VjcmV0cGFzc3dvcmQ=",
+        "c2VjcmV0cGFzcw==",
+        "=leading-equals-secret",
+    ] {
+        let input = format!("password:\n  {value}\nhost: x\n");
+        let out = SecretRedactor::redact(&input);
+        assert!(!out.contains(value), "leaked `{value}`: {out:?}");
+        assert!(out.contains("host: x"), "{out:?}");
+    }
+    let nested = "secret:\n  provider = vault\n";
+    assert_eq!(SecretRedactor::redact(nested), nested);
+}

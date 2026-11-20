@@ -931,12 +931,24 @@ impl ContinuationLine {
                 !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '"' | '\''))
             })
             .unwrap_or(entry.len());
+        let key = entry[..key_len].trim_matches(|c: char| c == '"' || c == '\'');
+        // Identifier-shaped keys only; anything else (base64, tokens) is treated as the value.
+        let key_ok = key
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && key
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'));
         let rest = entry[key_len..].trim_start();
-        let is_entry = key_len > 0
-            && (rest
-                .strip_prefix(':')
-                .is_some_and(|r| r.is_empty() || r.starts_with(char::is_whitespace))
-                || rest.starts_with('='));
+        let colon_entry = rest
+            .strip_prefix(':')
+            .is_some_and(|r| r.is_empty() || r.starts_with(char::is_whitespace));
+        // `key = value` needs a value after a single `=`: `secret==` / `abc=` is base64 padding.
+        let eq_entry = rest
+            .strip_prefix('=')
+            .is_some_and(|r| !r.starts_with('=') && !r.trim().is_empty());
+        let is_entry = key_ok && (colon_entry || eq_entry);
         if is_entry {
             Self::Structure
         } else {
