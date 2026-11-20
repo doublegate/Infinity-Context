@@ -246,3 +246,28 @@ fn key_block_detection_is_scoped_to_one_banner() {
     assert!(!out.contains("MIIEsecretbody"), "{out}");
     assert!(out.ends_with("after\n"), "{out}");
 }
+
+#[test]
+fn text_after_an_end_banner_goes_through_full_key_detection() {
+    // Security review follow-up: a second key starting on the END line must not leak.
+    let two = fx(&[
+        "-----BEGIN RSA PRIVATE ",
+        "KEY-----\nMIIEfirstsecret\n-----END RSA PRIVATE ",
+        "KEY----- -----BEGIN EC PRIVATE ",
+        "KEY-----\nMHcsecondsecret\n-----END EC PRIVATE ",
+        "KEY-----\nafter\n",
+    ]);
+    let out = SecretRedactor::redact(&two);
+    assert!(!out.contains("MIIEfirstsecret"), "{out}");
+    assert!(!out.contains("MHcsecondsecret"), "{out}");
+    assert!(out.ends_with("after\n"), "{out}");
+    let inline_after = fx(&[
+        "-----BEGIN RSA PRIVATE ",
+        "KEY-----\nMIIEfirstsecret\n-----END RSA PRIVATE ",
+        "KEY----- {\"k\":\"-----BEGIN RSA PRIVATE ",
+        "KEY-----\\nMIIEinlinesecret\\n-----END RSA PRIVATE ",
+        "KEY-----\"}\n",
+    ]);
+    let out = SecretRedactor::redact(&inline_after);
+    assert!(!out.contains("MIIEinlinesecret"), "{out}");
+}

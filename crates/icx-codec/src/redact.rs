@@ -27,24 +27,23 @@ impl SecretRedactor {
         let mut block_lines = 0usize;
         let mut pending_value = false;
         for segment in input.split_inclusive('\n') {
-            let (body, ending) = split_line_ending(segment);
+            let (mut body, ending) = split_line_ending(segment);
             if let Some(kind) = block {
                 block_lines += 1;
                 if let Some(end) = kind.end_index_after(body, 0) {
                     block = None;
-                    // Keep anything after the END banner on that line.
-                    let rest = &body[end..];
-                    if !rest.is_empty() {
-                        out.push_str(&Self::redact_line(rest));
-                        out.push_str(ending);
+                    // Text after the END banner goes through full processing below (it may start
+                    // another key block or hold an inline one).
+                    body = &body[end..];
+                    if body.is_empty() {
+                        continue;
                     }
+                } else if block_lines < MAX_KEY_BLOCK_LINES {
                     continue;
+                } else {
+                    // Runaway/unterminated block: stop swallowing and resume normal processing.
+                    block = None;
                 }
-                if block_lines < MAX_KEY_BLOCK_LINES {
-                    continue;
-                }
-                // Runaway/unterminated block: stop swallowing and resume normal processing.
-                block = None;
             }
             if let Some(inline) = Self::redact_inline_key_blocks(body) {
                 out.push_str(&Self::redact_line(&inline));
