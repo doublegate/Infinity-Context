@@ -298,3 +298,49 @@ fn saving_a_stale_snapshot_over_a_newer_store_is_refused() {
     a.save_workspace_dir(&dir).unwrap();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn extra_rows_in_the_tables_are_removed_before_sealing() {
+    // PR #20 review (Antigravity): rows on disk that the in-memory state does not hold (e.g. a
+    // planted `emitted` digest) must not survive a save whose seal does not cover them.
+    let dir = tmp_dir("extra");
+    let mut mmu = InfinityContextMmu::default();
+    populate(&mut mmu, 3);
+    mmu.save_workspace_dir(&dir).unwrap();
+    let conn = rusqlite::Connection::open(dir.join("icx.sqlite3")).unwrap();
+    conn.execute("INSERT INTO emitted (digest) VALUES (zeroblob(32))", [])
+        .unwrap();
+    drop(conn);
+    mmu.save_workspace_dir(&dir).unwrap();
+    let conn = rusqlite::Connection::open(dir.join("icx.sqlite3")).unwrap();
+    let planted: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM emitted WHERE digest = zeroblob(32)",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(planted, 0, "planted emitted row survived a save");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn state_built_on_a_new_workspace_survives_a_store_appearing_empty() {
+    // PR #20 review (Antigravity): a first flush that fails after creating an empty store must
+    // not make the retry's reload wipe the unsaved state.
+    let dir = tmp_dir("firstflush");
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut mmu = InfinityContextMmu::default();
+    mmu.load_workspace_dir(&dir).unwrap();
+    let id = mmu
+        .ingest_payload(AgentKind::Codex, "Bash:ls", "kept across retry\n", false)
+        .artifact_id;
+    std::fs::write(dir.join("icx.sqlite3"), b"").unwrap(); // empty store, generation 0
+    mmu.load_workspace_dir(&dir).unwrap();
+    assert!(
+        mmu.deref_text(id).is_ok(),
+        "unsaved state was replaced by an empty store"
+    );
+    mmu.save_workspace_dir(&dir).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+}

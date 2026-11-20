@@ -875,13 +875,15 @@ impl HermesAdapter {
         let ep_handle = ep_id
             .map(|id| id.to_string())
             .unwrap_or_else(|| "#icx:0000000000000000".to_owned());
-        format!(
+        let checkpoint = format!(
             "⟪ICX:PRE_COMPRESS_CHECKPOINT│v={}│epoch={ep_handle}│msgs={}│cas_artifacts={}⟫\n{}",
             PRE_COMPRESS_CHECKPOINT_API_VERSION,
             ahtl_frames.len(),
             mmu.cas.artifact_count(),
             ahtl_frames.join("\n")
-        )
+        );
+        mmu.record_emitted(&checkpoint);
+        checkpoint
     }
 
     /// Implements `MemoryProvider.on_pre_compress(messages) -> String`

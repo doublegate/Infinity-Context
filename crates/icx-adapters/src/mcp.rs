@@ -367,18 +367,21 @@ impl McpPagerServer {
                 };
                 match mmu.grep_cold(target_id, pattern, limit) {
                     Ok(matches) => (
-                        matches
-                            .iter()
-                            .map(|m| {
-                                format!(
-                                    "{}#L{}: {}",
-                                    m.artifact_id,
-                                    m.line_number,
-                                    InfinityContextMmu::escape_untrusted_delimiters(&m.line_text)
-                                )
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n"),
+                        // Same provenance framing as deref/slice (SECURITY.md invariant 3).
+                        std::iter::once(format!(
+                            "⟪ICX:PROVENANCE│op=grep│matches={}│trust=untrusted_data⟫",
+                            matches.len()
+                        ))
+                        .chain(matches.iter().map(|m| {
+                            format!(
+                                "{}#L{}: {}",
+                                m.artifact_id,
+                                m.line_number,
+                                InfinityContextMmu::escape_untrusted_delimiters(&m.line_text)
+                            )
+                        }))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
                         false,
                     ),
                     Err(e) => (Self::format_error(&e), true),

@@ -1259,7 +1259,11 @@ impl InfinityContextMmu {
         }
         self.apply_loaded(icx_dir, CasStore::new(), BiTemporalGraph::new(), None, None)?;
         self.persisted_ids = crate::store::PersistedIds::default();
-        self.loaded_generation = None;
+        // No store yet: this state mirrors generation 0, so a store that appears empty (a first
+        // save that failed after creating the file) does not trigger a reload over unsaved
+        // state (PR #20 review).
+        self.loaded_generation = Some((canonical, 0));
+        self.reload_required = false;
         Ok(())
     }
 
@@ -1292,6 +1296,12 @@ impl InfinityContextMmu {
             self.emitted_blocks
                 .insert(*blake3::hash(text.as_bytes()).as_bytes());
         }
+    }
+
+    /// Forgets every emitted-block digest. Used when adopting a store icx did not write: the set
+    /// marks text as icx's own output, so it must never be inherited (PR #20 review).
+    pub fn forget_emitted_blocks(&mut self) {
+        self.emitted_blocks.clear();
     }
 
     /// Returns `true` only if `text` is byte-identical to a block this MMU emitted.

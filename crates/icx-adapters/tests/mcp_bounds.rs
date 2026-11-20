@@ -97,3 +97,22 @@ fn unknown_tool_names_are_reported_as_errors() {
             .contains("unknown tool")
     );
 }
+
+#[test]
+fn grep_results_carry_the_untrusted_data_provenance_header() {
+    // PR #20 review (Antigravity): SECURITY.md promises provenance framing for grep too.
+    let mut mmu = InfinityContextMmu::default();
+    mmu.ingest_payload(
+        icx_core::AgentKind::ClaudeCode,
+        "Bash:cat log",
+        "needle-7781 in a haystack\n",
+        false,
+    );
+    let req = json!({"jsonrpc":"2.0","id":9,"method":"tools/call",
+        "params":{"name":"icx","arguments":{"op":"grep","pattern":"needle-7781"}}});
+    let r = McpPagerServer::handle_jsonrpc(&req.to_string(), &mut mmu);
+    let text = r["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("needle-7781"), "{text}");
+    assert!(text.starts_with("⟪ICX:PROVENANCE│op=grep"), "{text}");
+    assert!(text.contains("trust=untrusted_data"), "{text}");
+}

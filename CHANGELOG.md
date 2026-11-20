@@ -39,6 +39,9 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
 - `install.key` is checked (regular file, owner, mode) before it is read, so a FIFO is refused
   instead of blocking; only a missing key is created.
 - `icx encode-ahtl` refuses an untrusted workspace instead of printing a handle it never stored.
+- `icx trust` adopts a store's content but not its emitted-block digests, so a planted digest
+  cannot exempt forged markers from escaping. MCP `grep` results carry the same
+  `trust=untrusted_data` provenance header as `deref` and `slice`.
 - `icx mcp-serve` and `icx proxy` re-verify the workspace per request, so a later `icx trust`
   takes effect and a workspace whose ownership, mode or seal changed is no longer used.
 - Proxy curl header files go to a directory verified to be ours and private
@@ -73,8 +76,9 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
 - Concurrent first use of the install key, and concurrent `prepare` of one workspace, no longer
   collide on temp files or observe a directory before its seal is written.
 - A save refuses to seal a snapshot older than the store on disk (another writer committed
-  since it was loaded) and re-inserts rows removed behind a long-lived process, instead of
-  writing a store that cannot load. The daemon logs an error when another writer's newer
+  since it was loaded). If the tables do not hold exactly the in-memory rows (rows removed or
+  planted behind the process), they are rewritten from memory before sealing. A new
+  workspace's unsaved state survives a first flush that failed after creating the store file. The daemon logs an error when another writer's newer
   store replaces its unsaved changes.
 - Emitted-block digests are stored in an append-only, seal-covered table instead of being
   rewritten inside the state blob on every save.

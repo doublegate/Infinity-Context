@@ -308,6 +308,55 @@ pub(crate) struct PersistedIds {
     pub emitted: BTreeSet<[u8; 32]>,
 }
 
+type NewRows = (Vec<ArtifactId>, Vec<ArtifactId>, Vec<[u8; 32]>);
+
+/// Inserts the rows not yet in `persisted`; returns the ids inserted (applied to `persisted`
+/// only after commit).
+fn insert_rows(
+    tx: &rusqlite::Transaction<'_>,
+    chunks: &[(ArtifactId, &Blake3Digest, &[u8])],
+    artifacts: &[&StoredArtifact],
+    emitted: &BTreeSet<[u8; 32]>,
+    persisted: &PersistedIds,
+) -> Result<NewRows, IcxError> {
+    let mut new_chunks = Vec::new();
+    let mut new_artifacts = Vec::new();
+    let mut new_emitted = Vec::new();
+    let mut ins_chunk = tx
+        .prepare_cached("INSERT OR IGNORE INTO chunks (id, digest, bytes) VALUES (?1, ?2, ?3)")
+        .map_err(db_err)?;
+    for &(id, digest, bytes) in chunks {
+        if persisted.chunks.contains(&id) {
+            continue;
+        }
+        ins_chunk
+            .execute(params![id_to_sql(id), digest.0.as_slice(), bytes])
+            .map_err(db_err)?;
+        new_chunks.push(id);
+    }
+    let mut ins_art = tx
+        .prepare_cached("INSERT OR IGNORE INTO artifacts (id, meta) VALUES (?1, ?2)")
+        .map_err(db_err)?;
+    for art in artifacts {
+        if persisted.artifacts.contains(&art.id) {
+            continue;
+        }
+        let json = serde_json::to_string(art).map_err(db_err)?;
+        ins_art
+            .execute(params![id_to_sql(art.id), json])
+            .map_err(db_err)?;
+        new_artifacts.push(art.id);
+    }
+    let mut ins_emitted = tx
+        .prepare_cached("INSERT OR IGNORE INTO emitted (digest) VALUES (?1)")
+        .map_err(db_err)?;
+    for d in emitted.difference(&persisted.emitted) {
+        ins_emitted.execute(params![d.as_slice()]).map_err(db_err)?;
+        new_emitted.push(*d);
+    }
+    Ok((new_chunks, new_artifacts, new_emitted))
+}
+
 /// Writes new CAS rows (those not in `persisted`) plus all derived state in one transaction and
 /// returns the new generation. `persisted` is updated only after a successful commit.
 pub(crate) fn save<'c>(
@@ -329,59 +378,36 @@ pub(crate) fn save<'c>(
              {expected_generation}); reload before saving"
         )));
     }
-    // Rows are append-only, so a table smaller than the cache means rows were removed behind
-    // this process (restore, manual edit). Re-insert everything rather than seal a store that
-    // can no longer load (PR #20 review).
+    let chunks: Vec<_> = chunks.collect();
+    let artifacts: Vec<_> = artifacts.collect();
+    let mut all_artifacts: Vec<(ArtifactId, Blake3Digest)> =
+        artifacts.iter().map(|a| (a.id, a.full_digest)).collect();
+    let (mut new_chunks, mut new_artifacts, mut new_emitted) =
+        insert_rows(&tx, &chunks, &artifacts, derived.emitted, persisted)?;
+    // The seal covers exactly the in-memory rows, so the tables must hold exactly those rows.
+    // A difference means rows were removed or planted behind this process (restore, manual
+    // edit, an adopted foreign store): rewrite the tables from memory rather than seal a store
+    // that cannot load or that carries rows the seal does not vouch for (PR #20 review).
     let count = |table: &str| -> Result<usize, IcxError> {
         let n: i64 = tx
             .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
             .map_err(db_err)?;
         Ok(usize::try_from(n).unwrap_or(0))
     };
-    if count("chunks")? != persisted.chunks.len()
-        || count("artifacts")? != persisted.artifacts.len()
-        || count("emitted")? != persisted.emitted.len()
+    let distinct_chunks = chunks
+        .iter()
+        .map(|(id, _, _)| *id)
+        .collect::<BTreeSet<_>>()
+        .len();
+    if count("chunks")? != distinct_chunks
+        || count("artifacts")? != artifacts.len()
+        || count("emitted")? != derived.emitted.len()
     {
+        tx.execute_batch("DELETE FROM chunks; DELETE FROM artifacts; DELETE FROM emitted;")
+            .map_err(db_err)?;
         *persisted = PersistedIds::default();
-    }
-    let mut new_chunks = Vec::new();
-    let mut new_artifacts = Vec::new();
-    let mut new_emitted = Vec::new();
-    let mut all_artifacts = Vec::new();
-    {
-        let mut ins_chunk = tx
-            .prepare_cached("INSERT OR IGNORE INTO chunks (id, digest, bytes) VALUES (?1, ?2, ?3)")
-            .map_err(db_err)?;
-        for (id, digest, bytes) in chunks {
-            if persisted.chunks.contains(&id) {
-                continue;
-            }
-            ins_chunk
-                .execute(params![id_to_sql(id), digest.0.as_slice(), bytes])
-                .map_err(db_err)?;
-            new_chunks.push(id);
-        }
-        let mut ins_art = tx
-            .prepare_cached("INSERT OR IGNORE INTO artifacts (id, meta) VALUES (?1, ?2)")
-            .map_err(db_err)?;
-        for art in artifacts {
-            all_artifacts.push((art.id, art.full_digest));
-            if persisted.artifacts.contains(&art.id) {
-                continue;
-            }
-            let json = serde_json::to_string(art).map_err(db_err)?;
-            ins_art
-                .execute(params![id_to_sql(art.id), json])
-                .map_err(db_err)?;
-            new_artifacts.push(art.id);
-        }
-        let mut ins_emitted = tx
-            .prepare_cached("INSERT OR IGNORE INTO emitted (digest) VALUES (?1)")
-            .map_err(db_err)?;
-        for d in derived.emitted.difference(&persisted.emitted) {
-            ins_emitted.execute(params![d.as_slice()]).map_err(db_err)?;
-            new_emitted.push(*d);
-        }
+        (new_chunks, new_artifacts, new_emitted) =
+            insert_rows(&tx, &chunks, &artifacts, derived.emitted, persisted)?;
     }
     let next_gen = on_disk.saturating_add(1);
     let cfg = serde_json::to_vec(&derived.chunk_config).map_err(db_err)?;
