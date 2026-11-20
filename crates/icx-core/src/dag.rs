@@ -507,9 +507,23 @@ impl MerkleContextDag {
             .entry((agent as u8, raw_artifact))
             .or_default()
             .push((role.to_owned(), ordinal, id));
-        self.nodes.insert(id, node);
+        self.insert_node_checked(id, node);
         self.record_node_in_active_scope(id);
         id
+    }
+
+    /// Inserts `node` under `id`, refusing to overwrite a *different* node that happens to share
+    /// the 64-bit id (ICX-AUD-023). Re-inserting an identical node is a no-op. Returns `false`
+    /// (and keeps the existing node) on a collision.
+    fn insert_node_checked(&mut self, id: ArtifactId, node: DagNode) -> bool {
+        if let Some(existing) = self.nodes.get(&id)
+            && existing.digest() != node.digest()
+        {
+            eprintln!("icx: refusing to overwrite DAG node {id}: 64-bit id collision");
+            return false;
+        }
+        self.nodes.insert(id, node);
+        true
     }
 
     /// Appends a structured `L1` `ToolArtifactNode` to the innermost active branch or main trunk,
@@ -523,7 +537,7 @@ impl MerkleContextDag {
         let id = ArtifactId::from_digest(&dag_digest);
         node.id = id;
         node.dag_digest = dag_digest;
-        self.nodes.insert(id, DagNode::ToolArtifact(node));
+        self.insert_node_checked(id, DagNode::ToolArtifact(node));
         self.record_node_in_active_scope(id);
         id
     }
@@ -581,7 +595,7 @@ impl MerkleContextDag {
             raw_tokens_saved,
         };
 
-        self.nodes.insert(id, node);
+        self.insert_node_checked(id, node);
         self.record_node_in_active_scope(id);
         Ok(id)
     }
@@ -733,7 +747,7 @@ impl MerkleContextDag {
         let id = ArtifactId::from_digest(&merkle_root);
         let root_short = &merkle_root.to_hex()[..8];
         let ahtl_frame = format!(
-            "⟪ICX:v1│ep={epoch_index:04}│root={root_short}│nodes={}⟫\n{}",
+            "⟪ICX:v1│ep={epoch_index:04x}│root={root_short}│nodes={}⟫\n{}",
             valid_children.len(),
             body_packets.join("\n")
         );
@@ -748,7 +762,7 @@ impl MerkleContextDag {
             compressed_tokens,
             ahtl_frame,
         };
-        self.nodes.insert(id, epoch_node.clone());
+        self.insert_node_checked(id, epoch_node.clone());
         epoch_node
     }
 
@@ -826,7 +840,7 @@ impl MerkleContextDag {
         let id = ArtifactId::from_digest(&merkle_root);
         let root_short = &merkle_root.to_hex()[..8];
         let ahtl_frame = format!(
-            "⟪ICX:v1│ep={first_epoch_index:04}│root={root_short}│folded={}⟫\n{}",
+            "⟪ICX:v1│ep={first_epoch_index:04x}│root={root_short}│folded={}⟫\n{}",
             flat_l3_ids.len(),
             summary_lines.join("\n")
         );
@@ -846,7 +860,7 @@ impl MerkleContextDag {
     /// Inserts a pre-built `DagNode` into the DAG.
     pub(crate) fn insert_node(&mut self, node: DagNode) -> ArtifactId {
         let id = node.id();
-        self.nodes.insert(id, node);
+        self.insert_node_checked(id, node);
         id
     }
 
@@ -855,7 +869,7 @@ impl MerkleContextDag {
     /// retaining every child epoch and leaf in the DAG.
     pub fn fold_epochs(&mut self, epoch_ids: &[ArtifactId]) -> Result<DagNode, IcxError> {
         let folded_epoch = self.build_folded_epoch(epoch_ids)?;
-        self.nodes.insert(folded_epoch.id(), folded_epoch.clone());
+        self.insert_node_checked(folded_epoch.id(), folded_epoch.clone());
         Ok(folded_epoch)
     }
 
@@ -1049,7 +1063,6 @@ impl MerkleContextDag {
                         id: exp_id,
                         merkle_root: exp_root,
                         raw_tokens: exp_raw,
-                        compressed_tokens: exp_comp,
                         ahtl_frame: exp_frame,
                         ..
                     } = expected
@@ -1059,8 +1072,12 @@ impl MerkleContextDag {
                             || exp_id != *node_id
                             || *node_id != id
                             || exp_raw != *raw_tokens
-                            || exp_comp != *compressed_tokens
-                            || exp_frame != *ahtl_frame
+                            || !frame_matches(
+                                &exp_frame,
+                                *epoch_index,
+                                ahtl_frame,
+                                *compressed_tokens,
+                            )
                         {
                             ancestors.pop();
                             return Err(IcxError::IntegrityViolation(id));
@@ -1086,16 +1103,19 @@ impl MerkleContextDag {
                     let recomputed = Blake3Digest(*hasher.finalize().as_bytes());
                     let root_short = &recomputed.to_hex()[..8];
                     let expected_frame = format!(
-                        "⟪ICX:v1│ep={epoch_index:04}│root={root_short}│nodes={}⟫\n{}",
+                        "⟪ICX:v1│ep={epoch_index:04x}│root={root_short}│nodes={}⟫\n{}",
                         child_nodes.len(),
                         body_packets.join("\n")
                     );
-                    let expected_comp = (expected_frame.len() / 4).max(1);
                     if recomputed != *merkle_root
                         || ArtifactId::from_digest(&recomputed) != *node_id
                         || *node_id != id
-                        || *ahtl_frame != expected_frame
-                        || *compressed_tokens != expected_comp
+                        || !frame_matches(
+                            &expected_frame,
+                            *epoch_index,
+                            ahtl_frame,
+                            *compressed_tokens,
+                        )
                     {
                         Err(IcxError::IntegrityViolation(id))
                     } else {
@@ -1130,9 +1150,92 @@ impl MerkleContextDag {
     }
 }
 
+/// `true` if a stored epoch frame equals the canonical (hex `ep=`) frame, or the same frame with
+/// the v1.0.x decimal `ep=` header that migrated workspaces still hold (PR #20 review). Only the
+/// header's epoch id may differ; `compressed_tokens` must match the stored frame's length. The
+/// Merkle root does not cover the header text, so both renderings describe the same content.
+fn frame_matches(canonical: &str, epoch_index: u32, stored: &str, stored_comp: usize) -> bool {
+    let comp_ok = |frame: &str| stored_comp == (frame.len() / 4).max(1);
+    if stored == canonical {
+        return comp_ok(canonical);
+    }
+    let hex = format!("⟪ICX:v1│ep={epoch_index:04x}│");
+    let dec = format!("⟪ICX:v1│ep={epoch_index:04}│");
+    canonical
+        .strip_prefix(hex.as_str())
+        .is_some_and(|rest| stored.strip_prefix(dec.as_str()) == Some(rest))
+        && comp_ok(stored)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn v1_0_decimal_epoch_frames_still_verify_after_migration() {
+        // PR #20 review: v1.0.x wrote `ep=0010` (decimal) for epoch 10; v1.1.0 writes hex.
+        let mut dag = MerkleContextDag::new();
+        let mut legacy_ids = Vec::new();
+        for idx in 0u32..12 {
+            let t = dag.append_turn(
+                AgentKind::ClaudeCode,
+                "user",
+                ArtifactId(u64::from(idx) + 1),
+                format!("turn {idx}"),
+                0.1,
+                1,
+            );
+            let node = dag.seal_epoch(idx, vec![t], 10);
+            legacy_ids.push(node.id());
+        }
+        // Rewrite sealed frames to the v1.0.x decimal header, as a migrated store holds them.
+        for id in &legacy_ids {
+            if let Some(DagNode::CacheEpoch {
+                epoch_index,
+                ahtl_frame,
+                compressed_tokens,
+                ..
+            }) = dag.nodes.get_mut(id)
+            {
+                let hex = format!("ep={epoch_index:04x}│");
+                let dec = format!("ep={epoch_index:04}│");
+                *ahtl_frame = ahtl_frame.replacen(&hex, &dec, 1);
+                *compressed_tokens = (ahtl_frame.len() / 4).max(1);
+            }
+        }
+        dag.verify_all_merkle_integrity()
+            .expect("legacy decimal frames verify");
+        // Any other change to a frame is still rejected.
+        if let Some(DagNode::CacheEpoch { ahtl_frame, .. }) = dag.nodes.get_mut(&legacy_ids[11]) {
+            ahtl_frame.push('x');
+        }
+        assert!(dag.verify_all_merkle_integrity().is_err());
+    }
+
+    #[test]
+    fn colliding_dag_id_never_overwrites_an_existing_node() {
+        let mut dag = MerkleContextDag::new();
+        let t = dag.append_turn(
+            AgentKind::ClaudeCode,
+            "user",
+            ArtifactId(7),
+            "a".into(),
+            0.1,
+            1,
+        );
+        let original = dag.get_node(t).cloned().unwrap();
+        let mut other_dag = MerkleContextDag::new();
+        let other_id =
+            other_dag.append_turn(AgentKind::Codex, "tool", ArtifactId(9), "b".into(), 0.9, 2);
+        let impostor = other_dag.get_node(other_id).cloned().unwrap();
+        assert_ne!(impostor.digest(), original.digest());
+        assert!(!dag.insert_node_checked(t, impostor));
+        assert_eq!(dag.get_node(t), Some(&original));
+        assert!(
+            dag.insert_node_checked(t, original.clone()),
+            "identical re-insert is fine"
+        );
+    }
 
     #[test]
     fn context_folding_collapses_subtrajectory_and_preserves_child_turns() {

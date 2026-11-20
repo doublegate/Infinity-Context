@@ -64,6 +64,10 @@ struct PersistedMmuState {
     agent_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
     #[serde(default)]
     agent_reordered_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
+    /// Legacy JSON workspaces only; the SQLite store keeps these in its append-only `emitted`
+    /// table so saves stay incremental (PR #20 review).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    emitted_blocks: BTreeSet<[u8; 32]>,
 }
 
 /// The central Virtual Context Memory Management Unit (`MMU`).
@@ -86,6 +90,19 @@ pub struct InfinityContextMmu {
     agent_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
     agent_reordered_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
     clock_ms: u64,
+    /// CAS rows known to be present in the SQLite store (keeps saves incremental).
+    persisted_ids: crate::store::PersistedIds,
+    /// `(canonical workspace dir, store generation)` this MMU state mirrors, if any.
+    loaded_generation: Option<(std::path::PathBuf, u64)>,
+    /// When set, saves MAC-stamp the store and loads reject stores without a valid stamp.
+    store_seal_key: Option<[u8; 32]>,
+    /// Set when the seal key changes: the next load skips the unchanged-generation fast path.
+    reload_required: bool,
+    /// BLAKE3 digests of every icx-formatted block this MMU handed to an agent (ICX-AUD-011).
+    emitted_blocks: BTreeSet<[u8; 32]>,
+    /// When `true`, event times come from the wall clock (milliseconds since the Unix epoch,
+    /// kept strictly monotonic); otherwise a deterministic logical counter (ICX-AUD-048).
+    wall_clock: bool,
 }
 
 impl Default for InfinityContextMmu {
@@ -118,6 +135,12 @@ impl InfinityContextMmu {
             agent_occurrences: BTreeMap::new(),
             agent_reordered_occurrences: BTreeMap::new(),
             clock_ms: 1_794_880_800_000,
+            persisted_ids: crate::store::PersistedIds::default(),
+            loaded_generation: None,
+            store_seal_key: None,
+            reload_required: false,
+            emitted_blocks: BTreeSet::new(),
+            wall_clock: false,
         }
     }
 
@@ -260,12 +283,10 @@ impl InfinityContextMmu {
         } else {
             raw_text
         };
-        let mut sanitized = SecretRedactor::sanitize(bounded_raw);
-        let is_unredacted = if sanitized.is_empty() {
-            bounded_raw.lines().next().is_none()
-        } else {
-            bounded_raw == sanitized || bounded_raw.lines().eq(sanitized.split('\n'))
-        };
+        // Storage keeps the redacted text byte-for-byte (ICX-AUD-021); Tier-0 delimiter escaping
+        // is applied where text is shown to a model (packets, skeletons, deref output).
+        let mut sanitized = SecretRedactor::redact(bounded_raw);
+        let is_unredacted = bounded_raw == sanitized;
         let mut was_redacted = raw_text.len() > max_bytes || !is_unredacted;
         if sanitized.len() > max_bytes {
             was_redacted = true;
@@ -575,22 +596,29 @@ impl InfinityContextMmu {
         force_anomaly: bool,
         subagent_id: Option<&str>,
     ) -> IngestResult {
-        self.clock_ms += 10;
+        self.clock_ms = self.next_clock_ms();
         let clean_subject = Self::sanitize_hook_label(raw_subject, "event");
         let subject = clean_subject.as_str();
         let (sanitized, body_redacted) =
             Self::bound_and_sanitize_raw(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
         let was_redacted = body_redacted || subject != raw_subject.trim();
         let raw_bytes = sanitized.len();
-        let (artifact_id, _) = self
-            .cas
-            .put_bytes_checked(sanitized.as_bytes())
-            .unwrap_or_else(|_| self.cas.put_bytes(sanitized.as_bytes()));
+        // ICX-AUD-022: never fall back to the unchecked insert. If the checked insert fails (a
+        // 64-bit id collision with different content), the output is not virtualized, so the
+        // agent keeps the real bytes instead of a stub that would dereference someone else's.
+        let (artifact_id, cas_ok) = match self.cas.put_bytes_checked(sanitized.as_bytes()) {
+            Ok((id, _)) => (id, true),
+            Err(e) => {
+                eprintln!("icx: refusing to virtualize payload: {e}");
+                (ArtifactId::hash_bytes(sanitized.as_bytes()).0, false)
+            }
+        };
 
+        let model_view = SecretRedactor::escape_ahtl_delimiters(&sanitized);
         let mut receipt = self.hdc_index.observe_event_with_exit_code(
             artifact_id,
             subject,
-            &sanitized,
+            &model_view,
             exit_code,
             force_anomaly,
         );
@@ -605,7 +633,7 @@ impl InfinityContextMmu {
 
         let mut packet = StructuralSkeletonizer::compress_sanitized_to_packet(
             subject,
-            &sanitized,
+            &model_view,
             Some(artifact_id),
             receipt.hologram_bytes,
         );
@@ -738,7 +766,7 @@ impl InfinityContextMmu {
             self.clock_ms,
         );
 
-        let was_virtualized = raw_bytes >= self.tool_virtualize_threshold;
+        let was_virtualized = cas_ok && raw_bytes >= self.tool_virtualize_threshold;
         IngestResult {
             artifact_id,
             raw_bytes,
@@ -753,6 +781,17 @@ impl InfinityContextMmu {
     /// 2. Top-$K$ 10,240-bit HDC + Fractal associative matches.
     /// 3. Multi-hop Bi-Temporal Personalized PageRank (`PPR`) provenance hits.
     pub fn build_ephemeral_tail_slot(
+        &mut self,
+        requesting_agent: AgentKind,
+        query: &str,
+        top_k: usize,
+    ) -> String {
+        let slot = self.build_ephemeral_tail_slot_inner(requesting_agent, query, top_k);
+        self.record_emitted(&slot);
+        slot
+    }
+
+    fn build_ephemeral_tail_slot_inner(
         &mut self,
         requesting_agent: AgentKind,
         query: &str,
@@ -1042,8 +1081,11 @@ impl InfinityContextMmu {
             target_key.and_then(|k| self.subagent_branches.remove_entry(&k))
         {
             self.epochs.begin_branch(&mut self.dag, &clean_id);
-            if steps.is_empty() {
-                let (aid, _) = self.cas.put_bytes(clean_summary.as_bytes());
+            if steps.is_empty()
+                // Collision-checked (PR #20 review): on a 64-bit id clash the branch folds
+                // without a leaf rather than pointing at another artifact's bytes.
+                && let Ok((aid, _)) = self.cas.put_bytes_checked(clean_summary.as_bytes())
+            {
                 if clean_summary != raw_summary.trim() {
                     self.redacted_artifacts.insert(aid);
                 }
@@ -1065,9 +1107,13 @@ impl InfinityContextMmu {
                 .fold_branch(&mut self.dag, &clean_summary)
                 .expect("active subagent branch must fold");
             self.sync_global_dag_root();
-            return format!("⟪ICX:SUBAGENT_FOLDED│{bid}│{clean_id}│{clean_summary}⟫");
+            let frame = format!("⟪ICX:SUBAGENT_FOLDED│{bid}│{clean_id}│{clean_summary}⟫");
+            self.record_emitted(&frame);
+            return frame;
         }
-        format!("⟪ICX:SUBAGENT_STOP│{clean_summary}⟫")
+        let frame = format!("⟪ICX:SUBAGENT_STOP│{clean_summary}⟫");
+        self.record_emitted(&frame);
+        frame
     }
 
     fn map_io_err(err: impl std::fmt::Display) -> IcxError {
@@ -1083,7 +1129,7 @@ impl InfinityContextMmu {
         let mem_guard = WORKSPACE_IO_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        std::fs::create_dir_all(icx_dir).map_err(Self::map_io_err)?;
+        crate::store::ensure_private_dir(icx_dir)?;
         let lock_path = icx_dir.join("cas_store.lock");
         let mut opts = std::fs::OpenOptions::new();
         opts.read(true).write(true).create(true).truncate(false);
@@ -1120,6 +1166,205 @@ impl InfinityContextMmu {
     /// Loads workspace state from `icx_dir` assuming the caller already holds
     /// `Self::acquire_workspace_lock(icx_dir)`.
     pub fn load_workspace_dir_unlocked(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
+        let canonical = std::fs::canonicalize(icx_dir).unwrap_or_else(|_| icx_dir.to_path_buf());
+        if crate::store::exists(icx_dir) {
+            let mut conn = crate::store::open(icx_dir)?;
+            let current_gen = crate::store::generation(&conn)?;
+            if !self.reload_required
+                && self
+                    .loaded_generation
+                    .as_ref()
+                    .is_some_and(|(d, g)| *d == canonical && *g == current_gen)
+            {
+                // No writer has touched the store since this MMU last loaded or saved it; only
+                // re-establish the per-directory binding (workspace hash + shared bus file).
+                self.workspace_hash = Self::workspace_hash_for(&canonical);
+                if self.bus.in_process_layout().is_some() {
+                    let shm_path = Self::shm_path_for(icx_dir);
+                    if shm_path.exists() {
+                        self.bus = SeqlockTelemetryBus::open_shared_file(&shm_path)
+                            .map_err(Self::map_io_err)?;
+                    }
+                }
+                return Ok(());
+            }
+            let stored = crate::store::load(&mut conn)?;
+            if let Some(key) = &self.store_seal_key {
+                let digest = crate::store::state_digest(
+                    stored.chunk_config_raw.as_deref().unwrap_or_default(),
+                    stored.graph_json.as_deref().unwrap_or_default(),
+                    stored.mmu_state_json.as_deref().unwrap_or_default(),
+                    stored.hdc_snapshot.as_deref().unwrap_or_default(),
+                    stored.hdc_snapshot_events.unwrap_or(0),
+                    stored.artifacts.iter().map(|a| (a.id, a.full_digest)),
+                    &stored.emitted,
+                );
+                let expected =
+                    crate::store::store_seal(key, &canonical, stored.generation, &digest);
+                let valid = stored
+                    .seal
+                    .as_deref()
+                    .and_then(|s| <[u8; 32]>::try_from(s).ok())
+                    // `blake3::Hash` equality is constant-time.
+                    .is_some_and(|s| {
+                        blake3::Hash::from_bytes(s) == blake3::Hash::from_bytes(expected)
+                    });
+                if !valid {
+                    return Err(IcxError::Io(format!(
+                        "workspace store at {} was not written by this icx install (seal mismatch); \
+                         run `icx trust --dir {}` if you replaced it yourself",
+                        icx_dir.display(),
+                        icx_dir.display()
+                    )));
+                }
+            }
+            let persisted = crate::store::PersistedIds {
+                chunks: stored.chunks.iter().map(|(id, _, _)| *id).collect(),
+                artifacts: stored.artifacts.iter().map(|a| a.id).collect(),
+                emitted: stored.emitted.clone(),
+            };
+            let new_cas = CasStore::from_parts(
+                stored.chunk_config.unwrap_or_default(),
+                stored.chunks,
+                stored.artifacts,
+            )?;
+            let new_graph = match stored.graph_json {
+                Some(bytes) => BiTemporalGraph::from_json_bytes(&bytes)?,
+                None => BiTemporalGraph::new(),
+            };
+            let persisted_state: Option<PersistedMmuState> = match stored.mmu_state_json {
+                Some(bytes) => Some(serde_json::from_slice(&bytes).map_err(Self::map_io_err)?),
+                None => None,
+            };
+            let snapshot = match (stored.hdc_snapshot, stored.hdc_snapshot_events) {
+                (Some(bytes), Some(n)) => Some((
+                    HdcAssociativeIndex::decode_snapshot(&bytes).map_err(Self::map_io_err)?,
+                    n,
+                )),
+                _ => None,
+            };
+            self.apply_loaded(icx_dir, new_cas, new_graph, persisted_state, snapshot)?;
+            self.emitted_blocks.extend(stored.emitted);
+            self.persisted_ids = persisted;
+            self.loaded_generation = Some((canonical, stored.generation));
+            self.reload_required = false;
+            return Ok(());
+        }
+        if icx_dir.join("cas_store.json").exists() {
+            // v1.0.x JSON workspace: load it, then migrate into the SQLite store. The legacy files
+            // are left in place (non-destructive); the store takes precedence from now on.
+            self.load_legacy_json_unlocked(icx_dir)?;
+            self.save_workspace_dir_unlocked(icx_dir)?;
+            return Ok(());
+        }
+        self.apply_loaded(icx_dir, CasStore::new(), BiTemporalGraph::new(), None, None)?;
+        self.persisted_ids = crate::store::PersistedIds::default();
+        // No store yet: this state mirrors generation 0, so a store that appears empty (a first
+        // save that failed after creating the file) does not trigger a reload over unsaved
+        // state (PR #20 review).
+        self.loaded_generation = Some((canonical, 0));
+        self.reload_required = false;
+        Ok(())
+    }
+
+    fn workspace_hash_for(canonical_dir: &Path) -> u64 {
+        ArtifactId::hash_bytes(canonical_dir.to_string_lossy().as_bytes())
+            .0
+            .0
+    }
+
+    fn shm_path_for(icx_dir: &Path) -> std::path::PathBuf {
+        std::env::var("ICX_SHM_PATH")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .map_or_else(
+                || icx_dir.join("icx-fabric-v1.shm"),
+                std::path::PathBuf::from,
+            )
+    }
+
+    /// Upper bound on remembered emitted-block digests (oldest-first eviction is not needed in
+    /// practice: one digest per emitted stub, 32 bytes each).
+    pub const MAX_EMITTED_BLOCKS: usize = 1_000_000;
+
+    /// Records that `text` (an icx-formatted block) was handed to an agent, so it can later be
+    /// recognized as icx's own output when the agent sends it back in history. Content that
+    /// merely *looks* like icx output (starts with `⟦` / `⟪ICX:`) but was never emitted is
+    /// treated as untrusted (ICX-AUD-011).
+    pub fn record_emitted(&mut self, text: &str) {
+        if self.emitted_blocks.len() < Self::MAX_EMITTED_BLOCKS {
+            self.emitted_blocks
+                .insert(*blake3::hash(text.as_bytes()).as_bytes());
+        }
+    }
+
+    /// Forgets every emitted-block digest. Used when adopting a store icx did not write: the set
+    /// marks text as icx's own output, so it must never be inherited (PR #20 review).
+    pub fn forget_emitted_blocks(&mut self) {
+        self.emitted_blocks.clear();
+    }
+
+    /// Returns `true` only if `text` is byte-identical to a block this MMU emitted.
+    pub fn is_emitted(&self, text: &str) -> bool {
+        self.emitted_blocks
+            .contains(blake3::hash(text.as_bytes()).as_bytes())
+    }
+
+    /// Tier-0 escape of icx structural delimiters for untrusted text (`⟪⟫⟦⟧`).
+    pub fn escape_untrusted_delimiters(text: &str) -> String {
+        SecretRedactor::escape_ahtl_delimiters(text)
+    }
+
+    /// Returns `true` if `text` contains icx structural delimiters anywhere but is *not* an
+    /// icx-emitted block;
+    /// such content must be neutralized (Tier-0 escaped) before it reaches a model.
+    pub fn is_forged_icx_block(&self, text: &str) -> bool {
+        // Position-independent (security review): any delimiter anywhere counts.
+        text.contains(['⟦', '⟧', '⟪', '⟫']) && !self.is_emitted(text)
+    }
+
+    /// Uses real wall-clock time for bi-temporal event timestamps (ICX-AUD-048). Off by default so
+    /// library use and tests stay deterministic (the core must not read the wall clock unless
+    /// asked); the CLI turns it on for real workspaces.
+    pub fn use_wall_clock(&mut self, enabled: bool) {
+        self.wall_clock = enabled;
+    }
+
+    /// Next event timestamp: wall clock (strictly increasing) or logical `+10` counter.
+    fn next_clock_ms(&self) -> u64 {
+        if self.wall_clock {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+            now.max(self.clock_ms.saturating_add(1))
+        } else {
+            self.clock_ms.saturating_add(10)
+        }
+    }
+
+    /// Sets the key used to MAC-stamp and verify the SQLite store (see
+    /// `workspace::store_seal_key`). `None` disables store-seal verification (library use).
+    pub fn set_store_seal_key(&mut self, key: Option<[u8; 32]>) {
+        self.store_seal_key = key;
+        // The next load must re-verify under the new key; the mirrored generation stays known so
+        // a save can still detect a concurrent writer.
+        self.reload_required = true;
+    }
+
+    /// The store generation this MMU mirrors (last loaded or saved), if any.
+    pub fn mirrored_generation(&self) -> Option<u64> {
+        self.loaded_generation.as_ref().map(|(_, g)| *g)
+    }
+
+    /// Returns the SQLite store generation of `icx_dir` (0 if never saved).
+    pub fn workspace_generation(icx_dir: &Path) -> Result<u64, IcxError> {
+        if !crate::store::exists(icx_dir) {
+            return Ok(0);
+        }
+        crate::store::generation(&crate::store::open(icx_dir)?)
+    }
+
+    fn load_legacy_json_unlocked(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
         let cas_path = icx_dir.join("cas_store.json");
         let new_cas = if cas_path.exists() {
             CasStore::load_from_dir(icx_dir)?
@@ -1139,13 +1384,39 @@ impl InfinityContextMmu {
         } else {
             None
         };
-        let shm_path = std::env::var("ICX_SHM_PATH")
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .map_or_else(
-                || icx_dir.join("icx-fabric-v1.shm"),
-                std::path::PathBuf::from,
-            );
+        self.apply_loaded(icx_dir, new_cas, new_graph, persisted_state, None)?;
+        self.persisted_ids = crate::store::PersistedIds::default();
+        self.loaded_generation = None;
+        Ok(())
+    }
+
+    /// Rebuilds the HDC index by re-encoding each recorded event from CAS. Only used when no
+    /// consistent persisted snapshot exists (legacy v1.0.x workspaces, first migration).
+    fn replay_hdc_events(&mut self, events: Vec<HdcEventRecord>) {
+        for (aid, subj, exit_code, force_anomaly) in events {
+            if let Ok(bytes) = self.cas.deref_bytes(aid) {
+                let content = String::from_utf8_lossy(&bytes);
+                let _ = self.hdc_index.observe_event_with_exit_code(
+                    aid,
+                    &subj,
+                    &content,
+                    exit_code,
+                    force_anomaly,
+                );
+                self.hdc_events.push((aid, subj, exit_code, force_anomaly));
+            }
+        }
+    }
+
+    fn apply_loaded(
+        &mut self,
+        icx_dir: &Path,
+        new_cas: CasStore,
+        new_graph: BiTemporalGraph,
+        persisted_state: Option<PersistedMmuState>,
+        hdc_snapshot: Option<(HdcAssociativeIndex, u64)>,
+    ) -> Result<(), IcxError> {
+        let shm_path = Self::shm_path_for(icx_dir);
         let new_bus = if shm_path.exists() {
             SeqlockTelemetryBus::open_shared_file(&shm_path).map_err(Self::map_io_err)?
         } else {
@@ -1153,13 +1424,14 @@ impl InfinityContextMmu {
         };
 
         let canonical_ws = std::fs::canonicalize(icx_dir).unwrap_or_else(|_| icx_dir.to_path_buf());
-        self.workspace_hash = ArtifactId::hash_bytes(canonical_ws.to_string_lossy().as_bytes())
-            .0
-            .0;
+        self.workspace_hash = Self::workspace_hash_for(&canonical_ws);
         self.cas = new_cas;
         self.graph = new_graph;
         self.bus = new_bus;
         self.agent_read_cursors.clear();
+        // Trust in emitted blocks belongs to the state being replaced (PR #20 review); loaded
+        // digests are added back by the caller or below.
+        self.emitted_blocks.clear();
         let max_graph_ms = self
             .graph
             .edges()
@@ -1186,19 +1458,16 @@ impl InfinityContextMmu {
             self.epochs = st.epochs.unwrap_or_else(|| {
                 CacheEpochController::new(ICX_AHTL_LEGEND, EpochControllerConfig::default())
             });
-            for (aid, subj, exit_code, force_anomaly) in st.hdc_events {
-                if let Ok(bytes) = self.cas.deref_bytes(aid) {
-                    let content = String::from_utf8_lossy(&bytes);
-                    let _ = self.hdc_index.observe_event_with_exit_code(
-                        aid,
-                        &subj,
-                        &content,
-                        exit_code,
-                        force_anomaly,
-                    );
-                    self.hdc_events.push((aid, subj, exit_code, force_anomaly));
+            match hdc_snapshot {
+                Some((index, n)) if usize::try_from(n).ok() == Some(st.hdc_events.len()) => {
+                    // Fast path (ICX-AUD-001): restore the persisted index instead of
+                    // re-encoding every stored event.
+                    self.hdc_index = index;
+                    self.hdc_events = st.hdc_events;
                 }
+                _ => self.replay_hdc_events(st.hdc_events),
             }
+            self.emitted_blocks = st.emitted_blocks;
             self.subagent_branches = st
                 .subagent_branches
                 .into_iter()
@@ -1289,20 +1558,78 @@ impl InfinityContextMmu {
     /// `CacheEpochController`, `HdcAssociativeIndex` events, `redacted_artifacts`,
     /// `subagent_branches`, `agent_read_cursors`, `indexed_occurrences`, and logical `clock_ms`
     /// state into `icx_dir` under an exclusive workspace lock.
-    pub fn save_workspace_dir(&self, icx_dir: &Path) -> Result<(), IcxError> {
+    pub fn save_workspace_dir(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
         let _lock = Self::acquire_workspace_lock(icx_dir)?;
         self.save_workspace_dir_unlocked(icx_dir)
     }
 
     /// Atomically persists workspace state into `icx_dir` assuming the caller already holds
     /// `Self::acquire_workspace_lock(icx_dir)`.
-    pub fn save_workspace_dir_unlocked(&self, icx_dir: &Path) -> Result<(), IcxError> {
-        self.cas.save_to_dir(icx_dir)?;
-        self.graph.save_to_dir(icx_dir)?;
-        let redacted_ids: Vec<u64> = self.redacted_artifacts.iter().map(|id| id.0).collect();
-        let state = PersistedMmuState {
+    pub fn save_workspace_dir_unlocked(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
+        let state_bytes =
+            serde_json::to_vec(&self.persisted_state(false)).map_err(Self::map_io_err)?;
+        let graph_bytes = self.graph.to_json_bytes()?;
+        let hdc_bytes = self.hdc_index.encode_snapshot();
+        let mut conn = crate::store::open(icx_dir)?;
+        let canonical_for_seal =
+            std::fs::canonicalize(icx_dir).unwrap_or_else(|_| icx_dir.to_path_buf());
+        let derived = crate::store::DerivedState {
+            chunk_config: self.cas.chunk_config(),
+            graph_json: &graph_bytes,
+            mmu_state_json: &state_bytes,
+            hdc_snapshot: &hdc_bytes,
+            hdc_snapshot_events: self.hdc_events.len() as u64,
+            emitted: &self.emitted_blocks,
+            seal: self
+                .store_seal_key
+                .as_ref()
+                .map(|k| (k, canonical_for_seal.as_path())),
+        };
+        // The persisted-id cache describes the store it was loaded from or last saved to. A
+        // different destination has none of those rows, so write everything (PR #20 review).
+        if self
+            .loaded_generation
+            .as_ref()
+            .is_none_or(|(path, _)| *path != canonical_for_seal)
+        {
+            self.persisted_ids = crate::store::PersistedIds::default();
+        }
+        // The generation this state was loaded from or last saved as; 0 (a new store) when it
+        // mirrors no store at this path.
+        let expected_generation = self
+            .loaded_generation
+            .as_ref()
+            .filter(|(path, _)| *path == canonical_for_seal)
+            .map_or(0, |(_, g)| *g);
+        let next_gen = crate::store::save(
+            &mut conn,
+            self.cas.chunk_entries(),
+            self.cas.artifact_entries(),
+            &mut self.persisted_ids,
+            &derived,
+            expected_generation,
+        );
+        match next_gen {
+            Ok(g) => {
+                let canonical =
+                    std::fs::canonicalize(icx_dir).unwrap_or_else(|_| icx_dir.to_path_buf());
+                self.loaded_generation = Some((canonical, g));
+                Ok(())
+            }
+            // The transaction rolled back, so the store still holds the generation this MMU last
+            // loaded or saved. Keeping that binding lets the next load take the fast path and keep
+            // the unsaved in-memory state for a retry; a load still reloads if another writer has
+            // advanced the store (PR #20 review).
+            Err(e) => Err(e),
+        }
+    }
+
+    /// `include_emitted` is `false` for the SQLite store, which persists emitted-block digests in
+    /// its own table.
+    fn persisted_state(&self, include_emitted: bool) -> PersistedMmuState {
+        PersistedMmuState {
             clock_ms: self.clock_ms,
-            redacted_ids,
+            redacted_ids: self.redacted_artifacts.iter().map(|id| id.0).collect(),
             subagent_branches: self.subagent_branches.clone(),
             dag: self.dag.clone(),
             epochs: Some(self.epochs.clone()),
@@ -1312,8 +1639,23 @@ impl InfinityContextMmu {
             reordered_occurrences: self.reordered_occurrences.clone(),
             agent_occurrences: self.agent_occurrences.clone(),
             agent_reordered_occurrences: self.agent_reordered_occurrences.clone(),
-        };
-        let state_bytes = serde_json::to_vec(&state).map_err(Self::map_io_err)?;
+            emitted_blocks: if include_emitted {
+                self.emitted_blocks.clone()
+            } else {
+                BTreeSet::new()
+            },
+        }
+    }
+
+    /// Writes the v1.0.x three-file JSON workspace format. Retained only to exercise the
+    /// migration path in tests; production saves use the SQLite store.
+    #[doc(hidden)]
+    pub fn save_workspace_dir_legacy_json(&self, icx_dir: &Path) -> Result<(), IcxError> {
+        let _lock = Self::acquire_workspace_lock(icx_dir)?;
+        self.cas.save_to_dir(icx_dir)?;
+        self.graph.save_to_dir(icx_dir)?;
+        let state_bytes =
+            serde_json::to_vec(&self.persisted_state(true)).map_err(Self::map_io_err)?;
         Self::write_atomic_file(icx_dir, "mmu_state.json", &state_bytes)
     }
 

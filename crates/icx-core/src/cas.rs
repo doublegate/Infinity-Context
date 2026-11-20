@@ -135,7 +135,7 @@ impl CasStore {
         let (artifact_id, full_digest) = ArtifactId::hash_bytes(raw);
         if let Some(existing) = self.artifacts.get(&artifact_id) {
             if existing.full_digest != full_digest {
-                return Err(IcxError::AmbiguousHandlePrefix(artifact_id.to_string()));
+                return Err(IcxError::HashCollision(artifact_id));
             }
             return Ok((artifact_id, full_digest));
         }
@@ -148,13 +148,13 @@ impl CasStore {
             if let Some((existing_cdigest, _)) = self.chunks.get(&cid)
                 && *existing_cdigest != cdigest
             {
-                return Err(IcxError::AmbiguousHandlePrefix(cid.to_string()));
+                return Err(IcxError::HashCollision(cid));
             }
             if let Some(batch_map) = &mut batch_chunk_digests
                 && let Some(prev_batch_digest) = batch_map.insert(cid, cdigest)
                 && prev_batch_digest != cdigest
             {
-                return Err(IcxError::AmbiguousHandlePrefix(cid.to_string()));
+                return Err(IcxError::HashCollision(cid));
             }
             precomputed_chunks.push((span, cid, cdigest));
         }
@@ -493,9 +493,36 @@ impl CasStore {
         let raw = fs::read(&final_path).map_err(|e| IcxError::Io(e.to_string()))?;
         let snapshot: CasSnapshot =
             serde_json::from_slice(&raw).map_err(|e| IcxError::Io(e.to_string()))?;
+        Self::from_parts(snapshot.chunk_config, snapshot.chunks, snapshot.artifacts)
+    }
 
+    /// Chunker configuration used by this store.
+    pub const fn chunk_config(&self) -> ChunkerConfig {
+        self.chunk_config
+    }
+
+    /// Iterates stored `(chunk_id, digest, bytes)` triples in id order (for persistence backends).
+    pub fn chunk_entries(&self) -> impl Iterator<Item = (ArtifactId, &Blake3Digest, &[u8])> {
+        self.chunks
+            .iter()
+            .map(|(&id, (dig, bytes))| (id, dig, bytes.as_slice()))
+    }
+
+    /// Iterates stored artifact metadata in id order (for persistence backends).
+    pub fn artifact_entries(&self) -> impl Iterator<Item = &StoredArtifact> {
+        self.artifacts.values()
+    }
+
+    /// Rebuilds a store from persisted parts, re-verifying every chunk digest, every artifact
+    /// digest, chunk/line-index consistency and the 64 MiB bound. Fails closed with
+    /// `IntegrityViolation` on any mismatch.
+    pub fn from_parts(
+        chunk_config: ChunkerConfig,
+        chunks: impl IntoIterator<Item = (ArtifactId, Blake3Digest, Vec<u8>)>,
+        artifacts: impl IntoIterator<Item = StoredArtifact>,
+    ) -> Result<Self, IcxError> {
         let mut verified_chunks = BTreeMap::new();
-        for (cid, cdigest, bytes) in snapshot.chunks {
+        for (cid, cdigest, bytes) in chunks {
             let (computed_id, computed_digest) = ArtifactId::hash_bytes(&bytes);
             if computed_id != cid
                 || computed_digest != cdigest
@@ -506,8 +533,8 @@ impl CasStore {
             verified_chunks.insert(cid, (cdigest, bytes));
         }
 
-        let mut store = Self::with_config(snapshot.chunk_config);
-        for art in snapshot.artifacts {
+        let mut store = Self::with_config(chunk_config);
+        for art in artifacts {
             let id = art.id;
             if ArtifactId::from_digest(&art.full_digest) != id
                 || art.chunk_ids.len() != art.line_index.len()
@@ -569,6 +596,23 @@ impl CasStore {
         Ok(store)
     }
 
+    /// Test-only helper: plants an artifact entry under `id` with a mismatching digest so the
+    /// collision path of [`Self::put_bytes_checked`] can be exercised (ICX-AUD-022).
+    #[cfg(test)]
+    pub fn plant_colliding_artifact_for_test(&mut self, id: ArtifactId) {
+        self.artifacts.insert(
+            id,
+            StoredArtifact {
+                id,
+                full_digest: Blake3Digest([0xAB; 32]),
+                total_bytes: 0,
+                total_lines: 0,
+                chunk_ids: Vec::new(),
+                line_index: Vec::new(),
+            },
+        );
+    }
+
     /// Test-only helper to simulate bit-rot in a chunk and verify `IntegrityViolation` detection.
     #[cfg(test)]
     pub fn corrupt_chunk_for_test(&mut self, artifact_id: ArtifactId) {
@@ -615,6 +659,18 @@ impl ContentAddressedStore for CasStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn colliding_id_with_different_content_is_a_typed_error_never_a_silent_reuse() {
+        let mut cas = CasStore::new();
+        let content = b"victim content\n";
+        let (id, _) = ArtifactId::hash_bytes(content);
+        cas.plant_colliding_artifact_for_test(id);
+        assert_eq!(
+            cas.put_bytes_checked(content),
+            Err(IcxError::HashCollision(id))
+        );
+    }
 
     #[test]
     fn cas_round_trips_bytes_and_line_slices_and_detects_tampering() {
@@ -752,7 +808,7 @@ mod tests {
         }
         assert!(matches!(
             cas.put_bytes_checked(text.as_bytes()),
-            Err(IcxError::AmbiguousHandlePrefix(_))
+            Err(IcxError::HashCollision(_))
         ));
         assert!(matches!(
             cas.verify_all_integrity(),
@@ -771,7 +827,7 @@ mod tests {
             .insert(fresh_cid, (fake_cdigest, fresh_payload.to_vec()));
         assert!(matches!(
             cas_chunk_col.put_bytes_checked(fresh_payload),
-            Err(IcxError::AmbiguousHandlePrefix(_))
+            Err(IcxError::HashCollision(_))
         ));
         assert!(matches!(
             cas_chunk_col.verify_all_integrity(),

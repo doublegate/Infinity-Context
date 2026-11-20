@@ -1,119 +1,236 @@
-# Wire Protocol, `/dev/shm` Telepathy Bus & MCP Virtual Pager Specification
+# Telepathy Bus & MCP Virtual Pager Specification
 
-**References:** [docs/architecture.md](architecture.md) §2, [ref-docs/novel-methods/non-human-neural-codecs-and-holographic-context.md](../ref-docs/novel-methods/non-human-neural-codecs-and-holographic-context.md) §5  
-**Target Crate:** `crates/icx-bus`, `crates/icx-adapters`
+**References:** [docs/architecture.md](architecture.md) §2, [docs/adr/0004-zero-copy-shm-telepathy-bus.md](adr/0004-zero-copy-shm-telepathy-bus.md), [docs/adr/0005-v1-1-0-workspace-trust-store-and-daemon.md](adr/0005-v1-1-0-workspace-trust-store-and-daemon.md), [docs/security-and-threat-model.md](security-and-threat-model.md)  
+**Target Crates:** `crates/icx-bus`, `crates/icx-adapters`, `crates/icx-cli`
 
 ---
 
 ## 1. Purpose
 
-When multiple agents (e.g., Claude Code editing backend Rust code, Codex running test suites, Antigravity CLI designing architecture docs, and Hermes managing background tasks) run concurrently on the same machine, they must share working memory at **memory-bus speed (`< 100 microseconds`)** without lock contention or database-locking errors (`SQLITE_BUSY`).
+When several agents (for example Claude Code and Codex) work in the same project, `icx` lets one
+agent's high-surprise events (a compiler panic, a failing test) reach the others' next prompt.
+`crates/icx-bus` provides the **telepathy ring** (`SeqlockTelemetryBus`): a fixed 256-slot ring of
+event records with seqlock-validated reads.
 
-`crates/icx-bus` provides:
-1. A lock-free, memory-mapped **POSIX Shared-Memory Seqlock Ring Buffer (`/dev/shm/icx-fabric-v1`)**.
-2. A low-latency **Unix Domain Socket (`UDS`) RPC framing protocol** for cold CAS dereferences and graph queries.
-3. A **Single-Tool Polymorphic MCP Pager (`icx`)** that gives every MCP-capable agent full virtual-memory syscall access at `< 180 tokens` of schema cost.
+`icx` v1.1.0 contains:
+
+1. The **telepathy ring** (`crates/icx-bus/src/ring.rs`), with an in-process backend and a
+   file-backed backend (§2).
+2. A **single-tool MCP pager** (`icx mcp-serve`, `crates/icx-adapters/src/mcp.rs`) that gives MCP
+   clients dereference, slicing, search, recall, folding and bus access through one tool (§3).
+
+The resident daemon's Unix socket (`icx daemon`, `crates/icx-cli/src/daemon.rs`) carries hook
+requests only; it is described in [docs/architecture.md](architecture.md) §3.3. There is no
+separate RPC protocol for CAS or graph queries.
+
+### 1.1 What the bus is not
+
+The v1.0.0 documentation described the bus as a lock-free, memory-mapped, zero-copy `/dev/shm`
+segment (audit finding ICX-AUD-046). That does not match the code:
+
+- The **file-backed** backend is **not memory-mapped**. It uses positional I/O (`pread`/`pwrite`
+  through `std::os::unix::fs::FileExt::{read_exact_at, write_all_at}`) on an ordinary file.
+  `mmap` would require `unsafe`, which the workspace forbids.
+- It is **not lock-free** for writers. A file-backed writer takes an in-process `Mutex` and then an
+  exclusive advisory file lock (`File::try_lock`, retried up to 5,000 times at 50 µs, about
+  250 ms, before failing). Readers take no lock.
+- It is **not zero-copy**. Every publish and every read copies the slot through a buffer.
+- The file is wherever it is configured. The default is `icx-fabric-v1.shm` inside the
+  workspace directory; `ICX_SHM_PATH` overrides it. It is on the `/dev/shm` tmpfs only if
+  `ICX_SHM_PATH` points there.
 
 ---
 
-## 2. `/dev/shm/icx-fabric-v1` Lock-Free Seqlock Ring Layout
+## 2. Telepathy Ring
 
-The shared memory file `/dev/shm/icx-fabric-v1` (or `.icx/icx-fabric-v1.shm`) has a fixed size of `1,048,640` bytes (`64 B` header + `256 x 4,096 B` slots) accessed via 100% safe positional I/O (`std::os::unix::fs::FileExt::{read_exact_at, write_all_at}`) or in-process aligned atomic memory (`#![forbid(unsafe_code)]`):
+### 2.1 Backends
+
+| Backend | Constructor | Scope | Synchronization |
+| :--- | :--- | :--- | :--- |
+| `BackingStore::InProcess` | `SeqlockTelemetryBus::new_in_memory()` | Threads of one process | Atomic seqlock per slot; writers claim a sequence number with `fetch_add` and a slot with compare-and-swap. No mutex, no syscalls. |
+| `BackingStore::SharedFile` | `SeqlockTelemetryBus::open_shared_file(path)` | All processes that open the same file | Writers: in-process `Mutex` plus exclusive advisory file lock around the whole slot write. Readers: optimistic, lock-free, seqlock version check. |
+
+Agent hooks and the MCP server use the file-backed backend, because each hook invocation is a
+separate process. The in-process backend is used by the benchmark and by tests.
+
+### 2.2 Layout
+
+The ring has a fixed size of `1,048,640` bytes: a 64-byte header followed by 256 slots of
+4,096 bytes. All integers are little-endian.
 
 ```text
-Offset 0x0000_0000 .. 0x0000_003F (64 B):     FabricHeader (Magic, Version, RootSeqlock, WriteSeq, ActiveAgentsMask, GlobalDagRoot)
-Offset 0x0000_0040 .. 0x0010_003F (1,048,576 B): SeqlockSlotRing (256 Slots x 4,096 Bytes)
+Offset 0x0000_0000 .. 0x0000_003F (64 B):        FabricHeader (magic, version, root seqlock, write_seq, active agent mask, DAG root)
+Offset 0x0000_0040 .. 0x0010_003F (1,048,576 B): 256 slots x 4,096 B
 ```
-
-### 2.1 `FabricHeader` & `SeqlockSlot` Layout (`#[repr(C, align(64))]`)
 
 ```rust
 pub const ICX_SHM_MAGIC: u64 = 0x4943_585F_4641_4231; // "ICX_FAB1"
+pub const ICX_SHM_VERSION: u32 = 1;
 pub const ICX_RING_SLOTS: usize = 256;
-pub const ICX_AHTL_INLINE_CAP: usize = 3968;
-pub const ICX_AHTL_INLINE_WORDS: usize = ICX_AHTL_INLINE_CAP / 8;
-
-#[repr(C, align(64))]
-pub struct FabricHeader {
-    pub magic: core::sync::atomic::AtomicU64,
-    pub version: core::sync::atomic::AtomicU32,
-    pub root_seqlock: core::sync::atomic::AtomicU32,
-    /// Monotonically increasing global sequence counter (AtomicU64)
-    pub write_seq: core::sync::atomic::AtomicU64,
-    /// Bitmask of active AgentKind variants attached to the fabric
-    pub active_agents_mask: core::sync::atomic::AtomicU64,
-    /// Latest sealed global Merkle-DAG root hash (seqlock-versioned via `root_seqlock`)
-    pub global_dag_root: [core::sync::atomic::AtomicU64; 4],
-}
-
-#[repr(C, align(64))]
-pub struct SeqlockSlot {
-    /// Odd while writer is mutating; even (= (seq + 1) * 2) when committed
-    pub seqlock: core::sync::atomic::AtomicU64,
-    pub timestamp_ms: core::sync::atomic::AtomicU64,
-    pub artifact_id: core::sync::atomic::AtomicU64,
-    pub workspace_hash: core::sync::atomic::AtomicU64,
-    /// Packed metadata word: agent_kind (u8), surprise_q8 (u8), payload_len (u16), packet_kind (u8)
-    pub packed_meta: core::sync::atomic::AtomicU64,
-    /// Compact 256-bit sketch of the 10,240-bit HDC hypervector
-    pub hdc_sketch: [core::sync::atomic::AtomicU64; 4],
-    /// Quantized 16-D Fractal Chaos-Game coordinate (16 x i16 packed into 4 x AtomicU64)
-    pub fractal_q15_words: [core::sync::atomic::AtomicU64; 4],
-    pub reserved_pad: [core::sync::atomic::AtomicU64; 3],
-    /// Inline UTF-8 AHTL Holographic Packet (up to 3,968 bytes packed into 496 x AtomicU64)
-    pub ahtl_words: [core::sync::atomic::AtomicU64; ICX_AHTL_INLINE_WORDS],
-}
+pub const ICX_AHTL_INLINE_CAP: usize = 3968; // inline AHTL payload bytes per slot
 ```
 
-### 2.2 Lock-Free Seqlock Read/Write Protocol
-- **Writer (`publish_slot`):**
-  1. Atomically fetch-adds `header.write_seq` to claim sequence number `seq`.
-  2. Computes `slot_idx = (seq as usize) % ICX_RING_SLOTS`.
-  3. Stores `(seq * 2) | 1` (odd) into `slot.seqlock` with `Ordering::Release`, followed by `compiler_fence(Ordering::AcqRel)`.
-  4. Writes metadata and `ahtl_bytes`.
-  5. Stores `(seq + 1) * 2` (even) into `slot.seqlock` with `Ordering::Release`.
-- **Reader (`read_since_seq`):**
-  1. Loads `s1 = slot.seqlock.load(Ordering::Acquire)`. If `s1 & 1 != 0`, spins/skips.
-  2. Copies the `SeqlockSlot` payload.
-  3. Issues `fence(Ordering::Acquire)` and loads `s2 = slot.seqlock.load(Ordering::Relaxed)`.
-  4. Accepts the read if and only if `s1 == s2`.
-- **Zero-Wait Guarantee:** Writers never block on readers; readers never block writers; a crashed process can never leave a mutex deadlocked!
+| Header field | Offset | Meaning |
+| :--- | :--- | :--- |
+| `magic` | 0 | `ICX_SHM_MAGIC` |
+| `version` | 8 | `ICX_SHM_VERSION`; a mismatch fails with `BusError::UnsupportedVersion` |
+| `root_seqlock` | 12 | Version counter for `global_dag_root` |
+| `write_seq` | 16 | Number of committed events (next sequence number) |
+| `active_agents_mask` | 24 | Bit per `AgentKind` that has published |
+| `global_dag_root` | 32 | Latest 256-bit Merkle-DAG root |
+
+Each slot holds: the seqlock word, `timestamp_ms`, `artifact_id`, `workspace_hash`, a packed
+metadata word (agent kind, `surprise_q8`, payload length, packet kind), a 256-bit HDC sketch, a
+16-dimensional Q15 fractal coordinate, padding, and up to 3,968 bytes of UTF-8 AHTL payload
+(longer payloads are truncated). In-process slots are `#[repr(C, align(64))]` arrays of
+`AtomicU64` words.
+
+### 2.3 Publish and Read Protocol
+
+**Writer, in-process (`try_publish`):**
+
+1. `fetch_add` on `write_seq` claims sequence number `seq`; `slot = seq % 256`.
+2. The writer moves the slot's seqlock from an even value to `odd = (seq << 1) | 1` with
+   compare-and-swap. If the slot already holds a version `>= (seq + 1) << 1`, a later lap has
+   overwritten it and the call returns `Err(BusError::SlotLapped)`. If the slot stays odd (held
+   by a stalled writer) past the spin limit, it returns `Err(BusError::SlotContended)`.
+3. The writer stores the payload with relaxed atomics between `AcqRel` fences, then stores
+   `even = (seq + 1) << 1` with `Release`.
+
+**Writer, file-backed (`try_publish`):** under the mutex and file lock, the writer reads
+`write_seq`, writes the odd version, writes the payload, writes the even version, and only then
+advances `write_seq`. Writers are serialized, so the file-backed path does not lap itself.
+
+**Reader (`poll_since`, `poll_workspace_since`):** for each sequence number after the cursor
+(at most the last 256), the reader loads the seqlock (`Acquire`); an odd or zero value is skipped;
+it copies the slot, loads the seqlock again, and accepts the record only if both loads match and
+the version corresponds to the expected sequence number. `poll_workspace_since` additionally
+filters on `workspace_hash`.
+
+The file-backed reader relies on `pwrite` ordering through the page cache, which holds on Linux
+but is not guaranteed by POSIX.
+
+**Crash behaviour:** a writer killed mid-publish leaves its slot odd. Readers skip it; later writers
+treat it as contended and drop their event with `SlotContended` rather than block. The file lock is
+an OS advisory lock and is released when the process exits.
+
+### 2.4 Loss Signalling
+
+v1.0.0 returned success when an event was dropped (ICX-AUD-054). v1.1.0 makes loss observable:
+
+| API | Behaviour |
+| :--- | :--- |
+| `try_publish(..) -> Result<u64, BusError>` | Returns the new sequence number, or `SlotLapped` / `SlotContended` / `Io` when the event was not committed. |
+| `publish(..) -> u64` | Infallible wrapper; counts every dropped event. |
+| `dropped_publishes() -> u64` | Number of events this handle failed to publish. |
+| `poll_since_with_loss(since) -> (Vec<TelepathyEvent>, u64)` | Events after `since`, plus the number of sequence numbers that could not be delivered (overwritten before the reader caught up, or torn and skipped). A non-zero count means the reader must not assume it saw every event. |
+
+Tests: `crates/icx-bus/tests/loss_signalling.rs`.
+
+### 2.5 File Open Hardening
+
+`open_shared_file` (ICX-AUD-019):
+
+- opens with `O_NOFOLLOW | O_CLOEXEC`, creating the file with mode `0600`;
+- refuses (`BusError::InsecurePermissions`) a path that is not a regular file, is owned by another
+  uid, or has any group or other permission bits, instead of silently tightening it;
+- refuses a file whose header has the wrong magic (`InvalidMagic`) or version
+  (`UnsupportedVersion`); a new or zero-magic file is initialized under the file lock.
+
+### 2.6 Measured Latency
+
+Measured on the development machine (Intel i9-10850K, Linux):
+
+| Path | Result | Source |
+| :--- | :--- | :--- |
+| In-process publish | 58.3 ns per slot over 1,000 publishes | `icx benchmark` (synthetic, single thread) |
+| File-backed publish to visible in a second handle | worst case 38 µs over 200 events | two-handle test modelling two agent processes (ICX-AUD-055) |
+
+These are component measurements, not end-to-end agent latencies. A writer waiting on the file
+lock can take up to about 250 ms before failing.
 
 ---
 
-## 3. Single-Tool Polymorphic MCP Pager (`icx`)
+## 3. Single-Tool MCP Pager (`icx mcp-serve`)
 
-Installing 15 separate MCP tools bloats every agent's system prompt by 3,000–6,000 tokens. Following the `mcptoon` virtualization principle, `icx mcp-serve` registers **exactly one ultra-compact polymorphic tool** named `icx`:
+`icx mcp-serve` runs a JSON-RPC 2.0 server over stdio, one JSON message per line. It registers one
+tool, `icx`, whose schema is estimated at under 180 tokens
+(`McpPagerServer::schema_token_estimate`):
 
 ```json
 {
   "name": "icx",
-  "description": "Infinity-Context MMU syscall: deref #icx:<id> handles, slice lines, regex cold storage, query bi-temporal graph, or broadcast cross-agent state.",
+  "description": "Infinity-Context MMU syscall: deref #icx:<id>, slice lines, grep cold CAS, associative recall, fold/expand branch, or poll/broadcast /dev/shm bus.",
   "inputSchema": {
     "type": "object",
     "required": ["op"],
     "properties": {
       "op": {
         "type": "string",
-        "enum": ["deref", "slice", "grep", "recall", "fold", "xagent", "status"]
+        "enum": ["deref", "slice", "grep", "recall", "fold", "expand", "xagent", "status"]
       },
-      "id": { "type": "string", "description": "#icx:<hex> handle" },
-      "q": { "type": "string", "description": "Query, regex, or AHTL payload" },
-      "range": {
-        "type": "array",
-        "items": { "type": "integer" },
-        "description": "[start_line, end_line] (1-based inclusive)"
-      }
+      "id": { "type": "string" },
+      "q": {
+        "type": "string",
+        "description": "Search pattern for grep/recall, 'begin:<label>' or '<summary>' for fold, or message for xagent."
+      },
+      "range": { "type": "array", "items": { "type": "integer" } },
+      "k": { "type": "integer" },
+      "provenance": { "type": "boolean" }
     }
   }
 }
 ```
 
-### Supported `op` Syscalls
-- `op: "deref"`: Returns the full lossless raw text of `id` (`#icx:<hex>`).
-- `op: "slice"`: Returns lines `range[0]..=range[1]` of `id`.
-- `op: "grep"`: Runs fast regex `q` across `id` (or across all cold artifacts in the current workspace if `id` is omitted) and returns matching lines with context.
-- `op: "recall"`: Executes a combined 10,240-bit HDC + HippoRAG PPR + Fractal trajectory search for `q` and returns matching AHTL packets and `#icx:<hex>` handles.
-- `op: "fold"`: Explicitly folds a completed sub-task into an `L2 SubTrajectoryBranch` node.
-- `op: "xagent"`: Reads or broadcasts live telepathy packets across all agents on `/dev/shm/icx-fabric-v1`.
-- `op: "status"`: Returns current Merkle-DAG depth, Cache-Epoch count, compression ratio, and `/dev/shm` ring health.
+### 3.1 Operations
+
+- `deref`: full stored text of `id` (`#icx:<16-hex>` or `#icx:<12-hex>`), framed (§3.3).
+- `slice`: lines `range[0]..=range[1]` (1-based, inclusive) of `id`, framed.
+- `grep`: pattern `q` over `id`, or over all artifacts in the workspace when `id` is omitted.
+- `recall`: associative recall for `q` (HDC two-stage index), returning AHTL packets and handles;
+  `k` limits the result count.
+- `fold`: `q = "begin:<label>"` opens a sub-trajectory branch; `q = "<summary>"` closes the
+  innermost open branch into an `L2` folded node.
+- `expand`: expands a folded branch.
+- `xagent`: publishes a message to, or polls, the telepathy ring for the current workspace.
+- `status`: DAG, epoch, index and ring status.
+
+The tool description says `/dev/shm`; the ring is at the configured path (§1.1).
+
+### 3.2 Protocol Versions (ICX-AUD-008)
+
+The server supports two protocol eras:
+
+- **Legacy handshake.** `initialize` negotiates `2025-11-25`, `2025-06-18`, `2025-03-26` or
+  `2024-11-05`: the server echoes the client's version when it is supported and otherwise answers
+  with `2025-11-25`.
+- **Stateless (`2026-07-28`).** `server/discover` is supported; each request carries its version in
+  `_meta["io.modelcontextprotocol/protocolVersion"]`; results carry `resultType` and
+  `_meta.serverInfo`. An unsupported version returns error `-32022`.
+
+Constants: `LEGACY_PROTOCOL_VERSIONS`, `MODERN_PROTOCOL_VERSIONS` in
+`crates/icx-adapters/src/mcp.rs`.
+
+### 3.3 Provenance Framing
+
+Dereferenced content is untrusted data. `deref` output always starts with a provenance header,
+followed by the Tier-0-escaped body:
+
+```text
+⟪ICX:PROVENANCE│id=<handle>│redacted=<bool>│exactness=post_redaction_cas│trust=untrusted_data⟫
+<escaped body>
+```
+
+`exactness=post_redaction_cas` states that the bytes are exactly what the CAS stored, which is the
+tool output after secret redaction. `icx deref` on the command line uses the same framing by
+default; `icx deref --raw` prints the exact stored bytes.
+
+### 3.4 Bounds
+
+| Bound | Value | Constant |
+| :--- | :--- | :--- |
+| MCP stdio line length | 4 MiB | `MAX_MCP_LINE_BYTES` (`crates/icx-cli/src/main.rs`) |
+| Open nested `fold begin:` branches | 64 | `MAX_FOLD_DEPTH` (`crates/icx-adapters/src/mcp.rs`) |
+| Hook stdin | 64 MiB + 64 KiB envelope | `MAX_STDIN_BYTES` (`crates/icx-cli/src/main.rs`) |
+
+Tests: `crates/icx-adapters/tests/mcp_bounds.rs`; fuzz target `fuzz/fuzz_targets/mcp_jsonrpc.rs`.

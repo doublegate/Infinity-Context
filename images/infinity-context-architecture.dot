@@ -17,7 +17,7 @@ digraph InfinityContextArchitecture {
     label=<
         <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6">
         <TR><TD ALIGN="CENTER"><FONT COLOR="#f0f6fc" POINT-SIZE="18" FACE="JetBrains Mono,Consolas,monospace"><B>Infinity-Context (icx) &#8212; 5-Plane Virtual Context MMU Architecture</B>&#160;&#160;&#160;</FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="11" FACE="JetBrains Mono,Consolas,monospace">(72.1&#215; AHTL compression &#183; 100% lossless BLAKE3 Merkle-DAG &#183; 10,240-bit HDC &#183; 94.38% prefix-cache hit &#183; &lt;300ns /dev/shm seqlock)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="11" FACE="JetBrains Mono,Consolas,monospace">(214x synthetic AHTL compression &#183; lossless (post-redaction) BLAKE3 CAS &#183; 10,240-bit HDC &#183; 95.5% byte reuse (proxy) &#183; ~60 ns in-process publish /dev/shm seqlock)&#160;&#160;&#160;</FONT></TD></TR>
         </TABLE>>
 
     node [shape=none fontname="JetBrains Mono,Consolas,Courier New,monospace" fontsize=10 margin="0"]
@@ -63,8 +63,8 @@ digraph InfinityContextArchitecture {
         <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#58a6ff" BGCOLOR="#0d1117">
         <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff" POINT-SIZE="11"><B>Google Antigravity (agy)</B>&#160;&#160;&#160;</FONT></TD></TR>
         <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; ~/.gemini/hooks.json (exit code 0)&#160;&#160;&#160;</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; AdditionalContext JSON Envelope&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; ~/.gemini/config/hooks.json (exit code 0)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; injectSteps JSON Envelope&#160;&#160;&#160;</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Protobuf Jetski State Sync&#160;&#160;&#160;</FONT></TD></TR>
         </TABLE>>]
 
@@ -104,7 +104,7 @@ digraph InfinityContextArchitecture {
         <HR/>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; &lt;&lt;AHTLv1 #icx:hash !surp @fcga [Braille-256] $...&gt;&gt;&#160;&#160;&#160;</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; U+2800..U+28FF Bijection (8 bits/glyph, 64-bit sketch)&#160;&#160;&#160;</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Verified 72.1&#215; Token Reduction in 197.85 &#956;s&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 214&#215; packet ratio on a synthetic test log&#160;&#160;&#160;</FONT></TD></TR>
         </TABLE>>]
 
     // =================================================================
@@ -115,8 +115,8 @@ digraph InfinityContextArchitecture {
         <TR><TD ALIGN="CENTER"><FONT COLOR="#39d2c0" POINT-SIZE="11"><B>FastCDC + BLAKE3 CAS</B>&#160;&#160;&#160;</FONT></TD></TR>
         <HR/>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Gear-Hash Content-Defined Chunking&#160;&#160;&#160;</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 128-Bit #icx:&lt;16-hex&gt; Handle&#160;&#160;&#160;</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; zstd -3 Compressed Blob Store&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 64-Bit #icx:&lt;16-hex&gt; Handle&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SQLite store (icx.sqlite3, WAL)&#160;&#160;&#160;</FONT></TD></TR>
         </TABLE>>]
 
     merkle_dag [label=<
@@ -135,7 +135,7 @@ digraph InfinityContextArchitecture {
         <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#2ea043" BGCOLOR="#161b22">
         <TR><TD ALIGN="CENTER"><FONT COLOR="#2ea043" POINT-SIZE="12"><B>Plane 3: 10,240-Bit HDC + Fractal IFS (icx-hdc)</B>&#160;&#160;&#160;</FONT></TD></TR>
         <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Hypervector([u64; 160]) &#183; XOR Bind &#183; POPCNT Scan (1.31 &#956;s/node)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Hypervector([u64; 160]) &#183; XOR Bind &#183; POPCNT Scan (~64 ns/node)&#160;&#160;&#160;</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Infini-Attention Delta Bundler (sim &lt; 0.85 orthogonality)&#160;&#160;&#160;</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Contractive IFS FractalCoord + TitansSurpriseGate&#160;&#160;&#160;</FONT></TD></TR>
         </TABLE>>]
@@ -146,7 +146,7 @@ digraph InfinityContextArchitecture {
         <HR/>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Valid Window [t_valid, t_invalid)&#160;&#160;&#160;</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Tx Window [t_created, t_expired)&#160;&#160;&#160;</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; HippoRAG Personalized PageRank (&#945;=0.50)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; HippoRAG Personalized PageRank (&#945;=0.15)&#160;&#160;&#160;</FONT></TD></TR>
         </TABLE>>]
 
     // =================================================================
@@ -158,16 +158,16 @@ digraph InfinityContextArchitecture {
         <HR/>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Byte-Frozen Prefix Epochs (0 Mid-Session Edits)&#160;&#160;&#160;</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Anthropic 4-Slot cache_control: ephemeral&#160;&#160;&#160;</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; OpenAI 1,024-Token Aligned Prefix (94.38% Hit)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; OpenAI 1,024-Token Aligned Prefix (95.5% byte reuse, proxy)&#160;&#160;&#160;</FONT></TD></TR>
         </TABLE>>]
 
     shm_bus [label=<
         <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#f85149" BGCOLOR="#161b22">
         <TR><TD ALIGN="CENTER"><FONT COLOR="#f85149" POINT-SIZE="12"><B>Plane 5: /dev/shm Seqlock Telepathy Bus (icx-bus)</B>&#160;&#160;&#160;</FONT></TD></TR>
         <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; /dev/shm/icx-fabric-v1.shm (1 MiB Lock-Free Ring)&#160;&#160;&#160;</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 512 &#215; 2,048-Byte Cache-Aligned Atomic Slots&#160;&#160;&#160;</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; &lt;300 ns Cross-Agent HDC &amp; Handle Broadcast&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; icx-fabric-v1.shm (256-slot seqlock ring file)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 256 &#215; 4,096-Byte Cache-Aligned Atomic Slots&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; ~38 us file-backed Cross-Agent HDC &amp; Handle Broadcast&#160;&#160;&#160;</FONT></TD></TR>
         </TABLE>>]
 
     // =================================================================

@@ -19,7 +19,7 @@
     INFINITY-CONTEXT (ICX) - FIVE-PLANE CROSS-AGENT VIRTUAL CONTEXT MMU
   </text>
   <text x="600" y="65" text-anchor="middle" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="11.5" fill="#94a3b8">
-    72.1x AHTL Symbolic Compression  |  100% Lossless BLAKE3 Merkle-DAG  |  94.38% Prefix-Cache Hit Rate  |  &lt; 300ns /dev/shm Seqlock Bus
+    214x synthetic AHTL Symbolic Compression  |  Lossless (post-redaction) BLAKE3 CAS  |  95.5% byte reuse (proxy)  |  ~60 ns in-process publish Seqlock Bus
   </text>
 
   <!-- Top Row: 4 Agent Harnesses (each 270px wide, 24px gap: 24 + 270 + 24 + 270 + 24 + 270 + 24 + 270 = 1176) -->
@@ -39,8 +39,8 @@
     <rect x="588" y="0" width="270" height="94" rx="10" fill="#111827" stroke="#818cf8" stroke-width="2"/>
     <text x="723" y="25" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13.5" font-weight="700" fill="#818cf8">Antigravity CLI (agy)</text>
     <text x="723" y="45" text-anchor="middle" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="11" fill="#f8fafc">Go + C++ Hybrid Agent Harness</text>
-    <text x="723" y="64" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10" fill="#94a3b8">~/.gemini/hooks.json (exit code 0)</text>
-    <text x="723" y="81" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10" fill="#94a3b8">AdditionalContext JSON Envelope</text>
+    <text x="723" y="64" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10" fill="#94a3b8">~/.gemini/config/hooks.json (exit code 0)</text>
+    <text x="723" y="81" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10" fill="#94a3b8">injectSteps JSON Envelope</text>
 
     <rect x="882" y="0" width="270" height="94" rx="10" fill="#111827" stroke="#f97316" stroke-width="2"/>
     <text x="1017" y="25" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13.5" font-weight="700" fill="#f97316">Hermes Agent + MCP</text>
@@ -61,7 +61,7 @@
     Native Lifecycle Hooks &amp; Polymorphic MCP Pager (icx-adapters)
   </text>
   <text x="306" y="275" text-anchor="middle" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="11" fill="#f8fafc">
-    Synchronous &lt; 450us Tool Output Virtualizer + Single-Tool MCP Server (icx)
+    Synchronous Tool Output Virtualizer + Single-Tool MCP Server (icx)
   </text>
   <text x="306" y="295" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10" fill="#94a3b8">
     ops: deref(#icx:id) | slice(0..N) | search(q,k) | fold(task) | status
@@ -98,10 +98,10 @@
     * Pre-Hash SecretRedactor: strips sk-ant-*, sk-proj-*, ghp_*, AWS, PEM &amp; role tags
   </text>
   <text x="46" y="475" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#f8fafc">
-    * Single-Pass StructuralSkeletonizer: extracts $fn / $ty / $mod / !err (72.1x ratio)
+    * Single-Pass StructuralSkeletonizer: extracts $fn / $ty / $mod / !err (214x synthetic ratio)
   </text>
   <text x="46" y="496" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#f8fafc">
-    * Titans Surprise Gate (arXiv:2501.00663): Momentum S_t = eta*S_(t-1) + (1-eta)*g_t
+    * Titans-inspired surprise gate (heuristic): Momentum S_t = eta*S_(t-1) + (1-eta)*g_t
   </text>
 
   <!-- Plane 2: Lossless Context Management (LCM) BLAKE3 Merkle-DAG -->
@@ -117,13 +117,13 @@
     Every #icx:&lt;16-hex&gt; Handle Verifies 256-Bit BLAKE3 Digest on Read (100% Lossless)
   </text>
   <text x="634" y="454" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#f8fafc">
-    * Gear-Hash FastCDC Chunking (min=1KB, avg=4KB, max=16KB) + zstd -3 CAS Store
+    * Gear-Hash FastCDC Chunking (min=2KB, avg=8KB, max=64KB), SQLite CAS store
   </text>
   <text x="634" y="475" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#f8fafc">
-    * Context-Folding (arXiv:2510.11967): folds completed subtasks (90% token savings)
+    * Context-Folding (arXiv:2510.11967): folds completed subtasks (subtask detail stays recoverable)
   </text>
   <text x="634" y="496" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.8" fill="#f8fafc">
-    * CacheEpochController: guarantees 94.38% prefix-cache hit rate across turns
+    * CacheEpochController: measured 95.5% prefix byte reuse (synthetic proxy) across turns
   </text>
 
   <!-- Connectors to Plane 3 -->
@@ -133,7 +133,7 @@
   <!-- Row 4: Plane 3 (10,240-Bit HDC, Fractal IFS & Bi-Temporal PPR Index) -->
   <rect x="24" y="550" width="1152" height="108" rx="10" fill="#111827" stroke="#06b6d4" stroke-width="2"/>
   <text x="600" y="574" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13.5" font-weight="700" fill="#06b6d4">
-    PLANE 3: Sub-50us Associative Retrieval &amp; Temporal Graph Substrate (icx-hdc &amp; icx-store)
+    PLANE 3: Two-Stage Associative Retrieval &amp; Temporal Graph Substrate (icx-hdc &amp; icx-store)
   </text>
   <g transform="translate(42, 586)">
     <rect x="0" y="0" width="356" height="58" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
@@ -149,15 +149,15 @@
     <text x="938" y="43" text-anchor="middle" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="10.2" fill="#94a3b8">[t_valid, t_invalid) Window + Personalized PageRank</text>
   </g>
 
-  <!-- Row 5: Plane 5 (/dev/shm Lock-Free Seqlock Ring Bus) -->
+  <!-- Row 5: Plane 5 (/dev/shm Seqlock Ring Bus) -->
   <rect x="24" y="676" width="1152" height="86" rx="10" fill="#111827" stroke="#f43f5e" stroke-width="2"/>
   <text x="600" y="701" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13.5" font-weight="700" fill="#f43f5e">
-    PLANE 5: /dev/shm/icx-fabric-v1.shm Lock-Free Seqlock Cross-Agent Telepathy Bus (icx-bus)
+    PLANE 5: Seqlock Cross-Agent Telepathy Bus (icx-bus)
   </text>
   <text x="600" y="723" text-anchor="middle" font-family="Inter, DejaVu Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="11.2" fill="#f8fafc">
-    64-Byte Cache-Line Aligned AtomicU64 Seqlock Ring (512 x 2,048B Slots)  |  Wait-Free Optimistic Readers  |  &lt; 300ns Broadcast
+    64-Byte Cache-Line Aligned AtomicU64 Seqlock Ring (256 x 4,096 B Slots)  |  Wait-Free Optimistic Readers  |  ~38 us file-backed Broadcast
   </text>
   <text x="600" y="744" text-anchor="middle" font-family="JetBrains Mono, DejaVu Sans Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.2" fill="#94a3b8">
-    [SeqlockSlot: agent=claude-code | #icx:7bf8239fb7c504f1 | hv_sketch=1024b] ===&gt; Instant Zero-Copy Recall in Codex, agy &amp; Hermes
+    [SeqlockSlot: agent=claude-code | #icx:7bf8239fb7c504f1 | hv_sketch=1024b] ===&gt; Recall in Codex, agy &amp; Hermes
   </text>
 </svg>

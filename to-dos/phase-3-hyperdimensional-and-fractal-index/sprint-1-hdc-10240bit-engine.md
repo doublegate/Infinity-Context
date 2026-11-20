@@ -30,5 +30,5 @@
 - [x] `HdcAssociativeIndex` implements `AssociativeMemoryIndex` and executes two-stage spectral/Bloom + 10,240-bit POPCNT associative recall.
 
 **Dependencies:** T-31-001  
-**Reference:** `docs/hyperdimensional-and-fractal-index.md` §2.2; `ref-docs/papers/2404.07143-Infini-Attention.pdf`  
+**Reference:** `docs/hyperdimensional-and-fractal-index.md` §2.2; <https://arxiv.org/abs/2404.07143> (PDF not redistributed: arXiv non-exclusive license)  
 **Estimated Complexity:** M

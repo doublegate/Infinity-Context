@@ -31,7 +31,7 @@
 - [x] Unit tests verify token reduction and lossless branch expansion.
 
 **Dependencies:** T-12-001  
-**Reference:** `docs/virtual-memory-and-dag-engine.md` §3; `ref-docs/papers/2510.11967-Context-Folding.pdf`  
+**Reference:** `docs/virtual-memory-and-dag-engine.md` §3; <https://arxiv.org/abs/2510.11967> (PDF not redistributed: arXiv non-exclusive license)  
 **Estimated Complexity:** M
 
 ---
@@ -46,5 +46,5 @@
 - [x] Simulated prefix-cache hit rate across a 200-turn trajectory is `>= 94%`.
 
 **Dependencies:** T-12-001, T-12-002  
-**Reference:** `docs/virtual-memory-and-dag-engine.md` §4; `ref-docs/papers/2610.28577-Cache-Engineering-for-Agents.pdf`  
+**Reference:** `docs/virtual-memory-and-dag-engine.md` §4; <https://arxiv.org/abs/2610.28577> (PDF not redistributed: arXiv non-exclusive license)  
 **Estimated Complexity:** L

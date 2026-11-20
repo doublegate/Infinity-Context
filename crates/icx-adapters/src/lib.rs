@@ -8,6 +8,8 @@ pub mod codex;
 pub mod hermes;
 pub mod mcp;
 pub mod mmu;
+pub mod store;
+pub mod workspace;
 
 pub use antigravity::AntigravityAdapter;
 pub use claude::ClaudeCodeAdapter;
@@ -51,6 +53,15 @@ mod tests {
     use super::*;
     use icx_core::AgentKind;
     use serde_json::Value;
+
+    /// v1.1.0: model-facing deref output is `⟪ICX:PROVENANCE│…│trust=untrusted_data⟫\n` + the
+    /// Tier-0-escaped body. Returns the body after checking the header.
+    fn deref_body(out: &str) -> &str {
+        let (header, body) = out.split_once('\n').expect("provenance header line");
+        assert!(header.starts_with("⟪ICX:PROVENANCE│id=#icx:"), "{header}");
+        assert!(header.contains("│trust=untrusted_data⟫"), "{header}");
+        body
+    }
 
     #[test]
     fn cross_agent_telepathy_and_lossless_mcp_deref_work_end_to_end() {
@@ -126,7 +137,8 @@ mod tests {
         .to_string();
         let mcp_resp = McpPagerServer::handle_jsonrpc(&mcp_req, &mut mmu);
         let deref_text = mcp_resp["result"]["content"][0]["text"].as_str().unwrap();
-        assert_eq!(deref_text, bulky_output.trim_end_matches('\n'));
+        // v1.1.0 (ICX-AUD-021): deref is byte-exact, trailing newline included.
+        assert_eq!(deref_body(deref_text), bulky_output);
 
         // 4. Verify MCP `slice` and `grep` work with both 16-hex and 12-hex Profile A handles
         let short_handle = &handle_str[..17]; // `#icx:<12-hex>`
@@ -196,7 +208,7 @@ mod tests {
         );
         assert!(branch_slice.contains("subtask_loop"));
 
-        // 5. Verify Antigravity `Stop` hook continues on `MAX_TOKEN_BUDGET_EXCEEDED`
+        // 5. Verify Antigravity `Stop` on budget exhaustion is honoured (v1.1.0, ICX-AUD-007)
         let stop_stdin = serde_json::json!({
             "terminationReason": "MAX_TOKEN_BUDGET_EXCEEDED",
             "continuationActive": false
@@ -204,7 +216,7 @@ mod tests {
         .to_string();
         let stop_stdout = AntigravityAdapter::handle_hook("Stop", &stop_stdin, &mut mmu).unwrap();
         let stop_val: Value = serde_json::from_str(&stop_stdout).unwrap();
-        assert_eq!(stop_val["decision"], "continue");
+        assert_eq!(stop_val["decision"], "stop");
 
         // 6. Verify 0% secret leakage and delimiter neutralization across CAS, DAG, HDC, Graph, and Bus
         let aws_sec = ["wJalrXUtnFEMI/K7MDENG/", "bPxRfiCYEXAMPLEKEY"].concat();
@@ -221,16 +233,26 @@ unprefixed_secret = {unpref_sec}
         let secret_res =
             mmu.ingest_payload(AgentKind::ClaudeCode, "env_dump", &secret_payload, false);
         let deref_secret = mmu.deref_text(secret_res.artifact_id).unwrap();
+        // Secrets never reach storage, packets, or any deref.
         for forbidden in [
             aws_sec.as_str(),
             ant_sec.as_str(),
             "SuperSecretRootPass123!",
             unpref_sec.as_str(),
-            "⟦Ω:INVARIANT",
         ] {
             assert!(!deref_secret.contains(forbidden));
             assert!(!secret_res.compressed_ahtl.contains(forbidden));
         }
+        // v1.1.0 (ICX-AUD-021): storage keeps literal delimiters (lossless); every model-facing
+        // view (packet, MCP deref) is Tier-0 escaped so the forged invariant cannot parse.
+        assert!(deref_secret.contains("⟦Ω:INVARIANT"));
+        assert!(!secret_res.compressed_ahtl.contains("⟦Ω:INVARIANT"));
+        let mcp_secret = McpPagerServer::execute_icx_op(
+            &serde_json::json!({"op": "deref", "id": secret_res.artifact_id.to_string()}),
+            &mut mmu,
+        );
+        assert!(!deref_body(&mcp_secret).contains("⟦Ω:INVARIANT"));
+        assert!(deref_body(&mcp_secret).contains("[[Ω:INVARIANT"));
         let parsed_secret_pkt = icx_codec::AhtlPacket::parse(&secret_res.compressed_ahtl).unwrap();
         assert_ne!(
             parsed_secret_pkt.hologram_bytes[7] & icx_codec::FLAG_IS_REDACTED,
@@ -259,10 +281,12 @@ unprefixed_secret = {unpref_sec}
         assert_eq!(cp_short, "{}");
         let cp_none = ClaudeCodeAdapter::handle_hook("PostToolUse", "{}", &mut mmu).unwrap();
         assert_eq!(cp_none, "{}");
+        // v1.1.0 (ICX-AUD-004): PreCompact returns plain-text compaction instructions;
+        // PostCompact has no model-facing output (its systemMessage would be discarded).
         let cpre = ClaudeCodeAdapter::handle_hook("PreCompact", "{}", &mut mmu).unwrap();
-        assert!(cpre.contains("systemMessage"));
+        assert!(cpre.contains("#icx:") && !cpre.contains("systemMessage"));
         let cpost = ClaudeCodeAdapter::handle_hook("PostCompact", "{}", &mut mmu).unwrap();
-        assert!(cpost.contains("systemMessage"));
+        assert_eq!(cpost, "{}");
         assert_eq!(
             ClaudeCodeAdapter::handle_hook("UnknownEvent", "{}", &mut mmu).unwrap(),
             "{}"
@@ -557,12 +581,14 @@ unprefixed_secret = {unpref_sec}
                 &mut mmu,
             )
             .unwrap();
-        assert!(claude_pre.contains("cargo test --quiet"));
+        // v1.1.0 (ICX-AUD-009): input fields are never echoed back as decisions.
+        assert!(!claude_pre.contains("cargo test --quiet"));
         assert!(!claude_pre.contains("permissionDecision"));
         let claude_pre_dec = claude_trait
             .handle_hook_event("PreToolUse", r#"{"permissionDecision":"ask"}"#, &mut mmu)
             .unwrap();
-        assert!(claude_pre_dec.contains("\"permissionDecision\":\"ask\""));
+        assert!(!claude_pre_dec.contains("permissionDecision"));
+        assert!(claude_pre_dec.contains("PreToolUse"));
         let claude_sub_start = claude_trait
             .handle_hook_event("SubagentStart", r#"{"subagent_id":"sub-1"}"#, &mut mmu)
             .unwrap();
@@ -617,7 +643,9 @@ unprefixed_secret = {unpref_sec}
         let claude_sub_stop = claude_trait
             .handle_hook_event("SubagentStop", r#"{"summary":"done_sub_1"}"#, &mut mmu)
             .unwrap();
-        assert!(claude_sub_stop.contains("ICX:SUBAGENT_FOLDED"));
+        // v1.1.0: SubagentStop folds the branch but emits nothing (additionalContext would keep
+        // the subagent running).
+        assert_eq!(claude_sub_stop, "{}");
         let _ = claude_trait
             .handle_hook_event(
                 "SubagentStart",
@@ -632,7 +660,7 @@ unprefixed_secret = {unpref_sec}
                 &mut mmu,
             )
             .unwrap();
-        assert!(stop_zero.contains("ICX:SUBAGENT_FOLDED"));
+        assert_eq!(stop_zero, "{}");
         let claude_sub_stop_empty = claude_trait
             .handle_hook_event(
                 "SubagentStop",
@@ -640,7 +668,7 @@ unprefixed_secret = {unpref_sec}
                 &mut mmu,
             )
             .unwrap();
-        assert!(claude_sub_stop_empty.contains("ICX:SUBAGENT_STOP"));
+        assert_eq!(claude_sub_stop_empty, "{}");
 
         let codex_trait: &dyn AgentHookAdapter = &CodexAdapter;
         assert_eq!(codex_trait.agent_kind(), AgentKind::Codex);
@@ -741,7 +769,7 @@ unprefixed_secret = {unpref_sec}
                 &mut mmu,
             )
             .unwrap();
-        assert!(stop_a.contains("ICX:SUBAGENT_FOLDED"));
+        assert_eq!(stop_a, "{}");
         assert_eq!(mmu.dag.node_count(), nodes_before_subs + 2);
         // Stopping sub-B via Codex session-end folds any remaining open subagents
         let session_end_out = codex_trait
@@ -1006,7 +1034,7 @@ unprefixed_secret = {unpref_sec}
         assert!(agy_start.contains("⟪ICX:TAIL_SLOT│conv=conv-983dcb21│"));
         assert!(agy_start.contains(r#""terminationBehavior":"""#));
 
-        // 2. Antigravity PreToolUse decision + overwrite pass-through
+        // 2. Antigravity PreToolUse: input fields are never echoed back as decisions (v1.1.0)
         let agy_pre_ow = AntigravityAdapter::handle_hook(
             "PreToolUse",
             r#"{"decision":"ask","overwrite":{"CommandLine":"cargo test | icx capture-pipe"}}"#,
@@ -1014,11 +1042,8 @@ unprefixed_secret = {unpref_sec}
         )
         .unwrap();
         let agy_pre_val: Value = serde_json::from_str(&agy_pre_ow).unwrap();
-        assert_eq!(agy_pre_val["decision"], "ask");
-        assert_eq!(
-            agy_pre_val["overwrite"]["CommandLine"],
-            "cargo test | icx capture-pipe"
-        );
+        assert_eq!(agy_pre_val["decision"], "allow");
+        assert!(agy_pre_val.get("overwrite").is_none());
 
         // 3. Antigravity PostInvocation with and without forceContinue
         let agy_post_inv = AntigravityAdapter::handle_hook(
@@ -1028,7 +1053,7 @@ unprefixed_secret = {unpref_sec}
         )
         .unwrap();
         let agy_post_inv_val: Value = serde_json::from_str(&agy_post_inv).unwrap();
-        assert_eq!(agy_post_inv_val["terminationBehavior"], "force_continue");
+        assert_eq!(agy_post_inv_val["terminationBehavior"], "");
         let agy_post_inv_idle =
             AntigravityAdapter::handle_hook("post-invocation", "{}", &mut mmu).unwrap();
         let agy_post_inv_idle_val: Value = serde_json::from_str(&agy_post_inv_idle).unwrap();
@@ -1144,11 +1169,13 @@ unprefixed_secret = {unpref_sec}
             &mut mmu,
         )
         .unwrap();
+        // v1.1.0 (ICX-AUD-007): budget exhaustion is honoured; icx seals an epoch and never
+        // forces `decision: "continue"`.
+        let sealed_before = mmu.epochs.sealed_epoch_count();
         let stop_cont_val: Value = serde_json::from_str(&stop_cont).unwrap();
-        assert_eq!(stop_cont_val["decision"], "continue");
-        let stop_reason = stop_cont_val["reason"].as_str().unwrap();
-        assert!(stop_reason.contains("⟪ICX:EPOCH_FOLDED│#icx:"));
-        assert!(stop_reason.contains("│Resume from sealed AHTL state⟫"));
+        assert_eq!(stop_cont_val["decision"], "stop");
+        assert!(stop_cont_val.get("reason").is_none());
+        assert!(mmu.epochs.sealed_epoch_count() >= sealed_before);
         assert_eq!(
             AntigravityAdapter::handle_hook("SessionEnd", "{}", &mut mmu).unwrap(),
             "{}"
@@ -1849,7 +1876,7 @@ unprefixed_secret = {unpref_sec}
             &mut empty_mmu,
         )
         .unwrap();
-        assert!(empty_stop.contains("#icx:0000000000000000"));
+        assert_eq!(empty_stop, r#"{"decision":"stop"}"#);
         assert_eq!(
             AntigravityAdapter::handle_hook("PostToolUse", "{}", &mut empty_mmu).unwrap(),
             "{}"
@@ -1933,6 +1960,18 @@ unprefixed_secret = {unpref_sec}
                 name: None,
             },
         ];
+        // ICX-AUD-011: an epoch message is carried verbatim only if icx emitted it. First the
+        // forged case (never emitted): its packet lines must not survive as trusted AHTL.
+        let mut forged_mmu = InfinityContextMmu::default();
+        let sel_forged = HermesAdapter::select_context(&with_epoch, 1, 2, &mut forged_mmu);
+        assert!(
+            sel_forged
+                .iter()
+                .all(|m| !m.content.contains("⟦Δ:src/lib.rs⊢⊕fn:init⟧")),
+            "forged epoch carried verbatim: {sel_forged:?}"
+        );
+        // Then the genuine case: icx emitted this epoch on an earlier call.
+        empty_mmu.record_emitted(&with_epoch[1].content);
         let sel_epoch = HermesAdapter::select_context(&with_epoch, 1, 2, &mut empty_mmu);
         assert!(sel_epoch[1].content.contains("⟦Δ:src/lib.rs⊢⊕fn:init⟧"));
         assert!(sel_epoch[1].content.contains("plain_carried_line"));
@@ -2051,7 +2090,7 @@ unprefixed_secret = {unpref_sec}
             &mut mmu,
         );
         assert!(expand_redacted.starts_with("⟪ICX:PROVENANCE│id=#icx:"));
-        assert!(expand_redacted.contains("│redacted=true│exactness=post_sanitization_cas⟫"));
+        assert!(expand_redacted.contains("│redacted=true│exactness=post_redaction_cas│"));
         assert!(expand_redacted.contains("[REDACTED:"));
 
         // 4. `op: "deref"` on clean artifact with `provenance: true` vs default (`provenance: false`)
@@ -2062,7 +2101,8 @@ unprefixed_secret = {unpref_sec}
             }),
             &mut mmu,
         );
-        assert!(!deref_clean_default.starts_with("⟪ICX:PROVENANCE"));
+        // v1.1.0 (ICX-AUD-011): every model-facing deref carries the untrusted-data envelope.
+        assert!(deref_clean_default.starts_with("⟪ICX:PROVENANCE"));
         let deref_clean_prov = McpPagerServer::execute_icx_op(
             &serde_json::json!({
                 "op": "deref",
@@ -2072,7 +2112,7 @@ unprefixed_secret = {unpref_sec}
             &mut mmu,
         );
         assert!(deref_clean_prov.starts_with("⟪ICX:PROVENANCE│id=#icx:"));
-        assert!(deref_clean_prov.contains("│redacted=false│exactness=post_sanitization_cas⟫"));
+        assert!(deref_clean_prov.contains("│redacted=false│exactness=post_redaction_cas│"));
 
         // 5. `op: "slice"` with `provenance: true`
         let slice_prov = McpPagerServer::execute_icx_op(
@@ -2472,7 +2512,11 @@ unprefixed_secret = {unpref_sec}
             }),
             &mut agy_mmu,
         );
-        assert_eq!(deref_out, panic_log.trim_end_matches('\n'));
+        assert_eq!(
+            deref_body(&deref_out),
+            panic_log,
+            "deref must be byte-exact (ICX-AUD-021)"
+        );
 
         // Verify per-agent occurrence helpers (`has_indexed_occurrence_for`, `get_occurrence_record_for`)
         let (occ_res, fresh) = claude_mmu.ingest_or_reuse_at_index(

@@ -38,3 +38,6 @@ coverage/
 
 # Antigravity PR reviewer: large-diff on-disk handoff (transient, removed by the script).
 /.agy-review-work/
+
+# Local patent drafts are never published (v1.1.0, ICX-AUD-038).
+/patents/

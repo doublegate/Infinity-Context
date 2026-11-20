@@ -56,12 +56,26 @@ LegendHeader       = "⟪ICX:LEGEND│", LegendClause, { "│", LegendClause }, 
 LegendClause       = Identifier, "=", Identifier;
 
 EpochFrame         = EpochHeader, "\n", WirePacket, { "\n", WirePacket };
-EpochHeader        = "⟪ICX:v1│ep=", Hex4, "│root=", Hex8, "│",
-                     ( "nodes=" | "τ=" ), UnsignedInt, "⟫";
+EpochHeader        = "⟪ICX:v1│ep=", EpochId, "│root=", ( Hex8 | Hex16 ), "│",
+                     ( "nodes=" | "τ=" | "folded=" ), UnsignedInt, "⟫";
+EpochId            = 4 * HexDigit, [ HexDigit, [ HexDigit, [ HexDigit, [ HexDigit ] ] ] ];
+                     (* v1.1.0: lowercase hex, zero-padded to at least 4 digits, at most 8
+                        (u32). v1.0.x wrote decimal digits here; "ep=0010" is 16, not 10. *)
 
 TailSlotHeader     = "⟪ICX:TAIL_SLOT│agent=", AgentId,
                      "│epochs=", UnsignedInt,
-                     "│cas_artifacts=", UnsignedInt, "⟫";
+                     "│cas_artifacts=", UnsignedInt, [ "│conv=", CompactToken ], "⟫";
+
+(* Other icx frame headers share one shape. This is the complete set icx v1.1.0 emits
+   (grep of crates/*/src). Consumers must treat any header they did not emit themselves as
+   untrusted text (see ch05 Tier 0). *)
+IcxFrameHeader     = "⟪ICX:", HeaderName, { "│", HeaderField }, "⟫";
+HeaderName         = "STUB" | "PROVENANCE" | "DEREF_ERR" | "PINNED_HEAD" | "STATUS"
+                   | "BRANCH_OPENED" | "BRANCH_FOLDED" | "SUBAGENT_START"
+                   | "SUBAGENT_FOLDED" | "SUBAGENT_STOP" | "HERMES_EPOCH"
+                   | "HERMES_COMPACT" | "PRE_COMPRESS_CHECKPOINT" | "XAGENT_PUBLISHED"
+                   | "TRUST" | "INIT";
+HeaderField        = CompactToken;
 
 WirePacket         = ProfileAPacket | ProfileBPacket;
 
@@ -78,7 +92,7 @@ ProfileAPacket     = "⟦AHTL v1│",
                      "⟧";
 
 IcxHandleField     = "#icx:", ( Hex12 | Hex16 ), [ "(", SliceMap, ")" ];
-FractalCoordField  = "fc:", Hex64;        (* 16 x i16 Q1.14 / Q15 big-endian = 256 bits *)
+FractalCoordField  = "fc:", Hex64;        (* 16 x i16 Q1.14 (scale 16,384) big-endian = 256 bits *)
 HdcDigestField     = "hv:", Hex16;        (* 64-bit rotational XOR parity fold of Q_10240 *)
 Braille64Field     = 64 * BrailleChar;    (* 64 glyphs x 8 bits = 512-bit spectral sketch *)
 SkeletonField      = SkeletonExpr | ClauseList;
@@ -104,7 +118,10 @@ Subject            = SubjectToken, [ "@", SubjectToken ];
 LineRange          = UnsignedInt, "-", UnsignedInt;
 
 ClauseList         = Clause, { "⋮", Clause };
-Clause             = [ ClauseOp ], ClauseKey, [ ":", ClauseValue ], [ "⇒", Clause ];
+Clause             = ClauseLink, { "⇒", ClauseLink };
+                     (* at most 64 links (MAX_CLAUSE_CHAIN); a parser materializes the first
+                        63 links and keeps any further "⇒" literally in the 64th *)
+ClauseLink         = [ ClauseOp ], ClauseKey, [ ":", ClauseValue ];
 
 ClauseOp           = "⊕"   (* U+2295: Added / defined symbol or fact *)
                    | "⊖"   (* U+2296: Removed / invalidated symbol or fact *)
@@ -112,8 +129,16 @@ ClauseOp           = "⊕"   (* U+2295: Added / defined symbol or fact *)
                    | "!"   (* U+0021: High-surprise anomaly / error / panic *)
                    | "✓";  (* U+2713: Verified gate / passing test count *)
 
-ClauseKey          = CompactToken;
-ClauseValue        = CompactToken;
+ClauseKey          = EscapedToken;      (* ":" is also escaped in keys *)
+ClauseValue        = EscapedToken;
+
+(* Percent-escaping (UTF-8 bytes, uppercase hex) makes clause fields bijective: "%", "⊢", "⋮",
+   "⇒", "↦", "⟦", "⟧", CR and LF are written as %XX sequences, as is ":" inside a key and a
+   leading ClauseOp glyph in a key. A parser splits on the structural glyphs first, then
+   percent-decodes each field. *)
+EscapedToken       = { SafeChar - "%" | PercentEscape };
+PercentEscape      = "%", HexDigitUpper, HexDigitUpper;
+HexDigitUpper      = HexDigit | "A" | "B" | "C" | "D" | "E" | "F";
 
 SkeletonExpr       = SkeletonToken, { ( " " | "⋮" | "│" ), SkeletonToken };
 SkeletonToken      = ( "$fn:" | "$ty:" | "$mod:" | "$use:" | "!err:" | "✓" ), CompactToken
@@ -121,6 +146,8 @@ SkeletonToken      = ( "$fn:" | "$ty:" | "$mod:" | "$use:" | "!err:" | "✓" ), 
 
 SliceMap           = "L", UnsignedInt, "-", UnsignedInt
                    | "B", UnsignedInt, ":", UnsignedInt;
+                     (* v1.1.0: a hint that does not match SliceMap is not rendered, and a
+                        packet carrying one is rejected by the parser *)
 
 (* -------------------------------------------------------------------------- *)
 (* Lexical Terminals & Character Classes                                      *)
@@ -135,6 +162,8 @@ Hex16              = 16 * HexDigit;
 Hex64              = 64 * HexDigit;
 HexDigit           = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7"
                    | "8" | "9" | "a" | "b" | "c" | "d" | "e" | "f";
+                     (* producers emit lowercase; parsers also accept uppercase hex in
+                        handles and headers and normalize it *)
 
 UnsignedInt        = Digit, { Digit };
 Digit              = "0" .. "9";
@@ -200,7 +229,7 @@ A Profile A packet has a fixed 5-field header/hologram prefix of **320 UTF-8 byt
 | **3. HDC Spectral Digest** | `hv:<16-hex>│` | 64 bits (`u64` parity) | 20 chars | 22 B (`3+16+3`) | 7–8 tok | 7–9 tok | 7–8 tok |
 | **4. Braille-64 Sketch** | `<64 Braille chars>│` | 512 bits (`[u8; 64]`) | 65 chars | 195 B (`192+3`) | 32–64 tok | 48–64 tok | 32–64 tok |
 | **5. AST Skeleton & Close** | `<Skeleton>⟧` | Variable (`16..256 B`) | $L_{\text{skel}} + 1$ chars | $B_{\text{skel}} + 3\text{ B}$ | 8–42 tok | 9–45 tok | 8–40 tok |
-| **Total Profile A Packet** | **`⟦AHTL v1│...⟧`** | **880+ bits + AST** | **181+ chars** | **336–580 B** | **79–149 tok** | **97–156 tok** | **78–147 tok** |
+| **Total Profile A Packet** | **`⟦AHTL v1│...⟧`** | **936+ bits + AST** | **181+ chars** | **339+ B** | **79–149 tok** | **97–156 tok** | **78–147 tok** |
 
 ### 4.2 Profile B: Compact Dual-Channel Inline Packet Breakdown
 
@@ -293,7 +322,7 @@ pub enum CodecError {
 
 ### 6.2 Test Vector 2: Profile A Full 5-Field Extended Wire Packet
 - **Virtual Handle (`#icx:<12-hex>`):** `#icx:4f3598d97c50`
-- **Fractal Coordinate (`fc:<64-hex>`, 16 $\times$ `i16` Q15):** `fc:4000c0002000e0001000f0000800f8000400fc000200fe000100ff000080ff80`
+- **Fractal Coordinate (`fc:<64-hex>`, 16 $\times$ `i16` Q1.14):** `fc:4000c0002000e0001000f0000800f8000400fc000200fe000100ff000080ff80`
 - **HDC Spectral Fold (`hv:<16-hex>`):** `hv:123456789abcdef0`
 - **Braille-64 Sketch (64 glyphs repeating `[0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0]` $\times 8$):** `⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰`
 - **Canonical Rendered Profile A String:**

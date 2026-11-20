@@ -1,5 +1,7 @@
 # Infinity-Context (`icx`) — Deep Research Technical Report
 
+> **Corrections:** this report is kept as written; verified corrections to its citations and figures are in [corrections-2026-11-18.md](corrections-2026-11-18.md), and current values are in [docs/numbers.md](../docs/numbers.md).
+
 **Generated:** 2026-11-16  
 **Mode:** Augment & Autonomous Deep Research (building on [ref-docs/initial-concept.md](initial-concept.md))  
 **Source Count:** 38 distinct sources (22 primary arXiv research papers downloaded as PDFs in [ref-docs/papers/](papers/INDEX.md), 9 shipped local agent binaries & SQLite databases analyzed via Reverse-Engineer-Anything (`rea`) with cryptographic Evidence IDs in [ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md](agent-internals/rea-binary-and-sqlite-forensics.md), and 7+ open-source reference repositories analyzed in [ref-docs/prior-art/github-and-industry-landscape.md](prior-art/github-and-industry-landscape.md)).
@@ -58,7 +60,7 @@ By combining five low-level planes—(0) a **Prefix-Cache-Locked Wire Proxy & SQ
 While frontier models now advertise 200K to 2M token context windows, three physical and mathematical phenomena prevent agents from using them effectively:
 1. **Quadratic Self-Attention & Softmax Dilution:** In standard softmax attention, $\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right) V$, as sequence length $N$ grows, the denominator $\sum_{j=1}^N \exp(q_i \cdot k_j / \sqrt{d_k})$ grows linearly with $N$, diluting attention weights over true retrieval targets ("context rot", documented in [LCM `arXiv:2605.04050`](papers/2605.04050-LCM-Lossless-Context-Management.pdf) and [RLMs `arXiv:2512.24601`](papers/2512.24601-Recursive-Language-Models.pdf)).
 2. **Destructive Compaction Cliffs:** As reverse-engineered in Claude Code (`2.1.326`, `autoCompactWindow: 950000`, `executePreCompactHooks`) and Hermes (`agent/conversation_compression.py`, `threshold_percent = 0.75`), hitting the compaction threshold replaces the entire prior trajectory with a single LLM-generated prose summary (`"This session is being continued from a previous conversation that ran out of context..."`). Repeated compactions create lossy *summaries of summaries*, erasing exact line numbers, memory addresses, and negative constraints ([ACE `arXiv:2510.04618`](papers/2510.04618-Agentic-Context-Engineering-ACE.pdf)).
-3. **The Prefix-Cache Mutation Penalty:** Anthropic, OpenAI, and Google discount cached prompt prefixes by 75%–90% and skip KV-prefill computation when the leading token sequence is byte-identical to a previous turn. Naive context trimmers that delete or rewrite messages in the middle of the history array invalidate every token after the first modified byte ([Cache Engineering for Agents `arXiv:2610.28577`](papers/2610.28577-Cache-Engineering-for-Agents.pdf), [ACM `arXiv:2607.23809`](papers/2607.23809-ACM-Agentic-Cache-Management.pdf)).
+3. **The Prefix-Cache Mutation Penalty:** Anthropic, OpenAI, and Google discount cached prompt prefixes by 75%–90% and skip KV-prefill computation when the leading token sequence is byte-identical to a previous turn. Naive context trimmers that delete or rewrite messages in the middle of the history array invalidate every token after the first modified byte ([Cache Engineering for Agents `arXiv:2610.28577`](https://arxiv.org/abs/2610.28577), [ACM `arXiv:2607.23809`](papers/2607.23809-ACM-Agentic-Cache-Management.pdf)).
 
 ---
 
@@ -75,19 +77,19 @@ Full forensic details and `ev_*` Evidence IDs are recorded in [ref-docs/agent-in
 Detailed mathematical specification in [ref-docs/novel-methods/non-human-neural-codecs-and-holographic-context.md](novel-methods/non-human-neural-codecs-and-holographic-context.md) §1.
 - Standard prose uses ~4.5–6.0 bits/token out of a BPE token's ~17.5-bit theoretical entropy.
 - **AHTL** strips all English filler and encodes state mutations, AST signatures, compiler diagnostics, causal edges (`⊢`, `⇒`, `↦`), negation invariants (`¬`), Braille-256 binary sketches (`U+2800..U+28FF`), Fractal trajectory coordinates, and BLAKE3 dereference handles (`#icx:<hex8>`) into dense, single-token relational packets.
-- Because identifiers, line numbers, and operators remain unsplit BPE tokens, Transformer retrieval heads ([DuoAttention `arXiv:2410.10819`](papers/2410.10819-DuoAttention.pdf), [SnapKV `arXiv:2404.14469`](papers/2404.14469-SnapKV.pdf)) attend to AHTL packets directly *without* requiring a decompression tool call unless byte-exact inspection of cold lines is needed.
+- Because identifiers, line numbers, and operators remain unsplit BPE tokens, Transformer retrieval heads ([DuoAttention `arXiv:2410.10819`](https://arxiv.org/abs/2410.10819), [SnapKV `arXiv:2404.14469`](papers/2404.14469-SnapKV.pdf)) attend to AHTL packets directly *without* requiring a decompression tool call unless byte-exact inspection of cold lines is needed.
 
 ### 4.3 Subsystem 3: Lossless Context Management (`LCM`) BLAKE3 Merkle-DAG
-Grounded in [LCM `arXiv:2605.04050`](papers/2605.04050-LCM-Lossless-Context-Management.pdf) and [Context-Folding `arXiv:2510.11967`](papers/2510.11967-Context-Folding.pdf):
+Grounded in [LCM `arXiv:2605.04050`](papers/2605.04050-LCM-Lossless-Context-Management.pdf) and [Context-Folding `arXiv:2510.11967`](https://arxiv.org/abs/2510.11967):
 - Every ingested payload is segmented via **FastCDC** (target chunk size 4 KiB–64 KiB), hashed with 256-bit **BLAKE3**, and compressed with a domain-trained **Zstd dictionary**.
 - The DAG maintains four node kinds:
   1. `LeafChunk (L0)`: Raw immutable byte slice.
   2. `ToolArtifactNode (L1)`: Complete tool invocation + raw output + AHTL stub.
-  3. `SubTrajectoryBranchNode (L2)`: Folded debugging/build/subagent branch ([Context-Folding `arXiv:2510.11967`](papers/2510.11967-Context-Folding.pdf)).
+  3. `SubTrajectoryBranchNode (L2)`: Folded debugging/build/subagent branch ([Context-Folding `arXiv:2510.11967`](https://arxiv.org/abs/2510.11967)).
   4. `CacheEpochNode (L3)`: Sealed, prefix-cache-aligned epoch containing an AHTL lattice frame, an HDC associative hypervector, a Quest min/max bounding box, and cryptographic child pointers.
 
 ### 4.4 Subsystem 4: Hyperdimensional (`HDC`), Fractal (`FCGA`) & Bi-Temporal PPR Index
-Grounded in [Titans `arXiv:2501.00663`](papers/2501.00663-Titans-Learning-to-Memorize-at-Test-Time.pdf), [Infini-attention `arXiv:2404.07143`](papers/2404.07143-Infini-Attention.pdf), [Fractal KV-Cache Archives `arXiv:2607.07144`](papers/2607.07144-Fractal-KV-Cache-Archives.pdf), [HippoRAG `arXiv:2405.14831`](papers/2405.14831-HippoRAG.pdf), and [Zep/Graphiti `arXiv:2501.13956`](papers/2501.13956-Zep-Temporal-Knowledge-Graph.pdf):
+Grounded in [Titans `arXiv:2501.00663`](papers/2501.00663-Titans-Learning-to-Memorize-at-Test-Time.pdf), [Infini-attention `arXiv:2404.07143`](https://arxiv.org/abs/2404.07143), [Fractal KV-Cache Archives `arXiv:2607.07144`](papers/2607.07144-Fractal-KV-Cache-Archives.pdf), [HippoRAG `arXiv:2405.14831`](https://arxiv.org/abs/2405.14831), and [Zep/Graphiti `arXiv:2501.13956`](papers/2501.13956-Zep-Temporal-Knowledge-Graph.pdf):
 - **10,240-Bit HDC Engine:** Uses 160 `u64` words per hypervector. Supports XOR binding ($\oplus$), circular permutation ($\Pi^k$), Delta-Rule novelty-weighted majority bundling, and AVX-512 `VPOPCNTDQ` Hamming similarity scans (~12 ns/comparison).
 - **Fractal Chaos-Game Archive (`FCGA`):** Contractive Iterated Function System $z_t = \frac{1}{2} z_{t-1} + \frac{1}{2} v(s_t)$ in $[-1, 1]^{16}$, providing $O(1)$ Chebyshev-norm suffix matching across millions of historical steps.
 - **Bi-Temporal CSR Graph + Personalized PageRank:** Tracks entities (files, functions, structs, tests, errors, tickets, agents) with `[t_valid, t_invalid)` and `[t_tx_start, t_tx_end)` intervals and executes power-iteration Personalized PageRank in `< 200 µs`.
@@ -167,28 +169,28 @@ See [ref-docs/prior-art/github-and-industry-landscape.md](prior-art/github-and-i
 ## 10. Source Manifest
 
 ### Tier 1 — Primary Academic Papers (Downloaded in `ref-docs/papers/`)
-1. **arXiv:2610.28577** — Fu et al., *Cache Engineering for Agents* (2026) — `ref-docs/papers/2610.28577-Cache-Engineering-for-Agents.pdf`
+1. **arXiv:2610.28577** — Fu et al., *Cache Engineering for Agents* (2026) — <https://arxiv.org/abs/2610.28577> (PDF not redistributed: arXiv non-exclusive license)
 2. **arXiv:2607.23809** — *ACM: Agentic Cache Management* (2026) — `ref-docs/papers/2607.23809-ACM-Agentic-Cache-Management.pdf`
 3. **arXiv:2607.07144** — V. Gusev, *Fractal KV-Cache Archives: Lossless Symbolic Storage with In-Place Retrieval for Long-Context LLM Inference* (2026) — `ref-docs/papers/2607.07144-Fractal-KV-Cache-Archives.pdf`
 4. **arXiv:2605.04050** — *LCM: Lossless Context Management* (2026) — `ref-docs/papers/2605.04050-LCM-Lossless-Context-Management.pdf`
 5. **arXiv:2512.24601** — Zhang et al., *Recursive Language Models* (2025) — `ref-docs/papers/2512.24601-Recursive-Language-Models.pdf`
-6. **arXiv:2510.11967** — *Scaling Long-Horizon LLM Agent via Context-Folding* (2025) — `ref-docs/papers/2510.11967-Context-Folding.pdf`
+6. **arXiv:2510.11967** — *Scaling Long-Horizon LLM Agent via Context-Folding* (2025) — <https://arxiv.org/abs/2510.11967> (PDF not redistributed: arXiv non-exclusive license)
 7. **arXiv:2510.04618** — *Agentic Context Engineering (ACE): Evolving Contexts for Self-Improving Language Models* (2025) — `ref-docs/papers/2510.04618-Agentic-Context-Engineering-ACE.pdf`
-8. **arXiv:2502.12110** — *A-MEM: Agentic Memory for LLM Agents* (NeurIPS 2025) — `ref-docs/papers/2502.12110-A-MEM-Agentic-Memory.pdf`
+8. **arXiv:2502.12110** — *A-MEM: Agentic Memory for LLM Agents* (NeurIPS 2025) — <https://arxiv.org/abs/2502.12110> (PDF not redistributed: arXiv non-exclusive license)
 9. **arXiv:2501.13956** — Rasmussen et al., *Zep: A Temporal Knowledge Graph Architecture for Agent Memory* (2025) — `ref-docs/papers/2501.13956-Zep-Temporal-Knowledge-Graph.pdf`
 10. **arXiv:2501.00663** — Behrouz et al. (Google), *Titans: Learning to Memorize at Test Time* (2025) — `ref-docs/papers/2501.00663-Titans-Learning-to-Memorize-at-Test-Time.pdf`
 11. **arXiv:2410.15704** — *Residual Vector Quantization for KV Cache Compression* (2024) — `ref-docs/papers/2410.15704-RVQ-KV-Cache-Compression.pdf`
-12. **arXiv:2410.10819** — Xiao et al., *DuoAttention: Efficient Long-Context LLM Inference with Retrieval and Streaming Heads* (2024) — `ref-docs/papers/2410.10819-DuoAttention.pdf`
-13. **arXiv:2406.10774** — Tang et al., *Quest: Query-Aware Sparsity for Efficient Long-Context LLM Inference* (2024) — `ref-docs/papers/2406.10774-Quest-Query-Aware-Sparsity.pdf`
-14. **arXiv:2406.02069** — Cai et al., *PyramidKV: Dynamic KV Cache Compression based on Pyramidal Information Funneling* (2024) — `ref-docs/papers/2406.02069-PyramidKV.pdf`
-15. **arXiv:2405.14831** — Gutierrez et al., *HippoRAG: Neurobiologically Inspired Long-Term Memory for Large Language Models* (2024) — `ref-docs/papers/2405.14831-HippoRAG.pdf`
+12. **arXiv:2410.10819** — Xiao et al., *DuoAttention: Efficient Long-Context LLM Inference with Retrieval and Streaming Heads* (2024) — <https://arxiv.org/abs/2410.10819> (PDF not redistributed: arXiv non-exclusive license)
+13. **arXiv:2406.10774** — Tang et al., *Quest: Query-Aware Sparsity for Efficient Long-Context LLM Inference* (2024) — <https://arxiv.org/abs/2406.10774> (PDF not redistributed: arXiv non-exclusive license)
+14. **arXiv:2406.02069** — Cai et al., *PyramidKV: Dynamic KV Cache Compression based on Pyramidal Information Funneling* (2024) — <https://arxiv.org/abs/2406.02069> (PDF not redistributed: arXiv non-exclusive license)
+15. **arXiv:2405.14831** — Gutierrez et al., *HippoRAG: Neurobiologically Inspired Long-Term Memory for Large Language Models* (2024) — <https://arxiv.org/abs/2405.14831> (PDF not redistributed: arXiv non-exclusive license)
 16. **arXiv:2405.13792** — Cheng et al., *xRAG: Extreme Context Compression for Retrieval-augmented Generation with One Token* (2024) — `ref-docs/papers/2405.13792-xRAG-One-Token-Compression.pdf`
 17. **arXiv:2404.14469** — Li et al., *SnapKV: LLM Knows What You are Looking for Before Generation* (2024) — `ref-docs/papers/2404.14469-SnapKV.pdf`
-18. **arXiv:2404.07143** — Munkhdalai et al. (Google), *Leave No Context Behind: Efficient Infinite Context Transformers with Infini-attention* (2024) — `ref-docs/papers/2404.07143-Infini-Attention.pdf`
-19. **arXiv:2403.12968** — Pan et al., *LLMLingua-2: Data Distillation for Efficient and Faithful Task-Agnostic Prompt Compression* (2024) — `ref-docs/papers/2403.12968-LLMLingua-2.pdf`
+18. **arXiv:2404.07143** — Munkhdalai et al. (Google), *Leave No Context Behind: Efficient Infinite Context Transformers with Infini-attention* (2024) — <https://arxiv.org/abs/2404.07143> (PDF not redistributed: arXiv non-exclusive license)
+19. **arXiv:2403.12968** — Pan et al., *LLMLingua-2: Data Distillation for Efficient and Faithful Task-Agnostic Prompt Compression* (2024) — <https://arxiv.org/abs/2403.12968> (PDF not redistributed: arXiv non-exclusive license)
 20. **arXiv:2401.03462** — Zhang et al., *Long Context Compression with Activation Beacon* (2024) — `ref-docs/papers/2401.03462-Activation-Beacon.pdf`
 21. **arXiv:2310.08560** — Packer et al., *MemGPT: Towards LLMs as Operating Systems* (2023) — `ref-docs/papers/2310.08560-MemGPT-LLMs-as-Operating-Systems.pdf`
-22. **arXiv:2307.06945** — Ge et al., *In-context Autoencoder for Context Compression in a Large Language Model* (2023) — `ref-docs/papers/2307.06945-ICAE-In-Context-Autoencoder.pdf`
+22. **arXiv:2307.06945** — Ge et al., *In-context Autoencoder for Context Compression in a Large Language Model* (2023) — <https://arxiv.org/abs/2307.06945> (PDF not redistributed: arXiv non-exclusive license)
 
 ### Tier 1 — Shipped Agent Binary & SQLite Forensics (REA Evidence Ledger)
 23. **Claude Code `2.1.326` ELF64 (`b6b3647d...`)** — REA `ev_be2e252614342586f9de78e5f08eb70de8465f18310bc03a948abe986a60ef72`, `ev_3d40926734f39b00b23864504aeef72e3eaf3f0db120ec0492c2ee9fbcc24b35`

@@ -11,15 +11,15 @@ Every claim in this document is anchored to a cryptographic SHA-256 artifact dig
 
 | Target Artifact | Local Path | Bytes | SHA-256 Digest | REA Evidence ID(s) |
 | :--- | :--- | ---: | :--- | :--- |
-| **Claude Code (`2.1.326`)** | `/home/parobek/.local/share/claude/versions/2.1.326` | 371,429,904 | `b6b3647d981130dc44fc670846ae97b6cde531ffb667cf9c4d17cfcafb38cb37` | `ev_be2e252614342586f9de78e5f08eb70de8465f18310bc03a948abe986a60ef72` (ELF notes)<br>`ev_89ea50d5e0608cf878743511a9632f6f80475957dfb215cd54ac576dacb0977e` (Exports parent)<br>`ev_3d40926734f39b00b23864504aeef72e3eaf3f0db120ec0492c2ee9fbcc24b35` (Exports view) |
-| **OpenAI Codex (`0.169.0`)** | `/home/parobek/.codex/packages/standalone/releases/0.169.0-x86_64-unknown-linux-musl/bin/codex` | 294,277,432 | `b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b` | `ev_7cda5928199ea58224bdedbbd14892ff224515db64f7679457f633d5e7d816d3` (ELF notes)<br>`ev_ba0d9f9e305a96c026cd5c6efbc856664c5cf9c7603650ea0355c4e2a82a0acd` (Exports) |
-| **Antigravity CLI (`agy`)** | `/home/parobek/.local/bin/agy` | 265,700,040 | `39816d49d5ab92229952987225c23ea3fed7580699dcb4a444e0388e0ac1ce43` | `ev_e0bd52156323af13cc80956727b105639c42d36bc491e0c89dd1b2f81f4da090` (ELF notes)<br>`ev_b3af7a149e6eaaa93f2af7f75747279991766aa5a575b3ceeae4d099edd79632` (Go build info)<br>`ev_241883bf55926e279510291cbb4069abad0dc4c8aed78ab1c0a4761bed5ea820` (Exports) |
-| **`ai-memory` Daemon/CLI** | `/home/parobek/.local/lib/ai-memory/ai-memory` | 50,192,208 | `02904079c0700b1d96e1aafaa5dc8da16eb4a1a7ff32eb100d78a6338ab2e2c8` | `ev_c127f3b46973ea298046b85ad5e6a61a1a3c2d8d485b6592efcaacee26d6bb9b` (Rust binary)<br>`ev_17a0d1760f2a0f592d24b04b3716faa9f57f6b4bda37a29fd4a185f4df2c3842` (Exports) |
-| **Codex `state_5.sqlite`** | `/home/parobek/.codex/state_5.sqlite` | 9,179,136 | `537c13f5ca2307c8bc8c66cc03e28f6c6c67de5b15b32f0011ac69cb51d4057d` | `ev_3e4a7d4314b4d31f13103a257120fda8c23e0a884187421d7a47b4a75f1c29a5` |
-| **Codex `memories_1.sqlite`** | `/home/parobek/.codex/memories_1.sqlite` | 663,552 | `3912d60d041897d33fc2c2b169bfa1175995b21613b607e134c646eb630aa879` | `ev_1cc07dc44d6445edb0769cc0d4fee066758881e20cddd8f2a8c3d961c3fea201` |
-| **AGY `conversation_summaries.db`** | `/home/parobek/.gemini/antigravity-cli/conversation_summaries.db` | 35,069,952 | `3dfaba92366b627b64bf821974d87e6b1b4f7057084b47719e875accba5ee75a` | `ev_6a75fb73dadf1f29cb480f77e5ebbce3692856c21971bae83b6ec3846effbdb1` |
-| **AGY Trajectory DB (`650ca1b8...db`)** | `/home/parobek/.gemini/antigravity-cli/conversations/650ca1b8-0d60-4fd5-be0c-83a8ef1fc566.db` | 6,094,848 | `22a33eab4aa9ccf5add825adab96b09cd8446a9aa027a0143819756449216491` | `ev_524bc260c8a7ccbbaef9d7cfb1c2aaf949a069e2aac27ebff55a9c96d6c118b6` |
-| **Hermes `state.db`** | `/home/parobek/.hermes/state.db` | 82,018,304 | `d5411715a24e4acc773d632fadda8ff0cafae612d7810c489d3afd6b51bf58f9` | `ev_55f2f031e94c568896ee3d6653a29fb05932581b058229e8bf3aebc614652511` |
+| **Claude Code (`2.1.326`)** | `~/.local/share/claude/versions/2.1.326` | 371,429,904 | `b6b3647d981130dc44fc670846ae97b6cde531ffb667cf9c4d17cfcafb38cb37` | `ev_be2e252614342586f9de78e5f08eb70de8465f18310bc03a948abe986a60ef72` (ELF notes)<br>`ev_89ea50d5e0608cf878743511a9632f6f80475957dfb215cd54ac576dacb0977e` (Exports parent)<br>`ev_3d40926734f39b00b23864504aeef72e3eaf3f0db120ec0492c2ee9fbcc24b35` (Exports view) |
+| **OpenAI Codex (`0.169.0`)** | `~/.codex/packages/standalone/releases/0.169.0-x86_64-unknown-linux-musl/bin/codex` | 294,277,432 | `b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b` | `ev_7cda5928199ea58224bdedbbd14892ff224515db64f7679457f633d5e7d816d3` (ELF notes)<br>`ev_ba0d9f9e305a96c026cd5c6efbc856664c5cf9c7603650ea0355c4e2a82a0acd` (Exports) |
+| **Antigravity CLI (`agy`)** | `~/.local/bin/agy` | 265,700,040 | `39816d49d5ab92229952987225c23ea3fed7580699dcb4a444e0388e0ac1ce43` | `ev_e0bd52156323af13cc80956727b105639c42d36bc491e0c89dd1b2f81f4da090` (ELF notes)<br>`ev_b3af7a149e6eaaa93f2af7f75747279991766aa5a575b3ceeae4d099edd79632` (Go build info)<br>`ev_241883bf55926e279510291cbb4069abad0dc4c8aed78ab1c0a4761bed5ea820` (Exports) |
+| **`ai-memory` Daemon/CLI** | `~/.local/lib/ai-memory/ai-memory` | 50,192,208 | `02904079c0700b1d96e1aafaa5dc8da16eb4a1a7ff32eb100d78a6338ab2e2c8` | `ev_c127f3b46973ea298046b85ad5e6a61a1a3c2d8d485b6592efcaacee26d6bb9b` (Rust binary)<br>`ev_17a0d1760f2a0f592d24b04b3716faa9f57f6b4bda37a29fd4a185f4df2c3842` (Exports) |
+| **Codex `state_5.sqlite`** | `~/.codex/state_5.sqlite` | 9,179,136 | `537c13f5ca2307c8bc8c66cc03e28f6c6c67de5b15b32f0011ac69cb51d4057d` | `ev_3e4a7d4314b4d31f13103a257120fda8c23e0a884187421d7a47b4a75f1c29a5` |
+| **Codex `memories_1.sqlite`** | `~/.codex/memories_1.sqlite` | 663,552 | `3912d60d041897d33fc2c2b169bfa1175995b21613b607e134c646eb630aa879` | `ev_1cc07dc44d6445edb0769cc0d4fee066758881e20cddd8f2a8c3d961c3fea201` |
+| **AGY `conversation_summaries.db`** | `~/.gemini/antigravity-cli/conversation_summaries.db` | 35,069,952 | `3dfaba92366b627b64bf821974d87e6b1b4f7057084b47719e875accba5ee75a` | `ev_6a75fb73dadf1f29cb480f77e5ebbce3692856c21971bae83b6ec3846effbdb1` |
+| **AGY Trajectory DB (`650ca1b8...db`)** | `~/.gemini/antigravity-cli/conversations/<conversation-id>.db` | 6,094,848 | `22a33eab4aa9ccf5add825adab96b09cd8446a9aa027a0143819756449216491` | `ev_524bc260c8a7ccbbaef9d7cfb1c2aaf949a069e2aac27ebff55a9c96d6c118b6` |
+| **Hermes `state.db`** | `~/.hermes/state.db` | 82,018,304 | `d5411715a24e4acc773d632fadda8ff0cafae612d7810c489d3afd6b51bf58f9` | `ev_55f2f031e94c568896ee3d6653a29fb05932581b058229e8bf3aebc614652511` |
 
 ---
 
@@ -93,7 +93,7 @@ Every claim in this document is anchored to a cryptographic SHA-256 artifact dig
 
 ---
 
-### 2.4 Hermes Agent (`/home/parobek/.hermes/hermes-agent`)
+### 2.4 Hermes Agent (`~/.hermes/hermes-agent`)
 - **Architecture (Full Python Source + SQLite `state.db` `ev_55f2f031e94c568896ee3d6653a29fb05932581b058229e8bf3aebc614652511`):**
   - Exposes two first-class plugin ABCs specifically designed for external context and memory engines:
     1. **`ContextEngine` (`agent/context_engine.py`)**: Loaded from `plugins/context_engine/<name>/` via `context.engine`.
@@ -110,7 +110,7 @@ Every claim in this document is anchored to a cryptographic SHA-256 artifact dig
 
 ---
 
-### 2.5 `ai-memory` (`/home/parobek/.local/lib/ai-memory/ai-memory`)
+### 2.5 `ai-memory` (`~/.local/lib/ai-memory/ai-memory`)
 - **Binary Architecture (`ev_c127f3b46973ea298046b85ad5e6a61a1a3c2d8d485b6592efcaacee26d6bb9b`):**
   - 50.19 MiB Rust ELF64 executable (`axum` HTTP server on `127.0.0.1:49375` + `mcp-bridge` stdio proxy + `hook` CLI).
   - Supports 18 agent harnesses (`claude-code`, `codex`, `antigravity-cli`, `hermes`, `open-code`, `gemini-cli`, `claude-desktop`, `omp`, `pi`, `crush`, `devin`, `kimi-code`, `command-code`, `zcode`, `copilot-cli`, `grizzybot`, `droid`, `codebuddy`, `ibm-bob`, `dsh`, `cline`, `qwen-code`).

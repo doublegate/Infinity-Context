@@ -11,5 +11,6 @@ workspace = true
 
 [dependencies]
 icx-core.workspace = true
+rustix.workspace = true
 serde.workspace = true
 thiserror.workspace = true

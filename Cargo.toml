@@ -10,9 +10,10 @@ members = [
     "crates/icx-proxy",
     "crates/icx-cli",
 ]
+exclude = ["fuzz"]
 
 [workspace.package]
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 rust-version = "1.100"
 license = "GPL-3.0-or-later"
@@ -52,10 +53,13 @@ blake3 = "1.8.7"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 thiserror = "2.0.21"
-icx-core = { path = "crates/icx-core" }
-icx-hdc = { path = "crates/icx-hdc" }
-icx-codec = { path = "crates/icx-codec" }
-icx-store = { path = "crates/icx-store" }
-icx-bus = { path = "crates/icx-bus" }
-icx-adapters = { path = "crates/icx-adapters" }
-icx-proxy = { path = "crates/icx-proxy" }
+rusqlite = { version = "0.43.0", features = ["bundled"] }
+rustix = { version = "1.1.6", features = ["event", "fs", "net", "process"] }
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
+icx-core = { path = "crates/icx-core", version = "1.1.0" }
+icx-hdc = { path = "crates/icx-hdc", version = "1.1.0" }
+icx-codec = { path = "crates/icx-codec", version = "1.1.0" }
+icx-store = { path = "crates/icx-store", version = "1.1.0" }
+icx-bus = { path = "crates/icx-bus", version = "1.1.0" }
+icx-adapters = { path = "crates/icx-adapters", version = "1.1.0" }
+icx-proxy = { path = "crates/icx-proxy", version = "1.1.0" }

@@ -48,6 +48,26 @@ impl Default for TitansSurpriseGate {
 }
 
 impl TitansSurpriseGate {
+    pub(crate) fn write_snapshot(&self, w: &mut crate::snapshot::Writer) {
+        self.bundler.write_snapshot(w);
+        w.f32(self.momentum);
+        w.f32(self.eta);
+        w.f32(self.alpha);
+        w.u64(self.events_seen);
+    }
+
+    pub(crate) fn read_snapshot(
+        r: &mut crate::snapshot::Reader<'_>,
+    ) -> Result<Self, crate::snapshot::SnapshotError> {
+        Ok(Self {
+            bundler: HdcBundler::read_snapshot(r)?,
+            momentum: r.f32()?,
+            eta: r.f32()?,
+            alpha: r.f32()?,
+            events_seen: r.u64()?,
+        })
+    }
+
     /// Creates a new `TitansSurpriseGate` with momentum decay factor `eta` (typically `0.82`)
     /// and default idle forgetting factor `alpha = 0.05` (`docs/hyperdimensional-and-fractal-index.md` §4).
     pub fn new(eta: f32) -> Self {

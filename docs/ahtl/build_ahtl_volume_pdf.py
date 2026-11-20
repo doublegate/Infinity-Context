@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Reproducible Master Technical Volume PDF Builder for AHTL v1.0:
+Reproducible Master Technical Volume PDF Builder for AHTL v1 (icx v1.1.0):
 Generates `docs/ahtl/AHTL_v1_Complete_Technical_Specification_Volume.pdf`
 from the 9 Markdown specification files and visual assets in `docs/ahtl/`.
 """
@@ -1103,7 +1103,7 @@ def build_cover_and_toc_html() -> str:
     <div>
       <div class="cover-badge-row">
         <span class="cover-badge">DOCUMENT ID: ICX-SPEC-AHTL-1.0</span>
-        <span class="cover-meta-right">INFINITY-CONTEXT (`icx`) • VIRTUAL CONTEXT MMU • v1.0.0</span>
+        <span class="cover-meta-right">INFINITY-CONTEXT (`icx`) • VIRTUAL CONTEXT MMU • v1.1.0</span>
       </div>
       <div class="cover-title">
         Alien Holographic Token Lattice (`AHTL v1.0`)<br/>
@@ -1143,7 +1143,7 @@ def build_cover_and_toc_html() -> str:
           <td style="border-top: 3px solid #8B5CF6;">
             <div class="cover-card-title" style="color: #C084FC;">3. 10,240-Bit Hypercube Lattice (`hv:&lt;16-hex&gt;`)</div>
             <div class="cover-card-body">
-              Discrete Boolean hypercube `Q_10240` (`[u64; 160]`, 20 AVX-512 ZMM registers).
+              Discrete Boolean hypercube `Q_10240` (`[u64; 160]`; portable safe-Rust word loops, no explicit SIMD intrinsics).
               BLAKE3 XOF basis, XOR role-filler binding, cyclic permutation, Infini-attention Delta bundler, and `12 ns` `VPOPCNTDQ` scan.
             </div>
           </td>
@@ -1151,7 +1151,7 @@ def build_cover_and_toc_html() -> str:
             <div class="cover-card-title" style="color: #FBBF24;">4. ISO 11548-1 Braille-256 &amp; AST Skeleton</div>
             <div class="cover-card-body">
               Bijective 8-dot Unicode Braille mapping (`U+2800 + b`, 256 states) in orthogonal `So` subspace +
-              single-pass `O(N)` AST skeletonizer &amp; 3-tier `SecretRedactor` (`18.4×–72.1×` compression, `&gt;= 94%` KV hit rate).
+              single-pass `O(N)` AST skeletonizer &amp; `SecretRedactor` Tiers 0-3 (lossless storage after redaction; 95.46% byte-weighted prefix reuse on the synthetic benchmark transcript).
             </div>
           </td>
         </tr>
@@ -1208,13 +1208,13 @@ def build_cover_and_toc_html() -> str:
         <tr>
           <td><strong>CH-04</strong></td>
           <td><strong>10,240-Bit Hyperdimensional Lattice (`hv:`)</strong><br/><code>04-hyperdimensional-10240-bit-lattice.md</code></td>
-          <td>Boolean hypercube `Q_10240` (`[u64; 160]`), BLAKE3 XOF &amp; SplitMix64 basis, concentration of measure (`μ=5120, σ=50.60`), Coxeter group `B_10240`, Infini-attention Delta bundler, AVX-512 SIMD.</td>
+          <td>Boolean hypercube `Q_10240` (`[u64; 160]`), BLAKE3 XOF &amp; SplitMix64 basis, concentration of measure (`μ=5120, σ=50.60`), Coxeter group `B_10240`, Infini-attention Delta bundler.</td>
           <td><code>icx-hdc</code></td>
         </tr>
         <tr>
           <td><strong>CH-05</strong></td>
           <td><strong>Structural AST Skeletonization &amp; Redaction</strong><br/><code>05-structural-ast-skeletonization-and-redaction.md</code></td>
-          <td>Single-pass `O(N)` homomorphic AST pruning (Rust, Python, TS, Go, logs, diffs), unmangled identifier invariant, Bi-Temporal CSR Graph edges, and 3-tier `SecretRedactor` (`H(S) &gt; 4.35`).</td>
+          <td>Single-pass `O(N)` homomorphic AST pruning (Rust, Python, TS, Go, logs, diffs), unmangled identifier invariant, Bi-Temporal CSR Graph edges, and the Tier 0-3 `SecretRedactor` (`H(S) &gt; 4.35`).</td>
           <td><code>icx-codec</code><br/><code>icx-store</code></td>
         </tr>
         <tr>
@@ -1226,7 +1226,7 @@ def build_cover_and_toc_html() -> str:
         <tr>
           <td><strong>CH-07</strong></td>
           <td><strong>Transformer Attention, BPE &amp; Cache Epochs</strong><br/><code>07-transformer-attention-and-bpe-mechanics.md</code></td>
-          <td>BPE pre-tokenization barriers, Softmax partition noise elimination (`18.4×–72.1×` SNR boost), `⟦...⟧` attention sinks, 2-layer induction-head pointer copy, Titans Surprise `S_t`, `&gt;= 94%` KV hit rate.</td>
+          <td>BPE pre-tokenization barriers, Softmax partition noise elimination (`18.4×–72.1×` SNR boost), `⟦...⟧` attention sinks, 2-layer induction-head pointer copy, Titans-inspired surprise `S_t`, prefix-reuse proxy (not a measured provider hit rate).</td>
           <td><code>icx-core</code><br/><code>icx-proxy</code></td>
         </tr>
         <tr>

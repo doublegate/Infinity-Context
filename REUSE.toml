@@ -26,6 +26,7 @@ path = [
   "crates/icx-store/**",
   "crates/icx-bus/**",
   "crates/icx-cli/**",
+  "fuzz/**",
   "scripts/**",
   "to-dos/**",
 ]
@@ -101,12 +102,33 @@ SPDX-FileComment = "Adapted from the Contributor Covenant Code of Conduct v2.1 (
 # ---------------------------------------------------------------------------
 # 6. Reference Academic Preprints (ref-docs/papers/*.pdf)
 # ---------------------------------------------------------------------------
+# Licenses verified per paper on the arXiv abstract pages (v1.1.0, ICX-AUD-036). Papers under
+# the arXiv non-exclusive distribution license are not redistributed; INDEX.md links to arXiv.
 [[annotations]]
-path = "ref-docs/papers/*.pdf"
+path = [
+  "ref-docs/papers/2310.08560-*.pdf",
+  "ref-docs/papers/2401.03462-*.pdf",
+  "ref-docs/papers/2404.14469-*.pdf",
+  "ref-docs/papers/2405.13792-*.pdf",
+  "ref-docs/papers/2410.15704-*.pdf",
+  "ref-docs/papers/2501.00663-*.pdf",
+  "ref-docs/papers/2510.04618-*.pdf",
+  "ref-docs/papers/2512.24601-*.pdf",
+  "ref-docs/papers/2605.04050-*.pdf",
+  "ref-docs/papers/2607.07144-*.pdf",
+  "ref-docs/papers/2607.23809-*.pdf",
+]
 precedence = "override"
 SPDX-FileCopyrightText = "The respective arXiv paper authors cataloged in ref-docs/papers/INDEX.md"
-SPDX-License-Identifier = "CC-BY-4.0 OR LicenseRef-arXiv-NonExclusive"
-SPDX-FileComment = "Academic preprints downloaded from arXiv.org for the research corpus; see ref-docs/papers/INDEX.md for per-paper authors and arXiv IDs."
+SPDX-License-Identifier = "CC-BY-4.0"
+SPDX-FileComment = "arXiv preprints published under CC BY 4.0; see ref-docs/papers/INDEX.md for authors and arXiv IDs."
+
+[[annotations]]
+path = "ref-docs/papers/2501.13956-*.pdf"
+precedence = "override"
+SPDX-FileCopyrightText = "The authors of arXiv:2501.13956 (Zep: A Temporal Knowledge Graph Architecture for Agent Memory)"
+SPDX-License-Identifier = "CC-BY-NC-SA-4.0"
+SPDX-FileComment = "arXiv preprint published under CC BY-NC-SA 4.0."
 
 # ---------------------------------------------------------------------------
 # 7. Retrieved Wikipedia Article Snapshots & Wikimedia Metadata JSONs (CC-BY-SA-4.0)

@@ -5,6 +5,143 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-20
+
+Remediation release for the adversarial audit of v1.0.0 in [`docs/claude/`](docs/claude/README.md).
+Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
+[`docs/claude/12-v1.1.0-remediation-status.md`](docs/claude/12-v1.1.0-remediation-status.md).
+
+### Migration
+
+- Workspaces now live under `$XDG_STATE_HOME/icx/workspaces/<project-hash>/` in a single
+  `icx.sqlite3`. A repository-local `.icx/` is ignored with a warning; adopt one you own with
+  `icx trust --dir <path>`. v1.0.x JSON stores are migrated on first load without deleting them.
+- `icx proxy` requires the install token: use the base URL it prints
+  (`http://127.0.0.1:49380/t/<token>`) or send `x-icx-token`. Non-loopback binds need
+  `--allow-remote`.
+- `icx deref` frames output as untrusted data by default; use `--raw` for exact bytes.
+
+### Security
+
+- Repository-shipped `.icx/` workspaces are no longer loaded into agent context; workspaces are
+  owner-checked, 0700/0600, sealed with a per-install key and MAC-verified (ICX-AUD-010, -013).
+- The proxy authenticates clients and binds loopback only by default. The curl header files that
+  carry upstream API keys are written to the private runtime directory (`$XDG_RUNTIME_DIR/icx`)
+  and stale ones are swept on start (ICX-AUD-012, -020).
+- icx structural markers anywhere in untrusted input, including the latest message, are escaped
+  unless they are byte-identical to a block icx emitted; deref output carries a
+  `trust=untrusted_data` provenance header (ICX-AUD-011).
+- Bounded hook stdin, MCP lines (4 MiB, oversized lines drained without buffering) and fold
+  depth (64) (ICX-AUD-014).
+- Only structural tool-call/-result blocks for the icx pager are exempt from marker
+  neutralization; tool output that merely contains `"name": "icx"` is not.
+- Reopening a store resets widened `icx.sqlite3`, `-wal` and `-shm` modes to `0600`.
+- `install.key` is checked (regular file, owner, mode) before it is read, so a FIFO is refused
+  instead of blocking; only a missing key is created.
+- `icx encode-ahtl` refuses an untrusted workspace instead of printing a handle it never stored.
+- `icx trust` adopts a store's content but not its emitted-block digests, so a planted digest
+  cannot exempt forged markers from escaping. MCP `grep` results carry the same
+  `trust=untrusted_data` provenance header as `deref` and `slice`.
+- `icx mcp-serve` and `icx proxy` re-verify the workspace per request, so a later `icx trust`
+  takes effect and a workspace whose ownership, mode or seal changed is no longer used.
+- Proxy curl header files go to a directory verified to be ours and private
+  (`$XDG_RUNTIME_DIR/icx`, else `<tmp>/icx-<uid>`) and stale ones are swept every minute.
+- Redactor: URL userinfo passwords for every scheme, SendGrid, Slack app/webhook, GitLab,
+  DigitalOcean, Shopify and Twilio formats, more key names, multi-line values, single-line PEM,
+  and bounded unterminated key blocks (ICX-AUD-015, -016). A key with no inline value redacts
+  only a following scalar line: nested mappings, comments and prose ending in `key:` are kept.
+  Token-only URL userinfo (`https://<token>@host`, 16+ mixed or 32+ token characters) is
+  redacted. A quoted continuation value
+  is treated as a nested key only if its closing quote precedes the separator. Private-key banners are matched
+  within one `-----BEGIN ...-----` banner, and text around a key block is kept.
+- agy `transcriptPath` opens non-blocking without following symlinks; the bus file refuses
+  symlinks, foreign owners and permissive modes (ICX-AUD-018, -019).
+- Hooks never echo input fields back as decisions (Claude Code, Codex and agy PreToolUse; agy
+  PostInvocation) and never force an agent to continue (agy Stop) (ICX-AUD-007, -009).
+
+### Fixed
+
+- Hook latency no longer grows with workspace size: SQLite store with append-only rows, persisted
+  HDC index snapshot, and a bit-sliced bundler. 338 artifacts: 940 ms to 14 ms per hook in
+  process; about 3 ms median through the resident daemon (ICX-AUD-001, -047, -050).
+- Storage is lossless after redaction: CRLF, trailing newlines and literal delimiters survive;
+  escaping applies only to model-facing views (ICX-AUD-021).
+- 64-bit handle collisions are refused instead of overwriting, in both the CAS and the DAG,
+  including Hermes carried-AHTL lines and subagent summaries (ICX-AUD-022, -023).
+- The daemon flushes and releases the workspace lock at most 1 s after the first unsaved change
+  even under continuous hook traffic. A failed flush keeps the unsaved state in memory, releases
+  the lock and retries every second; after 5 consecutive failures it logs an error and drops the
+  changes so the daemon can exit. Requests that never reach a handler (malformed, wrong
+  protocol) do not trigger a save.
+- Concurrent first use of the install key, and concurrent `prepare` of one workspace, no longer
+  collide on temp files or observe a directory before its seal is written.
+- A save refuses to seal a snapshot older than the store on disk (another writer committed
+  since it was loaded). If the tables do not hold exactly the in-memory rows (rows removed or
+  planted behind the process), they are rewritten from memory before sealing. A new
+  workspace's unsaved state survives a first flush that failed after creating the store file. The daemon logs an error when another writer's newer
+  store replaces its unsaved changes.
+- Emitted-block digests are stored in an append-only, seal-covered table instead of being
+  rewritten inside the state blob on every save.
+- Epoch headers are hex everywhere and epoch ids are u32 (ICX-AUD-024); invalid `slice_hint`
+  values are neither rendered nor parsed (ICX-AUD-025); clause chains are parsed iteratively and
+  capped at 64 links (ICX-AUD-026).
+- Associative recall of a unique token in 1,000 log documents: top-1 5.1% to 99.0%, top-5 5.6%
+  to 99.7% (ICX-AUD-049); one hit per artifact (ICX-AUD-042).
+- Claude Code: shape-preserving `updatedToolOutput`, plain-text PreCompact instructions,
+  `last_assistant_message` on SubagentStop, and no model-facing output on PostCompact or
+  SubagentStop (ICX-AUD-004). Codex: no duplicated `additionalContext` (ICX-AUD-005).
+- Anthropic proxy placement: client breakpoints are preserved, icx's breakpoint goes on a
+  content block, at most 4 in total, and 1h TTLs are inherited (ICX-AUD-003).
+- The bus reports dropped publishes and reader loss instead of returning success
+  (ICX-AUD-054).
+- FastCDC uses spread masks (mean chunk 13.2 KiB to 10.6 KiB at an 8 KiB target) (ICX-AUD-027).
+
+### Added
+
+- `icx daemon` (resident workspace over a private Unix socket), `icx trust`, `ICX_NO_DAEMON`,
+  `ICX_DAEMON_AUTOSTART`, `ICX_STATE_HOME` and `ICX_CONFIG_HOME`.
+- MCP dual-era support: `initialize` negotiation for 2024-11-05 through 2025-11-25, plus
+  `server/discover` and per-request versions for 2026-07-28 (ICX-AUD-008).
+- Optional wall-clock event times, enabled for CLI workspaces (ICX-AUD-048).
+- `SeqlockTelemetryBus::dropped_publishes` and `poll_since_with_loss` (ICX-AUD-054).
+- `WireProxyTransformer::serve_http_listener_gated` with a per-request `WorkspaceGate`.
+- proptest invariants for the codec, cargo-fuzz targets (`fuzz/`), and a cargo-deny gate
+  (ICX-AUD-039, -040).
+
+### Changed
+
+- The benchmark's cache line is a byte-weighted prefix-reuse proxy over all turns, seal turns
+  included (95.46% on the synthetic transcript), gated at 90%. Compression and CAS fixtures are
+  labelled and the CAS fixture is no longer a single chunk (ICX-AUD-002, -027, -028).
+- CI actions are pinned to commit SHAs; the toolchain is pinned to 1.100.0 (ICX-AUD-040).
+- `icx-proxy` and `icx-adapters` declare `GPL-3.0-or-later AND AGPL-3.0-or-later`, matching
+  REUSE; LICENSING.md's description of GPL section 13 is corrected (ICX-AUD-034).
+- Specifications, threat model, deployment guide, README and the AHTL PDF volume describe v1.1.0
+  behaviour; canonical figures are in [`docs/numbers.md`](docs/numbers.md) (ICX-AUD-017, -030,
+  -031, -046, -051).
+
+### Removed
+
+- 10 arXiv PDFs whose license does not permit redistribution; INDEX.md links to arXiv
+  (ICX-AUD-036).
+- Unused proxy dependencies `icx-codec` and `serde` (ICX-AUD-041); `icx-cli` depends on
+  `serde` and `rustix` only on Unix.
+- Personal paths and an agent conversation id from tracked files (ICX-AUD-038).
+
+### Known limitations
+
+- Fractal suffix depth is still inferred from distance and can report false positives
+  (ICX-AUD-052).
+- Codex does not yet apply `updatedMCPToolOutput`; under Codex icx indexes output but does not
+  shrink it. The Codex rollout tailer does not read `.jsonl.zst` files and is not wired into the
+  CLI (ICX-AUD-005).
+- No Hermes Python shim ships with icx (ICX-AUD-006).
+- The rest of the derived state (DAG, epochs, HDC event log, graph) is still rewritten in full
+  on each save, so flush cost grows with history. The daemon flushes after any dispatched
+  request, including hooks that change nothing.
+- Licensing and patent governance text (PATENTS.md, CLA.md, COMMERCIAL.md) is unchanged by owner
+  decision (ICX-AUD-035).
+
 ## [1.0.0] - 2026-11-18
 
 ### Added

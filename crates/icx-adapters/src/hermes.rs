@@ -75,18 +75,23 @@ impl AgentHookAdapter for HermesAdapter {
 }
 
 impl HermesAdapter {
-    fn is_synthetic_tail_slot(msg: &HermesMessage) -> bool {
-        msg.name.as_deref() == Some("icx_tail_slot") || msg.content.starts_with("⟪ICX:TAIL_SLOT│")
+    // ICX-AUD-011: a message is icx-synthesized only if its exact content is a block icx emitted.
+    // A matching prefix or `name` alone is attacker-typable (tool output, fetched pages) and is
+    // treated as ordinary untrusted content.
+    fn is_synthetic_tail_slot(msg: &HermesMessage, mmu: &InfinityContextMmu) -> bool {
+        (msg.name.as_deref() == Some("icx_tail_slot") || msg.content.starts_with("⟪ICX:TAIL_SLOT│"))
+            && mmu.is_emitted(&msg.content)
     }
 
-    fn is_synthetic_cache_epoch(msg: &HermesMessage) -> bool {
-        msg.name.as_deref() == Some("icx_cache_epoch")
+    fn is_synthetic_cache_epoch(msg: &HermesMessage, mmu: &InfinityContextMmu) -> bool {
+        (msg.name.as_deref() == Some("icx_cache_epoch")
             || msg.content.starts_with("⟪ICX:HERMES_EPOCH│")
-            || msg.content.starts_with("⟪ICX:HERMES_COMPACT│")
+            || msg.content.starts_with("⟪ICX:HERMES_COMPACT│"))
+            && mmu.is_emitted(&msg.content)
     }
 
-    fn is_stubbed_message(msg: &HermesMessage) -> bool {
-        msg.content.starts_with("⟪ICX:STUB│")
+    fn is_stubbed_message(msg: &HermesMessage, mmu: &InfinityContextMmu) -> bool {
+        msg.content.starts_with("⟪ICX:STUB│") && mmu.is_emitted(&msg.content)
     }
 
     fn sanitize_embedded_ahtl_line(trimmed: &str) -> String {
@@ -140,12 +145,12 @@ impl HermesAdapter {
         carried_slots: &mut Vec<(usize, Option<icx_core::ArtifactId>)>,
         mmu: &mut InfinityContextMmu,
     ) {
-        let stub_aid = if Self::is_stubbed_message(msg) {
+        let stub_aid = if Self::is_stubbed_message(msg, mmu) {
             Self::extract_stub_artifact_id(msg).filter(|&aid| mmu.cas.get_meta(aid).is_some())
         } else {
             None
         };
-        let default_subj = if Self::is_stubbed_message(msg) {
+        let default_subj = if Self::is_stubbed_message(msg, mmu) {
             InfinityContextMmu::sanitize_hook_label(Self::message_subject(msg), "carried_epoch")
         } else {
             "carried_epoch".to_owned()
@@ -162,8 +167,15 @@ impl HermesAdapter {
                         Some(icx_core::ArtifactId::hash_bytes(sanitized_line.as_bytes()).0)
                     })
                 } else {
-                    let line_aid = parsed_aid
-                        .unwrap_or_else(|| mmu.cas.put_bytes(sanitized_line.as_bytes()).0);
+                    // Collision-checked (PR #20 review): a 64-bit id clash skips the line
+                    // instead of aliasing it to another artifact's bytes.
+                    let line_aid = match parsed_aid {
+                        Some(aid) => aid,
+                        None => match mmu.cas.put_bytes_checked(sanitized_line.as_bytes()) {
+                            Ok((aid, _)) => aid,
+                            Err(_) => continue,
+                        },
+                    };
                     let existing_turn = mmu.dag.find_turn_any_role(AgentKind::Hermes, line_aid);
                     let subj = existing_turn
                         .map(|(r, _, _)| r.to_owned())
@@ -237,10 +249,10 @@ impl HermesAdapter {
         mmu: &mut InfinityContextMmu,
     ) {
         let eff_text = Self::effective_message_text(msg, raw_opt);
-        if Self::is_synthetic_tail_slot(msg) || eff_text.trim().is_empty() {
+        if Self::is_synthetic_tail_slot(msg, mmu) || eff_text.trim().is_empty() {
             return;
         }
-        if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
+        if Self::is_synthetic_cache_epoch(msg, mmu) || Self::is_stubbed_message(msg, mmu) {
             let mut sink = Vec::new();
             let mut carried_sink = Vec::new();
             Self::extract_embedded_ahtl_lines(
@@ -381,8 +393,8 @@ impl HermesAdapter {
         let mut preserved_vals = Vec::new();
 
         for (&(msg, raw_opt), &keep_verbatim) in slice.iter().zip(preserve_mask.iter()) {
-            if Self::is_synthetic_cache_epoch(msg)
-                || (Self::is_stubbed_message(msg) && !keep_verbatim)
+            if Self::is_synthetic_cache_epoch(msg, mmu)
+                || (Self::is_stubbed_message(msg, mmu) && !keep_verbatim)
             {
                 Self::extract_embedded_ahtl_lines(
                     msg,
@@ -394,7 +406,7 @@ impl HermesAdapter {
                 continue;
             }
             if keep_verbatim {
-                if Self::is_stubbed_message(msg) {
+                if Self::is_stubbed_message(msg, mmu) {
                     let mut stub_sink = Vec::new();
                     Self::extract_embedded_ahtl_lines(
                         msg,
@@ -456,7 +468,7 @@ impl HermesAdapter {
         let cleaned: Vec<(&HermesMessage, Option<&Value>)> = request_messages
             .iter()
             .enumerate()
-            .filter(|(_, m)| !Self::is_synthetic_tail_slot(m))
+            .filter(|(_, m)| !Self::is_synthetic_tail_slot(m, mmu))
             .map(|(i, m)| (m, raw_messages.and_then(|r| r.get(i))))
             .collect();
         let total = cleaned.len();
@@ -536,6 +548,7 @@ impl HermesAdapter {
                 middle_ahtl.len(),
                 middle_ahtl.join("\n")
             );
+            mmu.record_emitted(&epoch_content);
             if raw_messages.is_some() {
                 selected_vals.push(json!({
                     "role": "system",
@@ -614,7 +627,7 @@ impl HermesAdapter {
                 && is_tool
                 && !InfinityContextMmu::is_icx_pager_tool(subj)
                 && !raw_opt.is_some_and(Self::has_structured_non_text_content)
-                && !Self::is_stubbed_message(msg)
+                && !Self::is_stubbed_message(msg, mmu)
                 && !msg.content.trim().is_empty()
                 && msg.content.len() >= mmu.tool_virtualize_threshold
             {
@@ -632,6 +645,7 @@ impl HermesAdapter {
                     "⟪ICX:STUB│{}│bytes={}│Use `icx` MCP tool (op=deref/slice/grep) to inspect full output⟫\n{}",
                     res.artifact_id, res.raw_bytes, res.compressed_ahtl
                 );
+                mmu.record_emitted(&stubbed.content);
                 if let Some(r) = raw_opt {
                     let mut rv = r.clone();
                     rv["content"] = Value::String(stubbed.content.clone());
@@ -677,11 +691,11 @@ impl HermesAdapter {
         let mut in_head = true;
 
         for (i, msg) in messages.iter().enumerate() {
-            if Self::is_synthetic_tail_slot(msg) {
+            if Self::is_synthetic_tail_slot(msg, mmu) {
                 continue;
             }
             let r_opt = raw_messages.and_then(|r| r.get(i));
-            if in_head && msg.role == "system" && !Self::is_synthetic_cache_epoch(msg) {
+            if in_head && msg.role == "system" && !Self::is_synthetic_cache_epoch(msg, mmu) {
                 head_msgs.push(msg.clone());
                 if let Some(r) = r_opt {
                     head_vals.push(r.clone());
@@ -714,6 +728,7 @@ impl HermesAdapter {
             ahtl_frames.len(),
             ahtl_frames.join("\n")
         );
+        mmu.record_emitted(&compact_content);
 
         let mut out_msgs = head_msgs;
         let mut out_vals = head_vals;
@@ -775,10 +790,10 @@ impl HermesAdapter {
         for (i, msg) in messages.iter().enumerate() {
             let raw_opt = raw_messages.and_then(|r| r.get(i));
             let eff_text = Self::effective_message_text(msg, raw_opt);
-            if Self::is_synthetic_tail_slot(msg) || eff_text.trim().is_empty() {
+            if Self::is_synthetic_tail_slot(msg, mmu) || eff_text.trim().is_empty() {
                 continue;
             }
-            if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
+            if Self::is_synthetic_cache_epoch(msg, mmu) || Self::is_stubbed_message(msg, mmu) {
                 let mut sink = Vec::new();
                 Self::extract_embedded_ahtl_lines(
                     msg,
@@ -828,10 +843,10 @@ impl HermesAdapter {
         for (i, msg) in messages.iter().enumerate() {
             let raw_opt = raw_messages.and_then(|r| r.get(i));
             let eff_text = Self::effective_message_text(msg, raw_opt);
-            if Self::is_synthetic_tail_slot(msg) || eff_text.trim().is_empty() {
+            if Self::is_synthetic_tail_slot(msg, mmu) || eff_text.trim().is_empty() {
                 continue;
             }
-            if Self::is_synthetic_cache_epoch(msg) || Self::is_stubbed_message(msg) {
+            if Self::is_synthetic_cache_epoch(msg, mmu) || Self::is_stubbed_message(msg, mmu) {
                 Self::extract_embedded_ahtl_lines(
                     msg,
                     &mut ahtl_frames,
@@ -860,13 +875,15 @@ impl HermesAdapter {
         let ep_handle = ep_id
             .map(|id| id.to_string())
             .unwrap_or_else(|| "#icx:0000000000000000".to_owned());
-        format!(
+        let checkpoint = format!(
             "⟪ICX:PRE_COMPRESS_CHECKPOINT│v={}│epoch={ep_handle}│msgs={}│cas_artifacts={}⟫\n{}",
             PRE_COMPRESS_CHECKPOINT_API_VERSION,
             ahtl_frames.len(),
             mmu.cas.artifact_count(),
             ahtl_frames.join("\n")
-        )
+        );
+        mmu.record_emitted(&checkpoint);
+        checkpoint
     }
 
     /// Implements `MemoryProvider.on_pre_compress(messages) -> String`

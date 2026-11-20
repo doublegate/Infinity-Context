@@ -18,7 +18,7 @@ Raw tool outputs in autonomous coding sessions fall into two distinct informatio
 2. **Low-Entropy Boilerplate & Imperative Bodies (~92% of bytes, < 5% of global routing value):** Local variable temporaries, repetitive loop bodies, JSON wrapper punctuation, and hundreds of passing test lines (`test suite::case_0042 ... ok`).
 
 `crates/icx-codec` executes a strict two-stage pre-processing pipeline on every incoming payload:
-- **Stage 1 (`SecretRedactor::sanitize`):** Strips credentials, private keys, and high-entropy secrets *before* `FastCDC` chunking or `BLAKE3` hashing, and escapes reserved `AHTL` delimiters (`⟦`, `⟧`, `⟪`, `⟫`) so untrusted payloads can never forge system invariants.
+- **Stage 1 (`SecretRedactor::redact`, then `sanitize` for model-facing text):** `redact` strips credentials, private keys and high-entropy secrets *before* `FastCDC` chunking or `BLAKE3` hashing and otherwise preserves every byte (line endings, trailing newline, literal delimiters), so the CAS stores the redacted input losslessly. `sanitize` = `redact` + Tier 0 delimiter escaping, and is applied only to text shown to a model (packets, skeletons, tail slots, deref output), so untrusted payloads cannot forge system invariants (v1.1.0, ICX-AUD-021).
 - **Stage 2 (`StructuralSkeletonizer::compress_to_packet`):** Performs a single-pass $O(N)$ homomorphic tree projection $\pi_{\text{skel}}: \mathcal{T}_{\text{AST}} \to \text{AhtlPacket}$ that retains 100% of API boundary signatures and fault diagnostics while folding imperative bodies into `#icx:<blake3_hex>` CAS pointers.
 
 ![AST Homomorphic Skeletonization](images/generated/abstract_syntax_tree_skeleton_reduction.png)
@@ -91,11 +91,11 @@ When `is_functional` is `true` (e.g., `pass` or `fail` counts on `cargo_test`), 
 
 ---
 
-## 3. Pre-Ingestion 4-Tier `SecretRedactor` Gate (`crates/icx-codec/src/redact.rs`)
+## 3. Pre-Ingestion `SecretRedactor` Gate (Tiers 0-3) (`crates/icx-codec/src/redact.rs`)
 
 ### 3.1 Security Mandate (Module 60 Compliance)
 
-Because `CasStore` is an immutable, content-addressed Merkle store and `/dev/shm` is readable by local sibling agent processes under the same UID, **matched credentials and PEM private keys must be scrubbed before `CasStore::put_bytes`, `AhtlPacket::render`, or `SeqlockTelemetryBus::publish`**. `SecretRedactor::sanitize` is therefore invoked at the very first line of both `InfinityContextMmu::ingest_payload` and `StructuralSkeletonizer::compress_to_packet`, with all four tiers (`Tier 0` delimiter escaping, `Tier 1` PEM/PGP blocks, `Tier 2` 28 vendor prefixes/JWTs/URLs/CLI flags/`.env`/JSON/YAML keys, and `Tier 3` Shannon character entropy $H(S)$ filtering) active in `crates/icx-codec/src/redact.rs` (`v0.3.0`) and `FLAG_IS_REDACTED` (`1 << 7`) stamped on `ChannelBHologram` byte `B[7]`.
+Because `CasStore` is an immutable, content-addressed store and the telepathy bus is readable by sibling agent processes of the same user, **matched credentials and PEM private keys must be scrubbed before `CasStore::put_bytes`, `AhtlPacket::render`, or `SeqlockTelemetryBus::publish`**. In v1.1.0 `InfinityContextMmu::ingest_payload` calls `SecretRedactor::redact` (Tiers 1-3) before storage, and every model-facing view additionally applies Tier 0 (`sanitize`). `FLAG_IS_REDACTED` (`1 << 7`) is stamped on `ChannelBHologram` byte `B[7]` when anything was removed. Redaction is pattern- and entropy-based: it reduces, but cannot guarantee, the absence of secrets.
 
 ### 3.2 The Four Redaction & Escaping Tiers
 
@@ -110,6 +110,7 @@ Replaces every literal occurrence of the four outer `AHTL` frame/packet delimite
 
 #### Tier 1 — Multi-Line PEM & PGP Private Key Block Stripping
 - Stateful line scanner detects `-----BEGIN ... PRIVATE KEY-----` through `-----END ... PRIVATE KEY-----` (`RSA`, `OPENSSH`, `EC`, `DSA`, `ENCRYPTED`, `PKCS8`) and collapses the entire multi-line block into `[REDACTED:PEM_PRIVATE_KEY]`.
+- v1.1.0: single-line (JSON-escaped, `\n`-joined) key blocks are redacted inline, and an unterminated block stops being swallowed after 200 lines (`MAX_KEY_BLOCK_LINES`) instead of consuming the rest of the input (ICX-AUD-016).
 - Detects `-----BEGIN PGP PRIVATE KEY BLOCK-----` through `-----END PGP PRIVATE KEY BLOCK-----` and collapses the entire block into `[REDACTED:PGP_PRIVATE_KEY]`.
 
 #### Tier 2 — Vendor Token Prefixes, JWTs, Connection URLs, CLI Flags & Key-Value Assignments
@@ -128,8 +129,10 @@ Scans every line for `.env`/shell/query `KEY=VALUE` assignments, JSON/YAML `"key
 | Hugging Face, NPM, PyPI & `ai-memory` Tokens | `hf_*`, `npm_*`, `pypi-*`, `aim_*` | `[REDACTED:HF_TOKEN]` / `[REDACTED:NPM_TOKEN]` / `[REDACTED:PYPI_TOKEN]` / `[REDACTED:AIM_TOKEN]` |
 | Slack Bot, User & App Tokens | `xox[bparso]-[A-Za-z0-9_-]{9,}` | `[REDACTED:SLACK_TOKEN]` |
 | 3-Segment Base64URL JWTs | `eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+` | `[REDACTED:JWT_TOKEN]` |
-| Database & Broker Connection URLs | `(postgres|mysql|mongodb|redis|amqp)s?://user:pass@host` | `[REDACTED:URL_PASSWORD]` |
-| CLI Flags, `.env` & JSON/YAML Keys | `--<key>=<val>`, `<KEY>=<val>`, `"<key>": "<val>"` | `[REDACTED:CLI_SECRET]` / `[REDACTED:ENV_SECRET]` / `[REDACTED:CONFIG_SECRET]` |
+| Connection URLs with a password (v1.1.0: any scheme, e.g. `https`, `ftp`, `ssh`, `postgres`) | `<scheme>://user:pass@host` | `[REDACTED:URL_PASSWORD]` |
+| SendGrid, Slack webhooks, Twilio (v1.1.0) | `SG.<id>.<secret>` (60+ chars), `https://hooks.slack.com/services/...`, `SK` + 32 lowercase hex | `[REDACTED:SENDGRID_KEY]` / `[REDACTED:SLACK_WEBHOOK]` / `[REDACTED:TWILIO_KEY]` |
+| GitLab, DigitalOcean, Shopify, Slack app tokens (v1.1.0) | `glpat-`, `glptt-`, `dop_v1_`, `shpat_`, `shpss_`, `xapp-` | `[REDACTED:GITLAB_TOKEN]` / `[REDACTED:DIGITALOCEAN_TOKEN]` / `[REDACTED:SHOPIFY_TOKEN]` / `[REDACTED:SLACK_TOKEN]` |
+| CLI Flags, `.env` & JSON/YAML Keys | `--<key>=<val>`, `<KEY>=<val>`, `"<key>": "<val>"`; v1.1.0 adds `*_ENCRYPTION_KEY`, `*_SIGNING_KEY`, `*_MASTER_KEY`, `*_CLIENT_KEY`, `*_HMAC_KEY`, `*_SSH_KEY`, `PASS`, `PASSPHRASE`, `CREDENTIAL(S)`, `DSN`, `COOKIE`, `SESSION_ID`, and values on the line after a sensitive JSON/YAML key | `[REDACTED:CLI_SECRET]` / `[REDACTED:ENV_SECRET]` / `[REDACTED:CONFIG_SECRET]` |
 | HTTP Authorization Headers | `Bearer <tok>`, `Basic <b64>` | `[REDACTED:BEARER]` / `[REDACTED:BASIC_AUTH]` |
 
 #### Tier 3 — High-Entropy & Hex Secret Detection Gate (`SecretRedactor::shannon_entropy`)
@@ -144,7 +147,7 @@ Because a hexadecimal string ($\Sigma \subseteq \texttt{0-9a-fA-F}$) has a maxim
 
 ### 3.3 Cryptographic Non-Invertibility Proof
 
-Because `SecretRedactor::sanitize(raw_text)` executes **prior** to `CasStore::put_bytes(sanitized.as_bytes())`:
+Because `SecretRedactor::redact(raw_text)` executes **prior** to `CasStore::put_bytes(redacted.as_bytes())`, for every secret the patterns recognize:
 1. The raw secret bytes are never hashed into any `Blake3Digest` and are never stored in any `FastCDC` chunk in `CasStore::chunks`.
 2. The replacement string (`[REDACTED:API_KEY]`) is a constant literal carrying **zero bits of mutual information** ($I(\text{Secret}; \text{Sanitized}) = 0$) with the original secret.
-3. Even full compromise of the `.icx/cas/` directory or `/dev/shm` shared-memory ring cannot recover any redacted credential.
+3. Even full compromise of the workspace store (`icx.sqlite3`) or the bus file cannot recover a redacted credential. Secrets the patterns do not recognize are stored as-is.
