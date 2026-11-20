@@ -64,3 +64,29 @@ fn every_route_requires_the_install_token() {
     }
     assert_eq!(server.join().unwrap().unwrap(), 6);
 }
+
+#[cfg(unix)]
+#[test]
+fn curl_header_dir_must_be_private_and_ours_else_a_per_user_temp_dir_is_used() {
+    // PR #20 review (Antigravity): a group/world-accessible runtime dir is not used, and the
+    // fallback is a private `<tmp>/icx-<uid>` rather than the shared temp dir itself.
+    use std::os::unix::fs::PermissionsExt;
+    let base = std::env::temp_dir().join(format!("icx_curl_dir_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let (xdg, tmp) = (base.join("xdg"), base.join("tmp"));
+    std::fs::create_dir_all(xdg.join("icx")).unwrap();
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::set_permissions(xdg.join("icx"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let picked = WireProxyTransformer::curl_scratch_dir_in(Some(xdg.clone()), &tmp);
+    assert_ne!(picked, xdg.join("icx"), "permissive runtime dir was used");
+    assert_ne!(picked, tmp, "fell back to the shared temp dir");
+    assert!(picked.starts_with(&tmp), "{}", picked.display());
+    let mode = std::fs::metadata(&picked).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o700);
+    std::fs::set_permissions(xdg.join("icx"), std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(
+        WireProxyTransformer::curl_scratch_dir_in(Some(xdg.clone()), &tmp),
+        xdg.join("icx")
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}

@@ -30,8 +30,14 @@ impl SecretRedactor {
             let (body, ending) = split_line_ending(segment);
             if let Some(kind) = block {
                 block_lines += 1;
-                if kind.is_end(body) {
+                if let Some(end) = kind.end_index_after(body, 0) {
                     block = None;
+                    // Keep anything after the END banner on that line.
+                    let rest = &body[end..];
+                    if !rest.is_empty() {
+                        out.push_str(&Self::redact_line(rest));
+                        out.push_str(ending);
+                    }
                     continue;
                 }
                 if block_lines < MAX_KEY_BLOCK_LINES {
@@ -45,9 +51,11 @@ impl SecretRedactor {
                 out.push_str(ending);
                 continue;
             }
-            if let Some(kind) = KeyBlock::begins(body) {
+            if let Some((kind, start)) = KeyBlock::begins(body) {
                 block = Some(kind);
                 block_lines = 0;
+                // Text before the banner on the same line is not part of the key.
+                out.push_str(&Self::redact_line(&body[..start]));
                 out.push_str(kind.marker());
                 out.push_str(ending);
                 continue;
@@ -691,8 +699,10 @@ impl SecretRedactor {
                     path_start..path_start + path_len,
                     "[REDACTED:SLACK_WEBHOOK]",
                 );
+                pos = path_start + "[REDACTED:SLACK_WEBHOOK]".len();
+            } else {
+                pos = path_start;
             }
-            pos = path_start;
         }
         // Twilio API key SID: SK + 32 lowercase hex, delimited
         let bytes = out.clone();
@@ -971,41 +981,50 @@ impl KeyBlock {
         }
     }
 
-    fn begins(line: &str) -> Option<Self> {
-        if line.contains("-----BEGIN PGP ") && line.contains("PRIVATE KEY BLOCK-----") {
-            Some(Self::Pgp)
-        } else if line.contains("-----BEGIN ") && line.contains("PRIVATE KEY-----") {
-            Some(Self::Pem)
-        } else {
-            None
+    /// The block whose BEGIN banner starts earliest on `line`, with that banner's offset.
+    fn begins(line: &str) -> Option<(Self, usize)> {
+        [Self::Pgp, Self::Pem]
+            .into_iter()
+            .filter_map(|k| k.begin_index(line).map(|i| (k, i)))
+            .min_by_key(|&(_, i)| i)
+    }
+
+    const fn banner(self, begin: bool) -> (&'static str, &'static str) {
+        match (self, begin) {
+            (Self::Pem, true) => ("-----BEGIN ", "PRIVATE KEY-----"),
+            (Self::Pem, false) => ("-----END ", "PRIVATE KEY-----"),
+            (Self::Pgp, true) => ("-----BEGIN PGP ", "PRIVATE KEY BLOCK-----"),
+            (Self::Pgp, false) => ("-----END PGP ", "PRIVATE KEY BLOCK-----"),
         }
     }
 
-    fn is_end(self, line: &str) -> bool {
-        match self {
-            Self::Pem => line.contains("-----END ") && line.contains("PRIVATE KEY-----"),
-            Self::Pgp => line.contains("-----END PGP ") && line.contains("PRIVATE KEY BLOCK-----"),
+    /// Finds the first banner `open ... tail` at or after `from` where `tail` closes the *same*
+    /// banner (the first `-----` after `open`), returning `(start, end)` byte offsets. A
+    /// `-----BEGIN CERTIFICATE-----` earlier on the line therefore never matches (PR #20 review).
+    fn find_banner(line: &str, from: usize, open: &str, tail: &str) -> Option<(usize, usize)> {
+        let mut pos = from;
+        while let Some(rel) = line.get(pos..)?.find(open) {
+            let start = pos + rel;
+            let after_open = start + open.len();
+            if let Some(close_rel) = line[after_open..].find("-----") {
+                let end = after_open + close_rel + "-----".len();
+                if line[start..end].ends_with(tail) {
+                    return Some((start, end));
+                }
+            }
+            pos = after_open;
         }
+        None
     }
 
     fn begin_index(self, line: &str) -> Option<usize> {
-        let (open, tail) = match self {
-            Self::Pem => ("-----BEGIN ", "PRIVATE KEY-----"),
-            Self::Pgp => ("-----BEGIN PGP ", "PRIVATE KEY BLOCK-----"),
-        };
-        let start = line.find(open)?;
-        line[start..].contains(tail).then_some(start)
+        let (open, tail) = self.banner(true);
+        Self::find_banner(line, 0, open, tail).map(|(start, _)| start)
     }
 
     fn end_index_after(self, line: &str, start: usize) -> Option<usize> {
-        let (close, tail) = match self {
-            Self::Pem => ("-----END ", "PRIVATE KEY-----"),
-            Self::Pgp => ("-----END PGP ", "PRIVATE KEY BLOCK-----"),
-        };
-        let rel = line[start..].find(close)?;
-        let after_close = start + rel;
-        let tail_rel = line[after_close..].find(tail)?;
-        Some(after_close + tail_rel + tail.len())
+        let (close, tail) = self.banner(false);
+        Self::find_banner(line, start, close, tail).map(|(_, end)| end)
     }
 }
 

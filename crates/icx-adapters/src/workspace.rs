@@ -207,16 +207,26 @@ fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), TrustError> {
     std::fs::rename(&tmp, path).map_err(io_err)
 }
 
+/// Per-process sequence for unique `install.key` temp names (see `install_key`).
+static TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Loads the per-install key, creating it (32 bytes from the OS CSPRNG, mode `0600`) on first use.
 pub fn install_key(roots: &WorkspaceRoots) -> Result<[u8; 32], TrustError> {
     require_absolute(&roots.config_dir, "config")?;
     let path = roots.config_dir.join(KEY_FILE);
-    if let Ok(bytes) = std::fs::read(&path) {
-        check_dir_security(&roots.config_dir)?;
-        check_private_file(&path)?;
-        return bytes
-            .try_into()
-            .map_err(|_| TrustError::Io("install.key is not 32 bytes".into()));
+    // Validate metadata before opening (PR #20 review): a FIFO or other special file must be
+    // refused, not read (reading one blocks), and only `NotFound` leads to key creation.
+    match std::fs::symlink_metadata(&path) {
+        Ok(_) => {
+            check_dir_security(&roots.config_dir)?;
+            check_private_file(&path)?;
+            let bytes = std::fs::read(&path).map_err(io_err)?;
+            return bytes
+                .try_into()
+                .map_err(|_| TrustError::Io("install.key is not 32 bytes".into()));
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(io_err(e)),
     }
     private_dir(&roots.config_dir)?;
     check_dir_security(&roots.config_dir)?;
@@ -227,9 +237,13 @@ pub fn install_key(roots: &WorkspaceRoots) -> Result<[u8; 32], TrustError> {
     // Publish atomically: write a private temp file, then hard-link it into place. `link` fails
     // if the key already exists, so a concurrent first use can never observe a partially written
     // key (it either wins the link or reads the winner's complete file).
+    // The per-process counter makes the name unique between threads of one process even when
+    // the clock is coarse (two threads with the same pid and nanos collided on CI); the pid makes
+    // it unique between processes.
     let tmp = roots.config_dir.join(format!(
-        ".{KEY_FILE}.{}.{}",
+        ".{KEY_FILE}.{}.{}.{}",
         std::process::id(),
+        TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos())
@@ -289,6 +303,12 @@ fn current_uid() -> u32 {
 fn check_private_file(path: &Path) -> Result<(), TrustError> {
     use std::os::unix::fs::MetadataExt;
     let md = std::fs::symlink_metadata(path).map_err(io_err)?;
+    if !md.file_type().is_file() {
+        return Err(TrustError::Io(format!(
+            "{} is not a regular file",
+            path.display()
+        )));
+    }
     if md.uid() != current_uid() {
         return Err(TrustError::NotOwned);
     }

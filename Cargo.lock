@@ -227,6 +227,7 @@ dependencies = [
  "blake3",
  "icx-adapters",
  "icx-core",
+ "rustix",
  "serde_json",
 ]
 

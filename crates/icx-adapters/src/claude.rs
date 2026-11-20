@@ -206,12 +206,8 @@ fn compaction_instructions(tail_slot: &str) -> String {
          or grep). Keep failing tests, error codes, file paths and open tasks.\n\
          Current icx context map:\n",
     );
-    for ch in tail_slot.chars() {
-        if out.chars().count() >= MAX_COMPACTION_INSTRUCTION_CHARS {
-            break;
-        }
-        out.push(ch);
-    }
+    let budget = MAX_COMPACTION_INSTRUCTION_CHARS.saturating_sub(out.chars().count());
+    out.extend(tail_slot.chars().take(budget));
     out
 }
 

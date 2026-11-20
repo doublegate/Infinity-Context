@@ -29,6 +29,8 @@ pub const MAX_REQUEST_BYTES: u64 = icx_core::ICX_MAX_INGEST_BYTES as u64 + 64 * 
 const FLUSH_QUIET: Duration = Duration::from_millis(50);
 const FLUSH_MAX: Duration = Duration::from_secs(1);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Consecutive failed flushes after which unsaved changes are dropped with an error.
+const MAX_FLUSH_FAILURES: u32 = 5;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Request {
@@ -132,6 +134,7 @@ pub fn serve(
     let mut first_dirty: Option<Instant> = None;
     let mut last_request = Instant::now();
     let mut served = 0usize;
+    let mut flush_failures = 0u32;
 
     let result = loop {
         let timeout = match first_dirty {
@@ -150,11 +153,38 @@ pub fn serve(
         };
         let ready = wait_readable(&listener, timeout);
         if flush_due(first_dirty, ready, Instant::now()) {
-            if let Err(e) = mmu.save_workspace_dir_unlocked(ws_dir) {
-                eprintln!("icx daemon: flush failed: {e}");
+            let saved = flush(ws_dir, &mut mmu, &mut held_lock);
+            held_lock = None; // never hold the workspace lock across a retry wait
+            match saved {
+                Ok(()) => {
+                    first_dirty = None;
+                    flush_failures = 0;
+                }
+                Err(e) => {
+                    // Keep the unsaved state in memory and retry after `FLUSH_MAX`. Other icx
+                    // processes can use the store meanwhile; the retry reloads only if one of them
+                    // advanced it. A persistent failure (full disk, read-only store) is given up
+                    // after `MAX_FLUSH_FAILURES` so the daemon can still idle-exit (PR #20 review).
+                    flush_failures += 1;
+                    if flush_failures >= MAX_FLUSH_FAILURES {
+                        eprintln!(
+                            "icx daemon: ERROR: giving up after {flush_failures} failed flushes; \
+                             unsaved workspace changes are lost: {e}"
+                        );
+                        first_dirty = None;
+                        flush_failures = 0;
+                    } else {
+                        eprintln!(
+                            "icx daemon: flush failed ({flush_failures}/{MAX_FLUSH_FAILURES}), \
+                             retrying in {}s: {e}",
+                            FLUSH_MAX.as_secs()
+                        );
+                        let now = Instant::now();
+                        first_dirty = Some(now);
+                        last_request = now + FLUSH_MAX;
+                    }
+                }
             }
-            first_dirty = None;
-            held_lock = None; // release the workspace lock after flushing
             continue;
         }
         if !ready {
@@ -183,25 +213,40 @@ pub fn serve(
                 continue;
             }
         }
-        handle_connection(stream, &mut mmu, dispatch);
-        last_request = Instant::now();
-        first_dirty.get_or_insert(last_request);
+        let dispatched = handle_connection(stream, &mut mmu, dispatch);
+        last_request = last_request.max(Instant::now());
+        if dispatched {
+            first_dirty.get_or_insert(Instant::now());
+        } else if first_dirty.is_none() {
+            held_lock = None; // nothing changed: do not hold the lock for the write-behind window
+        }
         served += 1;
         if opts.max_requests.is_some_and(|max| served >= max) {
             break Ok(());
         }
     };
-    if first_dirty.is_some() {
-        if held_lock.is_none() {
-            held_lock = InfinityContextMmu::acquire_workspace_lock(ws_dir).ok();
-        }
-        if let Err(e) = mmu.save_workspace_dir_unlocked(ws_dir) {
-            eprintln!("icx daemon: final flush failed: {e}");
-        }
+    if first_dirty.is_some()
+        && let Err(e) = flush(ws_dir, &mut mmu, &mut held_lock)
+    {
+        eprintln!("icx daemon: ERROR: final flush failed; unsaved workspace changes are lost: {e}");
     }
     drop(held_lock);
     let _ = std::fs::remove_file(socket);
     result
+}
+
+/// Saves `mmu`, (re)taking the workspace lock first if a failed flush released it. The load is a
+/// no-op unless another writer advanced the store since this MMU last loaded or saved it.
+fn flush(
+    ws_dir: &Path,
+    mmu: &mut InfinityContextMmu,
+    held_lock: &mut Option<(std::fs::File, std::sync::MutexGuard<'static, ()>)>,
+) -> Result<(), icx_core::IcxError> {
+    if held_lock.is_none() {
+        *held_lock = Some(InfinityContextMmu::acquire_workspace_lock(ws_dir)?);
+        mmu.load_workspace_dir_unlocked(ws_dir)?;
+    }
+    mmu.save_workspace_dir_unlocked(ws_dir)
 }
 
 /// True when unsaved changes must be flushed now: after a quiet period (`ready == false` once a
@@ -223,6 +268,7 @@ fn wait_readable(listener: &UnixListener, timeout: Option<Duration>) -> bool {
     matches!(poll(&mut fds, ts.as_ref()), Ok(n) if n > 0)
 }
 
+/// Serves one request; returns `true` if it reached `dispatch` (and so may have changed state).
 fn handle_connection(
     stream: UnixStream,
     mmu: &mut InfinityContextMmu,
@@ -232,19 +278,21 @@ fn handle_connection(
         &str,
         &mut InfinityContextMmu,
     ) -> Result<String, serde_json::Error>,
-) {
+) -> bool {
     let _ = stream.set_read_timeout(Some(CLIENT_TIMEOUT));
     let _ = stream.set_write_timeout(Some(CLIENT_TIMEOUT));
     let Ok(read_half) = stream.try_clone() else {
-        return;
+        return false;
     };
     let mut reader = BufReader::new(read_half.take(MAX_REQUEST_BYTES));
     let mut line = String::new();
+    let mut dispatched = false;
     let resp = match reader.read_line(&mut line) {
-        Ok(0) | Err(_) => return,
+        Ok(0) | Err(_) => return false,
         Ok(_) => match serde_json::from_str::<Request>(line.trim_end()) {
             Ok(req) if req.v == PROTOCOL_VERSION => {
                 let agent = AgentKind::parse_agent(&req.agent);
+                dispatched = true; // even a failed dispatch may have changed state
                 match dispatch(agent, &req.event, &req.payload, mmu) {
                     Ok(out) => Response { ok: true, out },
                     Err(e) => Response {
@@ -269,6 +317,7 @@ fn handle_connection(
         let _ = w.write_all(&bytes);
         let _ = w.flush();
     }
+    dispatched
 }
 
 #[cfg(test)]

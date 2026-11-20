@@ -36,11 +36,19 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
 - Only structural tool-call/-result blocks for the icx pager are exempt from marker
   neutralization; tool output that merely contains `"name": "icx"` is not.
 - Reopening a store resets widened `icx.sqlite3`, `-wal` and `-shm` modes to `0600`.
+- `install.key` is checked (regular file, owner, mode) before it is read, so a FIFO is refused
+  instead of blocking; only a missing key is created.
+- `icx encode-ahtl` refuses an untrusted workspace instead of printing a handle it never stored.
+- `icx mcp-serve` re-verifies the workspace per request, so a later `icx trust` takes effect and
+  a workspace whose ownership, mode or seal changed is no longer used.
+- Proxy curl header files go to a directory verified to be ours and private
+  (`$XDG_RUNTIME_DIR/icx`, else `<tmp>/icx-<uid>`) and stale ones are swept every minute.
 - Redactor: URL userinfo passwords for every scheme, SendGrid, Slack app/webhook, GitLab,
   DigitalOcean, Shopify and Twilio formats, more key names, multi-line values, single-line PEM,
   and bounded unterminated key blocks (ICX-AUD-015, -016). A key with no inline value redacts
   only a following scalar line: nested mappings, comments and prose ending in `key:` are kept.
-  Token-only URL userinfo (`https://<token>@host`) is redacted.
+  Token-only URL userinfo (`https://<token>@host`) is redacted. Private-key banners are matched
+  within one `-----BEGIN ...-----` banner, and text around a key block is kept.
 - agy `transcriptPath` opens non-blocking without following symlinks; the bus file refuses
   symlinks, foreign owners and permissive modes (ICX-AUD-018, -019).
 - Hooks never echo input fields back as decisions (Claude Code, Codex and agy PreToolUse; agy
@@ -56,7 +64,11 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
 - 64-bit handle collisions are refused instead of overwriting, in both the CAS and the DAG,
   including Hermes carried-AHTL lines and subagent summaries (ICX-AUD-022, -023).
 - The daemon flushes and releases the workspace lock at most 1 s after the first unsaved change
-  even under continuous hook traffic.
+  even under continuous hook traffic. A failed flush keeps the unsaved state in memory, releases
+  the lock and retries every second; after 5 consecutive failures it logs an error and drops the
+  changes so the daemon can exit. Requests that never reach a handler (malformed, wrong
+  protocol) do not trigger a save.
+- Concurrent first use of the install key no longer collides on its temp file name.
 - Emitted-block digests are stored in an append-only, seal-covered table instead of being
   rewritten inside the state blob on every save.
 - Epoch headers are hex everywhere and epoch ids are u32 (ICX-AUD-024); invalid `slice_hint`
@@ -113,8 +125,10 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
   CLI (ICX-AUD-005).
 - No Hermes Python shim ships with icx (ICX-AUD-006).
 - The rest of the derived state (DAG, epochs, HDC event log, graph) is still rewritten in full
-  on each save, so flush cost grows with history. The daemon flushes after any request,
-  including ones that change nothing.
+  on each save, so flush cost grows with history. The daemon flushes after any dispatched
+  request, including hooks that change nothing.
+- A running `icx proxy` decides at start whether to use the workspace; restart it after
+  `icx trust`.
 - Licensing and patent governance text (PATENTS.md, CLA.md, COMMERCIAL.md) is unchanged by owner
   decision (ICX-AUD-035).
 

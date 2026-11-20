@@ -236,3 +236,16 @@ fn emitted_block_digests_live_in_their_own_table_not_the_state_blob() {
     assert!(!b.is_emitted("⟪ICX:STUB│never⟫"));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn loading_an_empty_directory_clears_emitted_block_digests() {
+    // PR #20 review (Antigravity): a load that resets the MMU must not keep trust in blocks
+    // emitted for a previous workspace.
+    let dir = tmp_dir("emptyload");
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut mmu = InfinityContextMmu::default();
+    mmu.record_emitted("⟪ICX:STUB│old⟫");
+    mmu.load_workspace_dir(&dir).unwrap();
+    assert!(!mmu.is_emitted("⟪ICX:STUB│old⟫"));
+    let _ = std::fs::remove_dir_all(&dir);
+}

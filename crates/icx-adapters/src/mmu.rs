@@ -1407,6 +1407,9 @@ impl InfinityContextMmu {
         self.graph = new_graph;
         self.bus = new_bus;
         self.agent_read_cursors.clear();
+        // Trust in emitted blocks belongs to the state being replaced (PR #20 review); loaded
+        // digests are added back by the caller or below.
+        self.emitted_blocks.clear();
         let max_graph_ms = self
             .graph
             .edges()
@@ -1583,10 +1586,11 @@ impl InfinityContextMmu {
                 self.loaded_generation = Some((canonical, g));
                 Ok(())
             }
-            Err(e) => {
-                self.loaded_generation = None;
-                Err(e)
-            }
+            // The transaction rolled back, so the store still holds the generation this MMU last
+            // loaded or saved. Keeping that binding lets the next load take the fast path and keep
+            // the unsaved in-memory state for a retry; a load still reloads if another writer has
+            // advanced the store (PR #20 review).
+            Err(e) => Err(e),
         }
     }
 

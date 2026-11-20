@@ -219,3 +219,30 @@ fn continuation_values_that_look_like_assignments_are_still_redacted() {
     let nested = "secret:\n  provider = vault\n";
     assert_eq!(SecretRedactor::redact(nested), nested);
 }
+
+#[test]
+fn key_block_detection_is_scoped_to_one_banner() {
+    // PR #20 review (Antigravity): a certificate banner earlier on the line is not part of a
+    // later private-key block, and text before an unterminated BEGIN banner is kept.
+    let cert_then_key = fx(&[
+        "cert -----BEGIN CERTIFICATE----- MIIBcert -----END CERTIFICATE----- then -----BEGIN RSA PRIVATE ",
+        "KEY-----\\nMIIEsecretbody\\n-----END RSA PRIVATE ",
+        "KEY----- done",
+    ]);
+    let out = SecretRedactor::redact(&cert_then_key);
+    assert!(
+        out.contains("-----BEGIN CERTIFICATE----- MIIBcert -----END CERTIFICATE----- then "),
+        "{out}"
+    );
+    assert!(!out.contains("MIIEsecretbody"), "{out}");
+    assert!(out.ends_with(" done"), "{out}");
+    let prefixed = fx(&[
+        "config: -----BEGIN RSA PRIVATE ",
+        "KEY-----\nMIIEsecretbody\n-----END RSA PRIVATE ",
+        "KEY-----\nafter\n",
+    ]);
+    let out = SecretRedactor::redact(&prefixed);
+    assert!(out.starts_with("config: "), "{out}");
+    assert!(!out.contains("MIIEsecretbody"), "{out}");
+    assert!(out.ends_with("after\n"), "{out}");
+}

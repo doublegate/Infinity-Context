@@ -2063,33 +2063,49 @@ impl WireProxyTransformer {
     // `mode & 0o077 == 0` states the permission rule directly; `trailing_zeros` would obscure it.
     #[allow(clippy::verbose_bit_mask)]
     fn curl_scratch_dir() -> std::path::PathBuf {
-        let private = std::env::var_os("XDG_RUNTIME_DIR")
-            .map(std::path::PathBuf::from)
-            .filter(|p| p.is_absolute())
-            .map(|p| p.join("icx"));
-        if let Some(dir) = private {
-            let mut b = std::fs::DirBuilder::new();
-            b.recursive(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::DirBuilderExt;
-                b.mode(0o700);
-            }
-            if b.create(&dir).is_ok() {
-                #[cfg(unix)]
+        Self::curl_scratch_dir_in(
+            std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from),
+            &std::env::temp_dir(),
+        )
+    }
+
+    /// Picks the private directory for curl header files: `$XDG_RUNTIME_DIR/icx`, else
+    /// `<tmp>/icx-<uid>`. A candidate is used only if it is a real directory owned by us with no
+    /// group/other access (PR #20 review); the bare temp dir is the last resort, where the
+    /// files themselves are still created `0600` with unpredictable names.
+    pub fn curl_scratch_dir_in(
+        xdg_runtime_dir: Option<std::path::PathBuf>,
+        tmp: &Path,
+    ) -> std::path::PathBuf {
+        #[cfg(unix)]
+        {
+            let uid = rustix::process::geteuid().as_raw();
+            let candidates = [
+                xdg_runtime_dir
+                    .filter(|p| p.is_absolute())
+                    .map(|p| p.join("icx")),
+                Some(tmp.join(format!("icx-{uid}"))),
+            ];
+            for dir in candidates.into_iter().flatten() {
+                use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+                let mut b = std::fs::DirBuilder::new();
+                b.recursive(true).mode(0o700);
+                if b.create(&dir).is_ok()
+                    && std::fs::symlink_metadata(&dir).is_ok_and(|m| {
+                        // no group/other bits (0o077)
+                        m.is_dir() && m.uid() == uid && m.mode().trailing_zeros() >= 6
+                    })
                 {
-                    use std::os::unix::fs::MetadataExt;
-                    if std::fs::symlink_metadata(&dir)
-                        .is_ok_and(|m| m.is_dir() && m.mode() & 0o077 == 0)
-                    {
-                        return dir;
-                    }
+                    return dir;
                 }
-                #[cfg(not(unix))]
-                return dir;
             }
+            tmp.to_path_buf()
         }
-        std::env::temp_dir()
+        #[cfg(not(unix))]
+        {
+            let _ = xdg_runtime_dir;
+            tmp.to_path_buf()
+        }
     }
 
     /// Deletes curl header files left behind by a crashed proxy (older than 60 s).
@@ -2475,12 +2491,19 @@ impl WireProxyTransformer {
             return Ok(0);
         }
         let _ = Self::sweep_stale_curl_header_files();
+        // Header files of curl children killed mid-request are swept periodically too, not only at
+        // start (PR #20 review).
+        let mut last_sweep = std::time::Instant::now();
         let shared_mmu = std::sync::Mutex::new(mmu);
         let shared_mmu_ref = &shared_mmu;
         std::thread::scope(|scope| {
             let mut served = 0usize;
             let mut active_handles: Vec<std::thread::ScopedJoinHandle<'_, ()>> = Vec::new();
             for stream_res in listener.incoming() {
+                if last_sweep.elapsed() >= Duration::from_secs(60) {
+                    let _ = Self::sweep_stale_curl_header_files();
+                    last_sweep = std::time::Instant::now();
+                }
                 active_handles.retain(|h| !h.is_finished());
                 if active_handles.len() >= 64 {
                     let oldest = active_handles.remove(0);

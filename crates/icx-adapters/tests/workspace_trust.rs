@@ -402,3 +402,34 @@ fn a_resident_mmu_saving_over_a_tampered_row_does_not_launder_it() {
     }
     let _ = std::fs::remove_dir_all(&base);
 }
+
+#[cfg(unix)]
+#[test]
+fn install_key_checks_metadata_before_reading_and_never_blocks_on_a_fifo() {
+    // PR #20 review (Antigravity): a FIFO at install.key must be refused, not read.
+    let base = scratch("fifo");
+    let r = roots(&base);
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::create_dir_all(&r.config_dir).unwrap();
+        std::fs::set_permissions(&r.config_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let key = r.config_dir.join("install.key");
+    assert!(
+        std::process::Command::new("mkfifo")
+            .arg(&key)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let (tx, rx) = std::sync::mpsc::channel();
+    let r2 = r.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(workspace::install_key(&r2).is_err());
+    });
+    let refused = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("install_key blocked on a FIFO");
+    assert!(refused, "a FIFO install key must be refused");
+    let _ = std::fs::remove_dir_all(&base);
+}

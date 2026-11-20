@@ -380,8 +380,12 @@ fn run_trust(args: &[String]) -> Result<(), String> {
             .save_workspace_dir(&dir)
             .map_err(|e| format!("icx trust error: cannot seal store: {e}"))?;
     }
-    if workspace::project_root(&dir) != dir
-        && dir.ancestors().skip(1).any(|p| p.join(".git").exists())
+    let canonical = fs::canonicalize(&dir).unwrap_or_else(|_| dir.clone());
+    if workspace::project_root(&canonical) != canonical
+        && canonical
+            .ancestors()
+            .skip(1)
+            .any(|p| p.join(".git").exists())
     {
         eprintln!(
             "icx trust: note: {} is inside a git work tree; anything committed there can be replaced by a pull. \
@@ -636,7 +640,8 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
 ) -> Result<(), String> {
     let mut mmu = workspace_mmu();
     let ws_dir = resolve_workspace_dir(parse_dir_flag(args));
-    let ws_ready = matches!(workspace_state(&ws_dir, true), WsState::Ready);
+    // Creates and seals a missing workspace; refusals are reported once here.
+    let _ = workspace_state(&ws_dir, true);
     loop {
         let req_line = match read_bounded_line(&mut reader, MAX_MCP_LINE_BYTES) {
             Ok(None) | Err(_) => break,
@@ -655,7 +660,11 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
         if req_line.trim().is_empty() {
             continue;
         }
-        let resp = if ws_ready && McpPagerServer::requires_workspace_state(&req_line) {
+        // Re-checked per request (PR #20 review): `icx trust` run after start is picked up, and a
+        // workspace whose ownership, mode or seal changed mid-session is no longer used.
+        let resp = if McpPagerServer::requires_workspace_state(&req_line)
+            && workspace::verify(&ws_dir, roots()).is_ok()
+        {
             match acquire_workspace_lock(&ws_dir) {
                 Ok(lock_guard) => match mmu.load_workspace_dir_unlocked(&ws_dir) {
                     Ok(()) => {
@@ -881,7 +890,16 @@ fn encode_payload_into_workspace_profile(
     icx_dir: &Path,
     profile_a: bool,
 ) -> Result<String, String> {
-    if !matches!(workspace_state(icx_dir, true), WsState::Ready) {
+    let state = workspace_state(icx_dir, true);
+    if let WsState::Refused(reason) = state {
+        // A storage command must not print a handle it never persisted (PR #20 review).
+        return Err(format!(
+            "refusing untrusted workspace {}: {reason}; run `icx trust --dir {}` to adopt it",
+            icx_dir.display(),
+            icx_dir.display()
+        ));
+    }
+    if !matches!(state, WsState::Ready) {
         let mut mmu = workspace_mmu();
         let res = mmu.ingest_payload(AgentKind::GenericMcp, subject, content, false);
         return render_ingested_profile(&mmu, res.compressed_ahtl, profile_a);
@@ -1767,6 +1785,147 @@ mod tests {
 
     fn workspace_mmu_generation(ws: &Path) -> u64 {
         InfinityContextMmu::workspace_generation(ws).unwrap()
+    }
+
+    #[cfg(unix)]
+    fn start_daemon(
+        tag: &str,
+    ) -> (
+        PathBuf,
+        PathBuf,
+        std::thread::JoinHandle<Result<(), String>>,
+    ) {
+        let ws = std::env::temp_dir().join(format!("icx_cli_daemon_{tag}_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&ws);
+        init_workspace_dir(&ws).unwrap();
+        workspace::ensure_runtime_dir(roots()).unwrap();
+        let sock = workspace::daemon_socket_path(&ws, roots());
+        let (ws2, sock2) = (ws.clone(), sock.clone());
+        let server = std::thread::spawn(move || {
+            daemon::serve(
+                &ws2,
+                &sock2,
+                daemon::DaemonOptions {
+                    idle_exit: Some(std::time::Duration::from_millis(400)),
+                    max_requests: None,
+                },
+                workspace_mmu(),
+                dispatch_agent_hook,
+            )
+        });
+        for _ in 0..400 {
+            if sock.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        (ws, sock, server)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn daemon_keeps_unsaved_state_and_retries_when_a_flush_fails() {
+        // PR #20 review (Antigravity): a failed flush must not drop the dirty window.
+        use std::os::unix::fs::PermissionsExt;
+        let (ws, sock, server) = start_daemon("flushfail");
+        let gen_before = workspace_mmu_generation(&ws);
+        let db = ws.join("icx.sqlite3");
+        fs::set_permissions(&db, fs::Permissions::from_mode(0o400)).unwrap();
+        let post = serde_json::json!({
+            "tool_name": "Bash",
+            "tool_response": {"stdout": "retry me\n".repeat(400)}
+        })
+        .to_string();
+        assert!(daemon::try_hook(&sock, "claude-code", "PostToolUse", &post).is_some());
+        std::thread::sleep(std::time::Duration::from_millis(300)); // first flush fails
+        assert_eq!(workspace_mmu_generation(&ws), gen_before);
+        // While it waits to retry, the daemon does not hold the workspace lock.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ws_lock = ws.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(InfinityContextMmu::acquire_workspace_lock(&ws_lock).is_ok());
+        });
+        assert_eq!(
+            rx.recv_timeout(std::time::Duration::from_millis(600)),
+            Ok(true),
+            "daemon held the workspace lock across a failed flush"
+        );
+        // SQLite gives `-wal`/`-shm` the database file's mode, so restore all three.
+        for f in ["icx.sqlite3", "icx.sqlite3-wal", "icx.sqlite3-shm"] {
+            let p = ws.join(f);
+            if p.exists() {
+                fs::set_permissions(&p, fs::Permissions::from_mode(0o600)).unwrap();
+            }
+        }
+        server.join().unwrap().unwrap();
+        assert!(
+            workspace_mmu_generation(&ws) > gen_before,
+            "unsaved state was dropped after a failed flush"
+        );
+        let _ = fs::remove_dir_all(&ws);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn daemon_gives_up_on_a_persistent_flush_failure_and_still_exits() {
+        // A store that stays unwritable must not keep the daemon (or the lock) alive forever.
+        use std::os::unix::fs::PermissionsExt;
+        let (ws, sock, server) = start_daemon("flushgiveup");
+        let gen_before = workspace_mmu_generation(&ws);
+        fs::set_permissions(ws.join("icx.sqlite3"), fs::Permissions::from_mode(0o400)).unwrap();
+        let post = serde_json::json!({
+            "tool_name": "Bash",
+            "tool_response": {"stdout": "never saved\n".repeat(400)}
+        })
+        .to_string();
+        assert!(daemon::try_hook(&sock, "claude-code", "PostToolUse", &post).is_some());
+        server.join().unwrap().unwrap(); // returns after MAX_FLUSH_FAILURES retries + idle exit
+        assert!(!sock.exists());
+        for f in ["icx.sqlite3", "icx.sqlite3-wal", "icx.sqlite3-shm"] {
+            let p = ws.join(f);
+            if p.exists() {
+                fs::set_permissions(&p, fs::Permissions::from_mode(0o600)).unwrap();
+            }
+        }
+        assert_eq!(workspace_mmu_generation(&ws), gen_before);
+        let _ = fs::remove_dir_all(&ws);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn daemon_does_not_save_after_requests_it_could_not_dispatch() {
+        use std::io::{BufRead, BufReader, Write};
+        let (ws, sock, server) = start_daemon("nodirty");
+        let gen_before = workspace_mmu_generation(&ws);
+        for line in [
+            "not json\n",
+            "{\"v\":99,\"agent\":\"codex\",\"event\":\"x\",\"payload\":\"\"}\n",
+        ] {
+            let mut s = std::os::unix::net::UnixStream::connect(&sock).unwrap();
+            s.write_all(line.as_bytes()).unwrap();
+            let mut out = String::new();
+            BufReader::new(s).read_line(&mut out).unwrap();
+        }
+        server.join().unwrap().unwrap();
+        assert_eq!(
+            workspace_mmu_generation(&ws),
+            gen_before,
+            "no-op requests saved"
+        );
+        let _ = fs::remove_dir_all(&ws);
+    }
+
+    #[test]
+    fn encode_ahtl_refuses_an_untrusted_workspace_instead_of_printing_a_dangling_handle() {
+        // PR #20 review (Antigravity): `encode-ahtl` is a storage command, so it fails closed.
+        let ws =
+            std::env::temp_dir().join(format!("icx_cli_encode_refused_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&ws);
+        fs::create_dir_all(&ws).unwrap();
+        fs::write(ws.join("planted.txt"), "not a sealed workspace").unwrap();
+        let err = encode_payload_into_workspace("src/a.rs", "fn a() {}\n", &ws).unwrap_err();
+        assert!(err.contains("untrusted") || err.contains("refus"), "{err}");
+        let _ = fs::remove_dir_all(&ws);
     }
 
     #[test]
