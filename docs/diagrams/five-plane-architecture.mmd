@@ -31,7 +31,7 @@ flowchart TB
 
   subgraph P2["Plane 2: Virtual Context Memory & Merkle-DAG (icx-core)"]
     direction LR
-    CDC["FastCdcChunker + CasStore<br/>Gear-Hash Rolling CDC<br/>BLAKE3 128-Bit #icx:handle"]
+    CDC["FastCdcChunker + CasStore<br/>Gear-Hash Rolling CDC<br/>BLAKE3 64-Bit #icx:handle"]
     DAG["MerkleContextDag (LCM)<br/>L0 Raw -> L1 Episode -> L2 Folded -> L3 Epoch<br/>100% Lossless O(1) Page-In"]
   end
 

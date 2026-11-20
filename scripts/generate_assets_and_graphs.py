@@ -660,7 +660,7 @@ def generate_graphviz_relationship_graphs() -> None:
         <TR><TD ALIGN="CENTER"><FONT COLOR="#39d2c0" POINT-SIZE="11"><B>FastCDC + BLAKE3 CAS</B></FONT></TD></TR>
         <HR/>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Gear-Hash Content-Defined Chunking</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 128-Bit #icx:&lt;16-hex&gt; Handle</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 64-Bit #icx:&lt;16-hex&gt; Handle</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SQLite store (icx.sqlite3, WAL)</FONT></TD></TR>
         </TABLE>>]
 
@@ -680,7 +680,7 @@ def generate_graphviz_relationship_graphs() -> None:
         <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#2ea043" BGCOLOR="#161b22">
         <TR><TD ALIGN="CENTER"><FONT COLOR="#2ea043" POINT-SIZE="12"><B>Plane 3: 10,240-Bit HDC + Fractal IFS (icx-hdc)</B></FONT></TD></TR>
         <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Hypervector([u64; 160]) &#183; XOR Bind &#183; POPCNT Scan (1.31 &#956;s/node)</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Hypervector([u64; 160]) &#183; XOR Bind &#183; POPCNT Scan (~64 ns/node)</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Infini-Attention Delta Bundler (sim &lt; 0.85 orthogonality)</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Contractive IFS FractalCoord + TitansSurpriseGate</FONT></TD></TR>
         </TABLE>>]
@@ -691,7 +691,7 @@ def generate_graphviz_relationship_graphs() -> None:
         <HR/>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Valid Window [t_valid, t_invalid)</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Tx Window [t_created, t_expired)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; HippoRAG Personalized PageRank (&#945;=0.50)</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; HippoRAG Personalized PageRank (&#945;=0.15)</FONT></TD></TR>
         </TABLE>>]
 
     // =================================================================
@@ -877,7 +877,6 @@ def generate_graphviz_relationship_graphs() -> None:
     icx_adapters -> icx_hdc [color="#39d2c0" style=bold]
     icx_adapters -> icx_core [color="#58a6ff" style=bold]
 
-    icx_proxy -> icx_codec [color="#a371f7" style=bold]
     icx_proxy -> icx_core [color="#d29922" style=bold]
 
     icx_codec -> icx_hdc [color="#a371f7" style=bold]
@@ -952,7 +951,7 @@ flowchart TB
 
   subgraph P2["Plane 2: Virtual Context Memory & Merkle-DAG (icx-core)"]
     direction LR
-    CDC["FastCdcChunker + CasStore<br/>Gear-Hash Rolling CDC<br/>BLAKE3 128-Bit #icx:handle"]
+    CDC["FastCdcChunker + CasStore<br/>Gear-Hash Rolling CDC<br/>BLAKE3 64-Bit #icx:handle"]
     DAG["MerkleContextDag (LCM)<br/>L0 Raw -> L1 Episode -> L2 Folded -> L3 Epoch<br/>100% Lossless O(1) Page-In"]
   end
 

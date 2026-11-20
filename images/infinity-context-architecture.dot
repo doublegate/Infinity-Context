@@ -115,7 +115,7 @@ digraph InfinityContextArchitecture {
         <TR><TD ALIGN="CENTER"><FONT COLOR="#39d2c0" POINT-SIZE="11"><B>FastCDC + BLAKE3 CAS</B>&#160;&#160;&#160;</FONT></TD></TR>
         <HR/>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Gear-Hash Content-Defined Chunking&#160;&#160;&#160;</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 128-Bit #icx:&lt;16-hex&gt; Handle&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 64-Bit #icx:&lt;16-hex&gt; Handle&#160;&#160;&#160;</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SQLite store (icx.sqlite3, WAL)&#160;&#160;&#160;</FONT></TD></TR>
         </TABLE>>]
 
@@ -135,7 +135,7 @@ digraph InfinityContextArchitecture {
         <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#2ea043" BGCOLOR="#161b22">
         <TR><TD ALIGN="CENTER"><FONT COLOR="#2ea043" POINT-SIZE="12"><B>Plane 3: 10,240-Bit HDC + Fractal IFS (icx-hdc)</B>&#160;&#160;&#160;</FONT></TD></TR>
         <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Hypervector([u64; 160]) &#183; XOR Bind &#183; POPCNT Scan (1.31 &#956;s/node)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Hypervector([u64; 160]) &#183; XOR Bind &#183; POPCNT Scan (~64 ns/node)&#160;&#160;&#160;</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Infini-Attention Delta Bundler (sim &lt; 0.85 orthogonality)&#160;&#160;&#160;</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Contractive IFS FractalCoord + TitansSurpriseGate&#160;&#160;&#160;</FONT></TD></TR>
         </TABLE>>]
@@ -146,7 +146,7 @@ digraph InfinityContextArchitecture {
         <HR/>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Valid Window [t_valid, t_invalid)&#160;&#160;&#160;</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Tx Window [t_created, t_expired)&#160;&#160;&#160;</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; HippoRAG Personalized PageRank (&#945;=0.50)&#160;&#160;&#160;</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; HippoRAG Personalized PageRank (&#945;=0.15)&#160;&#160;&#160;</FONT></TD></TR>
         </TABLE>>]
 
     // =================================================================

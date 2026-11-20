@@ -144,7 +144,7 @@
 <text xml:space="preserve" text-anchor="start" x="1305.62" y="-587.8" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-weight="bold" font-size="11.00" fill="#39d2c0">FastCDC + BLAKE3 CAS</text>
 <text xml:space="preserve" text-anchor="start" x="1440.62" y="-587.8" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="11.00" fill="#39d2c0">   </text>
 <text xml:space="preserve" text-anchor="start" x="1280.88" y="-566.25" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• Gear&#45;Hash Content&#45;Defined Chunking   </text>
-<text xml:space="preserve" text-anchor="start" x="1280.88" y="-545.75" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• 128&#45;Bit #icx:&lt;16&#45;hex&gt; Handle   </text>
+<text xml:space="preserve" text-anchor="start" x="1280.88" y="-545.75" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• 64&#45;Bit #icx:&lt;16&#45;hex&gt; Handle   </text>
 <text xml:space="preserve" text-anchor="start" x="1280.88" y="-525.25" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• SQLite store (icx.sqlite3, WAL)   </text>
 </g>
 <!-- redactor&#45;&gt;fastcdc -->
@@ -179,7 +179,7 @@
 <polygon fill="none" stroke="#2ea043" stroke-width="3" points="1235.25,-173.25 1235.25,-270 1625.25,-270 1625.25,-173.25 1235.25,-173.25"/>
 <text xml:space="preserve" text-anchor="start" x="1242.75" y="-252.1" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-weight="bold" font-size="12.00" fill="#2ea043">Plane 3: 10,240&#45;Bit HDC + Fractal IFS (icx&#45;hdc)</text>
 <text xml:space="preserve" text-anchor="start" x="1595.25" y="-252.1" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="12.00" fill="#2ea043">   </text>
-<text xml:space="preserve" text-anchor="start" x="1242.75" y="-228.75" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• Hypervector([u64; 160]) · XOR Bind · POPCNT Scan (1.31 μs/node)   </text>
+<text xml:space="preserve" text-anchor="start" x="1242.75" y="-228.75" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• Hypervector([u64; 160]) · XOR Bind · POPCNT Scan (~64 ns/node)   </text>
 <text xml:space="preserve" text-anchor="start" x="1242.75" y="-206.25" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• Infini&#45;Attention Delta Bundler (sim &lt; 0.85 orthogonality)   </text>
 <text xml:space="preserve" text-anchor="start" x="1242.75" y="-183.75" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• Contractive IFS FractalCoord + TitansSurpriseGate   </text>
 </g>
@@ -253,7 +253,7 @@
 <text xml:space="preserve" text-anchor="start" x="1906.5" y="-249.68" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="11.00" fill="#2ea043">   </text>
 <text xml:space="preserve" text-anchor="start" x="1683.75" y="-228.12" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• Valid Window [t_valid, t_invalid)   </text>
 <text xml:space="preserve" text-anchor="start" x="1683.75" y="-207.62" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• Tx Window [t_created, t_expired)   </text>
-<text xml:space="preserve" text-anchor="start" x="1683.75" y="-187.12" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• HippoRAG Personalized PageRank (α=0.50)   </text>
+<text xml:space="preserve" text-anchor="start" x="1683.75" y="-187.12" font-family="JetBrains Mono,Consolas,Courier New,monospace" font-size="9.00" fill="#c9d1d9">• HippoRAG Personalized PageRank (α=0.15)   </text>
 </g>
 <!-- hdc_engine&#45;&gt;ppr_graph -->
 <g id="edge12" class="edge">
