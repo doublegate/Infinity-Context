@@ -318,6 +318,21 @@ pub(crate) fn save<'c>(
     derived: &DerivedState<'_>,
 ) -> Result<u64, IcxError> {
     let tx = conn.transaction().map_err(db_err)?;
+    // Rows are append-only, so a table smaller than the cache means rows were removed behind
+    // this process (restore, manual edit). Re-insert everything rather than seal a store that
+    // can no longer load (PR #20 review).
+    let count = |table: &str| -> Result<usize, IcxError> {
+        let n: i64 = tx
+            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+            .map_err(db_err)?;
+        Ok(usize::try_from(n).unwrap_or(0))
+    };
+    if count("chunks")? != persisted.chunks.len()
+        || count("artifacts")? != persisted.artifacts.len()
+        || count("emitted")? != persisted.emitted.len()
+    {
+        *persisted = PersistedIds::default();
+    }
     let mut new_chunks = Vec::new();
     let mut new_artifacts = Vec::new();
     let mut new_emitted = Vec::new();

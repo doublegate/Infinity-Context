@@ -77,16 +77,18 @@ fn curl_header_dir_must_be_private_and_ours_else_a_per_user_temp_dir_is_used() {
     std::fs::create_dir_all(xdg.join("icx")).unwrap();
     std::fs::create_dir_all(&tmp).unwrap();
     std::fs::set_permissions(xdg.join("icx"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    // Our own widened runtime dir is repaired to 0700 and used.
     let picked = WireProxyTransformer::curl_scratch_dir_in(Some(xdg.clone()), &tmp);
-    assert_ne!(picked, xdg.join("icx"), "permissive runtime dir was used");
+    assert_eq!(picked, xdg.join("icx"));
+    let mode = std::fs::metadata(&picked).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o700, "widened runtime dir was not repaired");
+    // A symlinked runtime dir is never used; the fallback is a private per-user temp dir.
+    std::fs::remove_dir_all(xdg.join("icx")).unwrap();
+    std::os::unix::fs::symlink(&base, xdg.join("icx")).unwrap();
+    let picked = WireProxyTransformer::curl_scratch_dir_in(Some(xdg.clone()), &tmp);
     assert_ne!(picked, tmp, "fell back to the shared temp dir");
     assert!(picked.starts_with(&tmp), "{}", picked.display());
     let mode = std::fs::metadata(&picked).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o700);
-    std::fs::set_permissions(xdg.join("icx"), std::fs::Permissions::from_mode(0o700)).unwrap();
-    assert_eq!(
-        WireProxyTransformer::curl_scratch_dir_in(Some(xdg.clone()), &tmp),
-        xdg.join("icx")
-    );
     let _ = std::fs::remove_dir_all(&base);
 }

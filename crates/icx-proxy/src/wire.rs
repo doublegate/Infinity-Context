@@ -2060,8 +2060,6 @@ impl WireProxyTransformer {
     /// Directory for short-lived curl header files (they carry API keys): the per-user private
     /// runtime dir `$XDG_RUNTIME_DIR/icx` (mode `0700`, tmpfs) when available, else the temp dir
     /// (the file itself is always `0600` + `create_new`). ICX-AUD-020.
-    // `mode & 0o077 == 0` states the permission rule directly; `trailing_zeros` would obscure it.
-    #[allow(clippy::verbose_bit_mask)]
     fn curl_scratch_dir() -> std::path::PathBuf {
         Self::curl_scratch_dir_in(
             std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from),
@@ -2087,9 +2085,16 @@ impl WireProxyTransformer {
                 Some(tmp.join(format!("icx-{uid}"))),
             ];
             for dir in candidates.into_iter().flatten() {
-                use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+                use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
                 let mut b = std::fs::DirBuilder::new();
                 b.recursive(true).mode(0o700);
+                // Repair a directory of ours whose mode was widened; never touch anyone else's
+                // directory or a symlink (PR #20 review).
+                if std::fs::symlink_metadata(&dir)
+                    .is_ok_and(|m| m.is_dir() && m.uid() == uid && m.mode().trailing_zeros() < 6)
+                {
+                    let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+                }
                 if b.create(&dir).is_ok()
                     && std::fs::symlink_metadata(&dir).is_ok_and(|m| {
                         // no group/other bits (0o077)

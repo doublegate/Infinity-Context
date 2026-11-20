@@ -433,3 +433,24 @@ fn install_key_checks_metadata_before_reading_and_never_blocks_on_a_fifo() {
     assert!(refused, "a FIFO install key must be refused");
     let _ = std::fs::remove_dir_all(&base);
 }
+
+#[test]
+fn concurrent_prepare_of_one_directory_does_not_race_on_temp_files() {
+    // PR #20 review (Antigravity): `write_private_file` temp names must be unique per call.
+    for round in 0..20 {
+        let base = scratch(&format!("prep{round}"));
+        let r = roots(&base);
+        let ws = base.join("ws");
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let (r, ws) = (r.clone(), ws.clone());
+                std::thread::spawn(move || workspace::prepare(&ws, &r))
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap().expect("concurrent prepare");
+        }
+        workspace::verify(&ws, &r).expect("prepared workspace verifies");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}

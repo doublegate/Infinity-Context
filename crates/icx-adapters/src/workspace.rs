@@ -190,8 +190,16 @@ fn private_dir(dir: &Path) -> Result<(), TrustError> {
     b.create(dir).map_err(io_err)
 }
 
+/// Per-process sequence for unique temp file names (`write_private_file`, `install_key`).
+static TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), TrustError> {
-    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+    // Unique per call (PR #20 review): concurrent writers in one process must not share a temp.
+    let tmp = path.with_extension(format!(
+        "tmp.{}.{}",
+        std::process::id(),
+        TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create_new(true);
     #[cfg(unix)]
@@ -199,16 +207,15 @@ fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), TrustError> {
         use std::os::unix::fs::OpenOptionsExt;
         opts.mode(0o600);
     }
-    let _ = std::fs::remove_file(&tmp);
     let mut f = opts.open(&tmp).map_err(io_err)?;
-    f.write_all(bytes).map_err(io_err)?;
-    f.sync_all().map_err(io_err)?;
+    let written = f.write_all(bytes).and_then(|()| f.sync_all());
     drop(f);
-    std::fs::rename(&tmp, path).map_err(io_err)
+    let result = written.and_then(|()| std::fs::rename(&tmp, path));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result.map_err(io_err)
 }
-
-/// Per-process sequence for unique `install.key` temp names (see `install_key`).
-static TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Loads the per-install key, creating it (32 bytes from the OS CSPRNG, mode `0600`) on first use.
 pub fn install_key(roots: &WorkspaceRoots) -> Result<[u8; 32], TrustError> {
@@ -231,9 +238,16 @@ pub fn install_key(roots: &WorkspaceRoots) -> Result<[u8; 32], TrustError> {
     private_dir(&roots.config_dir)?;
     check_dir_security(&roots.config_dir)?;
     let mut key = [0u8; 32];
+    #[cfg(unix)]
     std::fs::File::open("/dev/urandom")
         .and_then(|mut f| f.read_exact(&mut key))
         .map_err(io_err)?;
+    #[cfg(not(unix))]
+    return Err(TrustError::Io(
+        "creating an install key needs a Unix OS RNG (/dev/urandom); supported platforms are \
+         Linux and macOS"
+            .into(),
+    ));
     // Publish atomically: write a private temp file, then hard-link it into place. `link` fails
     // if the key already exists, so a concurrent first use can never observe a partially written
     // key (it either wins the link or reads the winner's complete file).
@@ -379,10 +393,53 @@ pub fn verify(dir: &Path, roots: &WorkspaceRoots) -> Result<(), TrustError> {
 /// Never adopts an existing unsealed directory (see [`trust`]).
 pub fn prepare(dir: &Path, roots: &WorkspaceRoots) -> Result<(), TrustError> {
     if dir.exists() {
-        return verify(dir, roots);
+        return verify_awaiting_creator(dir, roots);
     }
-    private_dir(dir)?;
-    write_seal_and_ignore(dir, roots)
+    require_absolute(dir, "workspace")?;
+    if let Some(parent) = dir.parent() {
+        private_dir(parent)?;
+    }
+    // Creating the leaf (non-recursively) is the claim: exactly one concurrent caller creates the
+    // directory and seals it. A caller that loses the race waits briefly for that seal instead of
+    // seeing an unsealed directory (PR #20 review).
+    let mut b = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        b.mode(0o700);
+    }
+    match b.create(dir) {
+        Ok(()) => write_seal_and_ignore(dir, roots),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            verify_awaiting_creator(dir, roots)
+        }
+        Err(e) => Err(io_err(e)),
+    }
+}
+
+/// `verify`, but while the directory holds nothing beyond what `prepare` writes before the seal
+/// (`.gitignore` and temp files), waits up to 2 s for a concurrent creator to finish sealing it.
+/// An unsealed directory with any other content is refused immediately.
+fn verify_awaiting_creator(dir: &Path, roots: &WorkspaceRoots) -> Result<(), TrustError> {
+    let being_created = |dir: &Path| {
+        std::fs::read_dir(dir).is_ok_and(|entries| {
+            entries.flatten().all(|e| {
+                let name = e.file_name();
+                let name = name.to_string_lossy();
+                name == ".gitignore" || name.contains(".tmp.")
+            })
+        })
+    };
+    for _ in 0..200 {
+        match verify(dir, roots) {
+            // Re-check when the seal appeared after the failed read (the creator just finished).
+            Err(TrustError::MissingSeal) if being_created(dir) || dir.join(SEAL_FILE).exists() => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            other => return other,
+        }
+    }
+    verify(dir, roots)
 }
 
 /// Explicitly adopts an existing directory owned by the current user: tightens it to `0700`,

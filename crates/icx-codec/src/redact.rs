@@ -935,12 +935,18 @@ impl ContinuationLine {
             return Self::Structure;
         }
         let entry = t.strip_prefix("- ").unwrap_or(t).trim_start();
-        let key_len = entry
-            .find(|c: char| {
-                !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '"' | '\''))
-            })
-            .unwrap_or(entry.len());
-        let key = entry[..key_len].trim_matches(|c: char| c == '"' || c == '\'');
+        // A quoted key must close before the separator (`"user": x`); otherwise the quoted text
+        // is a value such as `"prefix: secret"` (PR #20 review).
+        let (key, key_len) = if let Some(q @ ('"' | '\'')) = entry.chars().next() {
+            entry[1..]
+                .find(q)
+                .map_or(("", 0), |close| (&entry[1..=close], close + 2))
+        } else {
+            let len = entry
+                .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')))
+                .unwrap_or(entry.len());
+            (&entry[..len], len)
+        };
         // Identifier-shaped keys only; anything else (base64, tokens) is treated as the value.
         let key_ok = key
             .chars()

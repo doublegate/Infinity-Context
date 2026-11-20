@@ -16,6 +16,6 @@ sequenceDiagram
   HDC->>HDC: BiTemporalGraph::upsert_node() + PersonalizedPageRank
   Hook->>Codec: AhtlPacket::encode() (Braille-256 + §fn/§ty + !err)
   Codec-->>Hook: Compact AHTL Packet (214x synthetic)
-  Hook->>SHM: SeqlockTelemetryBus::publish(SeqlockSlot [2048 B])
+  Hook->>SHM: SeqlockTelemetryBus::publish(SeqlockSlot [4096 B])
   SHM-->>Agent: Cross-Agent Telepathy Broadcast (~38 us file-backed)
   Hook-->>Agent: Return JSON Envelope (updatedMCPToolOutput / AdditionalContext, exit 0)

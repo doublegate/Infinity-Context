@@ -249,3 +249,30 @@ fn loading_an_empty_directory_clears_emitted_block_digests() {
     assert!(!mmu.is_emitted("⟪ICX:STUB│old⟫"));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_save_repairs_rows_deleted_behind_a_long_lived_mmu() {
+    // PR #20 review (Antigravity): if the persisted-id cache drifts from the table contents,
+    // the next save rewrites the missing rows instead of sealing a store that cannot load.
+    let dir = tmp_dir("drift");
+    let mut mmu = InfinityContextMmu::default();
+    let ids = populate(&mut mmu, 6);
+    mmu.save_workspace_dir(&dir).unwrap();
+    let conn = rusqlite::Connection::open(dir.join("icx.sqlite3")).unwrap();
+    conn.execute(
+        "DELETE FROM chunks WHERE id = (SELECT min(id) FROM chunks)",
+        [],
+    )
+    .unwrap();
+    conn.execute("DELETE FROM emitted", []).unwrap();
+    drop(conn);
+    mmu.save_workspace_dir(&dir).unwrap();
+    let mut fresh = InfinityContextMmu::default();
+    fresh
+        .load_workspace_dir(&dir)
+        .expect("repaired store loads");
+    for id in ids {
+        assert!(fresh.deref_text(id).is_ok());
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

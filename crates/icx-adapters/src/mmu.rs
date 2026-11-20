@@ -1335,6 +1335,11 @@ impl InfinityContextMmu {
     }
 
     /// Returns the SQLite store generation of `icx_dir` (0 if never saved).
+    /// The store generation this MMU mirrors (last loaded or saved), if any.
+    pub fn mirrored_generation(&self) -> Option<u64> {
+        self.loaded_generation.as_ref().map(|(_, g)| *g)
+    }
+
     pub fn workspace_generation(icx_dir: &Path) -> Result<u64, IcxError> {
         if !crate::store::exists(icx_dir) {
             return Ok(0);

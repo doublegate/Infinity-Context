@@ -47,7 +47,8 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
   DigitalOcean, Shopify and Twilio formats, more key names, multi-line values, single-line PEM,
   and bounded unterminated key blocks (ICX-AUD-015, -016). A key with no inline value redacts
   only a following scalar line: nested mappings, comments and prose ending in `key:` are kept.
-  Token-only URL userinfo (`https://<token>@host`) is redacted. Private-key banners are matched
+  Token-only URL userinfo (`https://<token>@host`) is redacted. A quoted continuation value
+  is treated as a nested key only if its closing quote precedes the separator. Private-key banners are matched
   within one `-----BEGIN ...-----` banner, and text around a key block is kept.
 - agy `transcriptPath` opens non-blocking without following symlinks; the bus file refuses
   symlinks, foreign owners and permissive modes (ICX-AUD-018, -019).
@@ -68,7 +69,11 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
   the lock and retries every second; after 5 consecutive failures it logs an error and drops the
   changes so the daemon can exit. Requests that never reach a handler (malformed, wrong
   protocol) do not trigger a save.
-- Concurrent first use of the install key no longer collides on its temp file name.
+- Concurrent first use of the install key, and concurrent `prepare` of one workspace, no longer
+  collide on temp files or observe a directory before its seal is written.
+- A save re-inserts rows that were removed from the store behind a long-lived process instead
+  of sealing a store that cannot load. The daemon logs an error when another writer's newer
+  store replaces its unsaved changes.
 - Emitted-block digests are stored in an append-only, seal-covered table instead of being
   rewritten inside the state blob on every save.
 - Epoch headers are hex everywhere and epoch ids are u32 (ICX-AUD-024); invalid `slice_hint`

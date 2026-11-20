@@ -201,7 +201,12 @@ pub fn serve(
         }
         if held_lock.is_none() {
             match InfinityContextMmu::acquire_workspace_lock(ws_dir) {
-                Ok(guard) => held_lock = Some(guard),
+                Ok(guard) => {
+                    held_lock = Some(guard);
+                    if first_dirty.is_some() {
+                        warn_if_unsaved_changes_are_replaced(ws_dir, &mmu);
+                    }
+                }
                 Err(e) => {
                     eprintln!("icx daemon: workspace lock failed: {e}");
                     continue;
@@ -244,9 +249,24 @@ fn flush(
 ) -> Result<(), icx_core::IcxError> {
     if held_lock.is_none() {
         *held_lock = Some(InfinityContextMmu::acquire_workspace_lock(ws_dir)?);
+        warn_if_unsaved_changes_are_replaced(ws_dir, mmu);
         mmu.load_workspace_dir_unlocked(ws_dir)?;
     }
     mmu.save_workspace_dir_unlocked(ws_dir)
+}
+
+/// Called with the lock held and unsaved changes in memory, just before a reload: if another
+/// writer advanced the store while a failed flush had released the lock, the reload replaces the
+/// unsaved changes, so say so (PR #20 review).
+fn warn_if_unsaved_changes_are_replaced(ws_dir: &Path, mmu: &InfinityContextMmu) {
+    let on_disk = InfinityContextMmu::workspace_generation(ws_dir).ok();
+    if on_disk.is_some() && on_disk != mmu.mirrored_generation() {
+        eprintln!(
+            "icx daemon: ERROR: another icx process updated {} while a flush was pending; \
+             unsaved daemon changes are replaced by its newer state",
+            ws_dir.display()
+        );
+    }
 }
 
 /// True when unsaved changes must be flushed now: after a quiet period (`ready == false` once a

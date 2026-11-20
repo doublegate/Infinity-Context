@@ -271,3 +271,24 @@ fn text_after_an_end_banner_goes_through_full_key_detection() {
     let out = SecretRedactor::redact(&inline_after);
     assert!(!out.contains("MIIEinlinesecret"), "{out}");
 }
+
+#[test]
+fn quoted_continuation_values_containing_separators_are_redacted() {
+    // PR #20 review (Antigravity): a quoted scalar is a value unless its closing quote comes
+    // before the `:` / `=` separator.
+    for value in [
+        "\"prefix: secret phrase here\"",
+        "'part1=part2-secret'",
+        "\"a: b\",",
+    ] {
+        let input = format!("{{\n  \"password\":\n    {value}\n  \"user\": \"alice\"\n}}\n");
+        let out = SecretRedactor::redact(&input);
+        assert!(
+            !out.contains(value.trim_end_matches(',')),
+            "leaked {value}: {out}"
+        );
+        assert!(out.contains("\"user\": \"alice\""), "{out}");
+    }
+    let nested = "\"credentials\":\n  \"username\": \"alice\"\n";
+    assert_eq!(SecretRedactor::redact(nested), nested);
+}
