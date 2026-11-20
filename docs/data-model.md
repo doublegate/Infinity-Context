@@ -229,6 +229,7 @@ workspace are migrated into the store on first load and left in place.
 CREATE TABLE meta      (k TEXT PRIMARY KEY, v BLOB NOT NULL);
 CREATE TABLE chunks    (id INTEGER PRIMARY KEY, digest BLOB NOT NULL, bytes BLOB NOT NULL);
 CREATE TABLE artifacts (id INTEGER PRIMARY KEY, meta TEXT NOT NULL); -- StoredArtifact as JSON
+CREATE TABLE emitted   (digest BLOB PRIMARY KEY) WITHOUT ROWID;    -- BLAKE3 of each icx-emitted block
 ```
 
 | `meta` key | Content |
@@ -242,14 +243,15 @@ CREATE TABLE artifacts (id INTEGER PRIMARY KEY, meta TEXT NOT NULL); -- StoredAr
 | `hdc_index_events` | Number of events the snapshot covers. |
 | `seal` | Store MAC (§6.2). |
 
-`chunks` and `artifacts` rows are append-only (inserted once). The derived state in `meta` is
+`chunks`, `artifacts` and `emitted` rows are append-only (inserted once). Existing store, `-wal`
+and `-shm` files are reset to `0600` on open if their mode was widened. The derived state in `meta` is
 replaced on each save. Each save is one transaction.
 
 ### 6.2 Store Seal
 
 `seal = BLAKE3_keyed(store_key, domain ‖ canonical_path ‖ generation ‖ state_digest)`, where
 `store_key` is derived from the install key and `state_digest` is a BLAKE3 digest over the chunk
-config, graph, MMU state, HDC snapshot, HDC event count and every artifact's `(id, full_digest)` in
-id order. Chunks are covered transitively, because loading verifies every chunk digest and
+config, graph, MMU state, HDC snapshot, HDC event count, every artifact's `(id, full_digest)` in
+id order, and every `emitted` digest in sorted order. Chunks are covered transitively, because loading verifies every chunk digest and
 reassembles each artifact to its full digest. A sealed load rejects a store whose MAC does not
 verify.

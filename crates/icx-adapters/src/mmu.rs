@@ -64,7 +64,9 @@ struct PersistedMmuState {
     agent_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
     #[serde(default)]
     agent_reordered_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
-    #[serde(default)]
+    /// Legacy JSON workspaces only; the SQLite store keeps these in its append-only `emitted`
+    /// table so saves stay incremental (PR #20 review).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     emitted_blocks: BTreeSet<[u8; 32]>,
 }
 
@@ -1076,8 +1078,11 @@ impl InfinityContextMmu {
             target_key.and_then(|k| self.subagent_branches.remove_entry(&k))
         {
             self.epochs.begin_branch(&mut self.dag, &clean_id);
-            if steps.is_empty() {
-                let (aid, _) = self.cas.put_bytes(clean_summary.as_bytes());
+            if steps.is_empty()
+                // Collision-checked (PR #20 review): on a 64-bit id clash the branch folds
+                // without a leaf rather than pointing at another artifact's bytes.
+                && let Ok((aid, _)) = self.cas.put_bytes_checked(clean_summary.as_bytes())
+            {
                 if clean_summary != raw_summary.trim() {
                     self.redacted_artifacts.insert(aid);
                 }
@@ -1188,6 +1193,7 @@ impl InfinityContextMmu {
                     stored.hdc_snapshot.as_deref().unwrap_or_default(),
                     stored.hdc_snapshot_events.unwrap_or(0),
                     stored.artifacts.iter().map(|a| (a.id, a.full_digest)),
+                    &stored.emitted,
                 );
                 let expected =
                     crate::store::store_seal(key, &canonical, stored.generation, &digest);
@@ -1211,6 +1217,7 @@ impl InfinityContextMmu {
             let persisted = crate::store::PersistedIds {
                 chunks: stored.chunks.iter().map(|(id, _, _)| *id).collect(),
                 artifacts: stored.artifacts.iter().map(|a| a.id).collect(),
+                emitted: stored.emitted.clone(),
             };
             let new_cas = CasStore::from_parts(
                 stored.chunk_config.unwrap_or_default(),
@@ -1233,6 +1240,7 @@ impl InfinityContextMmu {
                 _ => None,
             };
             self.apply_loaded(icx_dir, new_cas, new_graph, persisted_state, snapshot)?;
+            self.emitted_blocks.extend(stored.emitted);
             self.persisted_ids = persisted;
             self.loaded_generation = Some((canonical, stored.generation));
             return Ok(());
@@ -1533,7 +1541,8 @@ impl InfinityContextMmu {
     /// Atomically persists workspace state into `icx_dir` assuming the caller already holds
     /// `Self::acquire_workspace_lock(icx_dir)`.
     pub fn save_workspace_dir_unlocked(&mut self, icx_dir: &Path) -> Result<(), IcxError> {
-        let state_bytes = serde_json::to_vec(&self.persisted_state()).map_err(Self::map_io_err)?;
+        let state_bytes =
+            serde_json::to_vec(&self.persisted_state(false)).map_err(Self::map_io_err)?;
         let graph_bytes = self.graph.to_json_bytes()?;
         let hdc_bytes = self.hdc_index.encode_snapshot();
         let mut conn = crate::store::open(icx_dir)?;
@@ -1545,6 +1554,7 @@ impl InfinityContextMmu {
             mmu_state_json: &state_bytes,
             hdc_snapshot: &hdc_bytes,
             hdc_snapshot_events: self.hdc_events.len() as u64,
+            emitted: &self.emitted_blocks,
             seal: self
                 .store_seal_key
                 .as_ref()
@@ -1580,7 +1590,9 @@ impl InfinityContextMmu {
         }
     }
 
-    fn persisted_state(&self) -> PersistedMmuState {
+    /// `include_emitted` is `false` for the SQLite store, which persists emitted-block digests in
+    /// its own table.
+    fn persisted_state(&self, include_emitted: bool) -> PersistedMmuState {
         PersistedMmuState {
             clock_ms: self.clock_ms,
             redacted_ids: self.redacted_artifacts.iter().map(|id| id.0).collect(),
@@ -1593,7 +1605,11 @@ impl InfinityContextMmu {
             reordered_occurrences: self.reordered_occurrences.clone(),
             agent_occurrences: self.agent_occurrences.clone(),
             agent_reordered_occurrences: self.agent_reordered_occurrences.clone(),
-            emitted_blocks: self.emitted_blocks.clone(),
+            emitted_blocks: if include_emitted {
+                self.emitted_blocks.clone()
+            } else {
+                BTreeSet::new()
+            },
         }
     }
 
@@ -1604,7 +1620,8 @@ impl InfinityContextMmu {
         let _lock = Self::acquire_workspace_lock(icx_dir)?;
         self.cas.save_to_dir(icx_dir)?;
         self.graph.save_to_dir(icx_dir)?;
-        let state_bytes = serde_json::to_vec(&self.persisted_state()).map_err(Self::map_io_err)?;
+        let state_bytes =
+            serde_json::to_vec(&self.persisted_state(true)).map_err(Self::map_io_err)?;
         Self::write_atomic_file(icx_dir, "mmu_state.json", &state_bytes)
     }
 

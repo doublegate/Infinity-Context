@@ -53,8 +53,19 @@ impl SecretRedactor {
                 continue;
             }
             let redacted = if pending_value && !body.trim().is_empty() {
-                pending_value = false;
-                Self::redact_bare_value_line(body)
+                match ContinuationLine::classify(body) {
+                    // A comment between the key and its value keeps the value pending.
+                    ContinuationLine::Comment => Self::redact_line(body),
+                    // A nested mapping or structure: the key had no scalar value to hide.
+                    ContinuationLine::Structure => {
+                        pending_value = false;
+                        Self::redact_line(body)
+                    }
+                    ContinuationLine::Value => {
+                        pending_value = false;
+                        Self::redact_bare_value_line(body)
+                    }
+                }
             } else {
                 Self::redact_line(body)
             };
@@ -86,17 +97,24 @@ impl SecretRedactor {
 
     /// True if the line ends with a sensitive key whose value continues on the next line
     /// (`"password":` / `password:`).
+    /// Only a line that *is* the key (optionally after `{`, `,` or a YAML `- `) arms the
+    /// continuation, so prose such as `error: missing signing key:` never does (PR #20 review).
     fn ends_with_sensitive_key(line: &str) -> bool {
         let Some(head) = line.trim_end().strip_suffix(':') else {
             return false;
         };
-        let key = head
-            .trim()
-            .rsplit(|c: char| c.is_whitespace() || c == '{' || c == ',')
-            .next()
-            .unwrap_or("")
-            .trim_matches(|c: char| c == '"' || c == '\'');
-        !key.is_empty() && Self::is_sensitive_key_name(key)
+        let head = head.trim();
+        let split = head
+            .rfind(|c: char| c.is_whitespace() || c == '{' || c == ',')
+            .map_or(0, |i| {
+                i + head[i..].chars().next().map_or(1, char::len_utf8)
+            });
+        let (prefix, key) = head.split_at(split);
+        let prefix = prefix.trim();
+        let prefix_ok =
+            prefix.is_empty() || prefix == "-" || prefix.ends_with('{') || prefix.ends_with(',');
+        let key = key.trim_matches(|c: char| c == '"' || c == '\'');
+        prefix_ok && !key.is_empty() && Self::is_sensitive_key_name(key)
     }
 
     /// Replaces the (possibly quoted) value on a continuation line, keeping indentation and any
@@ -613,11 +631,30 @@ impl SecretRedactor {
                         search_pos = pass_start + replacement.len();
                         continue;
                     }
+                } else if Self::looks_like_url_token(userinfo) {
+                    // `https://<token>@host` (no `user:` part): GitHub/GitLab-style token auth.
+                    let replacement = "[REDACTED:URL_TOKEN]";
+                    out.replace_range(after_scheme..after_scheme + at_pos, replacement);
+                    search_pos = after_scheme + replacement.len();
+                    continue;
                 }
             }
             search_pos = after_scheme + end_authority;
         }
         out
+    }
+
+    /// A colon-less URL userinfo that is a credential rather than a login name: at least 16
+    /// characters of token alphabet mixing letters and digits (`git`, `alice`, `deploy-bot` are
+    /// kept).
+    fn looks_like_url_token(userinfo: &str) -> bool {
+        userinfo.len() >= 16
+            && !userinfo.starts_with("[REDACTED:")
+            && userinfo
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '~' | '%'))
+            && userinfo.chars().any(|c| c.is_ascii_digit())
+            && userinfo.chars().any(|c| c.is_ascii_alphabetic())
     }
 
     /// Redacts vendor formats the generic prefix scan cannot express: dotted SendGrid keys,
@@ -867,6 +904,46 @@ impl SecretRedactor {
 /// Maximum lines a private-key block may span before redaction stops swallowing input
 /// (ICX-AUD-016: an unterminated BEGIN must not delete the rest of a tool output).
 const MAX_KEY_BLOCK_LINES: usize = 200;
+
+/// What follows a `sensitive_key:` line that has no inline value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ContinuationLine {
+    /// `#`, `//` or `;` comment: skipped, the value may still follow.
+    Comment,
+    /// A nested `key: value` / `key = value` entry, `key:` header, or `{`/`[` opener.
+    Structure,
+    /// A scalar: the value of the sensitive key.
+    Value,
+}
+
+impl ContinuationLine {
+    fn classify(line: &str) -> Self {
+        let t = line.trim();
+        if t.starts_with('#') || t.starts_with("//") || t.starts_with(';') {
+            return Self::Comment;
+        }
+        if t.starts_with('{') || t.starts_with('[') {
+            return Self::Structure;
+        }
+        let entry = t.strip_prefix("- ").unwrap_or(t).trim_start();
+        let key_len = entry
+            .find(|c: char| {
+                !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '"' | '\''))
+            })
+            .unwrap_or(entry.len());
+        let rest = entry[key_len..].trim_start();
+        let is_entry = key_len > 0
+            && (rest
+                .strip_prefix(':')
+                .is_some_and(|r| r.is_empty() || r.starts_with(char::is_whitespace))
+                || rest.starts_with('='));
+        if is_entry {
+            Self::Structure
+        } else {
+            Self::Value
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum KeyBlock {

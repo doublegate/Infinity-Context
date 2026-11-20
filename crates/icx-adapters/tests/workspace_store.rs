@@ -174,3 +174,65 @@ fn saving_one_mmu_to_a_second_directory_writes_all_content_there() {
     let _ = std::fs::remove_dir_all(&a_dir);
     let _ = std::fs::remove_dir_all(&b_dir);
 }
+
+#[cfg(unix)]
+#[test]
+fn reopening_a_store_tightens_widened_file_modes() {
+    // PR #20 review (Antigravity): an existing store whose mode was widened is re-tightened.
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tmp_dir("widened");
+    let mut a = InfinityContextMmu::default();
+    populate(&mut a, 2);
+    a.save_workspace_dir(&dir).unwrap();
+    for f in ["icx.sqlite3", "icx.sqlite3-wal", "icx.sqlite3-shm"] {
+        let p = dir.join(f);
+        if p.exists() {
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+    }
+    a.save_workspace_dir(&dir).unwrap();
+    for f in ["icx.sqlite3", "icx.sqlite3-wal", "icx.sqlite3-shm"] {
+        let p = dir.join(f);
+        if p.exists() {
+            let mode = std::fs::metadata(&p).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "{f} left at {mode:o}");
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn emitted_block_digests_live_in_their_own_table_not_the_state_blob() {
+    // PR #20 review (Antigravity): the emitted-block set grows with every stub handed to an agent,
+    // so it is stored incrementally instead of being re-serialized into `mmu_state` on each save.
+    let dir = tmp_dir("emitted");
+    let mut a = InfinityContextMmu::default();
+    let blocks: Vec<String> = (0..50)
+        .map(|i| format!("⟪ICX:STUB│#icx:{i:016x}⟫"))
+        .collect();
+    for b in &blocks {
+        a.record_emitted(b);
+    }
+    a.save_workspace_dir(&dir).unwrap();
+    let conn = rusqlite::Connection::open(dir.join("icx.sqlite3")).unwrap();
+    let rows: i64 = conn
+        .query_row("SELECT count(*) FROM emitted", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(rows, 50);
+    let state: Vec<u8> = conn
+        .query_row("SELECT v FROM meta WHERE k = 'mmu_state'", [], |r| r.get(0))
+        .unwrap();
+    assert!(
+        !String::from_utf8_lossy(&state).contains("emitted_blocks"),
+        "state blob still carries emitted digests"
+    );
+    drop(conn);
+    a.record_emitted("⟪ICX:STUB│late⟫");
+    a.save_workspace_dir(&dir).unwrap();
+    let mut b = InfinityContextMmu::default();
+    b.load_workspace_dir(&dir).unwrap();
+    assert!(blocks.iter().all(|x| b.is_emitted(x)));
+    assert!(b.is_emitted("⟪ICX:STUB│late⟫"));
+    assert!(!b.is_emitted("⟪ICX:STUB│never⟫"));
+    let _ = std::fs::remove_dir_all(&dir);
+}

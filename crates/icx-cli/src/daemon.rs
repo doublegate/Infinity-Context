@@ -149,15 +149,15 @@ pub fn serve(
                 .map(|idle| (last_request + idle).saturating_duration_since(Instant::now())),
         };
         let ready = wait_readable(&listener, timeout);
-        if !ready {
-            if first_dirty.is_some() {
-                if let Err(e) = mmu.save_workspace_dir_unlocked(ws_dir) {
-                    eprintln!("icx daemon: flush failed: {e}");
-                }
-                first_dirty = None;
-                held_lock = None; // release the workspace lock after flushing
-                continue;
+        if flush_due(first_dirty, ready, Instant::now()) {
+            if let Err(e) = mmu.save_workspace_dir_unlocked(ws_dir) {
+                eprintln!("icx daemon: flush failed: {e}");
             }
+            first_dirty = None;
+            held_lock = None; // release the workspace lock after flushing
+            continue;
+        }
+        if !ready {
             if opts.idle_exit.is_some() {
                 break Ok(());
             }
@@ -202,6 +202,14 @@ pub fn serve(
     drop(held_lock);
     let _ = std::fs::remove_file(socket);
     result
+}
+
+/// True when unsaved changes must be flushed now: after a quiet period (`ready == false` once a
+/// deadline passed) or, regardless of queued connections, once `FLUSH_MAX` has elapsed since the
+/// first unsaved change. Flushing releases the workspace lock, so a steady stream of hooks can
+/// never hold it past `FLUSH_MAX` (PR #20 review).
+fn flush_due(first_dirty: Option<Instant>, ready: bool, now: Instant) -> bool {
+    first_dirty.is_some_and(|first| !ready || now.saturating_duration_since(first) >= FLUSH_MAX)
 }
 
 /// Waits until `listener` has a pending connection or `timeout` elapses (`None` = forever).
@@ -260,5 +268,30 @@ fn handle_connection(
         bytes.push(b'\n');
         let _ = w.write_all(&bytes);
         let _ = w.flush();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flush_max_is_enforced_even_while_connections_are_queued() {
+        // PR #20 review (Antigravity): under back-to-back traffic `poll` always reports ready,
+        // so the 1 s write-behind ceiling must not depend on a quiet period.
+        let now = Instant::now();
+        let first = now
+            .checked_sub(FLUSH_MAX + Duration::from_millis(1))
+            .unwrap();
+        assert!(
+            flush_due(Some(first), true, now),
+            "backlog must not defer past FLUSH_MAX"
+        );
+        assert!(flush_due(Some(now), false, now), "quiet period flushes");
+        assert!(
+            !flush_due(Some(now), true, now),
+            "fresh changes under load wait"
+        );
+        assert!(!flush_due(None, false, now), "nothing to flush");
     }
 }

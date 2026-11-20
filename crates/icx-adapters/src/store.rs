@@ -31,10 +31,13 @@ pub(crate) struct StoredWorkspace {
     pub hdc_snapshot_events: Option<u64>,
     pub seal: Option<Vec<u8>>,
     pub chunk_config_raw: Option<Vec<u8>>,
+    /// Digests of icx-emitted blocks (append-only `emitted` table, PR #20 review).
+    pub emitted: BTreeSet<[u8; 32]>,
 }
 
 /// Digest of every persisted component: chunker config, graph, MMU state, HDC snapshot and its
-/// event count, plus each artifact's `(id, full BLAKE3 digest)` in id order. Chunks are covered
+/// event count, each artifact's `(id, full BLAKE3 digest)` in id order, and every emitted-block
+/// digest in sorted order. Chunks are covered
 /// transitively: `CasStore::from_parts` verifies every chunk digest and reassembles each artifact
 /// to its full digest.
 pub(crate) fn state_digest(
@@ -44,6 +47,7 @@ pub(crate) fn state_digest(
     hdc_snapshot: &[u8],
     hdc_snapshot_events: u64,
     artifacts: impl Iterator<Item = (ArtifactId, Blake3Digest)>,
+    emitted: &BTreeSet<[u8; 32]>,
 ) -> [u8; 32] {
     let mut h = blake3::Hasher::new();
     for part in [chunk_config_json, graph_json, mmu_state_json, hdc_snapshot] {
@@ -54,6 +58,10 @@ pub(crate) fn state_digest(
     for (id, digest) in artifacts {
         h.update(&id.0.to_le_bytes());
         h.update(&digest.0);
+    }
+    h.update(&(emitted.len() as u64).to_le_bytes());
+    for d in emitted {
+        h.update(d);
     }
     *h.finalize().as_bytes()
 }
@@ -81,6 +89,8 @@ pub(crate) struct DerivedState<'a> {
     pub mmu_state_json: &'a [u8],
     pub hdc_snapshot: &'a [u8],
     pub hdc_snapshot_events: u64,
+    /// Emitted-block digests; only those not yet persisted are inserted.
+    pub emitted: &'a BTreeSet<[u8; 32]>,
     /// `(seal key, canonical workspace dir)`; when set, the new generation is MAC-stamped.
     pub seal: Option<(&'a [u8; 32], &'a Path)>,
 }
@@ -138,6 +148,7 @@ pub(crate) fn open(dir: &Path) -> Result<Connection, IcxError> {
             Err(e) => return Err(db_err(e)),
         }
     }
+    tighten_store_file_modes(dir)?;
     let conn = Connection::open(&path).map_err(db_err)?;
     conn.busy_timeout(std::time::Duration::from_secs(5))
         .map_err(db_err)?;
@@ -148,7 +159,8 @@ pub(crate) fn open(dir: &Path) -> Result<Connection, IcxError> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v BLOB NOT NULL);
          CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY, digest BLOB NOT NULL, bytes BLOB NOT NULL);
-         CREATE TABLE IF NOT EXISTS artifacts (id INTEGER PRIMARY KEY, meta TEXT NOT NULL);",
+         CREATE TABLE IF NOT EXISTS artifacts (id INTEGER PRIMARY KEY, meta TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS emitted (digest BLOB PRIMARY KEY) WITHOUT ROWID;",
     )
     .map_err(db_err)?;
     let version: Option<i64> = conn
@@ -171,6 +183,28 @@ pub(crate) fn open(dir: &Path) -> Result<Connection, IcxError> {
         }
     }
     Ok(conn)
+}
+
+/// Resets an existing store, WAL or shared-memory file to `0600` if its mode was widened (PR #20
+/// review). Symlinks are left alone; `workspace::verify` refuses those separately.
+fn tighten_store_file_modes(dir: &Path) -> Result<(), IcxError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for suffix in ["", "-wal", "-shm"] {
+            let p = dir.join(format!("{DB_FILE}{suffix}"));
+            let Ok(meta) = std::fs::symlink_metadata(&p) else {
+                continue;
+            };
+            if meta.file_type().is_file() && meta.permissions().mode() & 0o077 != 0 {
+                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600))
+                    .map_err(db_err)?;
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = dir;
+    Ok(())
 }
 
 fn meta_blob(conn: &Connection, key: &str) -> Result<Option<Vec<u8>>, IcxError> {
@@ -242,6 +276,19 @@ pub(crate) fn load(conn: &mut Connection) -> Result<StoredWorkspace, IcxError> {
                 .push(serde_json::from_str(&json).map_err(db_err)?);
         }
     }
+    {
+        let mut stmt = tx.prepare("SELECT digest FROM emitted").map_err(db_err)?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, Vec<u8>>(0))
+            .map_err(db_err)?;
+        for row in rows {
+            let d: [u8; 32] = row
+                .map_err(db_err)?
+                .try_into()
+                .map_err(|_| db_err("emitted digest is not 32 bytes"))?;
+            out.emitted.insert(d);
+        }
+    }
     out.graph_json = meta_blob(&tx, "graph")?;
     out.mmu_state_json = meta_blob(&tx, "mmu_state")?;
     out.hdc_snapshot = meta_blob(&tx, "hdc_index")?;
@@ -258,6 +305,7 @@ pub(crate) fn load(conn: &mut Connection) -> Result<StoredWorkspace, IcxError> {
 pub(crate) struct PersistedIds {
     pub chunks: BTreeSet<ArtifactId>,
     pub artifacts: BTreeSet<ArtifactId>,
+    pub emitted: BTreeSet<[u8; 32]>,
 }
 
 /// Writes new CAS rows (those not in `persisted`) plus all derived state in one transaction and
@@ -272,6 +320,7 @@ pub(crate) fn save<'c>(
     let tx = conn.transaction().map_err(db_err)?;
     let mut new_chunks = Vec::new();
     let mut new_artifacts = Vec::new();
+    let mut new_emitted = Vec::new();
     let mut all_artifacts = Vec::new();
     {
         let mut ins_chunk = tx
@@ -299,6 +348,13 @@ pub(crate) fn save<'c>(
                 .execute(params![id_to_sql(art.id), json])
                 .map_err(db_err)?;
             new_artifacts.push(art.id);
+        }
+        let mut ins_emitted = tx
+            .prepare_cached("INSERT OR IGNORE INTO emitted (digest) VALUES (?1)")
+            .map_err(db_err)?;
+        for d in derived.emitted.difference(&persisted.emitted) {
+            ins_emitted.execute(params![d.as_slice()]).map_err(db_err)?;
+            new_emitted.push(*d);
         }
     }
     let next_gen = generation(&tx)?.saturating_add(1);
@@ -341,6 +397,7 @@ pub(crate) fn save<'c>(
             derived.hdc_snapshot,
             derived.hdc_snapshot_events,
             all_artifacts.into_iter(),
+            derived.emitted,
         );
         upsert
             .execute(params![
@@ -353,5 +410,6 @@ pub(crate) fn save<'c>(
     tx.commit().map_err(db_err)?;
     persisted.chunks.extend(new_chunks);
     persisted.artifacts.extend(new_artifacts);
+    persisted.emitted.extend(new_emitted);
     Ok(next_gen)
 }

@@ -22,9 +22,12 @@ icx-core.workspace = true
 icx-hdc.workspace = true
 icx-proxy.workspace = true
 icx-store.workspace = true
+serde_json.workspace = true
+
+# Only the Unix-socket daemon (`src/daemon.rs`, `#[cfg(unix)]`) uses these.
+[target.'cfg(unix)'.dependencies]
 rustix.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 
 [dev-dependencies]
 rusqlite.workspace = true

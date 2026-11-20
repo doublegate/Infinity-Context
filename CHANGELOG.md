@@ -31,10 +31,16 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
 - icx structural markers anywhere in untrusted input, including the latest message, are escaped
   unless they are byte-identical to a block icx emitted; deref output carries a
   `trust=untrusted_data` provenance header (ICX-AUD-011).
-- Bounded hook stdin, MCP lines (4 MiB) and fold depth (64) (ICX-AUD-014).
+- Bounded hook stdin, MCP lines (4 MiB, oversized lines drained without buffering) and fold
+  depth (64) (ICX-AUD-014).
+- Only structural tool-call/-result blocks for the icx pager are exempt from marker
+  neutralization; tool output that merely contains `"name": "icx"` is not.
+- Reopening a store resets widened `icx.sqlite3`, `-wal` and `-shm` modes to `0600`.
 - Redactor: URL userinfo passwords for every scheme, SendGrid, Slack app/webhook, GitLab,
   DigitalOcean, Shopify and Twilio formats, more key names, multi-line values, single-line PEM,
-  and bounded unterminated key blocks (ICX-AUD-015, -016).
+  and bounded unterminated key blocks (ICX-AUD-015, -016). A key with no inline value redacts
+  only a following scalar line: nested mappings, comments and prose ending in `key:` are kept.
+  Token-only URL userinfo (`https://<token>@host`) is redacted.
 - agy `transcriptPath` opens non-blocking without following symlinks; the bus file refuses
   symlinks, foreign owners and permissive modes (ICX-AUD-018, -019).
 - Hooks never echo input fields back as decisions (Claude Code, Codex and agy PreToolUse; agy
@@ -47,8 +53,12 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
   process; about 3 ms median through the resident daemon (ICX-AUD-001, -047, -050).
 - Storage is lossless after redaction: CRLF, trailing newlines and literal delimiters survive;
   escaping applies only to model-facing views (ICX-AUD-021).
-- 64-bit handle collisions are refused instead of overwriting, in both the CAS and the DAG
-  (ICX-AUD-022, -023).
+- 64-bit handle collisions are refused instead of overwriting, in both the CAS and the DAG,
+  including Hermes carried-AHTL lines and subagent summaries (ICX-AUD-022, -023).
+- The daemon flushes and releases the workspace lock at most 1 s after the first unsaved change
+  even under continuous hook traffic.
+- Emitted-block digests are stored in an append-only, seal-covered table instead of being
+  rewritten inside the state blob on every save.
 - Epoch headers are hex everywhere and epoch ids are u32 (ICX-AUD-024); invalid `slice_hint`
   values are neither rendered nor parsed (ICX-AUD-025); clause chains are parsed iteratively and
   capped at 64 links (ICX-AUD-026).
@@ -90,7 +100,8 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
 
 - 10 arXiv PDFs whose license does not permit redistribution; INDEX.md links to arXiv
   (ICX-AUD-036).
-- Unused proxy dependencies `icx-codec` and `serde` (ICX-AUD-041).
+- Unused proxy dependencies `icx-codec` and `serde` (ICX-AUD-041); `icx-cli` depends on
+  `serde` and `rustix` only on Unix.
 - Personal paths and an agent conversation id from tracked files (ICX-AUD-038).
 
 ### Known limitations
@@ -101,6 +112,9 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
   shrink it. The Codex rollout tailer does not read `.jsonl.zst` files and is not wired into the
   CLI (ICX-AUD-005).
 - No Hermes Python shim ships with icx (ICX-AUD-006).
+- The rest of the derived state (DAG, epochs, HDC event log, graph) is still rewritten in full
+  on each save, so flush cost grows with history. The daemon flushes after any request,
+  including ones that change nothing.
 - Licensing and patent governance text (PATENTS.md, CLA.md, COMMERCIAL.md) is unchanged by owner
   decision (ICX-AUD-035).
 

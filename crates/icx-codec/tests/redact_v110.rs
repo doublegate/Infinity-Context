@@ -169,3 +169,36 @@ fn redaction_is_lossless_for_secret_free_input() {
     // Model-facing sanitize still escapes delimiters (Tier 0).
     assert_eq!(SecretRedactor::sanitize("x ⟪y⟫\r\n"), "x <<y>>\r\n");
 }
+
+#[test]
+fn continuation_redaction_only_consumes_a_scalar_value_line() {
+    // PR #20 review (Antigravity): redaction runs before CAS storage, so a wrongly consumed line
+    // is lost for good. Nested mappings, comments and prose must survive.
+    let nested = "credentials:\n  username: alice\n  region: us-east-1\n";
+    assert_eq!(SecretRedactor::redact(nested), nested);
+    let commented = "password:\n  # supplied by the vault agent\n  s3cret-value-here\nhost: x\n";
+    let out = SecretRedactor::redact(commented);
+    assert!(out.contains("# supplied by the vault agent"), "{out}");
+    assert!(!out.contains("s3cret-value-here"), "{out}");
+    assert!(out.contains("host: x"), "{out}");
+    let block = "api_key:\n  from_env: true\n";
+    assert_eq!(SecretRedactor::redact(block), block);
+    let prose = "error: missing signing key:\nsee docs/keys.md for setup\n";
+    assert_eq!(SecretRedactor::redact(prose), prose);
+    let list = "- token:\n    \"tok-value-1234\"\n";
+    assert!(!SecretRedactor::redact(list).contains("tok-value-1234"));
+}
+
+#[test]
+fn token_only_url_userinfo_is_redacted_but_plain_usernames_are_kept() {
+    let token = "Zq7Xw2Lp9Rt4Vb6Nm3Kd";
+    let url = format!("git clone https://{token}@github.com/org/repo.git");
+    assert_redacted(&url, token);
+    for keep in [
+        "git clone ssh://git@github.com/org/repo.git",
+        "open https://alice@example.com/profile",
+        "push https://deploy-bot@git.example.org/x.git",
+    ] {
+        assert_eq!(SecretRedactor::redact(keep), keep);
+    }
+}

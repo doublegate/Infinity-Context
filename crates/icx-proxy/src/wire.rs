@@ -222,22 +222,36 @@ impl WireProxyTransformer {
     /// Visits every string in the conversation arrays (`messages`, `input`, `contents`), skipping
     /// system/developer messages, icx pager tool calls/results and `cache_control` objects.
     fn visit_conversation_strings(root: &mut Value, f: &mut dyn FnMut(&mut String)) {
-        fn walk(v: &mut Value, f: &mut dyn FnMut(&mut String)) {
+        /// Only a structural tool-call/-result block names a tool; the same field inside tool
+        /// output (e.g. a Gemini `functionResponse.response` object) is data (PR #20 review).
+        fn is_pager_block(map: &serde_json::Map<String, Value>, parent_key: Option<&str>) -> bool {
+            let structural = matches!(
+                parent_key,
+                Some("functionCall" | "functionResponse" | "function")
+            ) || map.get("type").and_then(Value::as_str).is_some_and(|t| {
+                matches!(
+                    t,
+                    "tool_use" | "mcp_tool_use" | "function_call" | "mcp_call" | "custom_tool_call"
+                )
+            });
+            structural
+                && map
+                    .get("name")
+                    .or_else(|| map.get("tool_name"))
+                    .and_then(Value::as_str)
+                    .is_some_and(InfinityContextMmu::is_icx_pager_tool)
+        }
+        fn walk(v: &mut Value, f: &mut dyn FnMut(&mut String), parent_key: Option<&str>) {
             match v {
                 Value::String(s) => f(s),
-                Value::Array(items) => items.iter_mut().for_each(|i| walk(i, f)),
+                Value::Array(items) => items.iter_mut().for_each(|i| walk(i, f, None)),
                 Value::Object(map) => {
-                    let is_pager = map
-                        .get("name")
-                        .or_else(|| map.get("tool_name"))
-                        .and_then(Value::as_str)
-                        .is_some_and(InfinityContextMmu::is_icx_pager_tool);
-                    if is_pager {
+                    if is_pager_block(map, parent_key) {
                         return;
                     }
                     for (k, child) in map.iter_mut() {
                         if k != "cache_control" {
-                            walk(child, f);
+                            walk(child, f, Some(k.as_str()));
                         }
                     }
                 }
@@ -272,11 +286,11 @@ impl WireProxyTransformer {
                             .and_then(Value::as_str)
                             .is_some_and(|id| pager_ids.contains(id));
                         if !block_is_pager {
-                            walk(block, f);
+                            walk(block, f, None);
                         }
                     }
                 } else {
-                    walk(item, f);
+                    walk(item, f, None);
                 }
             }
         }

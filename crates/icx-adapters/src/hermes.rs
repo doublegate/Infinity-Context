@@ -167,8 +167,15 @@ impl HermesAdapter {
                         Some(icx_core::ArtifactId::hash_bytes(sanitized_line.as_bytes()).0)
                     })
                 } else {
-                    let line_aid = parsed_aid
-                        .unwrap_or_else(|| mmu.cas.put_bytes(sanitized_line.as_bytes()).0);
+                    // Collision-checked (PR #20 review): a 64-bit id clash skips the line
+                    // instead of aliasing it to another artifact's bytes.
+                    let line_aid = match parsed_aid {
+                        Some(aid) => aid,
+                        None => match mmu.cas.put_bytes_checked(sanitized_line.as_bytes()) {
+                            Ok((aid, _)) => aid,
+                            Err(_) => continue,
+                        },
+                    };
                     let existing_turn = mmu.dag.find_turn_any_role(AgentKind::Hermes, line_aid);
                     let subj = existing_turn
                         .map(|(r, _, _)| r.to_owned())

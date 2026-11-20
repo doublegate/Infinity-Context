@@ -256,6 +256,10 @@ fn editing_any_persisted_row_of_a_sealed_store_is_rejected() {
             "artifact removed",
             "DELETE FROM artifacts WHERE id = (SELECT max(id) FROM artifacts)",
         ),
+        (
+            "emitted digest forged",
+            "INSERT INTO emitted (digest) VALUES (zeroblob(32))",
+        ),
     ] {
         let ws = base.join(format!("ws_{}", label.replace(' ', "_")));
         workspace::prepare(&ws, &r).unwrap();
@@ -354,4 +358,47 @@ fn concurrent_first_use_of_the_install_key_agrees_on_one_key() {
         assert!(keys.windows(2).all(|w| w[0] == w[1]));
         let _ = std::fs::remove_dir_all(&base);
     }
+}
+
+#[test]
+fn a_resident_mmu_saving_over_a_tampered_row_does_not_launder_it() {
+    // PR #20 review (Antigravity): incremental saves keep existing rows (`INSERT OR IGNORE`) and
+    // re-seal from memory. The seal is over content the next load recomputes from disk (chunk
+    // ids are BLAKE3 of the bytes, artifacts reassemble to their full digest), so a row edited
+    // behind a resident daemon's back still fails the next load.
+    use icx_adapters::mmu::InfinityContextMmu;
+    use icx_core::AgentKind;
+    let base = scratch("launder");
+    let r = roots(&base);
+    let key = workspace::store_seal_key(&r).unwrap();
+    for (label, sql) in [
+        (
+            "chunk bytes",
+            "UPDATE chunks SET bytes = CAST('evil' AS BLOB) WHERE id = (SELECT min(id) FROM chunks)",
+        ),
+        (
+            "artifact meta",
+            "UPDATE artifacts SET meta = replace(meta, '\"total_lines\":1', '\"total_lines\":9') WHERE meta LIKE '%\"total_lines\":1,%'",
+        ),
+    ] {
+        let ws = base.join(format!("ws_{}", label.replace(' ', "_")));
+        workspace::prepare(&ws, &r).unwrap();
+        let mut resident = InfinityContextMmu::default();
+        resident.set_store_seal_key(Some(key));
+        resident.ingest_payload(AgentKind::ClaudeCode, "Bash:ls", "one\n", false);
+        resident.save_workspace_dir(&ws).unwrap();
+        let conn = rusqlite::Connection::open(ws.join("icx.sqlite3")).unwrap();
+        assert_eq!(conn.execute(sql, []).unwrap(), 1, "{label}: tamper applied");
+        drop(conn);
+        // The resident MMU keeps working and flushes again (incremental, re-sealed).
+        resident.ingest_payload(AgentKind::ClaudeCode, "Bash:pwd", "two\n", false);
+        resident.save_workspace_dir(&ws).unwrap();
+        let mut fresh = InfinityContextMmu::default();
+        fresh.set_store_seal_key(Some(key));
+        assert!(
+            fresh.load_workspace_dir(&ws).is_err(),
+            "{label}: tampered row was accepted after a resident re-seal"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&base);
 }

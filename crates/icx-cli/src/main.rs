@@ -115,8 +115,20 @@ fn read_bounded_line<R: BufRead>(
         return Ok(None);
     }
     if line.len() as u64 > max && line.last() != Some(&b'\n') {
-        let mut sink = Vec::new();
-        reader.read_until(b'\n', &mut sink)?;
+        // Discard the rest of the oversized line without buffering it (PR #20 review): a single
+        // unterminated multi-GiB line must not be read into memory.
+        loop {
+            let buf = reader.fill_buf()?;
+            if buf.is_empty() {
+                break;
+            }
+            if let Some(pos) = buf.iter().position(|&b| b == b'\n') {
+                reader.consume(pos + 1);
+                break;
+            }
+            let n = buf.len();
+            reader.consume(n);
+        }
         return Ok(Some(Err(())));
     }
     Ok(Some(String::from_utf8(line).map_err(|_| ())))
@@ -1836,6 +1848,10 @@ mod tests {
             read_bounded_line(&mut r, 8).unwrap(),
             Some(Ok("ok\n".into()))
         );
+        assert_eq!(read_bounded_line(&mut r, 8).unwrap(), None);
+        // An unterminated oversized line is drained to EOF in fixed-size reads.
+        let mut r = io::BufReader::with_capacity(4, io::Cursor::new("y".repeat(100)));
+        assert_eq!(read_bounded_line(&mut r, 8).unwrap(), Some(Err(())));
         assert_eq!(read_bounded_line(&mut r, 8).unwrap(), None);
         let mut out = Vec::new();
         serve_mcp_stream(
