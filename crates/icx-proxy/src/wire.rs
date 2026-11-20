@@ -77,6 +77,10 @@ impl SsePendingState {
     }
 }
 
+/// Per-request check that the proxy may use its workspace directory (see
+/// [`WireProxyTransformer::serve_http_listener_gated`]).
+pub type WorkspaceGate = dyn Fn(&Path) -> bool + Sync;
+
 /// Transforms outbound LLM API requests to enforce Prefix-Cache-Locked Epochs (`arXiv:2610.28577`)
 /// and inject the Ephemeral Tail Slot without invalidating provider KV caches.
 #[derive(Clone, Debug, Default)]
@@ -2053,6 +2057,7 @@ impl WireProxyTransformer {
             upstream_override,
             workspace_dir,
             None,
+            None,
             &shared_mmu,
         )
     }
@@ -2171,6 +2176,7 @@ impl WireProxyTransformer {
         default_provider: Option<ProviderFormat>,
         upstream_override: Option<&str>,
         workspace_dir: Option<&Path>,
+        workspace_gate: Option<&WorkspaceGate>,
         auth_token: Option<&str>,
         shared_mmu: &std::sync::Mutex<&mut InfinityContextMmu>,
     ) -> io::Result<()> {
@@ -2291,7 +2297,10 @@ impl WireProxyTransformer {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let mmu: &mut InfinityContextMmu = &mut mmu_guard;
-            let ws_opt = workspace_dir.filter(|p| p.exists());
+            // The gate re-checks workspace trust per request (PR #20 review), so `icx trust` after
+            // start takes effect and a workspace whose ownership, mode or seal changed is skipped.
+            let ws_opt =
+                workspace_dir.filter(|p| p.exists() && workspace_gate.is_none_or(|gate| gate(p)));
             let lock_guard = match ws_opt {
                 Some(p) => {
                     let g = InfinityContextMmu::acquire_workspace_lock(p)
@@ -2492,6 +2501,32 @@ impl WireProxyTransformer {
         auth_token: Option<&str>,
         mmu: &mut InfinityContextMmu,
     ) -> io::Result<usize> {
+        Self::serve_http_listener_gated(
+            listener,
+            default_provider,
+            upstream_override,
+            workspace_dir,
+            None,
+            max_requests,
+            auth_token,
+            mmu,
+        )
+    }
+
+    /// Like [`Self::serve_http_listener_authenticated`], but `workspace_gate` is consulted before
+    /// each request uses `workspace_dir`; when it returns `false` the request is served
+    /// statelessly.
+    #[allow(clippy::too_many_arguments)]
+    pub fn serve_http_listener_gated(
+        listener: &TcpListener,
+        default_provider: Option<ProviderFormat>,
+        upstream_override: Option<&str>,
+        workspace_dir: Option<&Path>,
+        workspace_gate: Option<&WorkspaceGate>,
+        max_requests: Option<usize>,
+        auth_token: Option<&str>,
+        mmu: &mut InfinityContextMmu,
+    ) -> io::Result<usize> {
         if max_requests == Some(0) {
             return Ok(0);
         }
@@ -2529,6 +2564,7 @@ impl WireProxyTransformer {
                         default_provider,
                         upstream_override,
                         workspace_dir,
+                        workspace_gate,
                         auth_token,
                         shared_mmu_ref,
                     );

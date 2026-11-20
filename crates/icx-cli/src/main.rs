@@ -776,7 +776,8 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
     }
     let mut mmu = workspace_mmu();
     let ws_dir = resolve_workspace_dir(dir_str);
-    let ws_ready = matches!(workspace_state(&ws_dir, true), WsState::Ready);
+    // Creates and seals a missing workspace; trust is re-checked per request by the gate.
+    let _ = workspace_state(&ws_dir, true);
     let env_upstream = env::var("ICX_UPSTREAM_URL")
         .ok()
         .filter(|s| !s.trim().is_empty());
@@ -812,11 +813,13 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
         ),
         None => eprintln!("icx proxy: listening on http://{local} (no auth)"),
     }
-    WireProxyTransformer::serve_http_listener_authenticated(
+    let gate = |dir: &Path| workspace::verify(dir, roots()).is_ok();
+    WireProxyTransformer::serve_http_listener_gated(
         &listener,
         provider,
         effective_upstream,
-        ws_ready.then_some(ws_dir.as_path()),
+        Some(ws_dir.as_path()),
+        Some(&gate),
         max_requests,
         token.as_deref(),
         &mut mmu,

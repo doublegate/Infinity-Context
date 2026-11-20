@@ -92,3 +92,52 @@ fn curl_header_dir_must_be_private_and_ours_else_a_per_user_temp_dir_is_used() {
     assert_eq!(mode, 0o700);
     let _ = std::fs::remove_dir_all(&base);
 }
+
+#[test]
+fn the_workspace_gate_is_consulted_on_every_request() {
+    // PR #20 review (Antigravity): like `mcp-serve`, the proxy re-checks workspace trust per
+    // request, so trust granted (or revoked) after start takes effect without a restart.
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static ALLOW: AtomicBool = AtomicBool::new(false);
+    let ws = std::env::temp_dir().join(format!("icx_proxy_gate_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&ws);
+    let mut seed = InfinityContextMmu::default();
+    let id = seed
+        .ingest_payload(
+            icx_core::AgentKind::ClaudeCode,
+            "Bash:cat notes",
+            "GATE-MARKER-4412 stored line\n",
+            false,
+        )
+        .artifact_id;
+    seed.save_workspace_dir(&ws).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    let ws2 = ws.clone();
+    let server = std::thread::spawn(move || {
+        let gate = |_: &std::path::Path| ALLOW.load(Ordering::SeqCst);
+        let mut mmu = InfinityContextMmu::default();
+        WireProxyTransformer::serve_http_listener_gated(
+            &listener,
+            None,
+            Some("none"),
+            Some(ws2.as_path()),
+            Some(&gate),
+            Some(2),
+            None,
+            &mut mmu,
+        )
+    });
+    let body = format!("data: ⟪!icx:deref(#icx:{:016x})⟫", id.0);
+    let raw = format!(
+        "POST /sse-expand HTTP/1.1\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    let denied = request(&addr, &raw);
+    assert!(!denied.contains("GATE-MARKER-4412"), "{denied}");
+    ALLOW.store(true, Ordering::SeqCst);
+    let allowed = request(&addr, &raw);
+    assert!(allowed.contains("GATE-MARKER-4412"), "{allowed}");
+    server.join().unwrap().unwrap();
+    let _ = std::fs::remove_dir_all(&ws);
+}

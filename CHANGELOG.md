@@ -39,8 +39,8 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
 - `install.key` is checked (regular file, owner, mode) before it is read, so a FIFO is refused
   instead of blocking; only a missing key is created.
 - `icx encode-ahtl` refuses an untrusted workspace instead of printing a handle it never stored.
-- `icx mcp-serve` re-verifies the workspace per request, so a later `icx trust` takes effect and
-  a workspace whose ownership, mode or seal changed is no longer used.
+- `icx mcp-serve` and `icx proxy` re-verify the workspace per request, so a later `icx trust`
+  takes effect and a workspace whose ownership, mode or seal changed is no longer used.
 - Proxy curl header files go to a directory verified to be ours and private
   (`$XDG_RUNTIME_DIR/icx`, else `<tmp>/icx-<uid>`) and stale ones are swept every minute.
 - Redactor: URL userinfo passwords for every scheme, SendGrid, Slack app/webhook, GitLab,
@@ -100,6 +100,7 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
   `server/discover` and per-request versions for 2026-07-28 (ICX-AUD-008).
 - Optional wall-clock event times, enabled for CLI workspaces (ICX-AUD-048).
 - `SeqlockTelemetryBus::dropped_publishes` and `poll_since_with_loss` (ICX-AUD-054).
+- `WireProxyTransformer::serve_http_listener_gated` with a per-request `WorkspaceGate`.
 - proptest invariants for the codec, cargo-fuzz targets (`fuzz/`), and a cargo-deny gate
   (ICX-AUD-039, -040).
 
@@ -134,8 +135,6 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
 - The rest of the derived state (DAG, epochs, HDC event log, graph) is still rewritten in full
   on each save, so flush cost grows with history. The daemon flushes after any dispatched
   request, including hooks that change nothing.
-- A running `icx proxy` decides at start whether to use the workspace; restart it after
-  `icx trust`.
 - Licensing and patent governance text (PATENTS.md, CLA.md, COMMERCIAL.md) is unchanged by owner
   decision (ICX-AUD-035).
 
