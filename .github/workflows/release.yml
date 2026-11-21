@@ -1,0 +1,350 @@
+# SPDX-FileCopyrightText: 2026 DoubleGate
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Release build: on a version-tag push (or a manual run against an existing tag), runs the test
+# gate, builds static musl `icx` binaries for x86-64 (baseline) and x86-64-v3 (AVX2), packages
+# them with the license texts, writes SHA256SUMS, attests build provenance and attaches
+# everything to a GitHub release for the tag.
+#
+# A new release is created as a DRAFT with the tag's CHANGELOG section as its notes, so the notes
+# can be reviewed before publishing. If the release already exists, only assets it does not yet
+# have are uploaded; an asset that is already attached is never replaced (a published version is
+# immutable — cut a new tag instead).
+
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and release (for example v1.2.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: 1.100.0
+
+jobs:
+  gate:
+    name: Verify tag and run tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - name: Resolve tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          tag="${INPUT_TAG:-$REF_NAME}"
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "ERROR: '$tag' is not a vMAJOR.MINOR.PATCH[-PRE] tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tagged commit must be on main
+        # ci.yml (fmt, clippy, unsafe policy, cargo-deny, coverage, secret scan) runs on every
+        # push to main, so requiring the tag to point into main's history means those gates
+        # have run on the released source; this job only re-runs the tests.
+        run: |
+          git fetch --no-tags --quiet origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "ERROR: $(git rev-parse --short HEAD) is not on main; merge it before tagging" >&2
+            exit 1
+          fi
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          save-if: false
+      - name: Tag must match the workspace version and have a CHANGELOG entry
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          manifest="$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "icx-cli") | .version')"
+          if [ "$manifest" != "$VERSION" ]; then
+            echo "ERROR: tag version $VERSION != icx-cli version $manifest" >&2
+            exit 1
+          fi
+          if ! awk -v hdr="## [$VERSION]" 'index($0, hdr) == 1 { f = 1 } END { exit !f }' CHANGELOG.md; then
+            echo "ERROR: CHANGELOG.md has no '## [$VERSION]' section" >&2
+            exit 1
+          fi
+      - name: Run tests
+        run: cargo test --workspace --locked
+
+  notices:
+    name: Third-party license notices
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: refs/tags/${{ needs.gate.outputs.tag }}
+          persist-credentials: false
+      # The cargo-about config comes from the workflow's own commit, so a manual run for an
+      # older tag that predates it still gets notices for that tag's Cargo.lock.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: wf
+          sparse-checkout: .github
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Install cargo-about
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        with:
+          tool: cargo-about@0.9.3
+      - name: Generate THIRD-PARTY-NOTICES.txt
+        run: |
+          cargo about generate --locked --fail -c wf/.github/about.toml wf/.github/about.hbs \
+            -o THIRD-PARTY-NOTICES.txt
+          grep -c '^====' THIRD-PARTY-NOTICES.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: third-party-notices
+          path: THIRD-PARTY-NOTICES.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs: [gate, notices]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - label: x86_64-unknown-linux-musl
+            target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            rustflags: ""
+          - label: x86_64_v3-unknown-linux-musl
+            target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            rustflags: "-C target-cpu=x86-64-v3"
+          # glibc builds run on the oldest supported runner so the binary needs only glibc 2.35.
+          - label: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+            rustflags: ""
+          - label: x86_64_v3-unknown-linux-gnu
+            target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+            rustflags: "-C target-cpu=x86-64-v3"
+    env:
+      TARGET: ${{ matrix.target }}
+      TAG: ${{ needs.gate.outputs.tag }}
+      LABEL: ${{ matrix.label }}
+      MAX_GLIBC: "2.35"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: refs/tags/${{ needs.gate.outputs.tag }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: ${{ matrix.target }}
+      - name: Install musl C toolchain (bundled SQLite)
+        if: endsWith(matrix.target, '-musl')
+        run: |
+          if ! command -v musl-gcc >/dev/null; then
+            sudo apt-get update -q
+            sudo apt-get install -y -q musl-tools
+          fi
+      - name: Build
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
+          CC_x86_64_unknown_linux_musl: musl-gcc
+        run: cargo build --release --locked -p icx-cli --target "$TARGET"
+      - name: Check linkage and smoke-test
+        run: |
+          bin="target/$TARGET/release/icx"
+          file "$bin"
+          case "$TARGET" in
+            *-musl)
+              if ! file "$bin" | grep -Eq 'static(ally|-pie) linked'; then
+                echo "ERROR: $bin is not statically linked" >&2
+                exit 1
+              fi
+              ;;
+            *-gnu)
+              ldd "$bin"
+              need="$(objdump -T "$bin" | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/GLIBC_//' \
+                | sort -uV | tail -1)"
+              if [ -z "$need" ]; then
+                echo "ERROR: no GLIBC_ symbol versions found in $bin" >&2
+                exit 1
+              fi
+              echo "highest glibc symbol version required: $need"
+              if [ "$(printf '%s\n%s\n' "$need" "$MAX_GLIBC" | sort -V | tail -1)" != "$MAX_GLIBC" ]; then
+                echo "ERROR: $bin needs glibc $need, newer than the supported $MAX_GLIBC" >&2
+                exit 1
+              fi
+              ;;
+          esac
+          if [[ "$LABEL" == x86_64_v3-* ]] && ! grep -qw avx2 /proc/cpuinfo; then
+            echo "::warning::runner CPU lacks AVX2; skipping the v3 smoke run"
+            exit 0
+          fi
+          smoke="$(mktemp -d)"
+          mkdir -p "$smoke/home" "$smoke/proj"
+          (
+            cd "$smoke/proj"
+            export HOME="$smoke/home" XDG_STATE_HOME="$smoke/home/.local/state" \
+              XDG_CONFIG_HOME="$smoke/home/.config" XDG_RUNTIME_DIR="$smoke/run"
+            mkdir -m 0700 "$XDG_RUNTIME_DIR"
+            "$GITHUB_WORKSPACE/$bin" doctor
+            "$GITHUB_WORKSPACE/$bin" init
+            "$GITHUB_WORKSPACE/$bin" status
+          )
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: third-party-notices
+          path: notices
+      - name: Package
+        run: |
+          name="icx-$TAG-$LABEL"
+          mkdir -p "dist/$name/LICENSES"
+          install -m 0755 "target/$TARGET/release/icx" "dist/$name/icx"
+          strip "dist/$name/icx"
+          cp LICENSE COPYING README.md CHANGELOG.md notices/THIRD-PARTY-NOTICES.txt "dist/$name/"
+          cp LICENSES/GPL-3.0-or-later.txt LICENSES/AGPL-3.0-or-later.txt "dist/$name/LICENSES/"
+          if [[ "$TARGET" == *-musl ]]; then
+            # musl libc is linked into the binary; ship its MIT notice.
+            cp /usr/share/doc/musl/copyright "dist/$name/MUSL-COPYRIGHT.txt"
+          fi
+          epoch="$(git log -1 --format=%ct)"
+          tar -C dist --owner=0 --group=0 --numeric-owner --sort=name --mtime="@$epoch" \
+            -cf - "$name" | gzip -n > "dist/$name.tar.gz"
+          tar tzf "dist/$name.tar.gz"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.label }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish release assets
+    needs: [gate, notices, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      TAG: ${{ needs.gate.outputs.tag }}
+      VERSION: ${{ needs.gate.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: refs/tags/${{ needs.gate.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: wf
+          sparse-checkout: .github
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Assemble a consistent asset set
+        id: assemble
+        # A rebuild is not byte-identical to an earlier run (runner image and C toolchains are
+        # not pinned), so every file already attached to the release is kept and hashed as
+        # attached. SHA256SUMS is regenerated over the full set; an attached SHA256SUMS is
+        # replaced only when the new one keeps every attached line unchanged (pure additions).
+        run: bash wf/.github/scripts/release-assemble.sh
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: steps.assemble.outputs.new_tarballs == 'true'
+        with:
+          subject-path: upload/*.tar.gz
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          awk -v hdr="## [$VERSION]" '
+            index($0, hdr) == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "ERROR: the CHANGELOG section for $VERSION is empty" >&2
+            exit 1
+          fi
+          {
+            echo
+            echo "## Downloads"
+            echo
+            echo "Linux x86-64 binaries in two C-library flavours:"
+            echo
+            echo "- \`*-linux-musl\`: fully static, runs on any Linux distribution."
+            echo "- \`*-linux-gnu\`: dynamically linked against glibc 2.35 or newer (Ubuntu 22.04,"
+            echo "  Debian 12, RHEL 10 and later); faster in-process hooks than musl."
+            echo
+            echo "The \`x86_64_v3\` builds need AVX2 (Intel Haswell / AMD Zen or newer) and exit with"
+            echo "\"illegal instruction\" on older CPUs; use the baseline \`x86_64\` builds there."
+            echo "Verify with \`sha256sum -c SHA256SUMS --ignore-missing\` or"
+            echo "\`gh attestation verify <archive>.tar.gz --repo $GH_REPO\`."
+            echo "Third-party license notices: \`THIRD-PARTY-NOTICES.txt\` (also inside each archive)."
+            echo "Corresponding source for every binary is this tag."
+          } >> notes.md
+      - name: Create draft release or add missing assets
+        env:
+          EXISTS: ${{ steps.assemble.outputs.exists }}
+          REPLACE_SUMS: ${{ steps.assemble.outputs.replace_sums }}
+        run: |
+          shopt -s nullglob
+          files=()
+          for f in upload/*; do
+            [ "$(basename "$f")" = SHA256SUMS ] || files+=("$f")
+          done
+          if [ "$EXISTS" = true ]; then
+            if [ "${#files[@]}" -gt 0 ]; then
+              gh release upload "$TAG" "${files[@]}"
+            fi
+            if [ -e upload/SHA256SUMS ]; then
+              if [ "$REPLACE_SUMS" = true ]; then
+                gh release upload "$TAG" upload/SHA256SUMS --clobber
+              else
+                gh release upload "$TAG" upload/SHA256SUMS
+              fi
+            fi
+            if [ "${#files[@]}" -eq 0 ] && [ ! -e upload/SHA256SUMS ]; then
+              echo "release $TAG already has every asset; nothing uploaded"
+            fi
+          else
+            prerelease=()
+            [[ "$TAG" == *-* ]] && prerelease=(--prerelease)
+            gh release create "$TAG" --verify-tag --draft "${prerelease[@]}" \
+              --title "icx $TAG" --notes-file notes.md "${files[@]}" upload/SHA256SUMS
+            echo "::notice::Draft release $TAG created; review the notes and publish it."
+          fi

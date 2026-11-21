@@ -1,0 +1,25 @@
+{{!-- SPDX-FileCopyrightText: 2026 DoubleGate --}}
+{{!-- SPDX-License-Identifier: GPL-3.0-or-later --}}
+THIRD-PARTY NOTICES for icx
+
+The icx binary statically links the Rust crates listed below. Their copyright notices and
+license texts follow, grouped by license. The SQLite amalgamation compiled in through
+libsqlite3-sys is in the public domain. The musl builds also link musl libc; its notice is in
+MUSL-COPYRIGHT.txt inside those archives.
+
+{{#each overview}}
+{{name}} ({{id}}): {{count}} crate(s)
+{{/each}}
+
+{{#each licenses}}
+================================================================================
+{{name}} ({{id}})
+
+Used by:
+{{#each used_by}}
+  - {{crate.name}} {{crate.version}}
+{{/each}}
+
+{{{text}}}
+
+{{/each}}
