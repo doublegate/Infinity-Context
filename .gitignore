@@ -33,7 +33,6 @@ cas_store.lock
 cas_store.json
 mmu_state.json
 bitemporal_graph.json
-lcov.info
 coverage/
 .icx/
 .icx-data/
@@ -46,3 +45,4 @@ coverage/
 
 # Playwright MCP session output (screenshots, snapshots)
 .playwright-mcp/
+.ruff_cache/

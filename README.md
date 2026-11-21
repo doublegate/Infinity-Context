@@ -70,7 +70,7 @@ for `seq 1 400` finds the output of `Bash:seq 1 400`; the index format is `ICXHD
 indexes are rebuilt on first load. Token counts (`max_tokens: 4096`) and code type annotations
 (`token: String`) are no longer hidden as secrets. The daemon survives a transient save failure
 without acknowledging it, and history eviction never empties the window when keeping some fits.
-Details: [`CHANGELOG.md`](CHANGELOG.md).
+Details: [v1.2.2 release notes](docs/releases/v1.2.2/README.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
 ## What Changed in v1.2.0
 

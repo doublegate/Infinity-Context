@@ -2,6 +2,11 @@
 
 ## Executive summary
 
+v1.2.2 is the current release (2026-11-21, pull requests #23 and #25). It follows up v1.2.0
+with the open review suggestions, two post-upgrade regressions (command recall, token-count
+over-redaction) and a redactor panic found after v1.2.1 was tagged; v1.2.1 was therefore never
+published. Notes: [`docs/releases/v1.2.2/`](docs/releases/v1.2.2/README.md).
+
 v1.2.0 was released on 2026-11-21 from pull request #22 (branch `codex-audit`). It
 remediates the independent audit of v1.1.0 in `docs/codex/` (Codex implementation, tracked in
 [the v1.2.0 plan](to-dos/v1.2.0-remediation.md)) and the defects found by the pre-release review
@@ -17,7 +22,7 @@ of that pull request and published as the v1.2.0 GitHub release.
 | 2 — Retrieval and context budgets | verified; review added IDF ranking, bounded candidates and step eviction |
 | 3 — Durability and integrations | verified; review fixed daemon lock handling and Codex null replies |
 | 4 — Documentation and governance | docs reconciled; 071 resolved from v1.2.0 on by owner decision (earlier tags and history unchanged), 074 open pending counsel |
-| 5 — Assurance and release qualification | local gates pass; exact-commit hosted CI on the pull request |
+| 5 — Assurance and release qualification | v1.2.2 released; exact-commit CI, checksums and build attestations verified |
 
 ## Feature and capability matrix
 
@@ -25,18 +30,20 @@ CAS exact post-redaction recovery remains supported. New ingestion hides the dem
 (block, multi-line, quoted, flow) and plural-key credential cases while keeping public digests.
 Exact postings with IDF ranking back HDC recall. The icx-managed window is bounded and evicts
 in persisted steps behind one stable omission frame; cold history stays dereferenceable. Daemon
-success follows a committed save and survives lock contention. Codex hooks capture but do not
-replace PostToolUse output. No general model-effectiveness, provider-cache or unrestricted
+success follows a committed save, survives lock contention and (v1.2.2) transient save
+failures without acknowledging them. Recall indexes `:`/`/`-joined tokens by component
+(`ICXHDC05`). Token counters, code type annotations and code bindings are not redacted; literals
+in code are. Codex hooks capture but do not replace PostToolUse output. No general model-effectiveness, provider-cache or unrestricted
 full-request bound is claimed.
 
 ## Metrics snapshot
 
 | Metric | Value | Source / scope |
 | --- | --- | --- |
-| Source base / candidate | `main` 2a5f9f5 / manifests 1.2.0 | git |
+| Current release | v1.2.2 at `main` dafc9b0 (v1.2.0 at 0f0a878) | git tags |
 | Audit findings | 19: 1 High/10 Medium/8 Low | `docs/codex/10-findings-register.md` |
-| Workspace tests | 245+ pass, 0 fail (2 ignored: long-horizon qualification, daemon child scenario) | `cargo test --workspace` |
-| Line coverage | 95.25% (21,035 lines) before the final scan change; floor 95% | `cargo llvm-cov` |
+| Workspace tests | 283 pass, 0 fail (2 ignored: long-horizon qualification, daemon child scenario) | `cargo test --workspace`, v1.2.2 |
+| Line coverage | 95.39% at v1.2.2; floor 95% | `cargo llvm-cov` |
 | Benchmark | 10/10 quiet-host runs pass all gates | `docs/performance.md`, evidence `benchmark-native-final-series.json` |
 | Saturated window prefix reuse | 0.94 (was 0.01) | `crates/icx-core/tests/window_eviction_v120.rs` |
 | Frozen retrieval matrix | 27 rows, recall@1/@5 = 100% | synthetic identifiers, not general model recall |
@@ -47,14 +54,17 @@ full-request bound is claimed.
 
 - 2026-11-21: Codex audit and implementation on `codex-audit`.
 - 2026-11-21: pre-release review, fixes, owner decisions (071 links, 074 deferred, curated
-  evidence, digest rule, measured parallel 10k ceiling), pull request.
+  evidence, digest rule, measured parallel 10k ceiling), pull request; v1.2.0 released.
+- 2026-11-21: v1.2.1 follow-up (#23) tagged; held unpublished after a redactor panic was found.
+- 2026-11-21: v1.2.2 (#25) released: panic fix, issue #24, all v1.2.1 changes.
 
 ## Known issues and remaining work
 
 - ICX-CODEX-074: PATENTS/CLA/COMMERCIAL terms unchanged pending counsel (owner decision).
 - Mutation space is sampled, not exhausted; survivors are triaged in `mutation-triage.md`.
 - The single-threaded 10k scan is memory-bandwidth bound on shared hosts (reported, ungated).
-- An older v1.1.0 binary cannot read a workspace upgraded to ICXHDC04 (it fails closed).
+- Older binaries cannot read upgraded workspaces (v1.1.0 cannot read ICXHDC04, v1.2.0 cannot read
+  ICXHDC05); both fail closed. Keep a pre-upgrade backup for a downgrade.
 
 ## Readiness checklist
 
