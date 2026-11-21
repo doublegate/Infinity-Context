@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 Supersedes v1.2.1, which was tagged but never published: a redactor panic was found after
 tagging. v1.2.2 contains every v1.2.1 change below plus these fixes (issue #24).
+Release notes: [`docs/releases/v1.2.2/`](docs/releases/v1.2.2/README.md).
 
 ### Fixed
 
