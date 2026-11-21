@@ -2,7 +2,11 @@ use std::process::Command;
 
 #[test]
 fn cli_can_set_and_inspect_a_persisted_model_budget() {
-    let base = std::path::PathBuf::from("/tmp/Infinity-Context/v120")
+    let base = std::env::temp_dir()
+        .join(format!(
+            "icx-v120-tests-{}",
+            std::env::var("USER").unwrap_or_default()
+        ))
         .join(format!("cli-budget-{}", std::process::id()));
     std::fs::create_dir_all(&base).unwrap();
     let ws = base.join("workspace");

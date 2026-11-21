@@ -5,7 +5,12 @@ use std::io::{Seek, SeekFrom, Write};
 
 #[test]
 fn rewrite_in_two_thirds_anchor_window_replays_changed_output() {
-    let root = std::path::Path::new("/tmp/Infinity-Context/v120/rollout-anchor-tests");
+    let root = &std::env::temp_dir()
+        .join(format!(
+            "icx-v120-tests-{}",
+            std::env::var("USER").unwrap_or_default()
+        ))
+        .join("rollout-anchor-tests");
     std::fs::create_dir_all(root).unwrap();
     let path = root.join(format!("{}.jsonl", std::process::id()));
     let old =

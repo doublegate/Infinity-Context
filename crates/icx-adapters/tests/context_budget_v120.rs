@@ -34,7 +34,12 @@ fn direct_hook_and_proxy_tail_path_obeys_the_same_budget() {
 
 #[test]
 fn smaller_model_policy_survives_restart_and_keeps_cold_history() {
-    let root = std::path::PathBuf::from("/tmp/Infinity-Context/v120/budget-tests");
+    let root = std::env::temp_dir()
+        .join(format!(
+            "icx-v120-tests-{}",
+            std::env::var("USER").unwrap_or_default()
+        ))
+        .join("budget-tests");
     std::fs::create_dir_all(&root).unwrap();
     let dir = root.join(format!(
         "{}-{}",

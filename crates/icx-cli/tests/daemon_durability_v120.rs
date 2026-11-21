@@ -30,7 +30,12 @@ fn command(base: &Path) -> Command {
 
 #[test]
 fn every_successful_ack_survives_sigkill_and_cli_reopen() {
-    let base = Path::new("/tmp/Infinity-Context/v120").join(format!("kill-{}", std::process::id()));
+    let base = std::env::temp_dir()
+        .join(format!(
+            "icx-v120-tests-{}",
+            std::env::var("USER").unwrap_or_default()
+        ))
+        .join(format!("kill-{}", std::process::id()));
     std::fs::create_dir_all(&base).unwrap();
     let ws = base.join("workspace");
     let init = command(&base)

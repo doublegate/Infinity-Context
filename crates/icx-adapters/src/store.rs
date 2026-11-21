@@ -472,7 +472,11 @@ pub(crate) fn save<'c>(
 mod durability_tests {
     #[test]
     fn workspace_connections_require_full_wal_commit_synchronization() {
-        let dir = std::path::PathBuf::from("/tmp/Infinity-Context/v120")
+        let dir = std::env::temp_dir()
+            .join(format!(
+                "icx-v120-tests-{}",
+                std::env::var("USER").unwrap_or_default()
+            ))
             .join(format!("sync-policy-{}", std::process::id()));
         let connection = super::open(&dir).unwrap();
         let mode: i64 = connection

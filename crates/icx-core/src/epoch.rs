@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// Leading bytes of the single Zone 1 frame that announces history evicted from a saturated
 /// window to cold storage. It is the first `AssembledWindow::sealed_epochs` entry when present.
-pub const HISTORY_OMITTED_MARKER_PREFIX: &str = "<<ICX:HISTORY_OMITTED│";
+pub const HISTORY_OMITTED_MARKER_PREFIX: &str = "⟪ICX:HISTORY_OMITTED│";
 
 /// Conservative prompt accounting: one UTF-8 byte consumes one token of allowance. This is
 /// an identified upper-bound estimator, not a measured provider tokenizer. External input/tool
@@ -672,7 +672,7 @@ fn format_omission_marker(
     last: ArtifactId,
 ) -> String {
     format!(
-        "{HISTORY_OMITTED_MARKER_PREFIX}epochs={epochs}│turns={turns}│bytes={bytes}│first={first}│last={last}│recall=icx:deref|slice|grep>>"
+        "{HISTORY_OMITTED_MARKER_PREFIX}epochs={epochs}│turns={turns}│bytes={bytes}│first={first}│last={last}│recall=icx:deref|slice|grep⟫"
     )
 }
 

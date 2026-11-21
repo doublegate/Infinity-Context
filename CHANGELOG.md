@@ -87,6 +87,12 @@ Release-review fixes (independent review of the candidate before submission):
   colon inside an open quoted secret no longer leaves its continuation lines unredacted and a
   ` #` inside a closed quoted value no longer redacts the following public lines; single-quoted
   values honour the `''` escape.
+- A `]` inside a quoted element of a sensitive flow sequence (`password: ["a]b", "c"]`) no
+  longer ends redaction early.
+- `icx context-budget --help` / `-h` print usage instead of a missing-value error.
+- The `ICX:HISTORY_OMITTED` frame uses the same `⟪…⟫` delimiters as the other icx markers.
+- Tests write to a per-user directory under the system temp dir instead of the fixed
+  `/tmp/Infinity-Context/v120`, which could collide between users.
 - Daemon: a workspace-lock timeout or reload failure now fails only that request (the client
   falls back to in-process handling) instead of stopping the daemon. The request is read and
   parsed before the lock is taken, under one 10 s deadline for the whole read, so a slow or

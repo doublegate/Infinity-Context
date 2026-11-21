@@ -559,18 +559,30 @@ impl SecretRedactor {
             let inner_start = val_start + 1;
             let mut depth = 1usize;
             let mut inner_end = bytes.len();
-            for (offset, &b) in bytes[inner_start..].iter().enumerate() {
-                match b {
-                    b'[' => depth += 1,
-                    b']' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            inner_end = inner_start + offset;
-                            break;
+            // Brackets inside a quoted element (`["a]b", "c"]`) are text, not structure.
+            let mut in_quote: Option<u8> = None;
+            let mut offset = 0;
+            let rest = &bytes[inner_start..];
+            while offset < rest.len() {
+                let b = rest[offset];
+                match in_quote {
+                    Some(b'"') if b == b'\\' => offset += 1,
+                    Some(q) if b == q => in_quote = None,
+                    Some(_) => {}
+                    None => match b {
+                        b'"' | b'\'' => in_quote = Some(b),
+                        b'[' => depth += 1,
+                        b']' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                inner_end = inner_start + offset;
+                                break;
+                            }
                         }
-                    }
-                    _ => {}
+                        _ => {}
+                    },
                 }
+                offset += 1;
             }
             let inner = &out[inner_start..inner_end];
             if !inner.trim().is_empty() && !inner.starts_with("[REDACTED:") {

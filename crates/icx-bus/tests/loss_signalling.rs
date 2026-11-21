@@ -53,7 +53,11 @@ fn coherent_future_sequence_is_rejected_and_reported_lost() {
 #[cfg(unix)]
 #[test]
 fn file_backed_bus_preserves_nonzero_metadata_and_each_coordinate_lane() {
-    let dir = std::path::PathBuf::from("/tmp/Infinity-Context/v120")
+    let dir = std::env::temp_dir()
+        .join(format!(
+            "icx-v120-tests-{}",
+            std::env::var("USER").unwrap_or_default()
+        ))
         .join(format!("bus-metadata-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let bus = SeqlockTelemetryBus::open_shared_file(dir.join("fabric.shm")).unwrap();

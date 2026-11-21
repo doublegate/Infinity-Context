@@ -241,6 +241,14 @@ fn run_context_budget(args: &[String]) -> Result<(), String> {
     let mut i = 0;
     while i < args.len() {
         let flag = args[i].as_str();
+        if matches!(flag, "--help" | "-h") {
+            println!(
+                "Usage: icx context-budget [--context-tokens <N>] [--completion-reserve <N>] [--external-reserve <N>] [--dir <PATH>]\n\
+                 Inspect, or with options persist, the icx-managed prompt window budget of a trusted workspace.\n\
+                 Units are the conservative utf8-bytes-upper-bound-v1 estimate, not provider tokens."
+            );
+            return Ok(());
+        }
         let value = args
             .get(i + 1)
             .ok_or_else(|| format!("context-budget: missing value for {flag}"))?;

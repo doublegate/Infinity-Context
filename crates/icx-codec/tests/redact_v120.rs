@@ -381,3 +381,23 @@ fn quoted_values_containing_colons_or_hashes_are_classified_outside_the_quotes()
         "{clean:?}"
     );
 }
+
+#[test]
+fn quoted_brackets_inside_flow_sequences_do_not_end_redaction_early() {
+    assert_hidden(
+        "password: [\"ab]lowsecret\", \"secondsecret\"]\npublic: ok\n",
+        &["lowsecret", "secondsecret"],
+        "public: ok",
+    );
+}
+
+#[test]
+fn closing_quote_of_a_multiline_secret_does_not_hide_later_assignments() {
+    // After the quoted scalar closes, the rest of the line is classified normally, so a
+    // trailing sensitive assignment is still redacted.
+    assert_hidden(
+        "password: \"lowsecret\n  tailsecret\", api_key: \"afterquote\"\npublic: ok\n",
+        &["lowsecret", "tailsecret", "afterquote"],
+        "public: ok",
+    );
+}

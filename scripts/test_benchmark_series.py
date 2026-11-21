@@ -4,6 +4,7 @@
 """Exercise the real series runner with an offline benchmark-process fixture."""
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -47,7 +48,7 @@ print(json.dumps(report))
         return result, json.loads(output.read_text())
 
     def test_warmup_is_excluded_from_ten_independent_run_summary(self):
-        root = Path("/tmp/Infinity-Context/v120/series-tests")
+        root = Path(tempfile.gettempdir()) / f"icx-v120-tests-{os.getuid()}" / "series-tests"
         root.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=root) as tmp:
             result, report = self.run_series(Path(tmp))
@@ -60,7 +61,7 @@ print(json.dumps(report))
             )
 
     def test_changed_build_provenance_refuses_mixed_summary(self):
-        root = Path("/tmp/Infinity-Context/v120/series-tests")
+        root = Path(tempfile.gettempdir()) / f"icx-v120-tests-{os.getuid()}" / "series-tests"
         root.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=root) as tmp:
             result, report = self.run_series(Path(tmp), changed=True)

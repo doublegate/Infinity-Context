@@ -136,7 +136,7 @@ daemon avoids the load entirely.
 4. **Hybrid candidates.** Exact postings are expanded rarest token first and capped near
    `3 * candidate_cap`, so a query mixing a rare identifier with very common tokens no longer
    refines the whole corpus (legacy indexes without postings still do, in parallel); ranking
-   is IDF-weighted lexical score first. Stage 1 additionally scores entries on a1,024-bit
+   is IDF-weighted lexical score first. Stage 1 additionally scores entries on a 1,024-bit
    hypervector prefix, a 256-bit content-token Bloom filter and summary fields; Stage 2 runs the
    full 10,240-bit comparison on at least `4 * sqrt(n)` candidates.
 5. **Amortized epoch sealing.** `CacheEpochController` seals an epoch only when the unsealed

@@ -4,7 +4,11 @@ use icx_core::AgentKind;
 
 #[test]
 fn legacy03_snapshot_is_rebuilt_and_saved_as04_without_changing_cas() {
-    let base = std::path::PathBuf::from("/tmp/Infinity-Context/v120")
+    let base = std::env::temp_dir()
+        .join(format!(
+            "icx-v120-tests-{}",
+            std::env::var("USER").unwrap_or_default()
+        ))
         .join(format!("snapshot-upgrade-{}", std::process::id()));
     let mut mmu = InfinityContextMmu::default();
     let receipt = mmu.ingest_payload(AgentKind::Codex, "modern", "preserved_unique_v120", false);

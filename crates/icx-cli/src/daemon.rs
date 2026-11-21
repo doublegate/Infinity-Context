@@ -321,11 +321,17 @@ mod tests {
     ) {
         use std::sync::atomic::{AtomicU64, Ordering};
         static NEXT: AtomicU64 = AtomicU64::new(0);
-        let ws = Path::new("/tmp/Infinity-Context/v120/daemon-tests").join(format!(
-            "{tag}-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
+        let ws = std::env::temp_dir()
+            .join(format!(
+                "icx-v120-tests-{}",
+                std::env::var("USER").unwrap_or_default()
+            ))
+            .join("daemon-tests")
+            .join(format!(
+                "{tag}-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
         std::fs::create_dir_all(&ws).unwrap();
         let mut mmu = InfinityContextMmu::default();
         mmu.save_workspace_dir(&ws).unwrap();
