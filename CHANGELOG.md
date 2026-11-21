@@ -21,12 +21,15 @@ re-checking the real v1.1.0 workspaces on this release's own machine after the u
   `--max-tokens 2048`, `MAX_TOKENS=8192` and other `*_TOKENS` counters lost their values to the
   v1.2.0 plural-key rule. Credentials under such keys are still caught by the value detectors;
   `NPM_READ_TOKEN` and other non-counter keys keep the key rule.
-  Any purely numeric value under a `*_TOKEN(S)` key (`epoch_rollover_tokens: 16_384`) is a
-  counter too.
+  A numeric value (at most 10 digits) under any plural `*_TOKENS` key (`epoch_rollover_tokens:
+  16_384`) is a counter too. Neither exemption applies to keys naming a credential (`AUTH`,
+  `ACCESS`, `SESSION`, `API`, ...).
 - **Type annotations are no longer redacted.** `let token: String = ...`,
   `api_keys: HashMap<String, Key>,` and `password: &str` are code, not credentials (an exact
   recognised type name ending the value; anything else keeps the key rule).
-  Code bindings (`let q_tokens = ...`, `const MAX_TOKENS = 4096`) are not env assignments.
+  Code bindings to a call or path expression (`let q_tokens = Self::query_tokens(q)`) are not env
+  assignments; a literal assigned in code (`let api_key = "..."`, `token: String = "..."`) is
+  still redacted.
 - **CSV digests after a closed bracket.** `logs[1].txt,...,<sha256>` keeps its public digest; only
   an unclosed `[` before the value marks a flow sequence.
 - **Step eviction no longer empties history needlessly.** When half the history allowance cannot

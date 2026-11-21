@@ -5,7 +5,7 @@ use icx_codec::SecretRedactor;
 fn type_annotations_are_not_redacted() {
     for code in [
         "let tokens: Vec<String> = f();\n",
-        "let token: String = x;\n",
+        "let token: String = String::new();\n",
         "api_keys: HashMap<String, Key>,\n",
         "fn f(password: &'a str) -> bool {\n",
         "    secret: Option<SecretString>,\n",
@@ -45,6 +45,33 @@ fn numeric_token_counters_and_code_bindings_are_not_secrets() {
         ("API_TOKEN=lowsecretvalue\n", "lowsecretvalue"),
         ("export GITHUB_TOKENS=lowsecretvalue\n", "lowsecretvalue"),
         ("epoch_rollover_tokens: lowsecretvalue\n", "lowsecretvalue"),
+    ] {
+        let clean = SecretRedactor::redact(line);
+        assert!(!clean.contains(secret), "{line:?} -> {clean:?}");
+    }
+}
+
+#[test]
+fn literals_after_exempted_code_are_still_redacted() {
+    for (line, secret) in [
+        (
+            "let token: String = \"lowsecretliteral\";\n",
+            "lowsecretliteral",
+        ),
+        (
+            "let api_key: &str = 'lowsecretliteral';\n",
+            "lowsecretliteral",
+        ),
+        ("let api_key = \"lowsecretliteral\";\n", "lowsecretliteral"),
+        (
+            "const AUTH_TOKEN = 'lowsecretliteral';\n",
+            "lowsecretliteral",
+        ),
+        ("var password = lowsecretliteral\n", "lowsecretliteral"),
+        ("MAX_AUTH_TOKEN=lowsecretliteral\n", "lowsecretliteral"),
+        ("max_session_token: lowsecretliteral\n", "lowsecretliteral"),
+        ("ACCESS_TOKENS=123456789012345\n", "123456789012345"),
+        ("auth_tokens: 4096\n", "4096"),
     ] {
         let clean = SecretRedactor::redact(line);
         assert!(!clean.contains(secret), "{line:?} -> {clean:?}");

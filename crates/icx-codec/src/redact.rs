@@ -406,11 +406,61 @@ impl SecretRedactor {
                 .is_some_and(|singular| !singular.ends_with("PASS") && matches(singular))
     }
 
+    /// Upper-case `_`/`-`-separated parts of a key (`--max-tokens` -> `MAX`, `TOKENS`).
+    fn key_parts(key: &str) -> Vec<String> {
+        key.to_ascii_uppercase()
+            .split(['_', '-'])
+            .filter(|p| !p.is_empty())
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// Whether a key part names a credential kind, which no counter exemption may override.
+    fn has_credential_part(parts: &[String]) -> bool {
+        const CREDENTIAL_PARTS: &[&str] = &[
+            "AUTH",
+            "ACCESS",
+            "SESSION",
+            "REFRESH",
+            "BEARER",
+            "API",
+            "ID",
+            "CSRF",
+            "XSRF",
+            "OAUTH",
+            "SECRET",
+            "PRIVATE",
+            "CLIENT",
+            "GITHUB",
+            "GH",
+            "GITLAB",
+            "NPM",
+            "PYPI",
+            "PAT",
+            "SLACK",
+            "BOT",
+            "DEPLOY",
+            "PUSH",
+            "WRITE",
+            "SERVICE",
+            "PERSONAL",
+            "JWT",
+            "SIGNING",
+            "RESET",
+            "INVITE",
+            "WEBHOOK",
+            "HF",
+            "OPENAI",
+            "ANTHROPIC",
+        ];
+        parts.iter().any(|p| CREDENTIAL_PARTS.contains(&p.as_str()))
+    }
+
     /// `MAX_TOKENS`, `INPUT_TOKENS`, `COMPLETION_TOKENS`, `cache_read_input_tokens`, ...:
     /// counters in LLM configs and usage blocks, not credentials (v1.2.1; v1.2.0 hid them via
-    /// the plural-key rule). A key qualifies when it ends in `TOKEN`/`TOKENS` and an earlier
-    /// `_`-separated part names a count. Values under such keys are still checked by the
-    /// vendor-prefix and entropy detectors.
+    /// the plural-key rule). A key qualifies only when it ends in plural `TOKENS`, the part
+    /// directly before names a count, and no part names a credential (`AUTH`, `ACCESS`, ...).
+    /// Values under such keys are still checked by the vendor-prefix and entropy detectors.
     fn is_token_count_key(key_upper: &str) -> bool {
         const COUNT_PARTS: &[&str] = &[
             "MAX",
@@ -436,11 +486,11 @@ impl SecretRedactor {
             "PREDICTION",
             "THINKING",
         ];
-        let mut parts: Vec<&str> = key_upper.split('_').filter(|p| !p.is_empty()).collect();
-        if !matches!(parts.pop(), Some("TOKEN" | "TOKENS")) {
-            return false;
-        }
-        !parts.is_empty() && parts.iter().any(|p| COUNT_PARTS.contains(p))
+        let parts = Self::key_parts(key_upper);
+        parts.len() >= 2
+            && parts[parts.len() - 1] == "TOKENS"
+            && COUNT_PARTS.contains(&parts[parts.len() - 2].as_str())
+            && !Self::has_credential_part(&parts)
     }
 
     fn redact_line(line: &str) -> String {
@@ -711,9 +761,10 @@ impl SecretRedactor {
                 key_start -= 1;
             }
             let key_name = &out[key_start..key_end];
+            let rhs = out[eq_idx + 1..].trim_start_matches([' ', '\t']);
             if !key_name.is_empty()
                 && Self::is_sensitive_key_name(key_name)
-                && !Self::is_code_binding(&out[..key_start])
+                && !(Self::is_code_binding(&out[..key_start]) && Self::is_code_expression(rhs))
             {
                 let mut val_start = eq_idx + 1;
                 while val_start < bytes.len()
@@ -811,10 +862,32 @@ impl SecretRedactor {
                 {
                     val_start += 1;
                 }
-                if Self::is_type_annotation(&out[val_start..])
-                    || Self::is_counter_value(key_name, &out[val_start..])
-                {
+                if Self::is_counter_value(key_name, &out[val_start..]) {
                     search_pos = colon_idx + 1;
+                    continue;
+                }
+                if let Some(type_len) = Self::type_annotation_len(&out[val_start..]) {
+                    let after = val_start + type_len;
+                    let tail = &out[after..];
+                    let assigned = tail.starts_with('=') && !tail.starts_with("==");
+                    let rhs_start = after + 1 + tail[1.min(tail.len())..].len()
+                        - tail[1.min(tail.len())..]
+                            .trim_start_matches([' ', '\t'])
+                            .len();
+                    if assigned
+                        && !Self::is_code_expression(&out[rhs_start..])
+                        && !Self::is_counter_value(key_name, &out[rhs_start..])
+                        && let Some(next_pos) = Self::redact_value_span(
+                            &mut out,
+                            rhs_start,
+                            "[REDACTED:CONFIG_SECRET]",
+                            true,
+                        )
+                    {
+                        search_pos = next_pos;
+                        continue;
+                    }
+                    search_pos = after.max(colon_idx + 1);
                     continue;
                 }
                 if let Some(next_pos) =
@@ -829,11 +902,12 @@ impl SecretRedactor {
         out
     }
 
-    /// `token: String = ...`, `api_keys: HashMap<String, Key>,`, `password: &str)`: a source-code
-    /// type annotation, not a credential (v1.2.1). Only a recognised type name qualifies,
+    /// `token: String`, `api_keys: HashMap<String, Key>,`, `password: &str)`: the byte length of a
+    /// source-code type annotation (v1.2.1), or `None`. Only a recognised type name qualifies,
     /// optionally referenced and generic, and it must end the value (end of line, or `=`, `,`,
     /// `)`, `;`, `{`, `>`, `->` after it), so a credential that merely starts with one is kept.
-    fn is_type_annotation(rest: &str) -> bool {
+    /// A literal assigned after it (`token: String = "..."`) is redacted by the caller.
+    fn type_annotation_len(rest: &str) -> Option<usize> {
         const TYPES: &[&str] = &[
             "String",
             "str",
@@ -894,7 +968,7 @@ impl SecretRedactor {
             .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
             .count();
         if !TYPES.contains(&&s[..name_len]) {
-            return false;
+            return None;
         }
         s = &s[name_len..];
         if let Some(inner) = s.strip_prefix('<') {
@@ -910,17 +984,33 @@ impl SecretRedactor {
                             break;
                         }
                     }
-                    '"' | '\'' | '\n' => return false,
+                    '"' | '\'' | '\n' => return None,
                     _ => {}
                 }
             }
-            let Some(end) = end else { return false };
+            let end = end?;
             s = &inner[end..];
         }
         let s = s.trim_start_matches([' ', '\t']);
-        s.is_empty()
+        (s.is_empty()
             || s.starts_with(['=', ',', ')', ';', '{', '>', '\n', '\r'])
-            || s.starts_with("->")
+            || s.starts_with("->"))
+        .then(|| rest.len() - s.len())
+    }
+
+    /// `f(x)`, `Self::new()`, `config.token`, `&pair`: a code expression with no string literal,
+    /// which a code binding may assign without it being a secret. A bare word, number or quoted
+    /// value is treated as a literal and keeps the key rule (v1.2.1).
+    fn is_code_expression(rhs: &str) -> bool {
+        let end = rhs.find([';', '\n']).unwrap_or(rhs.len());
+        let expr = rhs[..end].trim();
+        let starts_ok = expr
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || matches!(c, '_' | '&' | '*' | '('));
+        starts_ok
+            && !expr.contains(['"', '\'', '`'])
+            && (expr.contains(['(', '.', '&', '*']) || expr.contains("::"))
     }
 
     /// `let q_tokens = f(...)`, `const MAX_TOKENS = 4096`: a source-code binding, not an env
@@ -936,14 +1026,12 @@ impl SecretRedactor {
             && lead.len() < before_key.len()
     }
 
-    /// A purely numeric value under a `..._TOKEN`/`..._TOKENS` key is a counter
-    /// (`epoch_rollover_tokens: 16384`), never a credential (v1.2.1).
+    /// A purely numeric value (at most 10 digits) under a plural `..._TOKENS` key without a
+    /// credential part is a counter (`epoch_rollover_tokens: 16_384`), never a credential
+    /// (v1.2.1). `AUTH_TOKENS=...`, `ACCESS_TOKEN=...` keep the key rule.
     fn is_counter_value(key_name: &str, rest: &str) -> bool {
-        let key = key_name
-            .trim_start_matches('-')
-            .to_ascii_uppercase()
-            .replace('-', "_");
-        if !(key.ends_with("TOKEN") || key.ends_with("TOKENS")) {
+        let parts = Self::key_parts(key_name);
+        if parts.last().map(String::as_str) != Some("TOKENS") || Self::has_credential_part(&parts) {
             return false;
         }
         let rest = rest.trim_start_matches(['"', '\'']);
@@ -954,6 +1042,7 @@ impl SecretRedactor {
             .take_while(|&(i, b)| b.is_ascii_digit() || (i > 0 && b == b'_'))
             .count();
         rest.as_bytes().first().is_some_and(u8::is_ascii_digit)
+            && rest[..digits].bytes().filter(u8::is_ascii_digit).count() <= 10
             && rest[digits..]
                 .trim_start_matches(['"', '\''])
                 .chars()
