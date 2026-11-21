@@ -5,11 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [1.2.0] - Unreleased (candidate)
+## [1.2.0] - 2026-11-21
 
 Remediation and bounded-context release candidate for the independent audit in `docs/codex/`.
 Qualification results and remaining release decisions are tracked in
-[`docs/releases/v1.2.0/`](docs/releases/v1.2.0/README.md). This heading does not announce publication.
+[`docs/releases/v1.2.0/`](docs/releases/v1.2.0/README.md).
 
 ### Migration
 

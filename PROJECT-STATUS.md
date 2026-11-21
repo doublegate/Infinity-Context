@@ -2,11 +2,11 @@
 
 ## Executive summary
 
-v1.2.0 is a release candidate submitted for review as a pull request from `codex-audit`. It
+v1.2.0 was released on 2026-11-21 from pull request #22 (branch `codex-audit`). It
 remediates the independent audit of v1.1.0 in `docs/codex/` (Codex implementation, tracked in
 [the v1.2.0 plan](to-dos/v1.2.0-remediation.md)) and the defects found by the pre-release review
-(tickets T-120-026..030 and the parallel scan). The release is qualified by the exact-commit
-CI run of that pull request; merge, tag and publication are separate owner steps.
+(tickets T-120-026..030 and the parallel scan). It was qualified by the exact-commit CI run
+of that pull request and published as the v1.2.0 GitHub release.
 
 ## Phase matrix
 
@@ -63,5 +63,5 @@ full-request bound is claimed.
 - [x] Local quality, security and performance gates pass
 - [x] Documentation reconciled; governance decisions recorded (074 open by owner decision)
 - [x] Four Linux variants pass local package qualification
-- [ ] Exact-commit hosted CI green on the pull request
-- [ ] Merge, tag and publication (separate owner instruction)
+- [x] Exact-commit hosted CI green on the pull request
+- [x] Merge, tag and publication (owner instruction 2026-11-21)
