@@ -77,3 +77,35 @@ fn literals_after_exempted_code_are_still_redacted() {
         assert!(!clean.contains(secret), "{line:?} -> {clean:?}");
     }
 }
+
+#[test]
+fn literals_inside_calls_and_assignments_after_generics_are_redacted() {
+    for (line, secret) in [
+        (
+            "let token: String = String::from(\"lowsecretliteral\");\n",
+            "lowsecretliteral",
+        ),
+        (
+            "let api_key = Some(\"lowsecretliteral\");\n",
+            "lowsecretliteral",
+        ),
+        (
+            "const PASSWORD = String::from('lowsecretliteral');\n",
+            "lowsecretliteral",
+        ),
+        (
+            "token: Option<x, secret: lowsecretliteral>\n",
+            "lowsecretliteral",
+        ),
+        (
+            "token: Vec<u8>, secret: lowsecretliteral\n",
+            "lowsecretliteral",
+        ),
+    ] {
+        let clean = SecretRedactor::redact(line);
+        assert!(!clean.contains(secret), "{line:?} -> {clean:?}");
+    }
+    // Generic paths with `::` are still type annotations.
+    let code = "    cache: HashMap<std::path::PathBuf, Token>,\n";
+    assert_eq!(SecretRedactor::redact(code), code);
+}

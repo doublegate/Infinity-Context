@@ -30,6 +30,8 @@ re-checking the real v1.1.0 workspaces on this release's own machine after the u
   Code bindings to a call or path expression (`let q_tokens = Self::query_tokens(q)`) are not env
   assignments; a literal assigned in code (`let api_key = "..."`, `token: String = "..."`) is
   still redacted.
+- **Literals wrapped in a call are redacted.** `api_key: Some("...")`, `String::from('...')`: the
+  value span used to stop at the opening quote and leave the literal visible (also in v1.2.0).
 - **CSV digests after a closed bracket.** `logs[1].txt,...,<sha256>` keeps its public digest; only
   an unclosed `[` before the value marks a flow sequence.
 - **Step eviction no longer empties history needlessly.** When half the history allowance cannot

@@ -580,12 +580,83 @@ impl SecretRedactor {
         Self::redact_high_entropy_tokens(&current)
     }
 
+    /// `String::from("...")`, `Some('...')`, `Secret::new("...")`: a value that wraps quoted
+    /// literals in a call. Replaces every quoted literal up to the closing parenthesis (v1.2.1;
+    /// the unquoted span used to stop at the opening quote and leave the literal visible).
+    /// Returns the position after the call, or `None` when the value has another shape.
+    fn redact_call_wrapped_literals(
+        out: &mut String,
+        val_start: usize,
+        replacement: &str,
+    ) -> Option<usize> {
+        let rest = out.get(val_start..)?;
+        let name_len = rest
+            .bytes()
+            .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b':')
+            .count();
+        if name_len == 0 || !rest.as_bytes()[0].is_ascii_alphabetic() {
+            return None;
+        }
+        let after = rest[name_len..].strip_prefix('(')?;
+        if !after.trim_start().starts_with(['"', '\'']) {
+            return None;
+        }
+        let open = val_start + name_len + 1;
+        let mut depth = 1usize;
+        let mut quote: Option<u8> = None;
+        let mut spans = Vec::new();
+        let mut lit_start = 0usize;
+        let mut close = None;
+        let bytes = out.as_bytes();
+        let mut i = open;
+        while i < bytes.len() && bytes[i] != b'\n' {
+            let b = bytes[i];
+            match quote {
+                Some(_) if b == b'\\' => i += 1,
+                Some(q) if b == q => {
+                    spans.push((lit_start, i));
+                    quote = None;
+                }
+                None if b == b'"' || b == b'\'' => {
+                    quote = Some(b);
+                    lit_start = i + 1;
+                }
+                None if b == b'(' => depth += 1,
+                None if b == b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        // An unterminated literal is hidden to the end of the line.
+        if quote.is_some() {
+            spans.push((lit_start, i));
+        }
+        if spans.is_empty() {
+            return None;
+        }
+        let end = close.map_or(i, |c| c + 1);
+        let removed: usize = spans.iter().map(|&(a, b)| b - a).sum();
+        for &(a, b) in spans.iter().rev() {
+            out.replace_range(a..b, replacement);
+        }
+        Some((end + spans.len() * replacement.len() - removed).min(out.len()))
+    }
+
     fn redact_value_span(
         out: &mut String,
         val_start: usize,
         replacement: &str,
         stop_at_comma: bool,
     ) -> Option<usize> {
+        if let Some(end) = Self::redact_call_wrapped_literals(out, val_start, replacement) {
+            return Some(end);
+        }
         let bytes = out.as_bytes();
         if val_start >= bytes.len() {
             return None;
@@ -984,7 +1055,10 @@ impl SecretRedactor {
                             break;
                         }
                     }
-                    '"' | '\'' | '\n' => return None,
+                    '"' | '\'' | '\n' | '=' => return None,
+                    ':' if !(inner[i + 1..].starts_with(':') || inner[..i].ends_with(':')) => {
+                        return None;
+                    }
                     _ => {}
                 }
             }
