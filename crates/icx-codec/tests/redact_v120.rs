@@ -216,3 +216,138 @@ fn original_pending_scalar_private_key_fuzz_artifact_is_stable() {
     let once = SecretRedactor::redact(input);
     assert_eq!(SecretRedactor::redact(&once), once);
 }
+
+/// Asserts that no listed fragment survives redaction, that the public tail survives, and that
+/// redaction is idempotent.
+fn assert_hidden(input: &str, secrets: &[&str], public: &str) {
+    let clean = SecretRedactor::redact(input);
+    for secret in secrets {
+        assert!(
+            !clean.contains(secret),
+            "{secret:?} leaked from {input:?}: {clean:?}"
+        );
+    }
+    assert!(
+        clean.contains(public),
+        "public text lost from {input:?}: {clean:?}"
+    );
+    assert_eq!(
+        SecretRedactor::redact(&clean),
+        clean,
+        "not idempotent for {input:?}"
+    );
+}
+
+#[test]
+fn block_header_after_sibling_assignments_still_redacts_the_siblings() {
+    // A trailing `password: |` header must not exempt earlier assignments on the same line.
+    assert_hidden(
+        "{api_key: hunter2zzlow, password: |\n  blocksecretline\npublic: ok\n",
+        &["hunter2zzlow", "blocksecretline"],
+        "public: ok",
+    );
+    assert_hidden(
+        "\"api_key\": \"hunter2zzlow\", \"password\": |\n  blocksecretline\npublic: ok\n",
+        &["hunter2zzlow", "blocksecretline"],
+        "public: ok",
+    );
+}
+
+#[test]
+fn plain_multiline_scalar_continuations_less_indented_than_the_first_line_are_hidden() {
+    // YAML only requires continuation lines to be indented past the key (PyYAML parses the
+    // value as "hunter2zzlow qwertyuiop9").
+    assert_hidden(
+        "password:\n    hunter2zzlow\n  qwertyuiop9\npublic: ok\n",
+        &["hunter2zzlow", "qwertyuiop9"],
+        "public: ok",
+    );
+}
+
+#[test]
+fn double_and_single_quoted_multiline_scalars_are_hidden_until_the_closing_quote() {
+    assert_hidden(
+        "password: \"hunter2zzlow\n  qwertyuiop9\"\npublic: ok\n",
+        &["hunter2zzlow", "qwertyuiop9"],
+        "public: ok",
+    );
+    assert_hidden(
+        "token: 'hunter2zzlow\n  qwertyuiop9\n  thirdlinesecret'\npublic: ok\n",
+        &["hunter2zzlow", "qwertyuiop9", "thirdlinesecret"],
+        "public: ok",
+    );
+}
+
+#[test]
+fn flow_sequence_values_of_sensitive_keys_are_hidden() {
+    assert_hidden(
+        "password: [hunter2zzlow]\npublic: ok\n",
+        &["hunter2zzlow"],
+        "public: ok",
+    );
+    assert_hidden(
+        "api_key: [firstkeylow, secondkeylow]\npublic: ok\n",
+        &["firstkeylow", "secondkeylow"],
+        "public: ok",
+    );
+}
+
+#[test]
+fn plural_collection_keys_are_sensitive_but_ordinary_plurals_are_not() {
+    assert_hidden(
+        "api_keys: [firstkeylow, secondkeylow]\npublic: ok\n",
+        &["firstkeylow", "secondkeylow"],
+        "public: ok",
+    );
+    assert_hidden(
+        "tokens:\n  - firstkeylow\npublic: ok\n",
+        &["firstkeylow"],
+        "public: ok",
+    );
+    assert_hidden(
+        "DB_PASSWORDS=firstkeylow\npublic: ok\n",
+        &["firstkeylow"],
+        "public: ok",
+    );
+    for prose in [
+        "max_passes: 3\n",
+        "bypass: true\n",
+        "addresses: 10.0.0.1\n",
+        "status: passes\n",
+    ] {
+        assert_eq!(SecretRedactor::redact(prose), prose);
+    }
+}
+
+#[test]
+fn public_hex_digests_survive_but_hex_values_of_sensitive_keys_do_not() {
+    // Checksums and commit ids in recognised digest contexts are public identifiers that
+    // release verification depends on; any other long hex on a `=`/`:` line stays hidden.
+    let sha256 = "e8ab57722d7d794fbffd585ad1499391b7707ea68f848aa9b20ad189605e26e0";
+    let sha1 = "9d59826c3f1f4f0bf8bd6b5f0b0d3e9a1c2b4d6e";
+    for public in [
+        format!("{sha256}  icx-v1.1.0-x86_64-unknown-linux-musl.tar.gz\n"),
+        format!("digest: sha256:{sha256}\n"),
+        format!("path,bytes,sha256\nREADME.md,65220,{sha256}\n"),
+        format!("commit {sha1}\nAuthor: DoubleGate\n"),
+        format!("| `file.pdf` | 99,115 | `{sha256}` |\n"),
+    ] {
+        assert_eq!(
+            SecretRedactor::redact(&public),
+            public,
+            "public digest redacted"
+        );
+    }
+    for secret in [
+        format!("api_key={sha256}\n"),
+        format!("password: {sha1}\n"),
+        format!("export GITHUB_TOKEN={sha1}\n"),
+        format!("{{\"stdout\":\"\\n{sha256}\"}}\n"),
+    ] {
+        let clean = SecretRedactor::redact(&secret);
+        assert!(
+            !clean.contains(&sha256[..20]) && !clean.contains(&sha1[..20]),
+            "{clean:?}"
+        );
+    }
+}

@@ -1,5 +1,7 @@
 use icx_core::dag::MerkleContextDag;
-use icx_core::epoch::{CacheEpochController, EpochControllerConfig, PromptWindowBudget};
+use icx_core::epoch::{
+    CacheEpochController, EpochControllerConfig, HISTORY_OMITTED_MARKER_PREFIX, PromptWindowBudget,
+};
 use icx_core::{AgentKind, ArtifactId};
 
 #[test]
@@ -29,7 +31,7 @@ fn oversized_constructor_head_emits_an_actionable_bounded_diagnostic() {
 }
 
 #[test]
-fn fitting_recent_history_is_retained_and_oversized_frames_are_omitted_whole() {
+fn oversized_frame_ends_the_retained_suffix_and_older_history_is_announced() {
     let mut controller = CacheEpochController::new(
         "head",
         EpochControllerConfig {
@@ -62,10 +64,20 @@ fn fitting_recent_history_is_retained_and_oversized_frames_are_omitted_whole() {
         );
     }
     let window = controller.assemble_window(&dag, String::new());
+    // Retained history is a contiguous newest suffix: the oversized frame is omitted whole,
+    // and everything older than it is omitted too (never skipped while keeping older frames).
+    // One marker announces both sealed epochs and the oversized active turn in cold storage.
     assert_eq!(window.active_window, ["active-new"]);
-    assert_eq!(window.sealed_epochs.len(), 2);
-    assert!(window.sealed_epochs[0].contains("sealed-first"));
+    assert_eq!(window.sealed_epochs.len(), 1);
+    let marker = &window.sealed_epochs[0];
+    assert!(
+        marker.starts_with(HISTORY_OMITTED_MARKER_PREFIX),
+        "{marker}"
+    );
+    assert!(marker.contains("epochs=2│turns=1"), "{marker}");
     assert!(!window.deterministic_prefix().contains("oversized"));
+    assert!(!window.deterministic_prefix().contains("sealed-first"));
+    assert!(window.deterministic_prefix().len() <= controller.window_budget().window_bytes());
     assert_eq!(
         window.total_cached_prefix_bytes,
         window.deterministic_prefix().len()

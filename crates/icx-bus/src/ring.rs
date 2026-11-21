@@ -805,8 +805,21 @@ impl SeqlockTelemetryBus {
     /// could not be delivered (overwritten by the ring before this reader caught up, or torn and
     /// skipped). A non-zero count means the reader must not assume it saw every event.
     pub fn poll_since_with_loss(&self, since_seq: u64) -> (Vec<TelepathyEvent>, u64) {
-        let head = self.write_sequence();
-        let events = self.poll_since(since_seq);
+        self.poll_since_with_loss_hooked(since_seq, || {})
+    }
+
+    /// `before_poll` runs before the poll's single head observation; tests use it to interleave
+    /// publishes deterministically.
+    fn poll_since_with_loss_hooked(
+        &self,
+        since_seq: u64,
+        before_poll: impl FnOnce(),
+    ) -> (Vec<TelepathyEvent>, u64) {
+        before_poll();
+        // Loss is computed against the same head observation that bounded the slot window, so
+        // publishes racing the poll cannot shrink `expected` below what was actually scanned.
+        // Delivered seqs are unique and lie in (since_seq, head], hence lost = gaps + tail.
+        let (events, head) = self.poll_window(since_seq);
         let expected = head.saturating_sub(since_seq);
         let lost = expected.saturating_sub(events.len() as u64);
         (events, lost)
@@ -814,9 +827,14 @@ impl SeqlockTelemetryBus {
 
     /// Wait-free optimistic poll of all committed telepathy events with sequence number `> since_seq`.
     pub fn poll_since(&self, since_seq: u64) -> Vec<TelepathyEvent> {
+        self.poll_window(since_seq).0
+    }
+
+    /// Polls the window ending at one head observation and returns that head alongside events.
+    fn poll_window(&self, since_seq: u64) -> (Vec<TelepathyEvent>, u64) {
         let current_head = self.write_sequence();
         if current_head <= since_seq {
-            return Vec::new();
+            return (Vec::new(), current_head);
         }
 
         let slot_count = (current_head - since_seq).min(ICX_RING_SLOTS as u64) as usize;
@@ -977,7 +995,7 @@ impl SeqlockTelemetryBus {
 
         events.sort_by_key(|e| e.seq);
         events.dedup_by_key(|e| e.seq);
-        events
+        (events, current_head)
     }
 
     fn classify_packet_kind(ahtl_packet: &str) -> u8 {
@@ -1017,6 +1035,50 @@ mod tests {
     use super::*;
     use std::sync::atomic::AtomicBool;
     use std::thread;
+
+    #[test]
+    fn loss_count_is_not_under_reported_when_publishes_race_the_poll() {
+        let bus = SeqlockTelemetryBus::new_in_memory();
+        let publish = |n: u64| {
+            for i in 0..n {
+                bus.try_publish(
+                    AgentKind::ClaudeCode,
+                    ArtifactId(i + 1),
+                    7,
+                    0,
+                    [0; 4],
+                    [0; 16],
+                    "[[Θ:x]]",
+                    i,
+                )
+                .expect("uncontended publish succeeds");
+            }
+        };
+        publish(10);
+        // Deterministic interleaving: 300 publishes land after the poll observed head = 10.
+        let (events, lost) = bus.poll_since_with_loss_hooked(0, || publish(300));
+        let first = events.first().map_or(0, |e| e.seq);
+        let last = events.last().map_or(0, |e| e.seq);
+        assert!(
+            events.windows(2).all(|w| w[0].seq < w[1].seq),
+            "events must be strictly ordered"
+        );
+        // Every sequence number in (since, accounted] is either delivered or counted as lost.
+        let accounted = lost + events.len() as u64;
+        assert!(last <= accounted, "delivered seq {last} beyond {accounted}");
+        if !events.is_empty() {
+            assert!(
+                lost >= first - 1,
+                "first delivered seq {first} but only {lost} reported lost"
+            );
+        }
+        // Seqs 1..=10 were overwritten before any slot read, so loss must be visible.
+        assert!(lost > 0, "overwritten events reported as lost = 0");
+        // A follow-up poll from the last delivered seq accounts for the rest exactly once.
+        let (rest, lost2) = bus.poll_since_with_loss(last);
+        let delivered_total = (events.len() + rest.len()) as u64;
+        assert_eq!(delivered_total + lost + lost2, 310);
+    }
 
     #[test]
     fn seqlock_ring_publishes_and_reads_concurrently_without_torn_reads() {

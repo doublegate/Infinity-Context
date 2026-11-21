@@ -789,6 +789,69 @@ impl HdcBundler {
     }
 }
 
+/// Inputs shorter than this are scanned on the calling thread: below it, spawning workers costs
+/// more than the scan (a 10,240-bit distance is ~40 ns, a scoped thread ~10-20 us).
+pub const PARALLEL_SCAN_MIN: usize = 2_048;
+
+/// Upper bound on scan workers. A large exhaustive scan is memory-bandwidth bound; past a few
+/// workers more threads add contention rather than throughput.
+const PARALLEL_SCAN_MAX_WORKERS: usize = 8;
+
+/// Applies `f` to every item and returns the results in input order. Inputs of at least
+/// [`PARALLEL_SCAN_MIN`] items are split into contiguous chunks across scoped worker threads
+/// (no `unsafe`, no shared mutable state); the output is identical to a sequential map.
+pub fn par_map_ordered<T, R, F>(items: &[T], f: F) -> Vec<R>
+where
+    T: Sync,
+    R: Send,
+    F: Fn(&T) -> R + Sync,
+{
+    let workers = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZeroUsize::get)
+        .min(PARALLEL_SCAN_MAX_WORKERS)
+        .min(items.len() / (PARALLEL_SCAN_MIN / 2).max(1));
+    if items.len() < PARALLEL_SCAN_MIN || workers < 2 {
+        return items.iter().map(f).collect();
+    }
+    let chunk = items.len().div_ceil(workers);
+    let f = &f;
+    std::thread::scope(|scope| {
+        let mut parts = items.chunks(chunk);
+        // The calling thread scans the first chunk itself: one spawn fewer, and it would
+        // otherwise only wait.
+        let first = parts.next().unwrap_or(&[]);
+        let handles: Vec<_> = parts
+            .map(|part| scope.spawn(move || part.iter().map(f).collect::<Vec<R>>()))
+            .collect();
+        let mut out = Vec::with_capacity(items.len());
+        out.extend(first.iter().map(f));
+        for handle in handles {
+            // A worker can only fail by panicking inside `f`; propagate it unchanged.
+            out.extend(
+                handle
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic)),
+            );
+        }
+        out
+    })
+}
+
+/// Exact Hamming distance from `query` to every candidate, in candidate order
+/// (parallel for large inputs, see [`par_map_ordered`]).
+pub fn hamming_distances(query: &Hypervector, candidates: &[Hypervector]) -> Vec<u32> {
+    par_map_ordered(candidates, |c| query.hamming_distance_simd(c))
+}
+
+/// Index and distance of the nearest candidate; ties resolve to the lowest index, exactly as a
+/// sequential scan. `None` for an empty slice.
+pub fn nearest(query: &Hypervector, candidates: &[Hypervector]) -> Option<(usize, u32)> {
+    hamming_distances(query, candidates)
+        .into_iter()
+        .enumerate()
+        .min_by_key(|&(i, d)| (d, i))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

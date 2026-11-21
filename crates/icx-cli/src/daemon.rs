@@ -8,6 +8,8 @@
 //! workspace lock covers reload, dispatch and save, so proxy/MCP writes cannot interleave with
 //! an unsaved request. Save failures produce a failed response and terminate the daemon with an
 //! error; no acknowledged changes remain in a write-behind window or get replaced by a reload.
+//! The request is read in full (under one overall deadline) before the lock is taken, and a
+//! lock timeout or reload failure fails only that request: the daemon keeps serving.
 //!
 //! `icx hook` falls back to in-process handling on any daemon error, so a missing or broken
 //! daemon never breaks an agent.
@@ -15,7 +17,7 @@
 use icx_adapters::InfinityContextMmu;
 use icx_core::AgentKind;
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -144,15 +146,7 @@ pub fn serve(
         if !peer_is_same_user(&stream) {
             continue; // refuse other users silently
         }
-        let lock = match InfinityContextMmu::acquire_workspace_lock(ws_dir) {
-            Ok(guard) => guard,
-            Err(e) => break Err(format!("workspace lock failed: {e}")),
-        };
-        if let Err(e) = mmu.load_workspace_dir_unlocked(ws_dir) {
-            break Err(format!("workspace load failed: {e}"));
-        }
         let handled = handle_connection(stream, ws_dir, &mut mmu, dispatch);
-        drop(lock);
         if let Err(error) = handled {
             break Err(error);
         }
@@ -177,7 +171,46 @@ fn wait_readable(listener: &UnixListener, timeout: Option<Duration>) -> bool {
     matches!(poll(&mut fds, ts.as_ref()), Ok(n) if n > 0)
 }
 
-/// Serves one request with the workspace lock held, committing before a successful response.
+/// Reads one newline-terminated request from `stream`, bounded by `MAX_REQUEST_BYTES` and by an
+/// overall `deadline` (not only a per-`read` timeout, which a trickling client could renew
+/// indefinitely). Returns `None` on EOF, I/O error, timeout or an oversized request.
+fn read_request(stream: &UnixStream, deadline: Duration) -> Option<String> {
+    let started = Instant::now();
+    let mut reader = stream;
+    let mut line = Vec::new();
+    let mut chunk = [0u8; 64 * 1024];
+    loop {
+        let remaining = deadline.checked_sub(started.elapsed())?;
+        if remaining.is_zero() {
+            return None;
+        }
+        stream.set_read_timeout(Some(remaining)).ok()?;
+        let n = match reader.read(&mut chunk) {
+            Ok(0) => return None,
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return None,
+        };
+        if let Some(pos) = chunk[..n].iter().position(|&b| b == b'\n') {
+            line.extend_from_slice(&chunk[..pos]);
+            break;
+        }
+        line.extend_from_slice(&chunk[..n]);
+        if line.len() as u64 > MAX_REQUEST_BYTES {
+            return None;
+        }
+    }
+    if line.len() as u64 > MAX_REQUEST_BYTES {
+        return None;
+    }
+    String::from_utf8(line).ok()
+}
+
+/// Serves one connection. The request is read and parsed before the workspace lock is taken,
+/// so a slow or idle client never blocks in-process hooks or `mcp-serve`; the lock covers only
+/// reload, dispatch, save and the reply. A lock timeout or reload failure fails this request
+/// (the client falls back to in-process handling) and the daemon keeps serving. Only a failed
+/// save after a dispatch returns `Err`, because acknowledged state must never be lost.
 fn handle_connection(
     stream: UnixStream,
     ws_dir: &Path,
@@ -189,51 +222,57 @@ fn handle_connection(
         &mut InfinityContextMmu,
     ) -> Result<String, serde_json::Error>,
 ) -> Result<(), String> {
-    let _ = stream.set_read_timeout(Some(CLIENT_TIMEOUT));
     let _ = stream.set_write_timeout(Some(CLIENT_TIMEOUT));
-    let Ok(read_half) = stream.try_clone() else {
+    let Some(line) = read_request(&stream, CLIENT_TIMEOUT) else {
         return Ok(());
     };
-    let mut reader = BufReader::new(read_half.take(MAX_REQUEST_BYTES));
-    let mut line = String::new();
-    let mut dispatched = false;
-    let resp = match reader.read_line(&mut line) {
-        Ok(0) | Err(_) => return Ok(()),
-        Ok(_) => match serde_json::from_str::<Request>(line.trim_end()) {
-            Ok(req) if req.v == PROTOCOL_VERSION => {
-                let agent = AgentKind::parse_agent(&req.agent);
-                dispatched = true; // even a failed dispatch may have changed state
-                match dispatch(agent, &req.event, &req.payload, mmu) {
-                    Ok(out) => Response { ok: true, out },
-                    Err(e) => Response {
-                        ok: false,
-                        out: e.to_string(),
-                    },
-                }
-            }
-            Ok(_) => Response {
-                ok: false,
-                out: "unsupported protocol version".into(),
-            },
-            Err(e) => Response {
-                ok: false,
-                out: format!("malformed request: {e}"),
-            },
-        },
+    let req = match serde_json::from_str::<Request>(line.trim_end()) {
+        Ok(req) if req.v == PROTOCOL_VERSION => req,
+        Ok(_) => {
+            write_response(stream, &failure("unsupported protocol version".into()));
+            return Ok(());
+        }
+        Err(e) => {
+            write_response(stream, &failure(format!("malformed request: {e}")));
+            return Ok(());
+        }
     };
-    if dispatched && let Err(error) = mmu.save_workspace_dir_unlocked(ws_dir) {
+
+    let lock = match InfinityContextMmu::acquire_workspace_lock(ws_dir) {
+        Ok(guard) => guard,
+        Err(e) => {
+            let error = format!("workspace lock failed: {e}");
+            eprintln!("icx daemon: {error}; request refused, still serving");
+            write_response(stream, &failure(error));
+            return Ok(());
+        }
+    };
+    if let Err(e) = mmu.load_workspace_dir_unlocked(ws_dir) {
+        // Nothing was dispatched, so nothing is lost; the next request reloads again before
+        // dispatching, so a partially reloaded MMU is never saved.
+        let error = format!("workspace load failed: {e}");
+        eprintln!("icx daemon: {error}; request refused, still serving");
+        write_response(stream, &failure(error));
+        return Ok(());
+    }
+    let agent = AgentKind::parse_agent(&req.agent);
+    // Even a failed dispatch may have changed state, so it is saved either way.
+    let resp = match dispatch(agent, &req.event, &req.payload, mmu) {
+        Ok(out) => Response { ok: true, out },
+        Err(e) => failure(e.to_string()),
+    };
+    if let Err(error) = mmu.save_workspace_dir_unlocked(ws_dir) {
         let error = format!("workspace save failed; request was not acknowledged: {error}");
-        write_response(
-            stream,
-            &Response {
-                ok: false,
-                out: error.clone(),
-            },
-        );
+        write_response(stream, &failure(error.clone()));
         return Err(error);
     }
     write_response(stream, &resp);
+    drop(lock);
     Ok(())
+}
+
+fn failure(out: String) -> Response {
+    Response { ok: false, out }
 }
 
 fn write_response(mut stream: UnixStream, resp: &Response) {
@@ -326,6 +365,112 @@ mod tests {
         server.join().unwrap().unwrap();
         std::fs::remove_dir_all(ws).unwrap();
         assert_eq!(recovered.unwrap(), "durability fixture body\n");
+    }
+
+    /// Takes the OS `flock` on `cas_store.lock` through a separate open file description, as
+    /// another process would, without the in-process `WORKSPACE_IO_LOCK`.
+    fn hold_foreign_flock(ws: &Path) -> std::fs::File {
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(ws.join("cas_store.lock"))
+            .unwrap();
+        file.lock().unwrap();
+        file
+    }
+
+    /// The daemon spins on the foreign `flock` for ~5 s while holding the process-global
+    /// `WORKSPACE_IO_LOCK`, which would stall every other workspace test in this binary, so the
+    /// scenario runs in a child process of the test binary.
+    #[test]
+    fn lock_timeout_fails_that_request_and_daemon_keeps_serving() {
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "daemon::tests::lock_timeout_scenario",
+                "--ignored",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env("ICX_DAEMON_LOCK_TIMEOUT_CHILD", "1")
+            .status()
+            .unwrap();
+        assert!(status.success(), "lock-timeout scenario failed: {status}");
+    }
+
+    #[test]
+    #[ignore = "run in a child process by lock_timeout_fails_that_request_and_daemon_keeps_serving"]
+    fn lock_timeout_scenario() {
+        if std::env::var_os("ICX_DAEMON_LOCK_TIMEOUT_CHILD").is_none() {
+            return;
+        }
+        let (ws, socket, server) = start_durability_fixture("lock-timeout", Some(2));
+        let foreign = hold_foreign_flock(&ws);
+        // The daemon gives up on the lock after ~5 s and must answer with a failure (so the
+        // client falls back to in-process handling) instead of exiting.
+        let refused = try_hook(&socket, "codex", "ingest", "");
+        drop(foreign);
+        let served = try_hook(&socket, "codex", "ingest", "");
+        let result = server.join().unwrap();
+        std::fs::remove_dir_all(ws).unwrap();
+        assert!(
+            refused.is_none(),
+            "lock timeout was acknowledged: {refused:?}"
+        );
+        assert!(
+            served.is_some(),
+            "daemon stopped serving after a lock timeout"
+        );
+        assert!(result.is_ok(), "lock timeout ended the daemon: {result:?}");
+    }
+
+    #[test]
+    fn silent_client_does_not_hold_the_workspace_lock() {
+        let (ws, socket, server) = start_durability_fixture("silent", Some(2));
+        // Connect and send nothing: the daemon is now blocked reading this request.
+        let silent = UnixStream::connect(&socket).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        let started = Instant::now();
+        let guard = InfinityContextMmu::acquire_workspace_lock(&ws);
+        let waited = started.elapsed();
+        drop(guard);
+        drop(silent);
+        let served = try_hook(&socket, "codex", "ingest", "");
+        let result = server.join().unwrap();
+        std::fs::remove_dir_all(ws).unwrap();
+        assert!(
+            waited < Duration::from_secs(1),
+            "in-process lock waited {waited:?} behind a silent daemon client"
+        );
+        assert!(served.is_some());
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn request_read_is_bounded_by_an_overall_deadline() {
+        let (mut client, server) = UnixStream::pair().unwrap();
+        let writer = std::thread::spawn(move || {
+            // Trickle one byte every 50 ms: each read() succeeds quickly, so only an overall
+            // deadline (not the per-read timeout) can end this request.
+            for _ in 0..40 {
+                if client.write_all(b"{").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        });
+        let started = Instant::now();
+        let read = read_request(&server, Duration::from_millis(300));
+        let elapsed = started.elapsed();
+        drop(server);
+        writer.join().unwrap();
+        assert!(read.is_none(), "trickled request was accepted");
+        assert!(
+            elapsed < Duration::from_millis(1_000),
+            "request read took {elapsed:?} despite a 300 ms deadline"
+        );
     }
 
     #[test]

@@ -202,7 +202,23 @@ impl CodexAdapter {
             }),
         };
 
+        let mut response = response;
+        strip_null_members(&mut response);
         serde_json::to_string(&response)
+    }
+}
+
+/// Recursively removes `null` object members. Codex CLI marks a hook "Failed" when its reply
+/// carries an explicit `null` (e.g. `"stopReason": null`), whereas an absent optional field is
+/// accepted, so every Codex reply is normalised through this before serialisation.
+fn strip_null_members(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            map.retain(|_, member| !member.is_null());
+            map.values_mut().for_each(strip_null_members);
+        }
+        Value::Array(items) => items.iter_mut().for_each(strip_null_members),
+        _ => {}
     }
 }
 

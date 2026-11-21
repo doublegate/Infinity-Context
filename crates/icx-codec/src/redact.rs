@@ -37,10 +37,33 @@ impl SecretRedactor {
                     out.push_str(ending);
                     continue;
                 }
+                if let Some(q) = pending.quote {
+                    // Inside an open quoted scalar every line is secret up to the closing quote.
+                    let content_start = body.len() - body.trim_start().len();
+                    let rest = &body[content_start..];
+                    if let Some(close) = closing_quote(rest.as_bytes(), q) {
+                        out.push_str(&body[..content_start]);
+                        out.push_str("[REDACTED:SECRET]");
+                        out.push_str(&Self::redact_line(&rest[close..]));
+                        pending_value = None;
+                    } else {
+                        out.push_str(&Self::redact_bare_value_line(body));
+                    }
+                    out.push_str(ending);
+                    continue;
+                }
                 if pending.block || pending.scalar_indent.is_some() {
-                    let minimum = pending.scalar_indent.unwrap_or(pending.indent + 1);
+                    // Block scalars keep the indentation of their first content line. A plain
+                    // multi-line scalar only needs its lines indented past the key.
+                    let minimum = if pending.block {
+                        pending.scalar_indent.unwrap_or(pending.indent + 1)
+                    } else {
+                        pending.indent + 1
+                    };
                     if indent >= minimum {
-                        pending.scalar_indent = Some(minimum);
+                        if pending.block {
+                            pending.scalar_indent = Some(minimum);
+                        }
                         out.push_str(&Self::redact_bare_value_line(body));
                         out.push_str(ending);
                         continue;
@@ -135,10 +158,7 @@ impl SecretRedactor {
     /// Only a line that *is* the key (optionally after `{`, `,` or a YAML `- `) arms the
     /// continuation, so prose such as `error: missing signing key:` never does (PR #20 review).
     fn sensitive_continuation(line: &str) -> Option<PendingSecret> {
-        let comment = line.match_indices('#').find_map(|(i, _)| {
-            (i > 0 && line.as_bytes()[i - 1].is_ascii_whitespace()).then_some(i)
-        });
-        let declaration = comment.map_or(line, |i| &line[..i]).trim_end();
+        let declaration = Self::declaration(line);
         let (head, suffix) = declaration.rsplit_once(':')?;
         let suffix = suffix.trim();
         let mut properties = suffix.split_whitespace().peekable();
@@ -147,7 +167,9 @@ impl SecretRedactor {
         }
         let header = properties.next().unwrap_or("");
         let block = yaml_block_header(header) && properties.next().is_none();
-        if !suffix.is_empty() && !block {
+        // A quoted scalar that does not close on this line continues on the next ones.
+        let quote = unterminated_quote(suffix);
+        if !suffix.is_empty() && !block && quote.is_none() {
             return None;
         }
         let head = head.trim();
@@ -185,8 +207,22 @@ impl SecretRedactor {
                 indent,
                 block,
                 scalar_indent,
+                quote,
             },
         )
+    }
+
+    /// The line without a trailing ` # comment`, right-trimmed.
+    fn declaration(line: &str) -> &str {
+        let comment = line.match_indices('#').find_map(|(i, _)| {
+            (i > 0 && line.as_bytes()[i - 1].is_ascii_whitespace()).then_some(i)
+        });
+        comment.map_or(line, |i| &line[..i]).trim_end()
+    }
+
+    /// Byte index in `line` of the `:` that introduces its last value or block header.
+    fn declaration_colon(line: &str) -> Option<usize> {
+        Self::declaration(line).rfind(':')
     }
 
     /// Replaces the (possibly quoted) value on a continuation line, keeping indentation and any
@@ -301,9 +337,17 @@ impl SecretRedactor {
             "SESSION_ID",
             "SESSIONID",
         ];
-        sensitive_suffixes
-            .iter()
-            .any(|s| key_upper == *s || key_upper.ends_with(&format!("_{s}")))
+        let matches = |key: &str| {
+            sensitive_suffixes
+                .iter()
+                .any(|s| key == *s || key.ends_with(&format!("_{s}")))
+        };
+        // Plural collection keys (`api_keys`, `tokens`, `passwords`) hold the same secrets.
+        // `PASS` is excluded: its plural `PASSES` is ordinary prose/config (`max_passes`).
+        matches(&key_upper)
+            || key_upper
+                .strip_suffix('S')
+                .is_some_and(|singular| !singular.ends_with("PASS") && matches(singular))
     }
 
     fn redact_line(line: &str) -> String {
@@ -455,7 +499,38 @@ impl SecretRedactor {
             }
             return None;
         }
-        if matches!(quote, b'{' | b'[') {
+        if quote == b'[' {
+            // An earlier pass already replaced this value.
+            if out[val_start..].starts_with("[REDACTED:") {
+                return None;
+            }
+            // A flow sequence is the value of the sensitive key as a whole: hide its contents
+            // up to the matching `]` on this line (an unterminated one hides the rest).
+            let inner_start = val_start + 1;
+            let mut depth = 1usize;
+            let mut inner_end = bytes.len();
+            for (offset, &b) in bytes[inner_start..].iter().enumerate() {
+                match b {
+                    b'[' => depth += 1,
+                    b']' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            inner_end = inner_start + offset;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let inner = &out[inner_start..inner_end];
+            if !inner.trim().is_empty() && !inner.starts_with("[REDACTED:") {
+                out.replace_range(inner_start..inner_end, replacement);
+                return Some(inner_start + replacement.len());
+            }
+            return None;
+        }
+        if quote == b'{' {
+            // A nested flow mapping: its own keys are classified independently.
             return None;
         }
         let rest = &out[val_start..];
@@ -548,9 +623,17 @@ impl SecretRedactor {
     }
 
     fn redact_colon_assignments(line: &str) -> String {
-        // Preserve the block header itself. Its indented content is removed by `redact`.
+        // Preserve the trailing block header itself (its indented content is removed by
+        // `redact`), but still redact every earlier assignment on the same line, e.g.
+        // `{api_key: x, password: |`.
         if Self::sensitive_continuation(line).is_some_and(|pending| pending.block) {
-            return line.to_owned();
+            let Some(colon) = Self::declaration_colon(line) else {
+                return line.to_owned();
+            };
+            let (head, header) = line.split_at(colon);
+            let mut out = Self::redact_colon_assignments(head);
+            out.push_str(header);
+            return out;
         }
         let mut out = line.to_owned();
         let mut search_pos = 0usize;
@@ -947,6 +1030,30 @@ impl SecretRedactor {
         out
     }
 
+    /// True when a digest-length hex token sits in a recognised public digest context:
+    /// `sha256:<hex>`-style labels, `sha256sum` lines (`<hex>  file` / `<hex> *file`),
+    /// `commit <hex>` lines, or a CSV / Markdown-table cell. `before`/`after` are the line
+    /// text around the token (which may hold JSON-escaped `\n` line breaks).
+    fn is_digest_context(before: &str, after: &str) -> bool {
+        let lead_line = before.rsplit('\n').next().unwrap_or(before);
+        let lead_line = lead_line.rsplit("\\n").next().unwrap_or(lead_line);
+        let tail_line = after.split('\n').next().unwrap_or(after);
+        let tail_line = tail_line.split("\\n").next().unwrap_or(tail_line);
+        let lead = lead_line.trim_end_matches(['"', '\'', ' ', '\t', '`']);
+        let lower = lead.to_ascii_lowercase();
+        let labelled = ["sha1:", "sha256:", "sha384:", "sha512:", "blake3:"]
+            .iter()
+            .any(|label| lower.ends_with(label));
+        let sha256sum_line = lead_line.trim().is_empty()
+            && (tail_line.starts_with("  ") || tail_line.starts_with(" *"))
+            && !tail_line.trim().is_empty();
+        let commit_line = lower.trim_end().ends_with("commit");
+        let tail = tail_line.trim_start_matches(['"', '\'', ' ', '\t', '`']);
+        let table_cell = lead.ends_with('|') && tail.starts_with('|');
+        let csv_cell = lead.ends_with(',') && (tail.is_empty() || tail.starts_with(','));
+        labelled || sha256sum_line || commit_line || table_cell || csv_cell
+    }
+
     fn is_high_entropy_secret_candidate(
         token: &str,
         prefix_before_token: &str,
@@ -976,8 +1083,20 @@ impl SecretRedactor {
         // Case A: Raw hexadecimal secret in an assignment context (`|S| >= 32`, `H(S) > 3.50`)
         let is_all_hex = token.bytes().all(|b| b.is_ascii_hexdigit());
         if is_all_hex {
-            let is_assignment = full_line.contains('=') || full_line.contains(':');
-            return token.len() >= 32 && is_assignment && Self::shannon_entropy(token) > 3.50;
+            // v1.1.0 rule: a long high-entropy hex run on a line that carries `=` or `:` is
+            // treated as a secret.
+            let is_assignment_line = full_line.contains('=') || full_line.contains(':');
+            if token.len() < 32 || !is_assignment_line || Self::shannon_entropy(token) <= 3.50 {
+                return false;
+            }
+            // Narrow exemption: SHA-1/SHA-256/SHA-512-length digests in recognised digest
+            // contexts are public identifiers that release verification depends on. Sensitive
+            // key names (`api_key=<hex>`) are handled earlier by the key-based detectors.
+            return !(matches!(token.len(), 40 | 64 | 128)
+                && Self::is_digest_context(
+                    prefix_before_token,
+                    &full_line[prefix_before_token.len() + token.len()..],
+                ));
         }
 
         // Case B: Base64 / mixed-charset secret token (`|S| >= 24`, contains upper + lower + digit,
@@ -1062,6 +1181,33 @@ struct PendingSecret {
     indent: usize,
     block: bool,
     scalar_indent: Option<usize>,
+    /// Quote character of a quoted scalar that is still open at the end of the key's line.
+    quote: Option<u8>,
+}
+
+/// If `value` starts a single- or double-quoted scalar that does not close within it, returns
+/// the quote byte. YAML escapes: `\"` inside double quotes, `''` inside single quotes.
+fn unterminated_quote(value: &str) -> Option<u8> {
+    let bytes = value.as_bytes();
+    let q = *bytes.first()?;
+    if q != b'"' && q != b'\'' {
+        return None;
+    }
+    closing_quote(&bytes[1..], q).is_none().then_some(q)
+}
+
+/// Index of the first unescaped closing `q` in `bytes`.
+fn closing_quote(bytes: &[u8], q: u8) -> Option<usize> {
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' if q == b'"' => i += 2,
+            b if b == q && q == b'\'' && bytes.get(i + 1) == Some(&b'\'') => i += 2,
+            b if b == q => return Some(i),
+            _ => i += 1,
+        }
+    }
+    None
 }
 
 /// YAML1.2 block style plus optional indentation/chomping indicators, in either order.
