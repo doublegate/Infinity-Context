@@ -22,9 +22,9 @@ regexes = [
 ]
 
 [[allowlists]]
-description = "v1.1.0 redactor recall fixtures: synthetic, non-functional credential-shaped strings only (ICX-AUD-015)"
+description = "v1.1.0 and v1.2.0 redactor regression fixtures: synthetic, non-functional credential-shaped strings and public digests only (ICX-AUD-015, ICX-CODEX-001/006, v1.2.0 review)"
 paths = [
-  '''^crates/icx-codec/tests/redact_v110\.rs$''',
+  '''^crates/icx-codec/tests/redact_v1[12]0\.rs$''',
 ]
 
 [[allowlists]]
