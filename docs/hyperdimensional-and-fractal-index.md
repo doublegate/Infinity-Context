@@ -59,13 +59,25 @@ pub struct Hypervector {
    - **Approximate Stage 1** scores every entry on similarity of the first 1,024 hypervector bits,
      content/subject Bloom overlap, fractal quadrant similarity, surprise and the error flag.
      It keeps `candidate_cap = min(n, max(clamp(4k, 16, 64), clamp(n / 64, 16, 512),
-     ceil(4 * sqrt(n)), k))` candidates for `top_k = k`, then unions the exact postings.
-     This growth heuristic alone did not prevent the audit's varied-corpus recall failures.
+     ceil(4 * sqrt(n)), k))` candidates for `top_k = k`, then unions exact postings, rarest query
+     token first (ascending document frequency). Expansion stops at the first token whose
+     posting list is longer than `candidate_cap`, or once `candidate_cap` postings were added,
+     so the union holds at most about `3 * candidate_cap` entries: every entry containing a
+     query token with document frequency at or below the cap (any unique identifier) is
+     always a candidate, while very common tokens only add to the scores of candidates
+     already selected. This growth heuristic alone did not prevent the audit's varied-corpus
+     recall failures; the postings do.
    - **Stage 2** refines the union with full 10,240-bit Hamming comparison and
-     `verified_suffix_depth`. Final ordering is exact query-token coverage first, combined
-     HDC/fractal/surprise score second, then artifact ID for determinism. Each artifact appears
-     at most once. Common-token queries can include/refine the whole corpus; this is a quality
-     tradeoff, not a sub-50 µs latency guarantee. Legacy indexes without postings refine exhaustively.
+     `verified_suffix_depth` (split across threads by `icx_hdc::hv::par_map_ordered` for
+     unions of at least 2,048 entries, with results identical to a sequential pass). Final
+     ordering is the per-artifact maximum IDF-weighted lexical score, `Σ ln(1 + N / df)` over
+     matched query tokens, so a rare exact identifier outranks stop-word matches; then the
+     combined HDC/fractal/surprise score; then artifact ID for determinism. Each artifact
+     appears at most once. Legacy indexes without postings refine exhaustively.
+   - **Bounds:** tokens longer than 256 bytes are not posted (and are ignored in queries), the
+     number of distinct posted tokens is capped at the snapshot item limit, and stored subjects
+     are truncated to 64 KiB at a character boundary, so every ICXHDC04 snapshot the encoder
+     writes can be decoded.
 
    The earlier v1.1.0 1,000-log figures (99.0% top-1, 99.7% top-5) were fixture-specific.
    The v1.2.0 replay reports recall@1/@5 of 100% on the 27 frozen synthetic audit rows

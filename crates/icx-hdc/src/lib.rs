@@ -496,7 +496,8 @@ impl HdcAssociativeIndex {
             current_trajectory,
             verdict.momentum_surprise,
         );
-        let content_bloom = self.index_lexical_tokens(subject, content, MAX_LEXICAL_TOKENS);
+        // Index the same (bounded) subject that `score_entry` matches against.
+        let content_bloom = self.index_lexical_tokens(stored_subject, content, MAX_LEXICAL_TOKENS);
         self.summaries.push(EntrySummary {
             content_bloom,
             hv_sub64: composite_hv.sub_hypervector_64(),

@@ -158,12 +158,12 @@ fn adjacent_jwt_credentials_do_not_require_a_second_redaction_pass() {
 fn mixed_escaped_quotes_keep_following_unicode_on_a_character_boundary() {
     for (input, expected) in [
         (
-            "token:\\'secret'🦀:public",
-            "token:\\'[REDACTED:CONFIG_SECRET]'🦀:public",
+            "token:\\'secret'\u{1D538}:public",
+            "token:\\'[REDACTED:CONFIG_SECRET]'\u{1D538}:public",
         ),
         (
-            "TOKEN=\\'secret'🦀 public",
-            "TOKEN=\\'[REDACTED:ENV_SECRET]'🦀 public",
+            "TOKEN=\\'secret'\u{1D538} public",
+            "TOKEN=\\'[REDACTED:ENV_SECRET]'\u{1D538} public",
         ),
     ] {
         let clean = SecretRedactor::redact(input);
@@ -350,4 +350,34 @@ fn public_hex_digests_survive_but_hex_values_of_sensitive_keys_do_not() {
             "{clean:?}"
         );
     }
+}
+
+#[test]
+fn quoted_values_containing_colons_or_hashes_are_classified_outside_the_quotes() {
+    // A `:` inside an open quoted value must not move the key separator (PR #22 review).
+    assert_hidden(
+        "password: \"lowsecret:part\n  continuedsecret\"\npublic: ok\n",
+        &["lowsecret", "continuedsecret"],
+        "public: ok",
+    );
+    // A ` #` inside a closed quoted value is not a comment, so no quote is left open and the
+    // following public lines survive.
+    for input in [
+        "password: \"lowsecret #frag\"\npublic: ok\nnext: line\n",
+        "password: 'it''s #frag'\npublic: ok\nnext: line\n",
+    ] {
+        let clean = SecretRedactor::redact(input);
+        assert!(clean.contains("public: ok\nnext: line\n"), "{clean:?}");
+        assert!(
+            !clean.contains("lowsecret") && !clean.contains("frag"),
+            "{clean:?}"
+        );
+        assert_eq!(SecretRedactor::redact(&clean), clean);
+    }
+    // A real trailing comment after a closed value is still a comment.
+    let clean = SecretRedactor::redact("password: \"lowsecret\" # rotated\npublic: ok\n");
+    assert!(
+        !clean.contains("lowsecret") && clean.contains("public: ok"),
+        "{clean:?}"
+    );
 }

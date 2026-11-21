@@ -12,7 +12,9 @@ unchanged.
 **Final release-candidate series (2026-11-21, native build, host idle apart from desktop
 services, load average about 1).** One excluded warm-up and 10 measured processes; **10 of 10
 passed every gate**
-([raw series](releases/v1.2.0/evidence/benchmark-native-final-series.json)):
+([raw series](releases/v1.2.0/evidence/benchmark-native-final-series.json); it was recorded
+before the ceiling constant was set, so each run reports `ceiling_us: 1500.0`, and every run
+is also below that value):
 
 | Metric | min | median | max | Gate |
 | --- | ---: | ---: | ---: | ---: |
@@ -131,9 +133,10 @@ daemon avoids the load entirely.
    positional I/O under a writer mutex and an advisory file lock; it is not memory-mapped, not
    lock-free for writers and not zero-copy (see
    [docs/wire-protocol-and-shm-bus.md](wire-protocol-and-shm-bus.md)).
-4. **Hybrid candidates.** Exact postings supply all token matches with lexical-first ranking.
-   Common tokens can therefore require full refinement; there is no unconditional bounded
-   candidate count. Stage 1 additionally scores entries on a1,024-bit
+4. **Hybrid candidates.** Exact postings are expanded rarest token first and capped near
+   `3 * candidate_cap`, so a query mixing a rare identifier with very common tokens no longer
+   refines the whole corpus (legacy indexes without postings still do, in parallel); ranking
+   is IDF-weighted lexical score first. Stage 1 additionally scores entries on a1,024-bit
    hypervector prefix, a 256-bit content-token Bloom filter and summary fields; Stage 2 runs the
    full 10,240-bit comparison on at least `4 * sqrt(n)` candidates.
 5. **Amortized epoch sealing.** `CacheEpochController` seals an epoch only when the unsealed

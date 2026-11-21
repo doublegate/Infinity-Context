@@ -77,10 +77,16 @@ Release-review fixes (independent review of the candidate before submission):
   into exact scoring (the candidate set is bounded). Snapshot format and version are unchanged.
 - Bus: `poll_since_with_loss` derives loss from the same head observation as the delivered
   events, so concurrent publishers can no longer make it under-report overwritten events.
-- Redaction no longer hides public digests: a hex run is suspect only when it is the assigned
-  value (`x=<hex>`, `x: <hex>`) or stands alone on its output line (`openssl rand -hex`).
-  `sha256sum` output, `sha256:<hex>` labels, commit ids, CSV fields and table cells are kept, so
-  stored output can still be checked against `SHA256SUMS`. Sensitive key names are unaffected.
+- Redaction no longer hides public digests. The v1.1.0 rule is unchanged (a high-entropy hex
+  run of 32+ characters on a line containing `=` or `:` is redacted) except for 40-, 64- and
+  128-character digests in recognised contexts: `sha1:`/`sha256:`/`sha384:`/`sha512:`/`blake3:`
+  labels, `sha256sum` lines, `commit <hex>` lines, CSV fields and Markdown table cells. Stored
+  output can therefore still be checked against `SHA256SUMS`. Sensitive key names are
+  unaffected.
+- YAML/JSON comment and key-separator detection ignores `#` and `:` inside quoted values, so a
+  colon inside an open quoted secret no longer leaves its continuation lines unredacted and a
+  ` #` inside a closed quoted value no longer redacts the following public lines; single-quoted
+  values honour the `''` escape.
 - Daemon: a workspace-lock timeout or reload failure now fails only that request (the client
   falls back to in-process handling) instead of stopping the daemon. The request is read and
   parsed before the lock is taken, under one 10 s deadline for the whole read, so a slow or

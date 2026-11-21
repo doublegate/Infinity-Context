@@ -159,7 +159,8 @@ impl SecretRedactor {
     /// continuation, so prose such as `error: missing signing key:` never does (PR #20 review).
     fn sensitive_continuation(line: &str) -> Option<PendingSecret> {
         let declaration = Self::declaration(line);
-        let (head, suffix) = declaration.rsplit_once(':')?;
+        let colon = Self::scan_unquoted(declaration).1?;
+        let (head, suffix) = (&declaration[..colon], &declaration[colon + 1..]);
         let suffix = suffix.trim();
         let mut properties = suffix.split_whitespace().peekable();
         while properties.peek().is_some_and(|s| s.starts_with(['&', '!'])) {
@@ -212,17 +213,58 @@ impl SecretRedactor {
         )
     }
 
-    /// The line without a trailing ` # comment`, right-trimmed.
+    /// The line without a trailing ` # comment`, right-trimmed. A `#` inside a quoted value
+    /// is not a comment.
     fn declaration(line: &str) -> &str {
-        let comment = line.match_indices('#').find_map(|(i, _)| {
-            (i > 0 && line.as_bytes()[i - 1].is_ascii_whitespace()).then_some(i)
-        });
+        let (comment, _) = Self::scan_unquoted(line);
         comment.map_or(line, |i| &line[..i]).trim_end()
     }
 
-    /// Byte index in `line` of the `:` that introduces its last value or block header.
+    /// Byte index in `line` of the last `:` outside quotes, which introduces its last value or
+    /// block header (a `:` inside a quoted value, even an unterminated one, is not a separator).
     fn declaration_colon(line: &str) -> Option<usize> {
-        Self::declaration(line).rfind(':')
+        Self::scan_unquoted(Self::declaration(line)).1
+    }
+
+    /// One pass over `line` tracking YAML/JSON quoting: returns the byte index of the first
+    /// unquoted ` #` comment marker and of the last unquoted `:`. A quote opens only at the
+    /// start of a value (line start, or after whitespace, `:`, `,`, `[`, `{` or `=`), so an
+    /// apostrophe inside prose does not; `\"` escapes inside double quotes and `''` inside
+    /// single quotes.
+    fn scan_unquoted(line: &str) -> (Option<usize>, Option<usize>) {
+        let bytes = line.as_bytes();
+        let mut quote: Option<u8> = None;
+        let mut comment = None;
+        let mut colon = None;
+        let mut i = 0;
+        while i < bytes.len() {
+            let b = bytes[i];
+            match quote {
+                Some(b'"') if b == b'\\' => i += 1,
+                Some(b'\'') if b == b'\'' && bytes.get(i + 1) == Some(&b'\'') => i += 1,
+                Some(q) if b == q => quote = None,
+                Some(_) => {}
+                None => match b {
+                    b'"' | b'\''
+                        if i == 0
+                            || matches!(
+                                bytes[i - 1],
+                                b' ' | b'\t' | b':' | b',' | b'[' | b'{' | b'='
+                            ) =>
+                    {
+                        quote = Some(b);
+                    }
+                    b'#' if i > 0 && bytes[i - 1].is_ascii_whitespace() => {
+                        comment = Some(i);
+                        break;
+                    }
+                    b':' => colon = Some(i),
+                    _ => {}
+                },
+            }
+            i += 1;
+        }
+        (comment, colon)
     }
 
     /// Replaces the (possibly quoted) value on a continuation line, keeping indentation and any
@@ -483,7 +525,15 @@ impl SecretRedactor {
         if quote == b'"' || quote == b'\'' {
             let inner_start = val_start + 1;
             let mut inner_end = inner_start;
-            while inner_end < bytes.len() && bytes[inner_end] != quote {
+            while inner_end < bytes.len() {
+                if bytes[inner_end] == quote {
+                    // YAML single-quoted scalars escape a quote by doubling it (`''`).
+                    if quote == b'\'' && bytes.get(inner_end + 1) == Some(&b'\'') {
+                        inner_end += 2;
+                        continue;
+                    }
+                    break;
+                }
                 if bytes[inner_end] == b'\\'
                     && inner_end + 1 < bytes.len()
                     && bytes[inner_end + 1].is_ascii()
