@@ -39,3 +39,9 @@ Daemon success now follows a committed SQLite WAL FULL save, so real hook latenc
 persistence. Save failures return errors. Native Codex hooks capture output and provide supported
 start/prompt recall; they do not replace original PostToolUse output. MCP accepts the advertised
 canonical tool name `icx` with explicit typed operations; invalid legacy aliases now fail.
+
+## Moving on to v1.2.1
+
+v1.2.1 writes `ICXHDC05` and rebuilds the token postings of a v1.2.0 (`ICXHDC04`) index from the
+CAS event log on first load; no data changes. As with v1.2.0, upgrade the one `icx` binary all
+agents use, and keep a pre-upgrade backup if a downgrade to v1.2.0 might be needed.

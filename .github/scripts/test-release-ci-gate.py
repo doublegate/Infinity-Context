@@ -157,9 +157,7 @@ class GateTests(unittest.TestCase):
             self.gate.wait_for_green(REPO, SHA, 0, 1, lambda _: [{"workflow_runs": []}])
 
     def test_cli_uses_read_only_api_and_fails_closed_on_transport_or_timeout(self):
-        scratch = Path("/tmp/Infinity-Context/v120/release-tests")
-        scratch.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=scratch) as tmp:
+        with tempfile.TemporaryDirectory(prefix="icx-release-tests-") as tmp:
             folder = Path(tmp)
             (folder / "fixtures.json").write_text(json.dumps(fixtures()))
             (folder / "gh").write_text(

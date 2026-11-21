@@ -60,7 +60,7 @@ flowchart TD
 | Crate | Layer | Responsibility |
 | :--- | :--- | :--- |
 | `icx-core` | L0 Foundation | Core identifiers (`ArtifactId`, `Blake3Digest`, `AgentKind`) and `IcxError`, FastCDC content-defined chunking (spread masks), BLAKE3 CAS with collision detection (`IcxError::HashCollision`), `MerkleContextDag`, and `CacheEpochController`. Chunks are stored uncompressed. |
-| `icx-hdc` | L1 Math/Index | 10,240-bit `Hypervector` (`[u64; 160]`), XOR binding, permutation, Delta-rule bundling, Hamming distance via `u64::count_ones`, hybrid exact-token/HDC candidate retrieval with lexical precedence, `ICXHDC04` snapshots, `FractalTrajectoryArchive` (`FCGA`), and the Titans-inspired `TitansSurpriseGate`. Legacy `03` snapshots remain readable and the MMU rebuilds their missing postings from CAS events. |
+| `icx-hdc` | L1 Math/Index | 10,240-bit `Hypervector` (`[u64; 160]`), XOR binding, permutation, Delta-rule bundling, Hamming distance via `u64::count_ones`, hybrid exact-token/HDC candidate retrieval with lexical precedence, `ICXHDC05` snapshots, `FractalTrajectoryArchive` (`FCGA`), and the Titans-inspired `TitansSurpriseGate`. Legacy `03`/`04` snapshots remain readable and the MMU rebuilds their postings from CAS events. |
 | `icx-codec` | L1 Codec | Secret redaction (`SecretRedactor::redact` for storage, `sanitize` for model-facing text), structural skeletonizer (`StructuralSkeletonizer`), and the **AHTL** encoder/decoder. |
 | `icx-store` | L2 Graph | In-memory **bi-temporal knowledge graph** compiled to CSR, and **HippoRAG-style Personalized PageRank** (`PPR`). Persistence is handled by `icx-adapters`. |
 | `icx-bus` | L2 IPC | `SeqlockTelemetryBus`: a 256-slot ring with an in-process atomic seqlock backend and a file-backed backend (positional I/O, writer mutex plus file lock, optimistic readers). See [docs/wire-protocol-and-shm-bus.md](wire-protocol-and-shm-bus.md). |
@@ -131,8 +131,9 @@ replacement field; the original native output remains visible. See
    running (disable with `ICX_NO_DAEMON=1`; `ICX_DAEMON_AUTOSTART=1` starts one in the background
    on first use). The daemon checks the peer uid with `SO_PEERCRED`, handles the request against
    its resident MMU, and commits to SQLite under the workspace lock **before** sending success.
-   WAL uses `synchronous=FULL`. Save failure produces a failed response and daemon error exit;
-   there is no acknowledged write-behind queue. Each request revalidates the store `generation`,
+   WAL uses `synchronous=FULL`. Save failure produces a failed response and discards the unsaved
+   state (the daemon exits after 5 consecutive failures, v1.2.1); a failed dispatch is never
+   saved; there is no acknowledged write-behind queue. Each request revalidates the store `generation`,
    so writes by the MCP server or proxy are picked up. Filesystem and hardware synchronization
    behavior still bounds durability guarantees.
 4. **Fallback:** with no daemon, or on any daemon error, the hook loads the store, handles the

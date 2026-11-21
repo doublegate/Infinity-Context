@@ -357,6 +357,9 @@ impl SecretRedactor {
             .trim_start_matches('-')
             .trim_matches(|c: char| c == '"' || c == '\'');
         let key_upper = trimmed.to_ascii_uppercase().replace('-', "_");
+        if Self::is_token_count_key(&key_upper) {
+            return false;
+        }
         let sensitive_suffixes = [
             "SECRET",
             "CLIENT_SECRET",
@@ -401,6 +404,43 @@ impl SecretRedactor {
             || key_upper
                 .strip_suffix('S')
                 .is_some_and(|singular| !singular.ends_with("PASS") && matches(singular))
+    }
+
+    /// `MAX_TOKENS`, `INPUT_TOKENS`, `COMPLETION_TOKENS`, `cache_read_input_tokens`, ...:
+    /// counters in LLM configs and usage blocks, not credentials (v1.2.1; v1.2.0 hid them via
+    /// the plural-key rule). A key qualifies when it ends in `TOKEN`/`TOKENS` and an earlier
+    /// `_`-separated part names a count. Values under such keys are still checked by the
+    /// vendor-prefix and entropy detectors.
+    fn is_token_count_key(key_upper: &str) -> bool {
+        const COUNT_PARTS: &[&str] = &[
+            "MAX",
+            "MIN",
+            "NUM",
+            "COUNT",
+            "TOTAL",
+            "INPUT",
+            "OUTPUT",
+            "PROMPT",
+            "COMPLETION",
+            "CACHE",
+            "CACHED",
+            "REASONING",
+            "CONTEXT",
+            "BUDGET",
+            "LIMIT",
+            "AUDIO",
+            "TEXT",
+            "IMAGE",
+            "ACCEPTED",
+            "REJECTED",
+            "PREDICTION",
+            "THINKING",
+        ];
+        let mut parts: Vec<&str> = key_upper.split('_').filter(|p| !p.is_empty()).collect();
+        if !matches!(parts.pop(), Some("TOKEN" | "TOKENS")) {
+            return false;
+        }
+        !parts.is_empty() && parts.iter().any(|p| COUNT_PARTS.contains(p))
     }
 
     fn redact_line(line: &str) -> String {
@@ -671,12 +711,19 @@ impl SecretRedactor {
                 key_start -= 1;
             }
             let key_name = &out[key_start..key_end];
-            if !key_name.is_empty() && Self::is_sensitive_key_name(key_name) {
+            if !key_name.is_empty()
+                && Self::is_sensitive_key_name(key_name)
+                && !Self::is_code_binding(&out[..key_start])
+            {
                 let mut val_start = eq_idx + 1;
                 while val_start < bytes.len()
                     && (bytes[val_start] == b' ' || bytes[val_start] == b'\t')
                 {
                     val_start += 1;
+                }
+                if Self::is_counter_value(key_name, &out[val_start..]) {
+                    search_pos = eq_idx + 1;
+                    continue;
                 }
                 let replacement = if key_name.starts_with("--") {
                     "[REDACTED:CLI_SECRET]"
@@ -764,6 +811,12 @@ impl SecretRedactor {
                 {
                     val_start += 1;
                 }
+                if Self::is_type_annotation(&out[val_start..])
+                    || Self::is_counter_value(key_name, &out[val_start..])
+                {
+                    search_pos = colon_idx + 1;
+                    continue;
+                }
                 if let Some(next_pos) =
                     Self::redact_value_span(&mut out, val_start, "[REDACTED:CONFIG_SECRET]", true)
                 {
@@ -774,6 +827,138 @@ impl SecretRedactor {
             search_pos = colon_idx + 1;
         }
         out
+    }
+
+    /// `token: String = ...`, `api_keys: HashMap<String, Key>,`, `password: &str)`: a source-code
+    /// type annotation, not a credential (v1.2.1). Only a recognised type name qualifies,
+    /// optionally referenced and generic, and it must end the value (end of line, or `=`, `,`,
+    /// `)`, `;`, `{`, `>`, `->` after it), so a credential that merely starts with one is kept.
+    fn is_type_annotation(rest: &str) -> bool {
+        const TYPES: &[&str] = &[
+            "String",
+            "str",
+            "Vec",
+            "Option",
+            "Result",
+            "HashMap",
+            "HashSet",
+            "BTreeMap",
+            "BTreeSet",
+            "VecDeque",
+            "Box",
+            "Arc",
+            "Rc",
+            "Cow",
+            "PathBuf",
+            "Path",
+            "Self",
+            "usize",
+            "isize",
+            "u8",
+            "u16",
+            "u32",
+            "u64",
+            "u128",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+            "i128",
+            "f32",
+            "f64",
+            "bool",
+            "char",
+            "Duration",
+            "SecretString",
+            "string",
+            "number",
+            "boolean",
+            "Optional",
+            "bytes",
+            "int",
+        ];
+        let mut s = rest.strip_prefix('&').map_or(rest, |r| {
+            let r = r.strip_prefix("mut ").unwrap_or(r);
+            match r.strip_prefix('\'') {
+                Some(lt) => lt
+                    .split_once(' ')
+                    .filter(|(name, _)| {
+                        name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                    })
+                    .map_or(r, |(_, after)| after),
+                None => r,
+            }
+        });
+        let name_len = s
+            .bytes()
+            .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+            .count();
+        if !TYPES.contains(&&s[..name_len]) {
+            return false;
+        }
+        s = &s[name_len..];
+        if let Some(inner) = s.strip_prefix('<') {
+            let mut depth = 1usize;
+            let mut end = None;
+            for (i, c) in inner.char_indices() {
+                match c {
+                    '<' => depth += 1,
+                    '>' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = Some(i + 1);
+                            break;
+                        }
+                    }
+                    '"' | '\'' | '\n' => return false,
+                    _ => {}
+                }
+            }
+            let Some(end) = end else { return false };
+            s = &inner[end..];
+        }
+        let s = s.trim_start_matches([' ', '\t']);
+        s.is_empty()
+            || s.starts_with(['=', ',', ')', ';', '{', '>', '\n', '\r'])
+            || s.starts_with("->")
+    }
+
+    /// `let q_tokens = f(...)`, `const MAX_TOKENS = 4096`: a source-code binding, not an env
+    /// assignment (v1.2.1). `before_key` is the line text before the key.
+    fn is_code_binding(before_key: &str) -> bool {
+        let lead = before_key.trim_end_matches([' ', '\t']);
+        ["let", "let mut", "const", "var", "static", "static mut"]
+            .iter()
+            .any(|kw| {
+                lead.strip_suffix(kw)
+                    .is_some_and(|pre| pre.is_empty() || pre.ends_with([' ', '\t', '(', '{', ';']))
+            })
+            && lead.len() < before_key.len()
+    }
+
+    /// A purely numeric value under a `..._TOKEN`/`..._TOKENS` key is a counter
+    /// (`epoch_rollover_tokens: 16384`), never a credential (v1.2.1).
+    fn is_counter_value(key_name: &str, rest: &str) -> bool {
+        let key = key_name
+            .trim_start_matches('-')
+            .to_ascii_uppercase()
+            .replace('-', "_");
+        if !(key.ends_with("TOKEN") || key.ends_with("TOKENS")) {
+            return false;
+        }
+        let rest = rest.trim_start_matches(['"', '\'']);
+        // Rust/Python digit separators (`16_384`) are allowed after the first digit.
+        let digits = rest
+            .bytes()
+            .enumerate()
+            .take_while(|&(i, b)| b.is_ascii_digit() || (i > 0 && b == b'_'))
+            .count();
+        rest.as_bytes().first().is_some_and(u8::is_ascii_digit)
+            && rest[digits..]
+                .trim_start_matches(['"', '\''])
+                .chars()
+                .next()
+                .is_none_or(|c| c.is_whitespace() || matches!(c, ',' | ';' | '}' | ']' | ')'))
     }
 
     fn redact_cli_flags(line: &str) -> String {
@@ -1126,7 +1311,8 @@ impl SecretRedactor {
         // A CSV cell is unquoted; a quoted element after a comma is a JSON/YAML flow-sequence
         // item, which keeps the strict rule.
         let quoted = lead_line.ends_with(['"', '\'']) || tail_line.starts_with(['"', '\'']);
-        let in_flow_sequence = lead_line.contains('[');
+        // Only an unclosed `[` before the token opens a flow sequence (`logs[1].txt,...` does not).
+        let in_flow_sequence = lead_line.matches('[').count() > lead_line.matches(']').count();
         let csv_cell = !quoted
             && !in_flow_sequence
             && lead.ends_with(',')

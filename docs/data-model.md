@@ -245,15 +245,16 @@ CREATE TABLE emitted   (digest BLOB PRIMARY KEY) WITHOUT ROWID;    -- BLAKE3 of 
 | `chunk_config` | `ChunkerConfig` (JSON). |
 | `graph` | Bi-temporal graph (JSON). |
 | `mmu_state` | DAG, epoch controller (including versioned `window_budget`) and MMU tables (JSON). |
-| `hdc_index` | HDC associative index, binary snapshot format `ICXHDC04`, including exact token postings. |
+| `hdc_index` | HDC associative index, binary snapshot format `ICXHDC05`, including exact token postings. |
 | `hdc_index_events` | Number of events the snapshot covers. |
 | `seal` | Store MAC (§6.2). |
 
 `chunks`, `artifacts` and `emitted` rows are append-only (inserted once). Existing store, `-wal`
 and `-shm` files are reset to `0600` on open if their mode was widened. The derived state in `meta` is
 replaced on each save. Each save is one WAL transaction with `synchronous=FULL`; the daemon
-sends success only after it commits. Save failure is returned to the client and terminates the
-daemon with an error rather than dropping an acknowledged queue.
+sends success only after it commits. Save failure is returned to the client, never acknowledged;
+from v1.2.1 the daemon then discards its unsaved in-memory state and keeps serving, exiting with an
+error only after 5 consecutive save failures. A failed dispatch is not saved at all.
 
 ### 6.2 Store Seal
 
@@ -266,7 +267,10 @@ verify.
 
 ### 6.3 Snapshot and Window-Policy Compatibility
 
-The HDC decoder reads both `ICXHDC04` and legacy `ICXHDC03`. Version 04 appends optional exact
+The HDC decoder reads `ICXHDC05` and legacy `ICXHDC04`/`ICXHDC03`. 05 uses the v1.2.1 tokenizer
+(runs joined by `:` or `/` are also posted by component); 04 postings come from the older tokenizer
+and are validated, then dropped, so the MMU rebuilds them from CAS events, as for 03, which has no
+postings at all. Version 04 appended optional exact
 token-to-entry postings to the index, summary, trajectory and surprise state. It checks posting
 ordering/ranges, finite numeric domains and consistency of derived caches. The workspace MAC
 remains the provenance boundary; a self-consistent arbitrary snapshot is not authenticated by

@@ -473,7 +473,9 @@ impl CacheEpochController {
     /// head + marker + retained epochs remain byte-identical turn after turn. Only when it no
     /// longer fits are the oldest epochs evicted in one step, down to the low-water mark of
     /// `allowance / EVICTION_LOW_WATER_DIVISOR`, leaving headroom for many further turns before
-    /// the next step. Deterministic and idempotent: `plan(plan(s)) == plan(s)`.
+    /// the next step. A step never evicts more than `max(low-water point, smallest fitting
+    /// point)`, and never empties the retained history when keeping some epochs fits.
+    /// Deterministic and idempotent: `plan(plan(s)) == plan(s)`.
     fn plan_eviction(&self, dag: &MerkleContextDag, start: usize) -> usize {
         let n = self.sealed_epochs.len();
         let start = start.min(n);
@@ -510,16 +512,24 @@ impl CacheEpochController {
         if cost(start, retained, omitted_bytes) <= allowance {
             return start;
         }
+        // Step to the first eviction point reaching the low-water mark while some history is
+        // retained. When that is unreachable (a large active window or a single large epoch),
+        // stop at the smallest eviction that fits instead of emptying the retained history.
         let low_water = allowance / EVICTION_LOW_WATER_DIVISOR;
+        let mut smallest_fit = None;
         for p in start + 1..=n {
             let node = &self.sealed_epochs[p - 1];
             retained = retained.saturating_sub(epoch_frame(node).map_or(0, frame_cost));
             omitted_bytes = omitted_bytes.saturating_add(frame_len(node));
-            if cost(p, retained, omitted_bytes) <= low_water {
+            let c = cost(p, retained, omitted_bytes);
+            if c <= low_water && p < n {
                 return p;
             }
+            if c <= allowance && smallest_fit.is_none() {
+                smallest_fit = Some(p);
+            }
         }
-        n
+        smallest_fit.unwrap_or(n)
     }
 
     /// Assembles the 4-zone prompt view with the provided dynamic Ephemeral Tail Slot recall.

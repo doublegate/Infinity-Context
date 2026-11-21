@@ -24,7 +24,7 @@
   <a href="LICENSING.md"><img src="https://img.shields.io/badge/specs-CC--BY--NC--ND--4.0-blueviolet.svg" alt="Specs: CC-BY-NC-ND-4.0"></a>
   <a href="PATENTS.md"><img src="https://img.shields.io/badge/patents-5%20Pending%20Families-d97706.svg" alt="Patents: 5 Pending Families"></a>
   <a href="COMMERCIAL.md"><img src="https://img.shields.io/badge/commercial%20license-available-ea580c.svg" alt="Commercial License Available"></a><br/>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v1.2.0-2563eb.svg" alt="Release: v1.2.0"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v1.2.1-2563eb.svg" alt="Release: v1.2.1"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.100%2B%20(Edition%202024)-f97316.svg?logo=rust" alt="Rust: 1.100+ (Edition 2024)"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/unsafe_code-forbid-16a34a.svg" alt="unsafe_code: forbid"></a>
   <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20MCP-475569.svg" alt="Supported Agents"></a><br/>
@@ -61,6 +61,15 @@ An `AHTL` packet replaces a bulky tool log, unified `git diff`, or source file w
 The inline size reduction depends on the input. In the built-in synthetic benchmark it is 214.0x on a repetitive 1,200-line test log and 159.8x on a varied log. Every quantitative claim the project makes, with its fixture and source, is collected in [`docs/numbers.md`](docs/numbers.md).
 
 ---
+
+## What Changed in v1.2.1
+
+v1.2.1 is a follow-up to v1.2.0. Commands and paths are now indexed by component, so searching
+for `seq 1 400` finds the output of `Bash:seq 1 400`; the index format is `ICXHDC05` and existing
+indexes are rebuilt on first load. Token counts (`max_tokens: 4096`) and code type annotations
+(`token: String`) are no longer hidden as secrets. The daemon survives a transient save failure
+without acknowledging it, and history eviction never empties the window when keeping some fits.
+Details: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## What Changed in v1.2.0
 
@@ -100,6 +109,7 @@ v1.1.0 is a remediation release that follows an internal audit of v1.0.0 (findin
 
 ## Contents
 
+- [What Changed in v1.2.1](#what-changed-in-v121)
 - [What Changed in v1.2.0](#what-changed-in-v120)
 - [What Changed in v1.1.0](#what-changed-in-v110-historical)
 - [Highlights](#highlights)

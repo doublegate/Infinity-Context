@@ -238,6 +238,7 @@ fn run_context_budget(args: &[String]) -> Result<(), String> {
     let mut context = None;
     let mut completion = None;
     let mut external = None;
+    let mut dir_arg = None;
     let mut i = 0;
     while i < args.len() {
         let flag = args[i].as_str();
@@ -252,22 +253,27 @@ fn run_context_budget(args: &[String]) -> Result<(), String> {
         let value = args
             .get(i + 1)
             .ok_or_else(|| format!("context-budget: missing value for {flag}"))?;
+        let number = || {
+            value
+                .parse::<usize>()
+                .map_err(|e| format!("context-budget: invalid {flag} {value:?}: {e}"))
+        };
         match flag {
-            "--context-tokens" => {
-                context = Some(value.parse::<usize>().map_err(|e| e.to_string())?);
-            }
+            "--context-tokens" => set_option_once(&mut context, "context-budget", flag, number()?)?,
             "--completion-reserve" => {
-                completion = Some(value.parse::<usize>().map_err(|e| e.to_string())?);
+                set_option_once(&mut completion, "context-budget", flag, number()?)?;
             }
             "--external-reserve" => {
-                external = Some(value.parse::<usize>().map_err(|e| e.to_string())?);
+                set_option_once(&mut external, "context-budget", flag, number()?)?;
             }
-            "--dir" => {}
+            "--dir" => set_option_once(&mut dir_arg, "context-budget", flag, value.as_str())?,
             _ => return Err(format!("context-budget: unknown option {flag}")),
         }
         i += 2;
     }
-    let dir = resolve_workspace_dir(parse_dir_flag(args));
+    // This loop is the only parser for this subcommand, so it owns `--dir` too (the lenient
+    // `parse_dir_flag` would silently keep the last of several values).
+    let dir = resolve_workspace_dir(dir_arg);
     if !matches!(workspace_state(&dir, false), WsState::Ready) {
         return Err("context-budget: initialize or explicitly trust the workspace first".into());
     }
@@ -483,6 +489,20 @@ fn run_trust(args: &[String]) -> Result<(), String> {
         );
     }
     println!("⟪ICX:TRUST│dir={}│status=SEALED⟫", dir.display());
+    Ok(())
+}
+
+/// Stores `value` in `slot`, rejecting a repeated option instead of silently keeping the last.
+fn set_option_once<T>(
+    slot: &mut Option<T>,
+    command: &str,
+    flag: &str,
+    value: T,
+) -> Result<(), String> {
+    if slot.is_some() {
+        return Err(format!("{command}: {flag} given more than once"));
+    }
+    *slot = Some(value);
     Ok(())
 }
 
@@ -2071,9 +2091,9 @@ mod tests {
         })
         .to_string();
         assert!(daemon::try_hook(&sock, "claude-code", "PostToolUse", &post).is_none());
-        assert!(server.join().unwrap().is_err());
         assert_eq!(workspace_mmu_generation(&ws), gen_before);
-        // A failed commit must release its lock before fallback or another writer runs.
+        // A failed commit must release its lock before fallback or another writer runs, while
+        // the daemon (v1.2.1) keeps serving after a single failed save.
         let (tx, rx) = std::sync::mpsc::channel();
         let ws_lock = ws.clone();
         std::thread::spawn(move || {
@@ -2110,13 +2130,19 @@ mod tests {
         reopened.load_workspace_dir(&ws).unwrap();
         let (aid, _) = ArtifactId::hash_bytes("retry me\n".repeat(400).as_bytes());
         assert_eq!(reopened.deref_text(aid).unwrap(), "retry me\n".repeat(400));
+        let served = server.join().unwrap();
+        assert!(
+            served.is_ok(),
+            "one failed save ended the daemon: {served:?}"
+        );
         let _ = fs::remove_dir_all(&ws);
     }
 
     #[cfg(unix)]
     #[test]
     fn daemon_reports_persistent_commit_failure_and_exits_unsuccessfully() {
-        // No successful response or successful exit may hide a failed store write.
+        // No successful response or successful exit may hide a failed store write; the daemon
+        // gives up after `MAX_CONSECUTIVE_SAVE_FAILURES` failed saves in a row (v1.2.1).
         use std::os::unix::fs::PermissionsExt;
         let (ws, sock, server) = start_daemon("flushgiveup");
         let gen_before = workspace_mmu_generation(&ws);
@@ -2126,7 +2152,9 @@ mod tests {
             "tool_response": {"stdout": "never saved\n".repeat(400)}
         })
         .to_string();
-        assert!(daemon::try_hook(&sock, "claude-code", "PostToolUse", &post).is_none());
+        for _ in 0..daemon::MAX_CONSECUTIVE_SAVE_FAILURES {
+            assert!(daemon::try_hook(&sock, "claude-code", "PostToolUse", &post).is_none());
+        }
         assert!(server.join().unwrap().is_err());
         assert!(!sock.exists());
         for f in ["icx.sqlite3", "icx.sqlite3-wal", "icx.sqlite3-shm"] {
