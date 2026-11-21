@@ -30,25 +30,36 @@ impl SecretRedactor {
             let (mut body, ending) = split_line_ending(segment);
             // YAML block contents are scalars even when they resemble mappings, comments or
             // private-key banners. Handle them before any of the line-oriented detectors.
-            if let Some(pending) = pending_value.as_mut() {
-                let indent = body.len() - body.trim_start().len();
+            // Inside an open quoted scalar every line is secret up to the closing quote.
+            if let Some(q) = pending_value.as_ref().and_then(|p| p.quote) {
                 if body.trim().is_empty() {
                     out.push_str(body);
                     out.push_str(ending);
                     continue;
                 }
-                if let Some(q) = pending.quote {
-                    // Inside an open quoted scalar every line is secret up to the closing quote.
-                    let content_start = body.len() - body.trim_start().len();
-                    let rest = &body[content_start..];
-                    if let Some(close) = closing_quote(rest.as_bytes(), q) {
-                        out.push_str(&body[..content_start]);
-                        out.push_str("[REDACTED:SECRET]");
-                        out.push_str(&Self::redact_line(&rest[close..]));
-                        pending_value = None;
-                    } else {
-                        out.push_str(&Self::redact_bare_value_line(body));
-                    }
+                let content_start = body.len() - body.trim_start().len();
+                let Some(close) = closing_quote(&body.as_bytes()[content_start..], q) else {
+                    out.push_str(&Self::redact_bare_value_line(body));
+                    out.push_str(ending);
+                    continue;
+                };
+                // Emit the hidden value and its closing quote, then classify the rest of the
+                // line like any other line: it can open a key block, a new block or quoted
+                // secret, or hold further assignments.
+                out.push_str(&body[..content_start]);
+                out.push_str("[REDACTED:SECRET]");
+                out.push(char::from(q));
+                body = &body[content_start + close + 1..];
+                pending_value = None;
+                if body.is_empty() {
+                    out.push_str(ending);
+                    continue;
+                }
+            }
+            if let Some(pending) = pending_value.as_mut() {
+                let indent = body.len() - body.trim_start().len();
+                if body.trim().is_empty() {
+                    out.push_str(body);
                     out.push_str(ending);
                     continue;
                 }
@@ -1112,7 +1123,14 @@ impl SecretRedactor {
         let commit_line = lower.trim_end().ends_with("commit");
         let tail = tail_line.trim_start_matches(['"', '\'', ' ', '\t', '`']);
         let table_cell = lead.ends_with('|') && tail.starts_with('|');
-        let csv_cell = lead.ends_with(',') && (tail.is_empty() || tail.starts_with(','));
+        // A CSV cell is unquoted; a quoted element after a comma is a JSON/YAML flow-sequence
+        // item, which keeps the strict rule.
+        let quoted = lead_line.ends_with(['"', '\'']) || tail_line.starts_with(['"', '\'']);
+        let in_flow_sequence = lead_line.contains('[');
+        let csv_cell = !quoted
+            && !in_flow_sequence
+            && lead.ends_with(',')
+            && (tail.is_empty() || tail.starts_with(','));
         labelled || sha256sum_line || commit_line || table_cell || csv_cell
     }
 

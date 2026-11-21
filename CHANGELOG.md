@@ -89,6 +89,10 @@ Release-review fixes (independent review of the candidate before submission):
   values honour the `''` escape.
 - A `]` inside a quoted element of a sensitive flow sequence (`password: ["a]b", "c"]`) no
   longer ends redaction early.
+- Text after the closing quote of a multi-line quoted secret is classified like any other line,
+  so a key block or a new block/quoted secret opened there is still hidden.
+- The CSV-cell digest exemption no longer applies to quoted elements or flow sequences
+  (`keys: ["a", "<hex>", "b"]` keeps the strict hex rule).
 - `icx context-budget --help` / `-h` print usage instead of a missing-value error.
 - The `ICX:HISTORY_OMITTED` frame uses the same `⟪…⟫` delimiters as the other icx markers.
 - Tests write to a per-user directory under the system temp dir instead of the fixed

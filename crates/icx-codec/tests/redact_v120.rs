@@ -401,3 +401,42 @@ fn closing_quote_of_a_multiline_secret_does_not_hide_later_assignments() {
         "public: ok",
     );
 }
+
+#[test]
+fn text_after_a_closing_multiline_quote_is_fully_reclassified() {
+    // A new block secret opened on the closing line is still hidden.
+    assert_hidden(
+        "password: \"lowsecret\n  tailsecret\", token: |\n  blocksecret\npublic: ok\n",
+        &["lowsecret", "tailsecret", "blocksecret"],
+        "public: ok",
+    );
+    // So is a private-key block that starts after the closing quote.
+    let pem_begin = ["-----BEGIN", " PRIVATE", " KEY-----"].concat();
+    let pem_end = ["-----END", " PRIVATE", " KEY-----"].concat();
+    let input = format!(
+        "password: \"lowsecret\n  tailsecret\" {pem_begin}\nMIIEvQkeybodyline\n{pem_end}\npublic: ok\n"
+    );
+    assert_hidden(
+        &input,
+        &["lowsecret", "tailsecret", "keybodyline"],
+        "public: ok",
+    );
+}
+
+#[test]
+fn quoted_hex_in_json_arrays_is_not_a_csv_digest_cell() {
+    let hex = "e8ab57722d7d794fbffd585ad1499391b7707ea68f848aa9b20ad189605e26e0";
+    for line in [
+        format!("{{\"keys\": [\"{hex}\", \"other\"]}}\n"),
+        format!("{{\"keys\": [\"other\", \"{hex}\"]}}\n"),
+        format!("keys: ['other', '{hex}']\n"),
+        format!("{{\"keys\": [\"a\", \"{hex}\", \"b\"]}}\n"),
+        format!("keys: [a, '{hex}', b]\n"),
+    ] {
+        let clean = SecretRedactor::redact(&line);
+        assert!(!clean.contains(hex), "{clean:?}");
+    }
+    // An unquoted CSV cell stays a public digest.
+    let csv = format!("path,bytes,sha256\nREADME.md,65220,{hex}\n");
+    assert_eq!(SecretRedactor::redact(&csv), csv);
+}
