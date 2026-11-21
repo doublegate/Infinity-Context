@@ -590,19 +590,32 @@ impl SecretRedactor {
         replacement: &str,
     ) -> Option<usize> {
         let rest = out.get(val_start..)?;
-        let name_len = rest
-            .bytes()
-            .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b':')
-            .count();
-        if name_len == 0 || !rest.as_bytes()[0].is_ascii_alphabetic() {
-            return None;
+        // One or more nested calls (`Some(String::from(` ...) directly before a quote (v1.2.2).
+        let mut pos = 0usize;
+        let mut depth = 0usize;
+        loop {
+            if !rest
+                .as_bytes()
+                .get(pos)
+                .is_some_and(u8::is_ascii_alphabetic)
+            {
+                return None;
+            }
+            pos += rest[pos..]
+                .bytes()
+                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b':')
+                .count();
+            if !rest[pos..].starts_with('(') {
+                return None;
+            }
+            pos += 1;
+            depth += 1;
+            pos += rest[pos..].len() - rest[pos..].trim_start_matches([' ', '\t']).len();
+            if rest[pos..].starts_with(['"', '\'']) {
+                break;
+            }
         }
-        let after = rest[name_len..].strip_prefix('(')?;
-        if !after.trim_start().starts_with(['"', '\'']) {
-            return None;
-        }
-        let open = val_start + name_len + 1;
-        let mut depth = 1usize;
+        let open = val_start + pos;
         let mut quote: Option<u8> = None;
         let mut spans = Vec::new();
         let mut lit_start = 0usize;
@@ -612,7 +625,10 @@ impl SecretRedactor {
         while i < bytes.len() && bytes[i] != b'\n' {
             let b = bytes[i];
             match quote {
-                Some(_) if b == b'\\' => i += 1,
+                // Skip the escaped byte, but never past the end of the input or the line.
+                Some(_) if b == b'\\' && bytes.get(i + 1).is_some_and(|&n| n != b'\n') => {
+                    i += 1;
+                }
                 Some(q) if b == q => {
                     spans.push((lit_start, i));
                     quote = None;
@@ -633,6 +649,7 @@ impl SecretRedactor {
             }
             i += 1;
         }
+        let i = i.min(bytes.len());
         // An unterminated literal is hidden to the end of the line.
         if quote.is_some() {
             spans.push((lit_start, i));
@@ -941,12 +958,31 @@ impl SecretRedactor {
                     let after = val_start + type_len;
                     let tail = &out[after..];
                     let assigned = tail.starts_with('=') && !tail.starts_with("==");
+                    let rhs_is_null = |rhs: &str| {
+                        [
+                            "None",
+                            "null",
+                            "nil",
+                            "undefined",
+                            "True",
+                            "False",
+                            "true",
+                            "false",
+                        ]
+                        .iter()
+                        .any(|kw| {
+                            rhs.strip_prefix(kw).is_some_and(|after| {
+                                !after.starts_with(|c: char| c.is_alphanumeric() || c == '_')
+                            })
+                        })
+                    };
                     let rhs_start = after + 1 + tail[1.min(tail.len())..].len()
                         - tail[1.min(tail.len())..]
                             .trim_start_matches([' ', '\t'])
                             .len();
                     if assigned
                         && !Self::is_code_expression(&out[rhs_start..])
+                        && !rhs_is_null(&out[rhs_start..])
                         && !Self::is_counter_value(key_name, &out[rhs_start..])
                         && let Some(next_pos) = Self::redact_value_span(
                             &mut out,
@@ -1021,10 +1057,20 @@ impl SecretRedactor {
             "Optional",
             "bytes",
             "int",
+            "float",
+            "list",
+            "dict",
+            "tuple",
+            "set",
+            "List",
+            "Dict",
+            "Tuple",
+            "Set",
+            "Any",
         ];
         let mut s = rest.strip_prefix('&').map_or(rest, |r| {
             let r = r.strip_prefix("mut ").unwrap_or(r);
-            match r.strip_prefix('\'') {
+            let r = match r.strip_prefix('\'') {
                 Some(lt) => lt
                     .split_once(' ')
                     .filter(|(name, _)| {
@@ -1032,7 +1078,9 @@ impl SecretRedactor {
                     })
                     .map_or(r, |(_, after)| after),
                 None => r,
-            }
+            };
+            // `&'a mut T`: `mut` follows the lifetime (v1.2.2).
+            r.strip_prefix("mut ").unwrap_or(r)
         });
         let name_len = s
             .bytes()
@@ -1042,13 +1090,20 @@ impl SecretRedactor {
             return None;
         }
         s = &s[name_len..];
-        if let Some(inner) = s.strip_prefix('<') {
+        // Rust/TS `<...>` and Python `[...]` generics (v1.2.2).
+        let brackets = match s.as_bytes().first() {
+            Some(b'<') => Some(('<', '>')),
+            Some(b'[') => Some(('[', ']')),
+            _ => None,
+        };
+        if let Some((open, close)) = brackets {
+            let inner = &s[1..];
             let mut depth = 1usize;
             let mut end = None;
             for (i, c) in inner.char_indices() {
                 match c {
-                    '<' => depth += 1,
-                    '>' => {
+                    c if c == open => depth += 1,
+                    c if c == close => {
                         depth -= 1;
                         if depth == 0 {
                             end = Some(i + 1);

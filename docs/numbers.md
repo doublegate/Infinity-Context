@@ -104,7 +104,7 @@ text comes from `deref`.
 | Hypervector width | 10,240 bits (`HV_BITS`), 160 `u64` words | `crates/icx-hdc/src/hv.rs:8` |
 | Fractal coordinate in memory | `[f64; 16]` | `crates/icx-hdc/src/fractal.rs` |
 | Recall gate test | recall@5 at least 95% at n = 300 | `crates/icx-hdc/tests/recall_v110.rs` |
-| HDC snapshot format | `ICXHDC05` (binary, v1.2.1); 04 and 03 readable, postings rebuilt from CAS events by MMU | `crates/icx-hdc/src/snapshot.rs` |
+| HDC snapshot format | `ICXHDC05` (binary, v1.2.2); 04 and 03 readable, postings rebuilt from CAS events by MMU | `crates/icx-hdc/src/snapshot.rs` |
 | PPR restart parameter | 0.15 | `crates/icx-adapters/src/mmu.rs:848` |
 | PPR iterations, tail-slot recall | 6 | `crates/icx-adapters/src/mmu.rs:848` |
 | PPR iterations, benchmark | 8 | `crates/icx-cli/src/main.rs:1429` |

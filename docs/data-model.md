@@ -253,7 +253,7 @@ CREATE TABLE emitted   (digest BLOB PRIMARY KEY) WITHOUT ROWID;    -- BLAKE3 of 
 and `-shm` files are reset to `0600` on open if their mode was widened. The derived state in `meta` is
 replaced on each save. Each save is one WAL transaction with `synchronous=FULL`; the daemon
 sends success only after it commits. Save failure is returned to the client, never acknowledged;
-from v1.2.1 the daemon then discards its unsaved in-memory state and keeps serving, exiting with an
+from v1.2.2 the daemon then discards its unsaved in-memory state and keeps serving, exiting with an
 error only after 5 consecutive save failures. A failed dispatch is not saved at all.
 
 ### 6.2 Store Seal
@@ -267,7 +267,7 @@ verify.
 
 ### 6.3 Snapshot and Window-Policy Compatibility
 
-The HDC decoder reads `ICXHDC05` and legacy `ICXHDC04`/`ICXHDC03`. 05 uses the v1.2.1 tokenizer
+The HDC decoder reads `ICXHDC05` and legacy `ICXHDC04`/`ICXHDC03`. 05 uses the v1.2.2 tokenizer
 (runs joined by `:` or `/` are also posted by component); 04 postings come from the older tokenizer
 and are validated, then dropped, so the MMU rebuilds them from CAS events, as for 03, which has no
 postings at all. Version 04 appended optional exact

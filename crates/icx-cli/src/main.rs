@@ -33,6 +33,17 @@ fn main() {
 fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), String> {
     let subcmd = args.get(1).map(String::as_str).unwrap_or("help");
     let tail = if args.len() >= 2 { &args[2..] } else { &[] };
+    // A repeated `--dir` is ambiguous; every subcommand rejects it rather than silently using
+    // the last one (v1.2.2, issue #24). Hooks still fail open so the agent keeps its behaviour.
+    if tail.iter().filter(|a| a.as_str() == "--dir").count() > 1 {
+        let err = format!("icx {subcmd}: --dir given more than once");
+        if subcmd == "hook" {
+            eprintln!("icx hook error: {err}");
+            println!("{{}}");
+            return Ok(());
+        }
+        return Err(err);
+    }
 
     match subcmd {
         "init" => run_init(tail),

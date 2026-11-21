@@ -311,9 +311,10 @@ impl HdcAssociativeIndex {
                     let mut postings = BTreeMap::new();
                     for _ in 0..count {
                         let token = r.str("lexical.token")?;
-                        // ICXHDC04 postings use the pre-v1.2.1 tokenizer; they are read only to
-                        // validate the snapshot and then dropped below, forcing a rebuild.
-                        if version >= 5 && !is_lexical_token(&token) {
+                        // Every tokenizer version emits well-formed tokens. ICXHDC04 postings
+                        // (pre-v1.2.1 tokenizer) are validated here, then dropped below so the MMU
+                        // rebuilds them.
+                        if !is_lexical_token(&token) {
                             return Err(SnapshotError::Inconsistent("lexical.token"));
                         }
                         let len = r.len("lexical.postings", n as u64)?;

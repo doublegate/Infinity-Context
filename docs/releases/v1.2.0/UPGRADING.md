@@ -40,8 +40,8 @@ persistence. Save failures return errors. Native Codex hooks capture output and 
 start/prompt recall; they do not replace original PostToolUse output. MCP accepts the advertised
 canonical tool name `icx` with explicit typed operations; invalid legacy aliases now fail.
 
-## Moving on to v1.2.1
+## Moving on to v1.2.2
 
-v1.2.1 writes `ICXHDC05` and rebuilds the token postings of a v1.2.0 (`ICXHDC04`) index from the
+v1.2.2 (which supersedes the unpublished v1.2.1) writes `ICXHDC05` and rebuilds the token postings of a v1.2.0 (`ICXHDC04`) index from the
 CAS event log on first load; no data changes. As with v1.2.0, upgrade the one `icx` binary all
 agents use, and keep a pre-upgrade backup if a downgrade to v1.2.0 might be needed.
