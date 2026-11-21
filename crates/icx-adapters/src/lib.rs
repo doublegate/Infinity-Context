@@ -555,7 +555,7 @@ unprefixed_secret = {unpref_sec}
             r#"{"jsonrpc":"2.0","id":99,"method":"tools/call","params":{}}"#,
             &mut mmu,
         );
-        assert!(no_args_call.to_string().contains("ICX:STATUS"));
+        assert_eq!(no_args_call["error"]["code"], -32602);
         let bad_slice = McpPagerServer::execute_icx_op(
             &serde_json::json!({"op": "slice", "id": exit_res.artifact_id.to_string(), "range": [0, 5]}),
             &mut mmu,
@@ -702,7 +702,7 @@ unprefixed_secret = {unpref_sec}
                 &mut mmu,
             )
             .unwrap();
-        assert!(codex_mcp_post.contains("updatedMCPToolOutput"));
+        assert!(!codex_mcp_post.contains("updatedMCPToolOutput"));
         let codex_pager_post = codex_trait
             .handle_hook_event(
                 "post-tool-use",
@@ -2058,7 +2058,7 @@ unprefixed_secret = {unpref_sec}
             r#"{"jsonrpc":"2.0","id":11,"method":"notifications/initialized"}"#,
             &mut mmu,
         );
-        assert!(notif_with_id.is_null());
+        assert_eq!(notif_with_id["error"]["code"], -32601);
 
         // Verify trailing blank lines (`\n\n`) do not falsely set `was_redacted = true`
         let (_, trailing_blank_redacted) =
@@ -2189,10 +2189,10 @@ unprefixed_secret = {unpref_sec}
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}"#
         ));
         assert!(McpPagerServer::is_mutating_request(
-            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{"op":"fold","q":"s"}}}"#
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"icx","arguments":{"op":"fold","q":"s"}}}"#
         ));
         assert!(McpPagerServer::is_mutating_request(
-            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{"op":"xagent","q":"msg"}}}"#
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"icx","arguments":{"op":"xagent","q":"msg"}}}"#
         ));
         assert!(!McpPagerServer::is_mutating_request(
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{"op":"xagent"}}}"#
@@ -2233,6 +2233,14 @@ unprefixed_secret = {unpref_sec}
             "⟪ICX:PINNED_HEAD│system=infinity-context-mmu-v1│cache_breakpoint=0⟫\n".repeat(450),
             epoch_cfg,
         );
+        // This cache-specific fixture pins over 32 KiB and retargets history at 20,480 estimated
+        // tokens (~80 KiB). Give it a 128 KiB model allowance so window eviction does not replace
+        // the epoch-cache experiment. Separate tests exercise bounded 32 KiB-window paging.
+        mmu.epochs
+            .set_window_budget(
+                icx_core::epoch::PromptWindowBudget::new(131_072, 4096, 4096).unwrap(),
+            )
+            .unwrap();
 
         let shared_filler = "test crate_core::suite::verify_invariant_case ... ok\n".repeat(320);
 

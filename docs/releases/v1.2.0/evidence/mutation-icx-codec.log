@@ -1,0 +1,13 @@
+Found 30 mutants to test
+ok       Unmutated baseline in 26s build + 0s test
+MISSED   crates/icx-codec/src/ahtl.rs:207:28: replace && with || in escape_clause_field in 1s build + 0s test
+MISSED   crates/icx-codec/src/ahtl.rs:734:31: replace || with && in AhtlWirePacketV1::parse in 2s build + 0s test
+MISSED   crates/icx-codec/src/redact.rs:157:19: replace + with * in SecretRedactor::sensitive_continuation in 2s build + 0s test
+MISSED   crates/icx-codec/src/redact.rs:372:40: replace + with * in SecretRedactor::redact_line in 1s build + 0s test
+MISSED   crates/icx-codec/src/redact.rs:416:45: replace || with && in SecretRedactor::redact_value_span in 2s build + 0s test
+TIMEOUT  crates/icx-codec/src/redact.rs:563:40: replace + with * in SecretRedactor::redact_colon_assignments in 1s build + 90s test
+MISSED   crates/icx-codec/src/redact.rs:620:51: replace - with + in SecretRedactor::redact_cli_flags in 1s build + 0s test
+MISSED   crates/icx-codec/src/redact.rs:803:78: replace == with != in SecretRedactor::redact_jwt_tokens in 1s build + 0s test
+MISSED   crates/icx-codec/src/redact.rs:937:13: replace || with && in SecretRedactor::is_high_entropy_secret_candidate in 1s build + 0s test
+MISSED   crates/icx-codec/src/skeleton.rs:228:45: replace < with <= in StructuralSkeletonizer::skeletonize_diff in 2s build + 0s test
+30 mutants tested in 3m: 9 missed, 20 caught, 1 timeouts

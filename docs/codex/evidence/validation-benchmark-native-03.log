@@ -1,0 +1,12 @@
+=== Infinity-Context (icx) SLO & Accuracy Benchmark Suite ===
+  [PASS] 10,240-bit HDC Bind (^) + Permute: 69.20 ns / op (1,000 ops)
+  [FAIL] 10,240-bit HDC Hamming Scan      : 4685.31 us / 1,000 nodes (46853.05 us / 10k nodes, min_dist=4931)
+  [PASS] Fractal IFS Suffix Match         : 44.75 ns / pair (shared_depth=6)
+  [FAIL] Two-Stage HDC + CSR PPR          : 1286.82 us (two-stage query), 179.03 us (201-node CSR PPR)
+  [PASS] AHTL Compression Ratio           : 214.0x on a repetitive 1,200-line test log (61413 B -> 287 B in 89.52 us)
+  [INFO] AHTL ratio, varied log      : 159.8x (14700 B -> 92 B; skeleton + handle, full text via deref, not a lossless encoding)
+  [FAIL] FastCDC + BLAKE3 CAS Ingest (64K): 1249.71 us (64659 B across 8 chunks)
+  [PASS] Atomic Seqlock Broadcast         : 107.5 ns / slot (1,000 publishes)
+  [PASS] Full Synchronous Hook Round-Trip : 412.62 us (PostToolUse virtualization)
+  [PASS] 50-Turn NIH + Cache-Epoch        : 95.46% byte-weighted prefix reuse over all turns (95.38% excluding seal turns; synthetic transcript, byte proxy), lossless passkey recovery (60.11 ms)
+icx benchmark error: 3 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (4685.31 us / 1,000 nodes (46853.05 us / 10k nodes, min_dist=4931)); Two-Stage HDC + CSR PPR           (1286.82 us (two-stage query), 179.03 us (201-node CSR PPR)); FastCDC + BLAKE3 CAS Ingest (64K) (1249.71 us (64659 B across 8 chunks))

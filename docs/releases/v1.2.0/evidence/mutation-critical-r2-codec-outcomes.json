@@ -1,0 +1,434 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 14.534494346,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.301180023,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/ahtl.rs:623:33: replace || with && in AhtlPacket::to_profile_a",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/ahtl.rs",
+          "function": {
+            "function_name": "AhtlPacket::to_profile_a",
+            "return_type": "-> Result<AhtlWirePacketV1, CodecError>",
+            "span": {
+              "start": {
+                "line": 607,
+                "column": 5
+              },
+              "end": {
+                "line": 649,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 623,
+              "column": 33
+            },
+            "end": {
+              "line": 623,
+              "column": 35
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__ahtl.rs_line_623_col_33.log",
+      "diff_path": "diff/crates__icx-codec__src__ahtl.rs_line_623_col_33.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.94443065,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.100881417,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/ahtl.rs:630:33: replace || with && in AhtlPacket::to_profile_a",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/ahtl.rs",
+          "function": {
+            "function_name": "AhtlPacket::to_profile_a",
+            "return_type": "-> Result<AhtlWirePacketV1, CodecError>",
+            "span": {
+              "start": {
+                "line": 607,
+                "column": 5
+              },
+              "end": {
+                "line": 649,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 630,
+              "column": 33
+            },
+            "end": {
+              "line": 630,
+              "column": 35
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__ahtl.rs_line_630_col_33.log",
+      "diff_path": "diff/crates__icx-codec__src__ahtl.rs_line_630_col_33.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.949418887,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.100946587,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/ahtl.rs:726:31: replace || with && in AhtlWirePacketV1::parse",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/ahtl.rs",
+          "function": {
+            "function_name": "AhtlWirePacketV1::parse",
+            "return_type": "-> Result<Self, CodecError>",
+            "span": {
+              "start": {
+                "line": 687,
+                "column": 5
+              },
+              "end": {
+                "line": 756,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 726,
+              "column": 31
+            },
+            "end": {
+              "line": 726,
+              "column": 33
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__ahtl.rs_line_726_col_31.log",
+      "diff_path": "diff/crates__icx-codec__src__ahtl.rs_line_726_col_31.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.015624525,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.101184941,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/ahtl.rs:734:31: replace || with && in AhtlWirePacketV1::parse",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/ahtl.rs",
+          "function": {
+            "function_name": "AhtlWirePacketV1::parse",
+            "return_type": "-> Result<Self, CodecError>",
+            "span": {
+              "start": {
+                "line": 687,
+                "column": 5
+              },
+              "end": {
+                "line": 756,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 734,
+              "column": 31
+            },
+            "end": {
+              "line": 734,
+              "column": 33
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__ahtl.rs_line_734_col_31.log",
+      "diff_path": "diff/crates__icx-codec__src__ahtl.rs_line_734_col_31.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.943297775,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.100994044,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/ahtl.rs:861:46: replace || with && in EpochHeader::parse",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/ahtl.rs",
+          "function": {
+            "function_name": "EpochHeader::parse",
+            "return_type": "-> Result<Self, CodecError>",
+            "span": {
+              "start": {
+                "line": 848,
+                "column": 5
+              },
+              "end": {
+                "line": 905,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 861,
+              "column": 46
+            },
+            "end": {
+              "line": 861,
+              "column": 48
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__ahtl.rs_line_861_col_46.log",
+      "diff_path": "diff/crates__icx-codec__src__ahtl.rs_line_861_col_46.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.887794513,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.100782954,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/ahtl.rs:872:13: replace || with && in EpochHeader::parse",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/ahtl.rs",
+          "function": {
+            "function_name": "EpochHeader::parse",
+            "return_type": "-> Result<Self, CodecError>",
+            "span": {
+              "start": {
+                "line": 848,
+                "column": 5
+              },
+              "end": {
+                "line": 905,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 872,
+              "column": 13
+            },
+            "end": {
+              "line": 872,
+              "column": 15
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__ahtl.rs_line_872_col_13.log",
+      "diff_path": "diff/crates__icx-codec__src__ahtl.rs_line_872_col_13.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.934669557,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.050818264,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 6,
+  "missed": 0,
+  "caught": 6,
+  "timeout": 0,
+  "unviable": 0,
+  "success": 0,
+  "start_time": "2026-11-21T16:07:12.79422459Z",
+  "end_time": "2026-11-21T16:07:33.904289411Z",
+  "cargo_mutants_version": "27.1.0"
+}

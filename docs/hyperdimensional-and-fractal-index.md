@@ -1,6 +1,7 @@
 # Hyperdimensional (`HDC`), Fractal (`FCGA`) & Bi-Temporal Graph Index Specification
 
-**Applies to:** `icx` v1.1.0  
+**Applies to:** `icx` v1.2.0 candidate
+
 **References:** [ref-docs/novel-methods/non-human-neural-codecs-and-holographic-context.md](../ref-docs/novel-methods/non-human-neural-codecs-and-holographic-context.md) §§2–4, [ref-docs/papers/INDEX.md](../ref-docs/papers/INDEX.md) §§2–4  
 **Target Crates:** `crates/icx-hdc`, `crates/icx-store`
 
@@ -10,7 +11,7 @@
 
 To page relevant historical context into the **Ephemeral Tail Slot** without calling an external vector database or running neural encoders on the hook path, Infinity-Context combines three indexing engines (measured query costs: [docs/performance.md](performance.md)):
 
-1. **10,240-Bit Hyperdimensional Computing (`HDC/HRR`)** in `crates/icx-hdc` for instant role-bound associative similarity search.
+1. **10,240-Bit Hyperdimensional Computing (`HDC/HRR`)** in `crates/icx-hdc` for local role-bound associative similarity search.
 2. **Fractal Chaos-Game Trajectory Archives (`FCGA`)** in `crates/icx-hdc` for $O(1)$ state-sequence suffix comparison.
 3. **Bi-Temporal CSR Knowledge Graph + HippoRAG Personalized PageRank (`PPR`)** in `crates/icx-store` for multi-hop structural reasoning and temporal contradiction invalidation.
 
@@ -36,7 +37,11 @@ pub struct Hypervector {
 ### 2.2 Algebraic Operations & Two-Stage Associative Index
 
 1. **Bind (`bind` / `unbind` / `^` / `^=`):** Element-wise XOR (`self.words[i] ^ other.words[i]`). Self-inverse, involutory, and Hamming-distance preserving (`BitXor`, `BitXorAssign`, `bind_role_filler`).
-2. **Permute (`permute(shifts: usize)` / `inverse_permute(shifts: usize)`):** Cyclic word and bit rotation $\Pi^k$ and exact inverse $\Pi^{-k}$, used to encode non-commutative sequences (`encode_sequence`) and AST nesting depth.
+2. **Permute (`permute(shifts: usize)` / `inverse_permute(shifts: usize)`):** A deterministic
+   family of cyclic word/bit rotations and their exact inverses, used for non-commutative
+   sequences (`encode_sequence`) and AST nesting depth. The implemented shift 0 rotates by one
+   word; it is not an assertion that this API is the mathematical power family with identity
+   at exponent 0.
 3. **Delta-Rule Bundling (`HdcBundler`):**
    Maintains `i32` accumulator counters per bit position `acc: [i32; 10240]` (v1.0.0 used `i16`, which saturated on long histories; ICX-AUD-050) and a 128-bit non-linear fingerprint set (`dedup_fingerprint_u128`). When adding a new hypervector $V$ to an existing bundle with current thresholded readout $M$:
    - Compute similarity $\text{sim}(V, M)$; if $\text{sim}(V, M) \ge 0.85$ or its 128-bit fingerprint is already active, skip accumulation (`w = 0`, Infini-attention Delta Rule, `arXiv:2404.07143`).
@@ -44,16 +49,46 @@ pub struct Hypervector {
 4. **Similarity (`similarity(&self, other: &Self) -> f32` & `cosine_bipolar`):**
    $$\text{sim}(A, B) = 1.0 - \frac{\min(d_{\text{Hamming}}(A, B), 5120)}{5120} \in [0.0, 1.0]$$
    where random orthogonal vectors have $\mathbb{E}[\text{sim}] \approx 0.0$ and identical vectors have $\text{sim} = 1.0$.
-5. **Two-Stage Associative Query (`HdcAssociativeIndex::query_associative`):**
+5. **Hybrid Lexical-First Associative Query (`HdcAssociativeIndex::query_associative`):**
    Each indexed entry has a compact `EntrySummary` (`hv_sub64`, `subj_bloom32`, `quadrant_u16`, `surprise_q8`, `flags`, and since v1.1.0 a 256-bit `content_bloom` over the entry's subject and content tokens).
-   - **Stage 1** scores every entry on: similarity of the first 1,024 hypervector bits (16 words; v1.0.0 used 64 bits, which left a single matching token below the noise floor), exact query-token hits in the content Bloom filter, subject Bloom overlap, fractal quadrant similarity, surprise and the error flag. It keeps the top `candidate_cap` entries, where `candidate_cap = min(n, max(clamp(4k, 16, 64), clamp(n / 64, 16, 512), ceil(4 * sqrt(n)), k))` for `top_k = k`. The `sqrt(n)` floor makes the candidate set grow with the corpus so recall does not collapse as `n` grows. Indexes with at most 64 entries are scored exhaustively.
-   - **Stage 2** runs the full 10,240-bit Hamming comparison, `verified_suffix_depth` and a content-token bonus on the candidates, and returns each artifact at most once (ICX-AUD-042).
+   - **Exact candidate path:** normalized subject/content tokens map to entry postings. Every
+     entry matching a query token joins the candidate set independently of approximate scores.
+     Bloom matches are probabilistic and must not be described as exact token hits.
+     The shared lookup tokenizer preserves alphanumerics and `_`, `:`, `/`, drops tokens shorter
+     than two UTF-8 bytes, and applies ASCII lowercasing; it does not provide full Unicode case folding.
+   - **Approximate Stage 1** scores every entry on similarity of the first 1,024 hypervector bits,
+     content/subject Bloom overlap, fractal quadrant similarity, surprise and the error flag.
+     It keeps `candidate_cap = min(n, max(clamp(4k, 16, 64), clamp(n / 64, 16, 512),
+     ceil(4 * sqrt(n)), k))` candidates for `top_k = k`, then unions the exact postings.
+     This growth heuristic alone did not prevent the audit's varied-corpus recall failures.
+   - **Stage 2** refines the union with full 10,240-bit Hamming comparison and
+     `verified_suffix_depth`. Final ordering is exact query-token coverage first, combined
+     HDC/fractal/surprise score second, then artifact ID for determinism. Each artifact appears
+     at most once. Common-token queries can include/refine the whole corpus; this is a quality
+     tradeoff, not a sub-50 µs latency guarantee. Legacy indexes without postings refine exhaustively.
 
-   Measured unique-token recall on 1,000 log documents: top-1 5.1% (v1.0.0) to 99.0%, top-5 5.6% to 99.7%, with query time 24 µs to 69 µs (ICX-AUD-049). The gate test `crates/icx-hdc/tests/recall_v110.rs` requires recall@5 `>= 95%` at n = 300.
+   The earlier v1.1.0 1,000-log figures (99.0% top-1, 99.7% top-5) were fixture-specific.
+   The v1.2.0 replay reports recall@1/@5 of 100% on the 27 frozen synthetic audit rows
+   (100/1k/10k artifacts, three seeds, repetitive/varied/multilingual). See
+   [retrieval evidence](releases/v1.2.0/evidence/retrieval-results.json). This does not establish
+   general semantic recall, model effectiveness or an isolated latency bound; timings shared
+   the host with other validation work.
 
-### 2.3 Persisted Snapshot (`ICXHDC03`)
+### 2.3 Persisted Snapshot (`ICXHDC04`, legacy `03` readable)
 
-The index is persisted in the workspace store as a versioned binary snapshot (`crates/icx-hdc/src/snapshot.rs`), so loading a workspace does not re-encode every stored event. The format is little-endian and length-prefixed with magic `ICXHDC03`. Every count is checked against a cap (16 Mi items, 64 KiB strings) before allocation, and truncated, oversized, non-UTF-8, inconsistent or trailing-byte input is rejected with `SnapshotError`. A fuzz target (`fuzz/fuzz_targets/hdc_snapshot.rs`) covers the decoder.
+The little-endian, length-prefixed `ICXHDC04` snapshot persists entries, summaries, trajectory,
+surprise state and optional exact token postings. Counts are capped (16 Mi items, 64 KiB strings).
+Decoding rejects truncation, invalid UTF-8, trailing bytes, nonfinite/out-of-range coordinates or
+surprise parameters, inconsistent cached summaries/bundler readout, and invalid posting indices
+or content-Bloom caches. This validates internal consistency, not the source provenance of an
+arbitrary unsealed snapshot; workspace MAC checks remain separate.
+
+Legacy `ICXHDC03` remains readable. Because 03 lacks exact content tokens, the MMU replays its
+persisted CAS event log to rebuild the index before taking the new fast path. A standalone
+legacy index can still answer queries through exhaustive refinement. Saving writes 04, which
+older binaries cannot read; keep a pre-upgrade workspace backup for downgrade. CAS handles and
+unversioned Q15 coordinate interpretation are unchanged. The decoder fuzz target and an
+independently generated 03 fixture exercise this compatibility boundary.
 
 ---
 
@@ -73,7 +108,9 @@ pub struct FractalCoord {
 
 At each transition $s_t$:
 
-1. Extract 16 bipolar signs $v_j(s_t) \in \{-1.0, +1.0\}$ from the parity of the 160 `u64` words of $H(s_t)$ grouped into 16 blocks of 10 words.
+1. Extract 16 bipolar signs $v_j(s_t) \in \{-1.0, +1.0\}$ by majority over each block of
+   10 hypervector words (640 bits): at least 320 set bits selects +1, otherwise −1. This is a
+   lossy projection, not parity and not a lossless sequence encoding.
 2. Apply the contractive affine map ($\alpha = 0.5$):
    $$\text{coords}[j] \leftarrow 0.5 \cdot \text{coords}[j] + 0.5 \cdot v_j(s_t) \quad \forall j \in 0..16$$
 3. **Chebyshev & Inverse-IFS Verified Suffix Matching (`shared_suffix_depth` / `verified_suffix_depth`):**

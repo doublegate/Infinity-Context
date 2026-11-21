@@ -1,0 +1,353 @@
+   Compiling cfg-if v1.0.5
+   Compiling cpufeatures v0.3.1
+   Compiling constant_time_eq v0.4.2
+   Compiling arrayvec v0.7.8
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.19
+   Compiling bitflags v2.13.2
+   Compiling serde_core v1.0.229
+   Compiling zmij v1.0.23
+   Compiling linux-raw-sys v0.12.1
+   Compiling foldhash v0.2.0
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling smallvec v1.16.6
+   Compiling fallible-iterator v0.3.0
+   Compiling thiserror v2.0.21
+   Compiling libsqlite3-sys v0.40.0
+   Compiling rand_core v0.10.1
+   Compiling libc v0.2.191
+   Compiling num-traits v0.2.19
+   Compiling hashbrown v0.17.1
+   Compiling rand_xorshift v0.5.0
+   Compiling chacha20 v0.10.2
+   Compiling core_detect v1.0.0
+   Compiling blake3 v1.8.7
+   Compiling regex-syntax v0.8.12
+   Compiling unarray v0.1.4
+   Compiling hashlink v0.12.2
+   Compiling rusqlite v0.43.0
+   Compiling getrandom v0.4.3
+   Compiling rand v0.10.4
+   Compiling rustix v1.1.6
+   Compiling proptest v1.12.0
+   Compiling serde v1.0.229
+   Compiling serde_json v1.0.154
+   Compiling icx-core v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core)
+   Compiling icx-codec v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-codec)
+   Compiling icx-hdc v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-hdc)
+   Compiling icx-store v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-store)
+   Compiling icx-bus v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-bus)
+   Compiling icx-adapters v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-adapters)
+   Compiling icx-proxy v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-proxy)
+   Compiling icx-cli v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 24.04s
+     Running unittests src/lib.rs (/tmp/Infinity-Context/validation/target/debug/build/icx-adapters/bbc35b88b1f121a9/out/icx_adapters-bbc35b88b1f121a9)
+
+running 6 tests
+test tests::sprint_4_3_single_tool_mcp_pager_provenance_and_ambiguity_conformance ... ok
+test tests::sprint_5_1_four_agent_shared_shm_telepathy_and_sub_100us_propagation ... ok
+test tests::cross_agent_telepathy_and_lossless_mcp_deref_work_end_to_end ... ok
+test tests::all_adapters_and_mcp_operations_conform_to_wire_contracts ... ok
+test tests::sprint_4_2_antigravity_and_hermes_adapters_conformance ... ok
+test tests::sprint_5_1_500_turn_two_million_token_nih_oolong_and_prefix_cache_simulation ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.77s
+
+     Running tests/claude_contract.rs (/tmp/Infinity-Context/validation/target/debug/build/icx-adapters/b03593e4d10e8d9c/out/claude_contract-b03593e4d10e8d9c)
+
+running 8 tests
+test subagent_stop_folds_with_last_assistant_message_and_never_keeps_it_running ... ok
+test postcompact_stores_the_summary_and_emits_nothing_model_facing ... ok
+test precompact_emits_plain_text_instructions_under_the_cap ... ok
+test mcp_tools_receive_a_string_replacement ... ok
+test bash_replacement_matches_the_builtin_output_shape ... ok
+test nested_builtin_shapes_keep_their_structure ... ok
+test array_and_non_textual_responses_keep_a_valid_shape ... ok
+test precompact_instructions_are_capped_on_large_workspaces ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+
+     Running tests/hardening.rs (/tmp/Infinity-Context/validation/target/debug/build/icx-adapters/03740bee31c4759b/out/hardening-03740bee31c4759b)
+
+running 3 tests
+test bus_file_refuses_symlinks_and_permissive_preexisting_files ... ok
+test transcript_symlink_is_not_followed ... ok
+test transcript_path_pointing_at_a_fifo_returns_immediately ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/mcp_bounds.rs (/tmp/Infinity-Context/validation/target/debug/build/icx-adapters/7cd5c2c541aac5ce/out/mcp_bounds-7cd5c2c541aac5ce)
+
+running 6 tests
+test unknown_tool_names_are_reported_as_errors ... ok
+test nested_fold_branches_are_bounded ... ok
+test server_discover_advertises_versions_capabilities_and_identity ... ok
+test modern_requests_carry_result_type_and_reject_unknown_versions ... ok
+test grep_results_carry_the_untrusted_data_provenance_header ... ok
+test legacy_initialize_negotiates_the_requested_supported_version ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/workspace_store.rs (/tmp/Infinity-Context/validation/target/debug/build/icx-adapters/3a9b423ff63bce9a/out/workspace_store-3a9b423ff63bce9a)
+
+running 13 tests
+test loading_an_empty_directory_clears_emitted_block_digests ... ok
+test wall_clock_mode_records_real_monotonic_timestamps ... ok
+test state_built_on_a_new_workspace_survives_a_store_appearing_empty ... ok
+test sqlite_store_files_are_owner_only ... ok
+test emitted_block_digests_live_in_their_own_table_not_the_state_blob ... ok
+test reopening_a_store_tightens_widened_file_modes ... ok
+test extra_rows_in_the_tables_are_removed_before_sealing ... ok
+test sqlite_store_generation_advances_once_per_save ... ok
+test saving_a_stale_snapshot_over_a_newer_store_is_refused ... ok
+test a_save_repairs_rows_deleted_behind_a_long_lived_mmu ... ok
+test legacy_json_workspace_is_migrated_without_deleting_it ... ok
+test saving_one_mmu_to_a_second_directory_writes_all_content_there ... ok
+test sqlite_store_round_trips_cas_index_dag_and_graph ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+     Running tests/workspace_trust.rs (/tmp/Infinity-Context/validation/target/debug/build/icx-adapters/32fee2e1d95b2f3a/out/workspace_trust-32fee2e1d95b2f3a)
+
+running 18 tests
+test default_workspace_lives_outside_the_repository_and_is_stable_across_subdirs ... ok
+test explicit_and_env_directories_take_precedence_over_default ... ok
+test group_or_world_accessible_workspace_is_refused ... ok
+test existing_unsealed_workspace_is_refused_until_explicitly_trusted ... ok
+test new_workspace_is_created_private_sealed_and_ignored_by_git ... ok
+test permissive_install_key_is_rejected ... ok
+test repo_local_icx_is_reported_but_never_selected_by_default ... ok
+test seal_does_not_transfer_to_a_copied_or_moved_workspace ... ok
+test trust_and_key_errors_fail_closed ... ok
+test unresolvable_roots_fail_closed_instead_of_using_a_shared_directory ... ok
+test seal_from_another_install_key_is_rejected ... ok
+test trust_tightens_contained_files_and_skips_symlinks ... ok
+test install_key_checks_metadata_before_reading_and_never_blocks_on_a_fifo ... ok
+test concurrent_first_use_of_the_install_key_agrees_on_one_key ... ok
+test store_replaced_through_version_control_is_rejected_even_in_a_trusted_dir ... ok
+test a_resident_mmu_saving_over_a_tampered_row_does_not_launder_it ... ok
+test editing_any_persisted_row_of_a_sealed_store_is_rejected ... ok
+test concurrent_prepare_of_one_directory_does_not_race_on_temp_files ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+     Running unittests src/lib.rs (/tmp/Infinity-Context/validation/target/debug/build/icx-bus/b96412fa6451b050/out/icx_bus-b96412fa6451b050)
+
+running 3 tests
+test ring::tests::packet_kind_classification_agent_decoding_and_validation_errors ... ok
+test ring::tests::seqlock_8_writers_8_readers_10000_messages_stress_test_and_shared_file_attach ... ok
+test ring::tests::seqlock_ring_publishes_and_reads_concurrently_without_torn_reads ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/loss_signalling.rs (/tmp/Infinity-Context/validation/target/debug/build/icx-bus/db32e4123875ea28/out/loss_signalling-db32e4123875ea28)
+
+running 3 tests
+test separately_opened_file_handles_see_each_others_events ... ok
+test caught_up_reader_reports_no_loss ... ok
+test reader_that_falls_behind_by_more_than_the_ring_is_told_how_many_it_lost ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (/tmp/Infinity-Context/validation/target/debug/build/icx-cli/f95ebf3bc65f2374/out/icx-f95ebf3bc65f2374)
+
+running 15 tests
+test daemon::tests::flush_max_is_enforced_even_while_connections_are_queued ... ok
+test tests::deref_output_is_framed_as_untrusted_unless_raw ... ok
+test tests::encode_ahtl_refuses_an_untrusted_workspace_instead_of_printing_a_dangling_handle ... ok
+test tests::daemon_rejects_overlong_socket_paths ... ok
+test tests::stdin_and_mcp_lines_are_bounded ... ok
+test tests::failed_trust_leaves_the_directory_unadopted ... ok
+test tests::trust_does_not_adopt_emitted_block_digests_from_the_adopted_store ... ok
+test tests::cloned_repo_workspace_is_not_injected_into_agent_context_until_trusted ... ok
+test tests::cli_init_and_deref_round_trip_with_full_and_short_handles ... ok
+test tests::cli_subcommands_status_doctor_benchmark_encode_decode_hook_and_mcp_run_cleanly ... FAILED
+test tests::daemon_does_not_save_after_requests_it_could_not_dispatch ... FAILED
+test tests::daemon_keeps_unsaved_state_and_retries_when_a_flush_fails ... FAILED
+test tests::daemon_handles_bad_requests_refuses_a_second_instance_and_idle_exits_after_flushing ... FAILED
+test tests::daemon_gives_up_on_a_persistent_flush_failure_and_still_exits ... FAILED
+test tests::daemon_serves_hooks_over_private_socket_and_flushes_state_on_exit ... FAILED
+
+failures:
+
+---- tests::cli_subcommands_status_doctor_benchmark_encode_decode_hook_and_mcp_run_cleanly stdout ----
+Infinity-Context (icx) v1.1.0 — Cross-Agent Virtual Context MMU & AHTL Codec
+
+Usage:
+  icx <SUBCOMMAND> [OPTIONS]
+
+Subcommands:
+  init [--dir <PATH>]
+      Create and seal a workspace (default: per-project under $XDG_STATE_HOME/icx/workspaces)
+  daemon [--dir <PATH>] [--idle-exit <SECS>]
+      Keep the workspace resident and serve hooks over a private Unix socket (fast path)
+  trust --dir <PATH>
+      Adopt an existing workspace you own (e.g. a v1.0.x `.icx/`): chmod 0700 + owner seal
+  deref <HANDLE> [--lines <START:END>] [--dir <PATH>] [--raw]
+      Dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle; output is framed as
+      untrusted data and delimiter-escaped unless --raw (byte-exact) is given
+  hook --agent <claude-code|codex|agy|hermes> --event <EVENT> [--dir <PATH>]
+      Execute synchronous <500us lifecycle hook (reads JSON from stdin, writes JSON to stdout)
+  mcp-serve [--dir <PATH>]
+      Run the Single-Tool Polymorphic MCP Virtual Pager (`icx`) over stdio (JSON-RPC 2.0)
+  proxy [--listen <HOST:PORT>] [--provider <anthropic|openai|gemini>] [--upstream <URL>] [--dir <PATH>] [--max-requests <N>]
+        [--allow-remote] [--insecure-no-auth]
+      Run the Cache-Epoch HTTP/1.1 & SSE reverse proxy (default 127.0.0.1:49380). Requests must
+      carry the install token (base URL http://HOST:PORT/t/<token> or header x-icx-token)
+  proxy-transform [--provider <anthropic|openai|gemini>] [--dir <PATH>]
+      Transform an outbound Anthropic (`/v1/messages`), OpenAI (`/v1/chat/completions`, `/v1/responses`), or Gemini (`/v1beta/models/*`) JSON request
+  encode-ahtl <FILE> [--dir <PATH>]
+      Compress a source file, diff, or build log into an AHTL Holographic Packet + BLAKE3 handle
+  decode-ahtl <AHTL_STRING>
+      Parse and inspect an AHTL Holographic Packet's clauses and Braille-256 sketch
+  status [--dir <PATH>]
+      Print Infinity-Context MMU status and schema overview
+  doctor [--dir <PATH>]
+      Inspect local agent installations (claude, codex, agy, hermes), /dev/shm, and workspace integrity
+  benchmark
+      Execute the end-to-end 9-SLO benchmark suite (HDC, Fractal, PPR, AHTL, FastCDC, Seqlock, Hook, NIH)
+⟪ICX:STATUS│cas_artifacts=0│redacted_artifacts=0│unique_chunks=0│dag_nodes=0│sealed_epochs=0│hdc_entries=0│graph_edges=0│shm_seq=0⟫
+=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===
+  [DETECTED] Claude Code Binary               -> /home/parobek/.local/bin/claude
+  [DETECTED] Claude Settings                  -> /home/parobek/.claude/settings.json
+  [DETECTED] OpenAI Codex Binary              -> /home/parobek/.local/bin/codex
+  [DETECTED] Codex Hooks Config               -> /home/parobek/.codex/hooks.json
+  [DETECTED] Codex State SQLite               -> /home/parobek/.codex/state_5.sqlite
+  [DETECTED] Antigravity CLI (agy)            -> /home/parobek/.local/bin/agy
+  [DETECTED] Antigravity Hooks                -> /home/parobek/.gemini/config/hooks.json
+  [DETECTED] Hermes Agent Source              -> /home/parobek/.hermes/hermes-agent/agent/context_engine.py
+  [DETECTED] HTTPS Proxy Transport (curl)     -> /usr/bin/curl
+  [DETECTED] POSIX Shared Memory (/dev/shm)   -> /dev/shm (writable=true)
+Doctor status: READY
+=== Infinity-Context (icx) SLO & Accuracy Benchmark Suite ===
+  [PASS] 10,240-bit HDC Bind (^) + Permute: 3217.00 ns / op (1,000 ops)
+  [PASS] 10,240-bit HDC Hamming Scan      : 771.49 us / 1,000 nodes (7714.87 us / 10k nodes, min_dist=4931)
+  [PASS] Fractal IFS Suffix Match         : 218.18 ns / pair (shared_depth=6)
+  [PASS] Two-Stage HDC + CSR PPR          : 975.32 us (two-stage query), 503.20 us (201-node CSR PPR)
+  [PASS] AHTL Compression Ratio           : 214.0x on a repetitive 1,200-line test log (61413 B -> 287 B in 364.25 us)
+  [INFO] AHTL ratio, varied log      : 159.8x (14700 B -> 92 B; skeleton + handle, full text via deref, not a lossless encoding)
+  [PASS] FastCDC + BLAKE3 CAS Ingest (64K): 1869.59 us (64659 B across 8 chunks)
+  [PASS] Atomic Seqlock Broadcast         : 525.2 ns / slot (1,000 publishes)
+  [PASS] Full Synchronous Hook Round-Trip : 5129.57 us (PostToolUse virtualization)
+  [PASS] 50-Turn NIH + Cache-Epoch        : 95.46% byte-weighted prefix reuse over all turns (95.38% excluding seal turns; synthetic transcript, byte proxy), lossless passkey recovery (332.95 ms)
+All Infinity-Context SLO gates PASSED.
+⟪ICX:INIT│dir=/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775│status=READY⟫
+⟪ICX:INIT│dir=/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775│status=READY⟫
+⟦Δ:/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs#L1-1⊢⊕L1:cli_sample()_->_u32⋮raw_B:33↦#icx:d39fc86c55f463c2⋮Ψ:⡯⠚⢓⢫⢘⢣⢎⠁⟧
+=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===
+  [DETECTED] Claude Code Binary               -> /home/parobek/.local/bin/claude
+  [DETECTED] Claude Settings                  -> /home/parobek/.claude/settings.json
+  [DETECTED] OpenAI Codex Binary              -> /home/parobek/.local/bin/codex
+  [DETECTED] Codex Hooks Config               -> /home/parobek/.codex/hooks.json
+  [DETECTED] Codex State SQLite               -> /home/parobek/.codex/state_5.sqlite
+  [DETECTED] Antigravity CLI (agy)            -> /home/parobek/.local/bin/agy
+  [DETECTED] Antigravity Hooks                -> /home/parobek/.gemini/config/hooks.json
+  [DETECTED] Hermes Agent Source              -> /home/parobek/.hermes/hermes-agent/agent/context_engine.py
+  [DETECTED] HTTPS Proxy Transport (curl)     -> /usr/bin/curl
+  [DETECTED] POSIX Shared Memory (/dev/shm)   -> /dev/shm (writable=true)
+  [VERIFIED] Workspace Storage & Merkle-DAG   -> /tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775 (cas_artifacts=2, dag_nodes=3, graph_edges=6)
+Doctor status: READY
+=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===
+  [DETECTED] Claude Code Binary               -> /home/parobek/.local/bin/claude
+  [DETECTED] Claude Settings                  -> /home/parobek/.claude/settings.json
+  [DETECTED] OpenAI Codex Binary              -> /home/parobek/.local/bin/codex
+  [DETECTED] Codex Hooks Config               -> /home/parobek/.codex/hooks.json
+  [DETECTED] Codex State SQLite               -> /home/parobek/.codex/state_5.sqlite
+  [DETECTED] Antigravity CLI (agy)            -> /home/parobek/.local/bin/agy
+  [DETECTED] Antigravity Hooks                -> /home/parobek/.gemini/config/hooks.json
+  [DETECTED] Hermes Agent Source              -> /home/parobek/.hermes/hermes-agent/agent/context_engine.py
+  [DETECTED] HTTPS Proxy Transport (curl)     -> /usr/bin/curl
+  [DETECTED] POSIX Shared Memory (/dev/shm)   -> /dev/shm (writable=true)
+  [WARNING ] Workspace Storage & Merkle-DAG   -> /tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/tampered_dag_ws (I/O error in Content-Addressed Store: workspace store at /tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/tampered_dag_ws was not written by this icx install (seal mismatch); run `icx trust --dir /tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/tampered_dag_ws` if you replaced it yourself)
+Doctor status: DEGRADED
+=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===
+  [DETECTED] Claude Code Binary               -> /home/parobek/.local/bin/claude
+  [DETECTED] Claude Settings                  -> /home/parobek/.claude/settings.json
+  [DETECTED] OpenAI Codex Binary              -> /home/parobek/.local/bin/codex
+  [DETECTED] Codex Hooks Config               -> /home/parobek/.codex/hooks.json
+  [DETECTED] Codex State SQLite               -> /home/parobek/.codex/state_5.sqlite
+  [DETECTED] Antigravity CLI (agy)            -> /home/parobek/.local/bin/agy
+  [DETECTED] Antigravity Hooks                -> /home/parobek/.gemini/config/hooks.json
+  [DETECTED] Hermes Agent Source              -> /home/parobek/.hermes/hermes-agent/agent/context_engine.py
+  [DETECTED] HTTPS Proxy Transport (curl)     -> /usr/bin/curl
+  [DETECTED] POSIX Shared Memory (/dev/shm)   -> /dev/shm (writable=true)
+  [CORRUPT ] Workspace Storage & Merkle-DAG   -> /tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/missing_cas_ws (artifact `#icx:f7eefcc71d8f8228` not found in Content-Addressed Store)
+Doctor status: CORRUPT
+=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===
+  [DETECTED] Claude Code Binary               -> /home/parobek/.local/bin/claude
+  [DETECTED] Claude Settings                  -> /home/parobek/.claude/settings.json
+  [DETECTED] OpenAI Codex Binary              -> /home/parobek/.local/bin/codex
+  [DETECTED] Codex Hooks Config               -> /home/parobek/.codex/hooks.json
+  [DETECTED] Codex State SQLite               -> /home/parobek/.codex/state_5.sqlite
+  [DETECTED] Antigravity CLI (agy)            -> /home/parobek/.local/bin/agy
+  [DETECTED] Antigravity Hooks                -> /home/parobek/.gemini/config/hooks.json
+  [DETECTED] Hermes Agent Source              -> /home/parobek/.hermes/hermes-agent/agent/context_engine.py
+  [DETECTED] HTTPS Proxy Transport (curl)     -> /usr/bin/curl
+  [DETECTED] POSIX Shared Memory (/dev/shm)   -> /dev/shm (writable=true)
+  [ABSENT  ] Workspace Storage & Merkle-DAG   -> /tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/no_such_doctor_dir (not found)
+Doctor status: DEGRADED
+  [FAIL] synthetic_gate: 9999 us
+Profile:    B (Interoperable Dual-Channel)
+Kind:       CodeDelta (Δ)
+Subject:    /tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs
+Line Range: Some((1, 1))
+Deref ID:   Some("#icx:d39fc86c55f463c2")
+Slice Hint: None
+Hologram:   [6f, 1a, 93, ab, 98, a3, 7d, 01]
+Clauses (2):
+  - ⊕L1:cli_sample()_->_u32
+  - raw_B:33
+⟪ICX:PROVENANCE│id=#icx:d39fc86c55f463c2│trust=untrusted_data⟫
+pub fn cli_sample() -> u32 { 7 }{"hookSpecificOutput":{"additionalContext":"⟪ICX:LEGEND│Δ=code_mut│Ψ=tool_stub│Ω=invariant│Θ=xagent│Φ=folded_branch│↦=deref_via_icx_tool⟫\n⟪ICX:TAIL_SLOT│agent=claude-code│epochs=0│cas_artifacts=2⟫\n⟦Θ:mcp@/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs⊢Δ:/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs#L1-1⊢⊕L1:cli_sample()_->_u32⋮raw_B:33↦#icx:d39fc86c55f463c2⋮Ψ:⡯⠚⢓⢫⢘⢣⢎⠁⟧\n⟦Θ:mcp@/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs⊢Δ:/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs#L1-1⊢⊕L1:cli_sample()_->_u32⋮raw_B:33↦#icx:d39fc86c55f463c2⋮Ψ:⡯⠚⢓⢫⢘⢣⡽⠁⟧\n⟦Ψ:HDC_RECALL⊢subj=/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs⋮sim=0.00⋮suffix=3↦#icx:d39fc86c55f463c2⟧\n⟦Ψ:HDC_RECALL⊢subj=src/ephemeral.rs⋮sim=0.01⋮suffix=0↦#icx:71d6348ead48db27⟧","hookEventName":"SessionStart"}}
+{"continue":true,"hookSpecificOutput":{"additionalContext":"⟪ICX:LEGEND│Δ=code_mut│Ψ=tool_stub│Ω=invariant│Θ=xagent│Φ=folded_branch│↦=deref_via_icx_tool⟫\n⟪ICX:TAIL_SLOT│agent=codex│epochs=0│cas_artifacts=2⟫\n⟦Θ:mcp@/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs⊢Δ:/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs#L1-1⊢⊕L1:cli_sample()_->_u32⋮raw_B:33↦#icx:d39fc86c55f463c2⋮Ψ:⡯⠚⢓⢫⢘⢣⢎⠁⟧\n⟦Θ:mcp@/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs⊢Δ:/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs#L1-1⊢⊕L1:cli_sample()_->_u32⋮raw_B:33↦#icx:d39fc86c55f463c2⋮Ψ:⡯⠚⢓⢫⢘⢣⡽⠁⟧\n⟦Ψ:HDC_RECALL⊢subj=/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs⋮sim=0.00⋮suffix=3↦#icx:d39fc86c55f463c2⟧\n⟦Ψ:HDC_RECALL⊢subj=src/ephemeral.rs⋮sim=0.00⋮suffix=0↦#icx:71d6348ead48db27⟧","hookEventName":"SessionStart"},"stopReason":null,"suppressOutput":false,"systemMessage":null}
+{"injectSteps":[{"systemMessage":{"metadata":{"user_markdown":""},"systemMessage":"⟪ICX:TAIL_SLOT│agent=agy│epochs=0│cas_artifacts=2⟫\n⟦Θ:mcp@/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs⊢Δ:/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs#L1-1⊢⊕L1:cli_sample()_->_u32⋮raw_B:33↦#icx:d39fc86c55f463c2⋮Ψ:⡯⠚⢓⢫⢘⢣⢎⠁⟧\n⟦Θ:mcp@/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs⊢Δ:/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs#L1-1⊢⊕L1:cli_sample()_->_u32⋮raw_B:33↦#icx:d39fc86c55f463c2⋮Ψ:⡯⠚⢓⢫⢘⢣⡽⠁⟧\n⟦Ψ:HDC_RECALL⊢subj=/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs⋮sim=0.00⋮suffix=3↦#icx:d39fc86c55f463c2⟧\n⟦Ψ:HDC_RECALL⊢subj=src/ephemeral.rs⋮sim=0.01⋮suffix=0↦#icx:71d6348ead48db27⟧"}}],"terminationBehavior":""}
+{"systemMessage":"⟪ICX:TAIL_SLOT│agent=hermes│epochs=0│cas_artifacts=2⟫\n⟦Θ:mcp@/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs⊢Δ:/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs#L1-1⊢⊕L1:cli_sample()_->_u32⋮raw_B:33↦#icx:d39fc86c55f463c2⋮Ψ:⡯⠚⢓⢫⢘⢣⢎⠁⟧\n⟦Θ:mcp@/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs⊢Δ:/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs#L1-1⊢⊕L1:cli_sample()_->_u32⋮raw_B:33↦#icx:d39fc86c55f463c2⋮Ψ:⡯⠚⢓⢫⢘⢣⡽⠁⟧\n⟦Ψ:HDC_RECALL⊢subj=/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs⋮sim=0.00⋮suffix=3↦#icx:d39fc86c55f463c2⟧\n⟦Ψ:HDC_RECALL⊢subj=src/ephemeral.rs⋮sim=0.01⋮suffix=0↦#icx:71d6348ead48db27⟧"}
+⟪ICX:STATUS│cas_artifacts=2│redacted_artifacts=0│unique_chunks=2│dag_nodes=3│sealed_epochs=0│hdc_entries=3│graph_edges=6│shm_seq=2⟫
+icx hook error: key must be a string at line 1 column 2
+{}
+{"messages":[{"content":"hi\n⟪ICX:TAIL_SLOT│agent=claude-code│epochs=0│cas_artifacts=2⟫\n⟦Ψ:HDC_RECALL⊢subj=/tmp/Infinity-Context/validation/icx_cli_subcmd_test_5775/sample.rs⋮sim=0.02⋮suffix=3↦#icx:d39fc86c55f463c2⟧\n⟦Ψ:HDC_RECALL⊢subj=src/ephemeral.rs⋮sim=0.01⋮suffix=0↦#icx:71d6348ead48db27⟧","role":"user"}],"model":"claude-opus-4-6"}
+{"messages":[{"content":"hi\n⟪ICX:TAIL_SLOT│agent=codex│epochs=0│cas_artifacts=0⟫","role":"user"}],"model":"gpt-5"}
+{"contents":[{"parts":[{"text":"hi\n⟪ICX:TAIL_SLOT│agent=agy│epochs=0│cas_artifacts=0⟫"}],"role":"user"}]}
+{"input":"responses prompt\n⟪ICX:TAIL_SLOT│agent=codex│epochs=0│cas_artifacts=0⟫","model":"gpt-5"}
+
+thread 'tests::cli_subcommands_status_doctor_benchmark_encode_decode_hook_and_mcp_run_cleanly' (5778) panicked at crates/icx-cli/src/main.rs:2498:10:
+called `Result::unwrap()` on an `Err` value: "proxy bind `127.0.0.1:0`: Operation not permitted (os error 1)"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::daemon_does_not_save_after_requests_it_could_not_dispatch stdout ----
+
+thread 'tests::daemon_does_not_save_after_requests_it_could_not_dispatch' (5780) panicked at crates/icx-cli/src/main.rs:1916:72:
+called `Result::unwrap()` on an `Err` value: Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" }
+
+---- tests::daemon_keeps_unsaved_state_and_retries_when_a_flush_fails stdout ----
+
+thread 'tests::daemon_keeps_unsaved_state_and_retries_when_a_flush_fails' (5783) panicked at crates/icx-cli/src/main.rs:1851:9:
+assertion failed: daemon::try_hook(&sock, "claude-code", "PostToolUse", &post).is_some()
+
+---- tests::daemon_handles_bad_requests_refuses_a_second_instance_and_idle_exits_after_flushing stdout ----
+
+thread 'tests::daemon_handles_bad_requests_refuses_a_second_instance_and_idle_exits_after_flushing' (5782) panicked at crates/icx-cli/src/main.rs:1761:9:
+bind /tmp/Infinity-Context/validation/icx_cli_test_roots_5775/run/ws-b20a0be8e73dbd63.sock: Operation not permitted (os error 1)
+
+---- tests::daemon_gives_up_on_a_persistent_flush_failure_and_still_exits stdout ----
+
+thread 'tests::daemon_gives_up_on_a_persistent_flush_failure_and_still_exits' (5781) panicked at crates/icx-cli/src/main.rs:1893:9:
+assertion failed: daemon::try_hook(&sock, "claude-code", "PostToolUse", &post).is_some()
+
+---- tests::daemon_serves_hooks_over_private_socket_and_flushes_state_on_exit stdout ----
+
+thread 'tests::daemon_serves_hooks_over_private_socket_and_flushes_state_on_exit' (5785) panicked at crates/icx-cli/src/main.rs:1974:44:
+called `Result::unwrap()` on an `Err` value: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+
+
+failures:
+    tests::cli_subcommands_status_doctor_benchmark_encode_decode_hook_and_mcp_run_cleanly
+    tests::daemon_does_not_save_after_requests_it_could_not_dispatch
+    tests::daemon_gives_up_on_a_persistent_flush_failure_and_still_exits
+    tests::daemon_handles_bad_requests_refuses_a_second_instance_and_idle_exits_after_flushing
+    tests::daemon_keeps_unsaved_state_and_retries_when_a_flush_fails
+    tests::daemon_serves_hooks_over_private_socket_and_flushes_state_on_exit
+
+test result: FAILED. 9 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.07s
+
+error: test failed, to rerun pass `-p icx-cli --bin icx`

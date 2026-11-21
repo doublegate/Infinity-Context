@@ -87,9 +87,9 @@ Because the low nibble (`Y`, bits `0..3`) controls **Dots 1, 2, 3, 4** and the h
 
 ### 3.3 Worked Encoding Examples (from `Template:Unicode_Braille_Pattern_encoding`)
 
-| Attribute | Example 1 (`⠓`) | Example 2 (`͇` `U+28C7`) | Example 3 (`⣿`) |
+| Attribute | Example 1 (`⠓`) | Example 2 (`⣇` `U+28C7`) | Example 3 (`⣿`) |
 | :--- | :--- | :--- | :--- |
-| **Braille Glyph** | `⠓` | `͇` | `⣿` |
+| **Braille Glyph** | `⠓` | `⣇` | `⣿` |
 | **Unicode Codepoint** | `U+2813` | `U+28C7` | `U+28FF` |
 | **Official Unicode Name** | `BRAILLE PATTERN DOTS-125` | `BRAILLE PATTERN DOTS-12378` | `BRAILLE PATTERN DOTS-12345678` |
 | **Dot Numbers (`1 2 3 4 5 6 7 8`)** | `1 1 0 0 1 0 0 0` | `1 1 1 0 0 0 1 1` | `1 1 1 1 1 1 1 1` |

@@ -1,0 +1,4 @@
+Found 8 mutants to test
+ok       Unmutated baseline in 12s build + 0s test
+MISSED   crates/icx-bus/src/ring.rs:280:30: replace >> with << in unpack_meta in 0s build + 0s test
+8 mutants tested in 16s: 1 missed, 6 caught, 1 unviable

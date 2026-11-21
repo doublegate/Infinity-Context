@@ -1,0 +1,24 @@
+{
+  "source_manifest": "mutation-retry-source-manifest.json",
+  "selected": 4,
+  "completed": 4,
+  "outcomes": [
+    {
+      "name": "crates/icx-adapters/src/codex.rs:273:42: replace * with / in CodexRolloutTailer::compute_anchor_digest",
+      "summary": "CaughtMutant"
+    },
+    {
+      "name": "crates/icx-adapters/src/mcp.rs:81:24: replace && with || in McpPagerServer::stateful_arguments",
+      "summary": "CaughtMutant"
+    },
+    {
+      "name": "crates/icx-adapters/src/store.rs:239:9: delete field generation from struct StoredWorkspace expression in load",
+      "summary": "CaughtMutant"
+    },
+    {
+      "name": "crates/icx-cli/src/main.rs:1378:28: replace * with / in benchmark_microseconds",
+      "summary": "CaughtMutant"
+    }
+  ],
+  "scope": "Targeted test effectiveness, not whole mutation space"
+}

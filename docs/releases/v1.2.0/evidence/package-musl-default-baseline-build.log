@@ -1,0 +1,32 @@
+   Compiling serde_core v1.0.229
+   Compiling zmij v1.0.23
+   Compiling cpufeatures v0.3.1
+   Compiling arrayvec v0.7.8
+   Compiling cfg-if v1.0.5
+   Compiling itoa v1.0.19
+   Compiling constant_time_eq v0.4.2
+   Compiling memchr v2.8.3
+   Compiling blake3 v1.8.7
+   Compiling serde v1.0.229
+   Compiling serde_json v1.0.154
+   Compiling thiserror v2.0.21
+   Compiling bitflags v2.13.2
+   Compiling foldhash v0.2.0
+   Compiling hashbrown v0.17.1
+   Compiling icx-core v1.2.0 (/tmp/Infinity-Context/v120/package-source-hmwrbjy0/crates/icx-core)
+   Compiling linux-raw-sys v0.12.1
+   Compiling rustix v1.1.6
+   Compiling libsqlite3-sys v0.40.0
+   Compiling hashlink v0.12.2
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling smallvec v1.16.6
+   Compiling fallible-iterator v0.3.0
+   Compiling rusqlite v0.43.0
+   Compiling icx-bus v1.2.0 (/tmp/Infinity-Context/v120/package-source-hmwrbjy0/crates/icx-bus)
+   Compiling icx-hdc v1.2.0 (/tmp/Infinity-Context/v120/package-source-hmwrbjy0/crates/icx-hdc)
+   Compiling icx-codec v1.2.0 (/tmp/Infinity-Context/v120/package-source-hmwrbjy0/crates/icx-codec)
+   Compiling icx-store v1.2.0 (/tmp/Infinity-Context/v120/package-source-hmwrbjy0/crates/icx-store)
+   Compiling icx-adapters v1.2.0 (/tmp/Infinity-Context/v120/package-source-hmwrbjy0/crates/icx-adapters)
+   Compiling icx-proxy v1.2.0 (/tmp/Infinity-Context/v120/package-source-hmwrbjy0/crates/icx-proxy)
+   Compiling icx-cli v1.2.0 (/tmp/Infinity-Context/v120/package-source-hmwrbjy0/crates/icx-cli)
+    Finished `release` profile [optimized] target(s) in 45.70s

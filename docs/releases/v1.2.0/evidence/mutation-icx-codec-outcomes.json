@@ -1,0 +1,1961 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 26.964582147,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.407926508,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/lib.rs:39:9: replace ContextCodec::render_packet -> String with \"xyzzy\".into()",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/lib.rs",
+          "function": {
+            "function_name": "ContextCodec::render_packet",
+            "return_type": "-> String",
+            "span": {
+              "start": {
+                "line": 37,
+                "column": 5
+              },
+              "end": {
+                "line": 40,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 39,
+              "column": 9
+            },
+            "end": {
+              "line": 39,
+              "column": 24
+            }
+          },
+          "replacement": "\"xyzzy\".into()",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__lib.rs_line_39_col_9.log",
+      "diff_path": "diff/crates__icx-codec__src__lib.rs_line_39_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.654457234,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.164787162,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/ahtl.rs:207:28: replace && with || in escape_clause_field",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/ahtl.rs",
+          "function": {
+            "function_name": "escape_clause_field",
+            "return_type": "-> String",
+            "span": {
+              "start": {
+                "line": 197,
+                "column": 1
+              },
+              "end": {
+                "line": 254,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 207,
+              "column": 28
+            },
+            "end": {
+              "line": 207,
+              "column": 30
+            }
+          },
+          "replacement": "||",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-codec__src__ahtl.rs_line_207_col_28.log",
+      "diff_path": "diff/crates__icx-codec__src__ahtl.rs_line_207_col_28.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.563607859,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.504284991,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/ahtl.rs:446:9: replace AhtlPacket::deref_handle_string -> Option<String> with Some(String::new())",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/ahtl.rs",
+          "function": {
+            "function_name": "AhtlPacket::deref_handle_string",
+            "return_type": "-> Option<String>",
+            "span": {
+              "start": {
+                "line": 443,
+                "column": 5
+              },
+              "end": {
+                "line": 453,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 446,
+              "column": 9
+            },
+            "end": {
+              "line": 452,
+              "column": 11
+            }
+          },
+          "replacement": "Some(String::new())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__ahtl.rs_line_446_col_9.log",
+      "diff_path": "diff/crates__icx-codec__src__ahtl.rs_line_446_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.823277997,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.101809205,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/ahtl.rs:734:31: replace || with && in AhtlWirePacketV1::parse",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/ahtl.rs",
+          "function": {
+            "function_name": "AhtlWirePacketV1::parse",
+            "return_type": "-> Result<Self, CodecError>",
+            "span": {
+              "start": {
+                "line": 687,
+                "column": 5
+              },
+              "end": {
+                "line": 756,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 734,
+              "column": 31
+            },
+            "end": {
+              "line": 734,
+              "column": 33
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-codec__src__ahtl.rs_line_734_col_31.log",
+      "diff_path": "diff/crates__icx-codec__src__ahtl.rs_line_734_col_31.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.471608135,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.505161789,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/braille.rs:19:34: replace << with >>",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/braille.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 19,
+              "column": 34
+            },
+            "end": {
+              "line": 19,
+              "column": 36
+            }
+          },
+          "replacement": ">>",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__braille.rs_line_19_col_34.log",
+      "diff_path": "diff/crates__icx-codec__src__braille.rs_line_19_col_34.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.5400392090000001,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.101282677,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/braille.rs:118:5: replace braille_utf8_to_byte -> Option<u8> with Some(0)",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/braille.rs",
+          "function": {
+            "function_name": "braille_utf8_to_byte",
+            "return_type": "-> Option<u8>",
+            "span": {
+              "start": {
+                "line": 115,
+                "column": 1
+              },
+              "end": {
+                "line": 123,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 118,
+              "column": 5
+            },
+            "end": {
+              "line": 122,
+              "column": 6
+            }
+          },
+          "replacement": "Some(0)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__braille.rs_line_118_col_5.log",
+      "diff_path": "diff/crates__icx-codec__src__braille.rs_line_118_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.198429077,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051327937,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:17:9: replace SecretRedactor::sanitize -> String with String::new()",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::sanitize",
+            "return_type": "-> String",
+            "span": {
+              "start": {
+                "line": 14,
+                "column": 5
+              },
+              "end": {
+                "line": 18,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 17,
+              "column": 9
+            },
+            "end": {
+              "line": 17,
+              "column": 59
+            }
+          },
+          "replacement": "String::new()",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_17_col_9.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_17_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.3583746469999998,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.101241658,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:157:19: replace + with * in SecretRedactor::sensitive_continuation",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::sensitive_continuation",
+            "return_type": "-> Option<PendingSecret>",
+            "span": {
+              "start": {
+                "line": 133,
+                "column": 5
+              },
+              "end": {
+                "line": 181,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 157,
+              "column": 19
+            },
+            "end": {
+              "line": 157,
+              "column": 20
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_157_col_19.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_157_col_19.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.413326218,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.301450121,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:233:26: replace > with < in SecretRedactor::shannon_entropy",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::shannon_entropy",
+            "return_type": "-> f64",
+            "span": {
+              "start": {
+                "line": 219,
+                "column": 5
+              },
+              "end": {
+                "line": 253,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 233,
+              "column": 26
+            },
+            "end": {
+              "line": 233,
+              "column": 27
+            }
+          },
+          "replacement": "<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_233_col_26.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_233_col_26.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.773568472,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.102561495,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:372:40: replace + with * in SecretRedactor::redact_line",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::redact_line",
+            "return_type": "-> String",
+            "span": {
+              "start": {
+                "line": 300,
+                "column": 5
+              },
+              "end": {
+                "line": 385,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 372,
+              "column": 40
+            },
+            "end": {
+              "line": 372,
+              "column": 41
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_372_col_40.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_372_col_40.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.677985508,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.504985132,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:416:45: replace || with && in SecretRedactor::redact_value_span",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::redact_value_span",
+            "return_type": "-> Option<usize>",
+            "span": {
+              "start": {
+                "line": 387,
+                "column": 5
+              },
+              "end": {
+                "line": 477,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 416,
+              "column": 45
+            },
+            "end": {
+              "line": 416,
+              "column": 47
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_416_col_45.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_416_col_45.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.036752291,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.504559227,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:440:26: replace > with < in SecretRedactor::redact_value_span",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::redact_value_span",
+            "return_type": "-> Option<usize>",
+            "span": {
+              "start": {
+                "line": 387,
+                "column": 5
+              },
+              "end": {
+                "line": 477,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 440,
+              "column": 26
+            },
+            "end": {
+              "line": 440,
+              "column": 27
+            }
+          },
+          "replacement": "<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_440_col_26.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_440_col_26.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.218671673,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051138094,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:489:55: replace - with / in SecretRedactor::redact_env_assignments",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::redact_env_assignments",
+            "return_type": "-> String",
+            "span": {
+              "start": {
+                "line": 479,
+                "column": 5
+              },
+              "end": {
+                "line": 536,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 489,
+              "column": 55
+            },
+            "end": {
+              "line": 489,
+              "column": 56
+            }
+          },
+          "replacement": "/",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_489_col_55.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_489_col_55.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.455219779,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.050948432,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:514:37: replace && with || in SecretRedactor::redact_env_assignments",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::redact_env_assignments",
+            "return_type": "-> String",
+            "span": {
+              "start": {
+                "line": 479,
+                "column": 5
+              },
+              "end": {
+                "line": 536,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 514,
+              "column": 37
+            },
+            "end": {
+              "line": 514,
+              "column": 39
+            }
+          },
+          "replacement": "||",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_514_col_37.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_514_col_37.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.618656594,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051375464,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:563:40: replace + with * in SecretRedactor::redact_colon_assignments",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::redact_colon_assignments",
+            "return_type": "-> String",
+            "span": {
+              "start": {
+                "line": 538,
+                "column": 5
+              },
+              "end": {
+                "line": 609,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 563,
+              "column": 40
+            },
+            "end": {
+              "line": 563,
+              "column": 41
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Timeout",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_563_col_40.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_563_col_40.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.242798588,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 90.034085591,
+          "process_status": "Timeout",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:582:21: replace || with && in SecretRedactor::redact_colon_assignments",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::redact_colon_assignments",
+            "return_type": "-> String",
+            "span": {
+              "start": {
+                "line": 538,
+                "column": 5
+              },
+              "end": {
+                "line": 609,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 582,
+              "column": 21
+            },
+            "end": {
+              "line": 582,
+              "column": 23
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_582_col_21.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_582_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.5688029540000001,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051068092,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:620:51: replace - with + in SecretRedactor::redact_cli_flags",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::redact_cli_flags",
+            "return_type": "-> String",
+            "span": {
+              "start": {
+                "line": 611,
+                "column": 5
+              },
+              "end": {
+                "line": 656,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 620,
+              "column": 51
+            },
+            "end": {
+              "line": 620,
+              "column": 52
+            }
+          },
+          "replacement": "+",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_620_col_51.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_620_col_51.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.479449025,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.301566921,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:644:30: replace < with == in SecretRedactor::redact_cli_flags",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::redact_cli_flags",
+            "return_type": "-> String",
+            "span": {
+              "start": {
+                "line": 611,
+                "column": 5
+              },
+              "end": {
+                "line": 656,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 644,
+              "column": 30
+            },
+            "end": {
+              "line": 644,
+              "column": 31
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_644_col_30.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_644_col_30.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.209343344,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051074933,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:718:27: delete ! in SecretRedactor::looks_like_url_token",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::looks_like_url_token",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 714,
+                "column": 5
+              },
+              "end": {
+                "line": 725,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 718,
+              "column": 27
+            },
+            "end": {
+              "line": 718,
+              "column": 28
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_718_col_27.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_718_col_27.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.529478649,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.201402959,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:772:45: delete ! in SecretRedactor::redact_structured_vendor_tokens",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::redact_structured_vendor_tokens",
+            "return_type": "-> String",
+            "span": {
+              "start": {
+                "line": 727,
+                "column": 5
+              },
+              "end": {
+                "line": 790,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 772,
+              "column": 45
+            },
+            "end": {
+              "line": 772,
+              "column": 46
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_772_col_45.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_772_col_45.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.568913524,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.20126541,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:803:78: replace == with != in SecretRedactor::redact_jwt_tokens",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::redact_jwt_tokens",
+            "return_type": "-> String",
+            "span": {
+              "start": {
+                "line": 792,
+                "column": 5
+              },
+              "end": {
+                "line": 824,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 803,
+              "column": 78
+            },
+            "end": {
+              "line": 803,
+              "column": 80
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_803_col_78.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_803_col_78.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.407092304,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.301572084,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:860:29: replace && with || in SecretRedactor::redact_auth_scheme",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::redact_auth_scheme",
+            "return_type": "-> String",
+            "span": {
+              "start": {
+                "line": 826,
+                "column": 5
+              },
+              "end": {
+                "line": 868,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 860,
+              "column": 29
+            },
+            "end": {
+              "line": 860,
+              "column": 31
+            }
+          },
+          "replacement": "||",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_860_col_29.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_860_col_29.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.209244518,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.05105918,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:937:13: replace || with && in SecretRedactor::is_high_entropy_secret_candidate",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "SecretRedactor::is_high_entropy_secret_candidate",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 922,
+                "column": 5
+              },
+              "end": {
+                "line": 970,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 937,
+              "column": 13
+            },
+            "end": {
+              "line": 937,
+              "column": 15
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_937_col_13.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_937_col_13.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.524505673,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.301553511,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:1021:43: replace || with && in ContinuationLine::classify",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "ContinuationLine::classify",
+            "return_type": "-> Self",
+            "span": {
+              "start": {
+                "line": 989,
+                "column": 5
+              },
+              "end": {
+                "line": 1029,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1021,
+              "column": 43
+            },
+            "end": {
+              "line": 1021,
+              "column": 45
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_1021_col_43.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_1021_col_43.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.4752403969999999,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.201324534,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/redact.rs:1120:5: replace split_line_ending -> (&str, &str) with (\"\", \"xyzzy\")",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/redact.rs",
+          "function": {
+            "function_name": "split_line_ending",
+            "return_type": "-> (&str, &str)",
+            "span": {
+              "start": {
+                "line": 1118,
+                "column": 1
+              },
+              "end": {
+                "line": 1127,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1120,
+              "column": 5
+            },
+            "end": {
+              "line": 1126,
+              "column": 6
+            }
+          },
+          "replacement": "(\"\", \"xyzzy\")",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__redact.rs_line_1120_col_5.log",
+      "diff_path": "diff/crates__icx-codec__src__redact.rs_line_1120_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.417131703,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051038712,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/skeleton.rs:109:28: replace += with -= in StructuralSkeletonizer::skeletonize_log",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/skeleton.rs",
+          "function": {
+            "function_name": "StructuralSkeletonizer::skeletonize_log",
+            "return_type": "-> AhtlPacket",
+            "span": {
+              "start": {
+                "line": 80,
+                "column": 5
+              },
+              "end": {
+                "line": 197,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 109,
+              "column": 28
+            },
+            "end": {
+              "line": 109,
+              "column": 30
+            }
+          },
+          "replacement": "-=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__skeleton.rs_line_109_col_28.log",
+      "diff_path": "diff/crates__icx-codec__src__skeleton.rs_line_109_col_28.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.671609369,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051160186,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/skeleton.rs:228:45: replace < with <= in StructuralSkeletonizer::skeletonize_diff",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/skeleton.rs",
+          "function": {
+            "function_name": "StructuralSkeletonizer::skeletonize_diff",
+            "return_type": "-> AhtlPacket",
+            "span": {
+              "start": {
+                "line": 199,
+                "column": 5
+              },
+              "end": {
+                "line": 306,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 228,
+              "column": 45
+            },
+            "end": {
+              "line": 228,
+              "column": 46
+            }
+          },
+          "replacement": "<=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-codec__src__skeleton.rs_line_228_col_45.log",
+      "diff_path": "diff/crates__icx-codec__src__skeleton.rs_line_228_col_45.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.612998421,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.301651935,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/skeleton.rs:332:34: replace += with *= in StructuralSkeletonizer::skeletonize_source_or_text",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/skeleton.rs",
+          "function": {
+            "function_name": "StructuralSkeletonizer::skeletonize_source_or_text",
+            "return_type": "-> AhtlPacket",
+            "span": {
+              "start": {
+                "line": 308,
+                "column": 5
+              },
+              "end": {
+                "line": 429,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 332,
+              "column": 34
+            },
+            "end": {
+              "line": 332,
+              "column": 36
+            }
+          },
+          "replacement": "*=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__skeleton.rs_line_332_col_34.log",
+      "diff_path": "diff/crates__icx-codec__src__skeleton.rs_line_332_col_34.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.766178195,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051681636,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/skeleton.rs:512:20: delete ! in StructuralSkeletonizer::extract_symbol_signature",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/skeleton.rs",
+          "function": {
+            "function_name": "StructuralSkeletonizer::extract_symbol_signature",
+            "return_type": "-> Option<String>",
+            "span": {
+              "start": {
+                "line": 461,
+                "column": 5
+              },
+              "end": {
+                "line": 518,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 512,
+              "column": 20
+            },
+            "end": {
+              "line": 512,
+              "column": 21
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__skeleton.rs_line_512_col_20.log",
+      "diff_path": "diff/crates__icx-codec__src__skeleton.rs_line_512_col_20.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.602449629,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051124699,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-codec/src/skeleton.rs:588:56: replace + with - in StructuralSkeletonizer::resolve_block_end_line",
+          "package": "icx-codec",
+          "file": "crates/icx-codec/src/skeleton.rs",
+          "function": {
+            "function_name": "StructuralSkeletonizer::resolve_block_end_line",
+            "return_type": "-> usize",
+            "span": {
+              "start": {
+                "line": 569,
+                "column": 5
+              },
+              "end": {
+                "line": 636,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 588,
+              "column": 56
+            },
+            "end": {
+              "line": 588,
+              "column": 57
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-codec__src__skeleton.rs_line_588_col_56.log",
+      "diff_path": "diff/crates__icx-codec__src__skeleton.rs_line_588_col_56.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.601922071,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051045081,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-codec@1.2.0"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 30,
+  "missed": 9,
+  "caught": 20,
+  "timeout": 1,
+  "unviable": 0,
+  "success": 0,
+  "start_time": "2026-11-21T04:47:05.114022007Z",
+  "end_time": "2026-11-21T04:49:57.652190152Z",
+  "cargo_mutants_version": "27.1.0"
+}

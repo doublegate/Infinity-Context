@@ -1,0 +1,25 @@
+{
+  "scope": "preliminary offline local notice generation; not a governance/licensing approval",
+  "command": [
+    "cargo",
+    "about",
+    "generate",
+    "--locked",
+    "--offline",
+    "--fail",
+    "-c",
+    ".github/about.toml",
+    ".github/about.hbs",
+    "-o",
+    "/tmp/Infinity-Context/v120/package-notices-current.txt"
+  ],
+  "exit": 0,
+  "tool": "cargo-about 0.9.3",
+  "inputs_and_outputs_sha256": {
+    "Cargo.lock": "831c95cfb489693923754366035790f2ce260bed9abbd2553c5ca006fe831036",
+    ".github/about.toml": "78457574c2c1e0a64720b0b56875fecb5e8d250717ad3a4294a32824565fba0e",
+    ".github/about.hbs": "9c589b93ce1238976dd4094d31564658fea3026033f4ae5d6088194a84bad7fe",
+    "/tmp/Infinity-Context/v120/package-notices-current.txt": "477b390ca1e5134ea208eb71455fc282bc3f4081e3a61ad7960f5dcfdfab8df6",
+    "/usr/share/licenses/musl/COPYRIGHT": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b"
+  }
+}

@@ -5,7 +5,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.0] - Unreleased (candidate)
+
+Remediation and bounded-context release candidate for the independent audit in `docs/codex/`.
+Qualification results and remaining release decisions are tracked in
+[`docs/releases/v1.2.0/`](docs/releases/v1.2.0/README.md). This heading does not announce publication.
+
+### Migration
+
+- HDC derived snapshots now use `ICXHDC04` with exact token postings. Version03 remains readable
+  and the MMU rebuilds it from preserved CAS events. Older binaries cannot read04: retain a
+  pre-upgrade workspace backup for downgrade. CAS identities and unversioned Q15 `fc` words do
+  not change; incorrect Q1.14 wire labels are superseded by ADR0006.
+- icx-managed context now defaults to a bounded32,768-unit policy, reserving4,096 units each for
+  external input/tool schemas and completion. `icx context-budget` inspects/sets the persisted
+  policy. The estimator is a conservative one-UTF8-byte allowance, not a provider tokenizer;
+  callers must account for their actual external prompt. Model changes can invalidate prefixes.
+- MCP requires valid JSON-RPC envelopes, typed arguments, an explicit operation and the canonical
+  advertised tool name `icx`. Invalid aliases/arguments now return errors rather than status or
+  accidental mutations. Native-hook alias recognition is unchanged.
+
+### Fixed
+
+- YAML sensitive scalars are redacted across literal/folded blocks and indented plain-value
+  continuations, including `=`-containing values, tagged/anchored headers and list mappings.
+  Public fields after dedent remain intact. Redaction uses normalized continuation classification
+  so the audit's vendor-token/idempotence counterexamples stabilize on the first pass
+  (ICX-CODEX-001, ICX-CODEX-006). Existing stored artifacts are not rewritten.
+- Public Profile A skeleton rendering neutralizes raw packet/header delimiters as ASCII bracket
+  pairs; standalone parsing rejects unescaped nested markers (ICX-CODEX-002). Existing ordinary
+  skeletons and percent literals retain their interpretation. Exact CAS content is unchanged.
+- Exact token postings prevent approximate candidate rejection of stored unique identifiers,
+  including multilingual identifiers. Lexical match coverage ranks ahead of HDC/fractal ties;
+  common-token queries can require exhaustive refinement (ICX-CODEX-004).
+- Snapshot loads reject nonfinite/out-of-range numerical state and inconsistent cached summaries,
+  bundler readouts and04posting/Bloom metadata (ICX-CODEX-003).
+- Bus readers reject coherent slots whose sequence differs from the expected ring position;
+  extreme public chunker sizes no longer overflow arithmetic (ICX-CODEX-032/033).
+- Daemon success replies follow persistence under the workspace lock; save failure returns an
+  error and nonzero daemon result. SQLite WAL uses FULL commit synchronization (ICX-CODEX-030).
+- Codex PostToolUse captures eligible output without emitting the unsupported replacement field.
+  Supported prompt/start recall remains; replacement capability is explicitly false (035).
+- Window assembly selects fitting whole recent frames without deleting cold history. Structured
+  recall preserves useful handles and leaves unsent sibling-bus events queued (101).
+- Release packaging requires successful trusted CI and REUSE evidence for the exact tagged
+  commit, and rechecks before external writes. Missing, partial, failed or expired evidence
+  blocks release; a partial failed-job rerun may require a complete workflow rerun (070).
+- Benchmarks measure1k and10k scans independently and preserve strict timing-gate failures;
+  numerical, corruption, protocol and mutation regressions strengthen assertion coverage
+  (072/073). Current specifications supersede historical capability guarantees, and the worked
+  U+28C7 example now displays the matching Braille glyph (005/100/102).
+
 ### Added
+
+- `icx benchmark --json` emits measured component values, build flags, target, CPU, fixture hash
+  and gate outcomes. `scripts/benchmark_series.py` records independent processes, warm-up
+  exclusion and dispersion; measurements are not end-to-end hook/model guarantees.
 
 - Release workflow (`.github/workflows/release.yml`): a version-tag push builds Linux x86-64
   binaries (baseline and x86-64-v3) as static musl and as glibc 2.35+ builds, writes

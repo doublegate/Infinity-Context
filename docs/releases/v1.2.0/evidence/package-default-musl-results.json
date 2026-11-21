@@ -1,0 +1,292 @@
+{
+  "scope": "preliminary existing-binary local checks only; no builds, install, daemon, tag or publication",
+  "work_dir": "/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl",
+  "commit_epoch": 1795220264,
+  "host_glibc": {
+    "argv": [
+      "ldd",
+      "--version"
+    ],
+    "exit": 0,
+    "stdout": "ldd (GNU libc) 2.44\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\nWritten by Roland McGrath and Ulrich Drepper.\n",
+    "stderr": ""
+  },
+  "notices_sha256": "477b390ca1e5134ea208eb71455fc282bc3f4081e3a61ad7960f5dcfdfab8df6",
+  "results": [
+    {
+      "label": "x86_64-unknown-linux-musl",
+      "binary": "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx",
+      "preliminary": true,
+      "final_source_binding": "not established",
+      "checks": {
+        "cpu_provenance": true,
+        "static_linkage": true,
+        "musl_notice": true,
+        "host_cpu_compatible": true,
+        "isolated_smoke": true,
+        "third_party_notices": true,
+        "stripped_package_smoke": true
+      },
+      "binary_sha256": "43c6ce5b4f1e96281163d8c79fca8ae5c6873f50dda00806726414f0b88ed9de",
+      "binary_mtime_ns": 1795277537174226926,
+      "file": {
+        "argv": [
+          "file",
+          "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), static-pie linked, BuildID[sha1]=1c5e1806a26e48dd8d4573fe3c51de21a212e17c, not stripped\n",
+        "stderr": ""
+      },
+      "program_headers": {
+        "argv": [
+          "readelf",
+          "-l",
+          "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "\nElf file type is DYN (Position-Independent Executable file)\nEntry point 0x27db6\nThere are 10 program headers, starting at offset 64\n\nProgram Headers:\n  Type           Offset             VirtAddr           PhysAddr\n                 FileSiz            MemSiz              Flags  Align\n  LOAD           0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x000000000001a810 0x000000000001a810  R      0x1000\n  LOAD           0x000000000001b000 0x000000000001b000 0x000000000001b000\n                 0x00000000003e92bb 0x00000000003e92bb  R E    0x1000\n  LOAD           0x0000000000405000 0x0000000000405000 0x0000000000405000\n                 0x00000000000a2974 0x00000000000a2974  R      0x1000\n  LOAD           0x00000000004a7f70 0x00000000004a8f70 0x00000000004a8f70\n                 0x0000000000012888 0x0000000000014770  RW     0x1000\n  DYNAMIC        0x00000000004b4108 0x00000000004b5108 0x00000000004b5108\n                 0x0000000000000180 0x0000000000000180  RW     0x8\n  NOTE           0x0000000000000270 0x0000000000000270 0x0000000000000270\n                 0x0000000000000024 0x0000000000000024  R      0x4\n  TLS            0x00000000004a7f70 0x00000000004a8f70 0x00000000004a8f70\n                 0x0000000000000040 0x0000000000000060  R      0x8\n  GNU_EH_FRAME   0x000000000043e004 0x000000000043e004 0x000000000043e004\n                 0x000000000000a47c 0x000000000000a47c  R      0x4\n  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x0000000000000000 0x0000000000000000  RW     0x10\n  GNU_RELRO      0x00000000004a7f70 0x00000000004a8f70 0x00000000004a8f70\n                 0x000000000000e090 0x000000000000e090  R      0x1\n\n Section to Segment mapping:\n  Segment Sections...\n   00     .note.gnu.build-id .gnu.hash .dynsym .dynstr .rela.dyn \n   01     .init .plt .plt.got .text .fini \n   02     .rodata .eh_frame_hdr .eh_frame .gcc_except_table \n   03     .tdata .init_array .fini_array .data.rel.ro .dynamic .got .data .bss \n   04     .dynamic \n   05     .note.gnu.build-id \n   06     .tdata .tbss \n   07     .eh_frame_hdr \n   08     \n   09     .tdata .init_array .fini_array .data.rel.ro .dynamic .got \n",
+        "stderr": ""
+      },
+      "dynamic": {
+        "argv": [
+          "readelf",
+          "-d",
+          "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "\nDynamic section at offset 0x4b4108 contains 20 entries:\n  Tag        Type                         Name/Value\n 0x000000000000000c (INIT)               0x1b000\n 0x000000000000000d (FINI)               0x4042b8\n 0x0000000000000019 (INIT_ARRAY)         0x4a8fb0\n 0x000000000000001b (INIT_ARRAYSZ)       8 (bytes)\n 0x000000000000001a (FINI_ARRAY)         0x4a8fb8\n 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)\n 0x000000006ffffef5 (GNU_HASH)           0x298\n 0x0000000000000005 (STRTAB)             0x2d0\n 0x0000000000000006 (SYMTAB)             0x2b8\n 0x000000000000000a (STRSZ)              1 (bytes)\n 0x000000000000000b (SYMENT)             24 (bytes)\n 0x0000000000000015 (DEBUG)              0x0\n 0x0000000000000003 (PLTGOT)             0x4b5288\n 0x0000000000000007 (RELA)               0x2d8\n 0x0000000000000008 (RELASZ)             107832 (bytes)\n 0x0000000000000009 (RELAENT)            24 (bytes)\n 0x000000000000001e (FLAGS)              BIND_NOW\n 0x000000006ffffffb (FLAGS_1)            Flags: NOW PIE\n 0x000000006ffffff9 (RELACOUNT)          4493\n 0x0000000000000000 (NULL)               0x0\n",
+        "stderr": ""
+      },
+      "build_provenance_sha256": "2aeb957d0550f7d1bf62bc2c5ea21816c194c8175224de0216b9e92ba454c8f3",
+      "build_provenance": "cargo:rerun-if-env-changed=TARGET\ncargo:rerun-if-env-changed=PROFILE\ncargo:rerun-if-env-changed=CARGO_ENCODED_RUSTFLAGS\ncargo:rerun-if-env-changed=RUSTC\ncargo:rustc-env=ICX_BUILD_TARGET=x86_64-unknown-linux-musl\ncargo:rustc-env=ICX_BUILD_PROFILE=release\ncargo:rustc-env=ICX_BUILD_RUSTFLAGS=-C target-cpu=x86-64\ncargo:rustc-env=ICX_BUILD_RUSTC=rustc 1.100.0 (0ef1bc386 2026-11-09)\n",
+      "recorded_build_flags": "-C target-cpu=x86-64",
+      "smoke": [
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx",
+            "doctor"
+          ],
+          "exit": 0,
+          "stdout": "=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===\n  [ABSENT  ] Claude Code Binary               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/smoke/home/.local/bin/claude\n  [ABSENT  ] Claude Settings                  -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/smoke/home/.claude/settings.json\n  [ABSENT  ] OpenAI Codex Binary              -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/smoke/home/.local/bin/codex\n  [ABSENT  ] Codex Hooks Config               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/smoke/home/.codex/hooks.json\n  [ABSENT  ] Codex State SQLite               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/smoke/home/.codex/state_5.sqlite\n  [ABSENT  ] Antigravity CLI (agy)            -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/smoke/home/.local/bin/agy\n  [ABSENT  ] Antigravity Hooks                -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/smoke/home/.gemini/config/hooks.json\n  [ABSENT  ] Hermes Agent Source              -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/smoke/home/.hermes/hermes-agent/agent/context_engine.py\n  [DETECTED] HTTPS Proxy Transport (curl)     -> /usr/bin/curl\n  [DETECTED] POSIX Shared Memory (/dev/shm)   -> /dev/shm (writable=true)\nDoctor status: READY\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx",
+            "init"
+          ],
+          "exit": 0,
+          "stdout": "\u27eaICX:INIT\u2502dir=/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/smoke/home/.local/state/icx/workspaces/0cd2874cee42764d\u2502status=READY\u27eb\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx",
+            "status"
+          ],
+          "exit": 0,
+          "stdout": "\u27eaICX:STATUS\u2502cas_artifacts=0\u2502redacted_artifacts=0\u2502unique_chunks=0\u2502dag_nodes=0\u2502sealed_epochs=0\u2502hdc_entries=0\u2502graph_edges=0\u2502shm_seq=0\u27eb\n",
+          "stderr": ""
+        }
+      ],
+      "local_eligibility": true,
+      "package": {
+        "archive": "/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/icx-v1.2.0-x86_64-unknown-linux-musl.tar.gz",
+        "sha256": "a5ac57be57c9c31905650a77a244a9a562a8b38dafcc79f371ac76318d7f014f",
+        "binary_sha256_after_strip": "e9bf30bd1b76e0556e36e54b59d4afdf051c653db6b566e580481c05ce0c497e",
+        "repeat_identical": true,
+        "listing": {
+          "argv": [
+            "tar",
+            "tvzf",
+            "/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/icx-v1.2.0-x86_64-unknown-linux-musl.tar.gz"
+          ],
+          "exit": 0,
+          "stdout": "drwxr-xr-x 0/0               0 2026-11-20 19:17 icx-v1.2.0-x86_64-unknown-linux-musl/\n-rw-r--r-- 0/0           47472 2026-11-20 19:17 icx-v1.2.0-x86_64-unknown-linux-musl/CHANGELOG.md\n-rw-r--r-- 0/0           34674 2026-11-20 19:17 icx-v1.2.0-x86_64-unknown-linux-musl/COPYING\n-rw-r--r-- 0/0           34674 2026-11-20 19:17 icx-v1.2.0-x86_64-unknown-linux-musl/LICENSE\ndrwxr-xr-x 0/0               0 2026-11-20 19:17 icx-v1.2.0-x86_64-unknown-linux-musl/LICENSES/\n-rw-r--r-- 0/0           34020 2026-11-20 19:17 icx-v1.2.0-x86_64-unknown-linux-musl/LICENSES/AGPL-3.0-or-later.txt\n-rw-r--r-- 0/0           34674 2026-11-20 19:17 icx-v1.2.0-x86_64-unknown-linux-musl/LICENSES/GPL-3.0-or-later.txt\n-rw-r--r-- 0/0            6196 2026-11-20 19:17 icx-v1.2.0-x86_64-unknown-linux-musl/MUSL-COPYRIGHT.txt\n-rw-r--r-- 0/0           54735 2026-11-20 19:17 icx-v1.2.0-x86_64-unknown-linux-musl/README.md\n-rw-r--r-- 0/0          169574 2026-11-20 19:17 icx-v1.2.0-x86_64-unknown-linux-musl/THIRD-PARTY-NOTICES.txt\n-rwxr-xr-x 0/0         4960184 2026-11-20 19:17 icx-v1.2.0-x86_64-unknown-linux-musl/icx\n",
+          "stderr": ""
+        },
+        "input_sha256": {
+          "CHANGELOG.md": "6972d236b5a000a1eb2eae2660f4522eefc80c8703a53734a6d550fd1f81281c",
+          "COPYING": "fb981668c18a279e285fc4d83fba1e836cc84dd4daa73c9697d3cfd2d8aca6e0",
+          "LICENSE": "fb981668c18a279e285fc4d83fba1e836cc84dd4daa73c9697d3cfd2d8aca6e0",
+          "LICENSES/AGPL-3.0-or-later.txt": "d8a6cc31abc16b6748c7a21f21611f5a1ec33f67d22ca23d7da1c19b95496bee",
+          "LICENSES/GPL-3.0-or-later.txt": "fb981668c18a279e285fc4d83fba1e836cc84dd4daa73c9697d3cfd2d8aca6e0",
+          "MUSL-COPYRIGHT.txt": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b",
+          "README.md": "6de927930d79053cf6eb3fb61ea6775785592ba688f68f1d447a7ad2b0f84dd5",
+          "THIRD-PARTY-NOTICES.txt": "477b390ca1e5134ea208eb71455fc282bc3f4081e3a61ad7960f5dcfdfab8df6",
+          "icx": "e9bf30bd1b76e0556e36e54b59d4afdf051c653db6b566e580481c05ce0c497e"
+        }
+      },
+      "packaged_smoke": [
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/staging/icx-v1.2.0-x86_64-unknown-linux-musl/icx",
+            "doctor"
+          ],
+          "exit": 0,
+          "stdout": "=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===\n  [ABSENT  ] Claude Code Binary               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/packaged-smoke/home/.local/bin/claude\n  [ABSENT  ] Claude Settings                  -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/packaged-smoke/home/.claude/settings.json\n  [ABSENT  ] OpenAI Codex Binary              -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/packaged-smoke/home/.local/bin/codex\n  [ABSENT  ] Codex Hooks Config               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/packaged-smoke/home/.codex/hooks.json\n  [ABSENT  ] Codex State SQLite               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/packaged-smoke/home/.codex/state_5.sqlite\n  [ABSENT  ] Antigravity CLI (agy)            -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/packaged-smoke/home/.local/bin/agy\n  [ABSENT  ] Antigravity Hooks                -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/packaged-smoke/home/.gemini/config/hooks.json\n  [ABSENT  ] Hermes Agent Source              -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/packaged-smoke/home/.hermes/hermes-agent/agent/context_engine.py\n  [DETECTED] HTTPS Proxy Transport (curl)     -> /usr/bin/curl\n  [DETECTED] POSIX Shared Memory (/dev/shm)   -> /dev/shm (writable=true)\nDoctor status: READY\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/staging/icx-v1.2.0-x86_64-unknown-linux-musl/icx",
+            "init"
+          ],
+          "exit": 0,
+          "stdout": "\u27eaICX:INIT\u2502dir=/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/packaged-smoke/home/.local/state/icx/workspaces/0cd2874cee42764d\u2502status=READY\u27eb\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64-unknown-linux-musl/staging/icx-v1.2.0-x86_64-unknown-linux-musl/icx",
+            "status"
+          ],
+          "exit": 0,
+          "stdout": "\u27eaICX:STATUS\u2502cas_artifacts=0\u2502redacted_artifacts=0\u2502unique_chunks=0\u2502dag_nodes=0\u2502sealed_epochs=0\u2502hdc_entries=0\u2502graph_edges=0\u2502shm_seq=0\u27eb\n",
+          "stderr": ""
+        }
+      ]
+    },
+    {
+      "label": "x86_64_v3-unknown-linux-musl",
+      "binary": "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx",
+      "preliminary": true,
+      "final_source_binding": "not established",
+      "checks": {
+        "cpu_provenance": true,
+        "static_linkage": true,
+        "musl_notice": true,
+        "host_cpu_compatible": true,
+        "isolated_smoke": true,
+        "third_party_notices": true,
+        "stripped_package_smoke": true
+      },
+      "binary_sha256": "05e8ccf77d82612857926547f8ac35418303c334ab0b60df72959d0f19327ca4",
+      "binary_mtime_ns": 1795277537193226767,
+      "file": {
+        "argv": [
+          "file",
+          "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), static-pie linked, BuildID[sha1]=2fcee09df090460ea5df160dfa3e9941a7c997ce, not stripped\n",
+        "stderr": ""
+      },
+      "program_headers": {
+        "argv": [
+          "readelf",
+          "-l",
+          "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "\nElf file type is DYN (Position-Independent Executable file)\nEntry point 0x27696\nThere are 10 program headers, starting at offset 64\n\nProgram Headers:\n  Type           Offset             VirtAddr           PhysAddr\n                 FileSiz            MemSiz              Flags  Align\n  LOAD           0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x000000000001a798 0x000000000001a798  R      0x1000\n  LOAD           0x000000000001b000 0x000000000001b000 0x000000000001b000\n                 0x00000000003f227b 0x00000000003f227b  R E    0x1000\n  LOAD           0x000000000040e000 0x000000000040e000 0x000000000040e000\n                 0x00000000000a340c 0x00000000000a340c  R      0x1000\n  LOAD           0x00000000004b1fb0 0x00000000004b2fb0 0x00000000004b2fb0\n                 0x0000000000012848 0x0000000000014730  RW     0x1000\n  DYNAMIC        0x00000000004be148 0x00000000004bf148 0x00000000004bf148\n                 0x0000000000000180 0x0000000000000180  RW     0x8\n  NOTE           0x0000000000000270 0x0000000000000270 0x0000000000000270\n                 0x0000000000000024 0x0000000000000024  R      0x4\n  TLS            0x00000000004b1fb0 0x00000000004b2fb0 0x00000000004b2fb0\n                 0x0000000000000040 0x0000000000000060  R      0x8\n  GNU_EH_FRAME   0x0000000000447d04 0x0000000000447d04 0x0000000000447d04\n                 0x000000000000a44c 0x000000000000a44c  R      0x4\n  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x0000000000000000 0x0000000000000000  RW     0x10\n  GNU_RELRO      0x00000000004b1fb0 0x00000000004b2fb0 0x00000000004b2fb0\n                 0x000000000000e050 0x000000000000e050  R      0x1\n\n Section to Segment mapping:\n  Segment Sections...\n   00     .note.gnu.build-id .gnu.hash .dynsym .dynstr .rela.dyn \n   01     .init .plt .plt.got .text .fini \n   02     .rodata .eh_frame_hdr .eh_frame .gcc_except_table \n   03     .tdata .init_array .fini_array .data.rel.ro .dynamic .got .data .bss \n   04     .dynamic \n   05     .note.gnu.build-id \n   06     .tdata .tbss \n   07     .eh_frame_hdr \n   08     \n   09     .tdata .init_array .fini_array .data.rel.ro .dynamic .got \n",
+        "stderr": ""
+      },
+      "dynamic": {
+        "argv": [
+          "readelf",
+          "-d",
+          "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "\nDynamic section at offset 0x4be148 contains 20 entries:\n  Tag        Type                         Name/Value\n 0x000000000000000c (INIT)               0x1b000\n 0x000000000000000d (FINI)               0x40d278\n 0x0000000000000019 (INIT_ARRAY)         0x4b2ff0\n 0x000000000000001b (INIT_ARRAYSZ)       8 (bytes)\n 0x000000000000001a (FINI_ARRAY)         0x4b2ff8\n 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)\n 0x000000006ffffef5 (GNU_HASH)           0x298\n 0x0000000000000005 (STRTAB)             0x2d0\n 0x0000000000000006 (SYMTAB)             0x2b8\n 0x000000000000000a (STRSZ)              1 (bytes)\n 0x000000000000000b (SYMENT)             24 (bytes)\n 0x0000000000000015 (DEBUG)              0x0\n 0x0000000000000003 (PLTGOT)             0x4bf2c8\n 0x0000000000000007 (RELA)               0x2d8\n 0x0000000000000008 (RELASZ)             107712 (bytes)\n 0x0000000000000009 (RELAENT)            24 (bytes)\n 0x000000000000001e (FLAGS)              BIND_NOW\n 0x000000006ffffffb (FLAGS_1)            Flags: NOW PIE\n 0x000000006ffffff9 (RELACOUNT)          4488\n 0x0000000000000000 (NULL)               0x0\n",
+        "stderr": ""
+      },
+      "build_provenance_sha256": "62c98823bb12279689c69d9b60621d6dc0cdb48737216d725f13f8da64cc79c9",
+      "build_provenance": "cargo:rerun-if-env-changed=TARGET\ncargo:rerun-if-env-changed=PROFILE\ncargo:rerun-if-env-changed=CARGO_ENCODED_RUSTFLAGS\ncargo:rerun-if-env-changed=RUSTC\ncargo:rustc-env=ICX_BUILD_TARGET=x86_64-unknown-linux-musl\ncargo:rustc-env=ICX_BUILD_PROFILE=release\ncargo:rustc-env=ICX_BUILD_RUSTFLAGS=-C target-cpu=x86-64-v3\ncargo:rustc-env=ICX_BUILD_RUSTC=rustc 1.100.0 (0ef1bc386 2026-11-09)\n",
+      "recorded_build_flags": "-C target-cpu=x86-64-v3",
+      "smoke": [
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx",
+            "doctor"
+          ],
+          "exit": 0,
+          "stdout": "=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===\n  [ABSENT  ] Claude Code Binary               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/smoke/home/.local/bin/claude\n  [ABSENT  ] Claude Settings                  -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/smoke/home/.claude/settings.json\n  [ABSENT  ] OpenAI Codex Binary              -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/smoke/home/.local/bin/codex\n  [ABSENT  ] Codex Hooks Config               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/smoke/home/.codex/hooks.json\n  [ABSENT  ] Codex State SQLite               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/smoke/home/.codex/state_5.sqlite\n  [ABSENT  ] Antigravity CLI (agy)            -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/smoke/home/.local/bin/agy\n  [ABSENT  ] Antigravity Hooks                -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/smoke/home/.gemini/config/hooks.json\n  [ABSENT  ] Hermes Agent Source              -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/smoke/home/.hermes/hermes-agent/agent/context_engine.py\n  [DETECTED] HTTPS Proxy Transport (curl)     -> /usr/bin/curl\n  [DETECTED] POSIX Shared Memory (/dev/shm)   -> /dev/shm (writable=true)\nDoctor status: READY\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx",
+            "init"
+          ],
+          "exit": 0,
+          "stdout": "\u27eaICX:INIT\u2502dir=/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/smoke/home/.local/state/icx/workspaces/0cd2874cee42764d\u2502status=READY\u27eb\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx",
+            "status"
+          ],
+          "exit": 0,
+          "stdout": "\u27eaICX:STATUS\u2502cas_artifacts=0\u2502redacted_artifacts=0\u2502unique_chunks=0\u2502dag_nodes=0\u2502sealed_epochs=0\u2502hdc_entries=0\u2502graph_edges=0\u2502shm_seq=0\u27eb\n",
+          "stderr": ""
+        }
+      ],
+      "local_eligibility": true,
+      "package": {
+        "archive": "/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/icx-v1.2.0-x86_64_v3-unknown-linux-musl.tar.gz",
+        "sha256": "518b579a6830b975ab01b9885e28ca89d5c86c3a6f61696dfc57b8070a5959bc",
+        "binary_sha256_after_strip": "75a6d041627bc1507aae5cf30afdbec55c279f1e827ae49e46ff1d7c825f69e7",
+        "repeat_identical": true,
+        "listing": {
+          "argv": [
+            "tar",
+            "tvzf",
+            "/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/icx-v1.2.0-x86_64_v3-unknown-linux-musl.tar.gz"
+          ],
+          "exit": 0,
+          "stdout": "drwxr-xr-x 0/0               0 2026-11-20 19:17 icx-v1.2.0-x86_64_v3-unknown-linux-musl/\n-rw-r--r-- 0/0           47472 2026-11-20 19:17 icx-v1.2.0-x86_64_v3-unknown-linux-musl/CHANGELOG.md\n-rw-r--r-- 0/0           34674 2026-11-20 19:17 icx-v1.2.0-x86_64_v3-unknown-linux-musl/COPYING\n-rw-r--r-- 0/0           34674 2026-11-20 19:17 icx-v1.2.0-x86_64_v3-unknown-linux-musl/LICENSE\ndrwxr-xr-x 0/0               0 2026-11-20 19:17 icx-v1.2.0-x86_64_v3-unknown-linux-musl/LICENSES/\n-rw-r--r-- 0/0           34020 2026-11-20 19:17 icx-v1.2.0-x86_64_v3-unknown-linux-musl/LICENSES/AGPL-3.0-or-later.txt\n-rw-r--r-- 0/0           34674 2026-11-20 19:17 icx-v1.2.0-x86_64_v3-unknown-linux-musl/LICENSES/GPL-3.0-or-later.txt\n-rw-r--r-- 0/0            6196 2026-11-20 19:17 icx-v1.2.0-x86_64_v3-unknown-linux-musl/MUSL-COPYRIGHT.txt\n-rw-r--r-- 0/0           54735 2026-11-20 19:17 icx-v1.2.0-x86_64_v3-unknown-linux-musl/README.md\n-rw-r--r-- 0/0          169574 2026-11-20 19:17 icx-v1.2.0-x86_64_v3-unknown-linux-musl/THIRD-PARTY-NOTICES.txt\n-rwxr-xr-x 0/0         5001144 2026-11-20 19:17 icx-v1.2.0-x86_64_v3-unknown-linux-musl/icx\n",
+          "stderr": ""
+        },
+        "input_sha256": {
+          "CHANGELOG.md": "6972d236b5a000a1eb2eae2660f4522eefc80c8703a53734a6d550fd1f81281c",
+          "COPYING": "fb981668c18a279e285fc4d83fba1e836cc84dd4daa73c9697d3cfd2d8aca6e0",
+          "LICENSE": "fb981668c18a279e285fc4d83fba1e836cc84dd4daa73c9697d3cfd2d8aca6e0",
+          "LICENSES/AGPL-3.0-or-later.txt": "d8a6cc31abc16b6748c7a21f21611f5a1ec33f67d22ca23d7da1c19b95496bee",
+          "LICENSES/GPL-3.0-or-later.txt": "fb981668c18a279e285fc4d83fba1e836cc84dd4daa73c9697d3cfd2d8aca6e0",
+          "MUSL-COPYRIGHT.txt": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b",
+          "README.md": "6de927930d79053cf6eb3fb61ea6775785592ba688f68f1d447a7ad2b0f84dd5",
+          "THIRD-PARTY-NOTICES.txt": "477b390ca1e5134ea208eb71455fc282bc3f4081e3a61ad7960f5dcfdfab8df6",
+          "icx": "75a6d041627bc1507aae5cf30afdbec55c279f1e827ae49e46ff1d7c825f69e7"
+        }
+      },
+      "packaged_smoke": [
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/staging/icx-v1.2.0-x86_64_v3-unknown-linux-musl/icx",
+            "doctor"
+          ],
+          "exit": 0,
+          "stdout": "=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===\n  [ABSENT  ] Claude Code Binary               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/packaged-smoke/home/.local/bin/claude\n  [ABSENT  ] Claude Settings                  -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/packaged-smoke/home/.claude/settings.json\n  [ABSENT  ] OpenAI Codex Binary              -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/packaged-smoke/home/.local/bin/codex\n  [ABSENT  ] Codex Hooks Config               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/packaged-smoke/home/.codex/hooks.json\n  [ABSENT  ] Codex State SQLite               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/packaged-smoke/home/.codex/state_5.sqlite\n  [ABSENT  ] Antigravity CLI (agy)            -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/packaged-smoke/home/.local/bin/agy\n  [ABSENT  ] Antigravity Hooks                -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/packaged-smoke/home/.gemini/config/hooks.json\n  [ABSENT  ] Hermes Agent Source              -> /tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/packaged-smoke/home/.hermes/hermes-agent/agent/context_engine.py\n  [DETECTED] HTTPS Proxy Transport (curl)     -> /usr/bin/curl\n  [DETECTED] POSIX Shared Memory (/dev/shm)   -> /dev/shm (writable=true)\nDoctor status: READY\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/staging/icx-v1.2.0-x86_64_v3-unknown-linux-musl/icx",
+            "init"
+          ],
+          "exit": 0,
+          "stdout": "\u27eaICX:INIT\u2502dir=/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/packaged-smoke/home/.local/state/icx/workspaces/0cd2874cee42764d\u2502status=READY\u27eb\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-qualification/preliminary-07azdacl/x86_64_v3-unknown-linux-musl/staging/icx-v1.2.0-x86_64_v3-unknown-linux-musl/icx",
+            "status"
+          ],
+          "exit": 0,
+          "stdout": "\u27eaICX:STATUS\u2502cas_artifacts=0\u2502redacted_artifacts=0\u2502unique_chunks=0\u2502dag_nodes=0\u2502sealed_epochs=0\u2502hdc_entries=0\u2502graph_edges=0\u2502shm_seq=0\u27eb\n",
+          "stderr": ""
+        }
+      ]
+    }
+  ],
+  "final_release_certified": false,
+  "counts": {
+    "locally_eligible": 2,
+    "candidates": 2
+  }
+}

@@ -2,7 +2,7 @@
 
 **References:** [docs/architecture.md](architecture.md), [docs/data-model.md](data-model.md)  
 **Target Crates:** `icx-core`, `icx-codec`, `icx-hdc`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-cli`  
-**Applies to:** `icx` v1.1.0
+**Applies to:** `icx` v1.2.0 candidate
 
 ---
 
@@ -42,7 +42,7 @@ pub trait ContextCodec: Send + Sync {
         hologram: [u8; 8],
     ) -> AhtlPacket;
 
-    /// Renders an AhtlPacket into its canonical non-human BPE-aligned string representation.
+    /// Renders an AhtlPacket into its canonical symbolic string representation.
     fn render_packet(&self, packet: &AhtlPacket) -> String;
 
     /// Parses a rendered AHTL packet back into its structured representation.
@@ -66,10 +66,16 @@ pub trait AssociativeMemoryIndex: Send + Sync {
         is_anomaly: bool,
     ) -> ObservationReceipt;
 
-    /// Queries the associative index using combined HDC Hamming similarity and Fractal suffix matching.
+    /// Queries exact token postings plus HDC/fractal candidates; exact token coverage ranks first.
     fn query_associative(&self, query_text: &str, top_k: usize) -> Vec<AssociativeHit>;
 }
 ```
+
+`query_associative` returns at most `top_k` distinct artifacts. Ordering is lexical coverage,
+then combined HDC/fractal/surprise score, then artifact ID; it need not be monotone in
+`AssociativeHit::combined_score` alone. Common-token queries may refine the full corpus.
+`encode_snapshot` writes `ICXHDC04`; `decode_snapshot` accepts 04 and legacy 03. The MMU rebuilds
+03's missing postings from CAS events. An older binary cannot read 04.
 
 ---
 
@@ -145,6 +151,9 @@ icx <SUBCOMMAND> [OPTIONS]
   daemon [--dir <PATH>] [--idle-exit <SECS>]
                                       Keep the workspace resident; serve hooks over a private Unix socket
   trust --dir <PATH>                  Adopt an existing workspace you own (e.g. a v1.0.x `.icx/`)
+  context-budget [--context-tokens <N>] [--completion-reserve <N>]
+                 [--external-reserve <N>] [--dir <PATH>]
+                                      Inspect or persist the initialized workspace's model-window policy
   deref <HANDLE> [--lines <START:END>] [--dir <PATH>] [--raw]
                                       Dereference a #icx:<16-hex> or #icx:<12-hex> handle; framed as
                                       untrusted data unless --raw
@@ -160,9 +169,42 @@ icx <SUBCOMMAND> [OPTIONS]
   decode-ahtl <AHTL_STRING>           Parse and inspect an AHTL packet
   status [--dir <PATH>]               MMU status
   doctor [--dir <PATH>]               Inspect agent installations, the bus path and workspace integrity
-  benchmark                           Synthetic in-process benchmark suite with SLO gates
+  benchmark [--json]                   Synthetic in-process benchmark suite with strict SLO gates;
+                                      JSON includes actual 1k/10k scans and build/fixture provenance
 ```
 
 Environment: `ICX_DIR`, `ICX_STATE_HOME`, `ICX_CONFIG_HOME`, `ICX_SHM_PATH`, `ICX_NO_DAEMON`,
 `ICX_DAEMON_AUTOSTART`, `ICX_PROXY_BIND`, `ICX_UPSTREAM_URL`, plus `XDG_STATE_HOME`,
 `XDG_CONFIG_HOME` and `XDG_RUNTIME_DIR`.
+
+## 8. Managed Context and MCP Contracts
+
+```rust
+impl PromptWindowBudget {
+    pub fn new(context_tokens: usize, completion_reserve: usize,
+               external_input_reserve: usize) -> Result<Self, IcxError>;
+    pub fn window_bytes(self) -> usize;
+}
+impl CacheEpochController {
+    pub fn set_window_budget(&mut self, budget: PromptWindowBudget) -> Result<(), IcxError>;
+    pub const fn window_budget(&self) -> PromptWindowBudget;
+}
+```
+
+Default policy:32,768 total units minus 4,096 completion and 4,096 external-input reserve.
+`utf8-bytes-upper-bound-v1` charges one UTF-8 byte per token allowance; it is an estimator,
+not provider tokenization. Callers must account for external system/current-message/tool-schema
+content. Automatic selection bounds the icx-managed view and structured recall tail, not every
+byte in an enclosing provider request. The policy survives workspace restart.
+
+MCP requires a JSON-RPC 2.0 object with a nonempty method and, for requests, a string/integer ID.
+`tools/call` requires the canonical case-sensitive tool name `icx` and object `arguments` with
+an explicit supported string `op`; absent/unknown operations no longer default to status.
+Envelope failures use `-32600`, malformed call parameters use `-32602`, and invalid tool-operation
+arguments yield `isError:true`. Invalid requests do not acquire or mutate workspace state.
+Hook-specific pager aliases remain separate from the MCP tool-name contract.
+
+`CodexAdapter::SUPPORTS_TOOL_OUTPUT_REPLACEMENT` is `false`. Its `PostToolUse` response captures
+output but contains no replacement/additional-context field. Supported start/prompt hooks can
+still provide recall. The daemon commits under the workspace lock before sending success;
+persistence failure is reported and causes an error exit.

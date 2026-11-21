@@ -25,9 +25,29 @@ impl SecretRedactor {
         let mut out = String::with_capacity(input.len());
         let mut block: Option<KeyBlock> = None;
         let mut block_lines = 0usize;
-        let mut pending_value = false;
+        let mut pending_value: Option<PendingSecret> = None;
         for segment in input.split_inclusive('\n') {
             let (mut body, ending) = split_line_ending(segment);
+            // YAML block contents are scalars even when they resemble mappings, comments or
+            // private-key banners. Handle them before any of the line-oriented detectors.
+            if let Some(pending) = pending_value.as_mut() {
+                let indent = body.len() - body.trim_start().len();
+                if body.trim().is_empty() {
+                    out.push_str(body);
+                    out.push_str(ending);
+                    continue;
+                }
+                if pending.block || pending.scalar_indent.is_some() {
+                    let minimum = pending.scalar_indent.unwrap_or(pending.indent + 1);
+                    if indent >= minimum {
+                        pending.scalar_indent = Some(minimum);
+                        out.push_str(&Self::redact_bare_value_line(body));
+                        out.push_str(ending);
+                        continue;
+                    }
+                    pending_value = None;
+                }
+            }
             if let Some(kind) = block {
                 block_lines += 1;
                 if let Some(end) = kind.end_index_after(body, 0) {
@@ -45,39 +65,47 @@ impl SecretRedactor {
                     block = None;
                 }
             }
-            if let Some(inline) = Self::redact_inline_key_blocks(body) {
-                out.push_str(&Self::redact_line(&inline));
-                out.push_str(ending);
-                continue;
-            }
-            if let Some((kind, start)) = KeyBlock::begins(body) {
+            // Private-key normalization must also pass through pending scalar processing.
+            // Otherwise a key banner after a scalar prefix hides that prefix only on the
+            // second redaction pass. Keep block state so subsequent key lines stay hidden.
+            let normalized = if let Some(inline) = Self::redact_inline_key_blocks(body) {
+                Self::redact_line(&inline)
+            } else if let Some((kind, start)) = KeyBlock::begins(body) {
                 block = Some(kind);
                 block_lines = 0;
                 // Text before the banner on the same line is not part of the key.
-                out.push_str(&Self::redact_line(&body[..start]));
-                out.push_str(kind.marker());
-                out.push_str(ending);
-                continue;
-            }
-            let redacted = if pending_value && !body.trim().is_empty() {
-                match ContinuationLine::classify(body) {
-                    // A comment between the key and its value keeps the value pending.
-                    ContinuationLine::Comment => Self::redact_line(body),
-                    // A nested mapping or structure: the key had no scalar value to hide.
-                    ContinuationLine::Structure => {
-                        pending_value = false;
-                        Self::redact_line(body)
-                    }
-                    ContinuationLine::Value => {
-                        pending_value = false;
-                        Self::redact_bare_value_line(body)
-                    }
-                }
+                let mut prefix = Self::redact_line(&body[..start]);
+                prefix.push_str(kind.marker());
+                prefix
             } else {
                 Self::redact_line(body)
             };
-            if Self::ends_with_sensitive_key(body) {
-                pending_value = true;
+            // Classification uses the same canonical line that will be emitted. Vendor-token
+            // substitution must not change a structure into a scalar only on a second pass.
+            let redacted = if let Some(pending) = pending_value.as_mut() {
+                match ContinuationLine::classify(&normalized) {
+                    // A comment between the key and its value keeps the value pending.
+                    ContinuationLine::Comment => normalized,
+                    // A nested mapping or structure: the key had no scalar value to hide.
+                    ContinuationLine::Structure => {
+                        pending_value = None;
+                        normalized
+                    }
+                    ContinuationLine::Value => {
+                        let indent = body.len() - body.trim_start().len();
+                        if indent > pending.indent {
+                            pending.scalar_indent = Some(indent);
+                        } else {
+                            pending_value = None;
+                        }
+                        Self::redact_bare_value_line(&normalized)
+                    }
+                }
+            } else {
+                normalized
+            };
+            if let Some(pending) = Self::sensitive_continuation(body) {
+                pending_value = Some(pending);
             }
             out.push_str(&redacted);
             out.push_str(ending);
@@ -106,10 +134,22 @@ impl SecretRedactor {
     /// (`"password":` / `password:`).
     /// Only a line that *is* the key (optionally after `{`, `,` or a YAML `- `) arms the
     /// continuation, so prose such as `error: missing signing key:` never does (PR #20 review).
-    fn ends_with_sensitive_key(line: &str) -> bool {
-        let Some(head) = line.trim_end().strip_suffix(':') else {
-            return false;
-        };
+    fn sensitive_continuation(line: &str) -> Option<PendingSecret> {
+        let comment = line.match_indices('#').find_map(|(i, _)| {
+            (i > 0 && line.as_bytes()[i - 1].is_ascii_whitespace()).then_some(i)
+        });
+        let declaration = comment.map_or(line, |i| &line[..i]).trim_end();
+        let (head, suffix) = declaration.rsplit_once(':')?;
+        let suffix = suffix.trim();
+        let mut properties = suffix.split_whitespace().peekable();
+        while properties.peek().is_some_and(|s| s.starts_with(['&', '!'])) {
+            properties.next();
+        }
+        let header = properties.next().unwrap_or("");
+        let block = yaml_block_header(header) && properties.next().is_none();
+        if !suffix.is_empty() && !block {
+            return None;
+        }
         let head = head.trim();
         let split = head
             .rfind(|c: char| c.is_whitespace() || c == '{' || c == ',')
@@ -121,7 +161,32 @@ impl SecretRedactor {
         let prefix_ok =
             prefix.is_empty() || prefix == "-" || prefix.ends_with('{') || prefix.ends_with(',');
         let key = key.trim_matches(|c: char| c == '"' || c == '\'');
-        prefix_ok && !key.is_empty() && Self::is_sensitive_key_name(key)
+        // This must be a standalone key, not prose or an inline value that happens to end
+        // in `_TOKEN:`. Substitution can remove whitespace inside that value; accepting its
+        // punctuation as part of a key would arm a new continuation only on the next pass.
+        if !key
+            .chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '_' | '-'))
+        {
+            return None;
+        }
+        let indent = line.len() - line.trim_start().len()
+            + usize::from(line.trim_start().starts_with("- ")) * 2;
+        let scalar_indent = block
+            .then(|| {
+                header
+                    .chars()
+                    .find_map(|c| c.to_digit(10))
+                    .map(|n| indent + n as usize)
+            })
+            .flatten();
+        (prefix_ok && !key.is_empty() && Self::is_sensitive_key_name(key)).then_some(
+            PendingSecret {
+                indent,
+                block,
+                scalar_indent,
+            },
+        )
     }
 
     /// Replaces the (possibly quoted) value on a continuation line, keeping indentation and any
@@ -364,7 +429,10 @@ impl SecretRedactor {
             }
             if inner_end > inner_start && !out[inner_start..inner_end].starts_with("[REDACTED:") {
                 out.replace_range(inner_start..inner_end, replacement);
-                return Some((inner_start + replacement.len() + 2).min(out.len()));
+                // A malformed escaped opening can terminate at a bare one-byte quote.
+                // Advancing by an assumed two-byte closer could enter the following UTF-8
+                // codepoint. Resume at the known replacement boundary instead.
+                return Some(inner_start + replacement.len());
             }
             return None;
         }
@@ -383,7 +451,7 @@ impl SecretRedactor {
             }
             if inner_end > inner_start && !out[inner_start..inner_end].starts_with("[REDACTED:") {
                 out.replace_range(inner_start..inner_end, replacement);
-                return Some((inner_start + replacement.len() + 1).min(out.len()));
+                return Some(inner_start + replacement.len());
             }
             return None;
         }
@@ -480,6 +548,10 @@ impl SecretRedactor {
     }
 
     fn redact_colon_assignments(line: &str) -> String {
+        // Preserve the block header itself. Its indented content is removed by `redact`.
+        if Self::sensitive_continuation(line).is_some_and(|pending| pending.block) {
+            return line.to_owned();
+        }
         let mut out = line.to_owned();
         let mut search_pos = 0usize;
         while search_pos < out.len() {
@@ -598,26 +670,23 @@ impl SecretRedactor {
     /// Redacts the password component of `scheme://user:password@host` for every URL scheme
     /// (v1.1.0: previously database/broker schemes only, so `https://user:pass@` leaked).
     fn redact_connection_urls(line: &str) -> String {
-        let mut out = line.to_owned();
-        let mut search_pos = 0usize;
-        while search_pos < out.len() {
-            let Some(rel_idx) = out[search_pos..].find("://") else {
-                break;
-            };
-            let sep = search_pos + rel_idx;
-            let scheme_ok = out[..sep]
+        // Discover all ranges in the original line before replacing any text. Otherwise an
+        // inserted marker can shorten an authority and reveal an earlier @ or nested scheme
+        // only on a later redaction pass. At most two ranges are needed per scheme.
+        let mut ranges: Vec<(usize, usize, &str)> = Vec::new();
+        for (sep, _) in line.match_indices("://") {
+            let scheme_ok = line[..sep]
                 .chars()
                 .rev()
                 .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
                 .last()
                 .is_some_and(|c| c.is_ascii_alphabetic());
-            let after_scheme = sep + 3;
             if !scheme_ok {
-                search_pos = after_scheme;
                 continue;
             }
-            let rest = &out[after_scheme..];
-            let end_authority = rest
+            let start = sep + 3;
+            let rest = &line[start..];
+            let end = rest
                 .find(|c: char| {
                     matches!(
                         c,
@@ -625,29 +694,46 @@ impl SecretRedactor {
                     ) || c.is_whitespace()
                 })
                 .unwrap_or(rest.len());
-            let authority = &rest[..end_authority];
-            if let Some(at_pos) = authority.rfind('@') {
-                let userinfo = &authority[..at_pos];
-                if let Some(colon_pos) = userinfo.find(':') {
-                    let pass_start = after_scheme + colon_pos + 1;
-                    let pass_end = after_scheme + at_pos;
-                    if pass_end > pass_start && !out[pass_start..pass_end].starts_with("[REDACTED:")
-                    {
-                        let replacement = "[REDACTED:URL_PASSWORD]";
-                        out.replace_range(pass_start..pass_end, replacement);
-                        search_pos = pass_start + replacement.len();
-                        continue;
-                    }
-                } else if Self::looks_like_url_token(userinfo) {
-                    // `https://<token>@host` (no `user:` part): GitHub/GitLab-style token auth.
-                    let replacement = "[REDACTED:URL_TOKEN]";
-                    out.replace_range(after_scheme..after_scheme + at_pos, replacement);
-                    search_pos = after_scheme + replacement.len();
-                    continue;
+            let authority = &rest[..end];
+            let Some(first_at) = authority.find('@') else {
+                continue;
+            };
+            let last_at = authority.rfind('@').expect("first @ was found");
+            if Self::looks_like_url_token(&authority[..first_at]) {
+                ranges.push((start, start + first_at, "[REDACTED:URL_TOKEN]"));
+            }
+            // The last @ still terminates passwords containing a literal @, as before.
+            // Also retain a recognized token before an earlier @ in malformed authorities.
+            if let Some(colon) = authority[..last_at].find(':') {
+                let password = &authority[colon + 1..last_at];
+                if !password.is_empty() && !password.starts_with("[REDACTED:") {
+                    ranges.push((
+                        start + colon + 1,
+                        start + last_at,
+                        "[REDACTED:URL_PASSWORD]",
+                    ));
                 }
             }
-            search_pos = after_scheme + end_authority;
         }
+        ranges.sort_unstable_by_key(|&(start, end, _)| (start, std::cmp::Reverse(end)));
+        let mut merged: Vec<(usize, usize, &str)> = Vec::with_capacity(ranges.len());
+        for range in ranges {
+            if let Some(last) = merged.last_mut()
+                && range.0 < last.1
+            {
+                last.1 = last.1.max(range.1);
+            } else {
+                merged.push(range);
+            }
+        }
+        let mut out = String::with_capacity(line.len());
+        let mut cursor = 0;
+        for (start, end, marker) in merged {
+            out.push_str(&line[cursor..start]);
+            out.push_str(marker);
+            cursor = end;
+        }
+        out.push_str(&line[cursor..]);
         out
     }
 
@@ -672,13 +758,17 @@ impl SecretRedactor {
         let mut pos = 0usize;
         while let Some(rel) = out[pos..].find("SG.") {
             let start = pos + rel;
-            let tok_len = out[start..]
-                .bytes()
-                .take_while(|&b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
-                .count();
-            let tok = &out[start..start + tok_len];
-            if tok_len >= 60 && tok.matches('.').count() == 2 {
-                out.replace_range(start..start + tok_len, "[REDACTED:SENDGRID_KEY]");
+            let rest = &out.as_bytes()[start + 3..];
+            let urlsafe = |b: u8| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-');
+            // Match the actual22+43 format at the leftmost prefix, rather than greedily
+            // scanning a dotted run. A greedy invalid run could contain two valid adjacent
+            // credentials: removing the second exposed the first only on a later pass.
+            if rest.len() >= 66
+                && rest[..22].iter().copied().all(urlsafe)
+                && rest[22] == b'.'
+                && rest[23..66].iter().copied().all(urlsafe)
+            {
+                out.replace_range(start..start + 69, "[REDACTED:SENDGRID_KEY]");
                 pos = start + "[REDACTED:SENDGRID_KEY]".len();
             } else {
                 pos = start + 3;
@@ -747,12 +837,10 @@ impl SecretRedactor {
             let s1 = segs.next().unwrap_or("");
             let s2 = segs.next().unwrap_or("");
             let s3 = segs.next().unwrap_or("");
-            if s1.len() >= 8
-                && s2.starts_with("eyJ")
-                && s2.len() >= 8
-                && s3.len() >= 6
-                && segs.next().is_none()
-            {
+            if s1.len() >= 8 && s2.starts_with("eyJ") && s2.len() >= 8 && s3.len() >= 6 {
+                // The redactor is not a JWT validator. Consume the entire contiguous run,
+                // including adjacent/dotted suffixes; removing only a later embedded token
+                // must not expose an earlier credential for a subsequent pass.
                 let replacement = "[REDACTED:JWT_TOKEN]";
                 out.replace_range(start..start + tok_len, replacement);
                 search_pos = start + replacement.len();
@@ -919,7 +1007,7 @@ const MAX_KEY_BLOCK_LINES: usize = 200;
 enum ContinuationLine {
     /// `#`, `//` or `;` comment: skipped, the value may still follow.
     Comment,
-    /// A nested `key: value` / `key = value` entry, `key:` header, or `{`/`[` opener.
+    /// A nested YAML/JSON `key: value` entry, `key:` header, or `{`/`[` opener.
     Structure,
     /// A scalar: the value of the sensitive key.
     Value,
@@ -959,17 +1047,39 @@ impl ContinuationLine {
         let colon_entry = rest
             .strip_prefix(':')
             .is_some_and(|r| r.is_empty() || r.starts_with(char::is_whitespace));
-        // `key = value` needs a value after a single `=`: `secret==` / `abc=` is base64 padding.
-        let eq_entry = rest
-            .strip_prefix('=')
-            .is_some_and(|r| !r.starts_with('=') && !r.trim().is_empty());
-        let is_entry = key_ok && (colon_entry || eq_entry);
+        // `=` is ordinary YAML scalar content, never a nested mapping separator.
+        let is_entry = key_ok && colon_entry;
         if is_entry {
             Self::Structure
         } else {
             Self::Value
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PendingSecret {
+    indent: usize,
+    block: bool,
+    scalar_indent: Option<usize>,
+}
+
+/// YAML1.2 block style plus optional indentation/chomping indicators, in either order.
+fn yaml_block_header(value: &str) -> bool {
+    let mut chars = value.chars();
+    if !matches!(chars.next(), Some('|' | '>')) {
+        return false;
+    }
+    let mut indentation = false;
+    let mut chomping = false;
+    for c in chars {
+        match c {
+            '1'..='9' if !indentation => indentation = true,
+            '+' | '-' if !chomping => chomping = true,
+            _ => return false,
+        }
+    }
+    true
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

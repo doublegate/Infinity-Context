@@ -1,0 +1,98 @@
+[
+  {
+    "name": "fmt",
+    "command": "cargo fmt --all -- --check",
+    "exit": 0,
+    "seconds": 0.292
+  },
+  {
+    "name": "clippy",
+    "command": "cargo clippy --workspace --all-targets -- -D warnings",
+    "exit": 0,
+    "seconds": 212.753
+  },
+  {
+    "name": "tests",
+    "command": "cargo test --workspace",
+    "exit": 101,
+    "seconds": 39.076
+  },
+  {
+    "name": "rustdoc",
+    "command": "RUSTDOCFLAGS=\"-D warnings\" cargo doc --workspace --no-deps",
+    "exit": 0,
+    "seconds": 2.274
+  },
+  {
+    "name": "coverage",
+    "command": "cargo llvm-cov --workspace --all-targets --lcov --output-path /tmp/Infinity-Context/validation/lcov.info --fail-under-lines 95",
+    "exit": 101,
+    "seconds": 157.01
+  },
+  {
+    "name": "benchmark",
+    "command": "cargo run --release -p icx-cli -- benchmark",
+    "exit": 1,
+    "seconds": 114.411
+  },
+  {
+    "name": "doctor",
+    "command": "cargo run --release -p icx-cli -- doctor",
+    "exit": 0,
+    "seconds": 0.074
+  },
+  {
+    "name": "deny",
+    "command": "cargo deny --workspace --disable-fetch check",
+    "exit": 2,
+    "seconds": 0.051
+  },
+  {
+    "name": "audit",
+    "command": "cargo audit --no-fetch",
+    "exit": 0,
+    "seconds": 0.156
+  },
+  {
+    "name": "about",
+    "command": "cargo about generate --offline --locked --fail -c .github/about.toml .github/about.hbs -o /tmp/Infinity-Context/validation/THIRD-PARTY-NOTICES.txt",
+    "exit": 0,
+    "seconds": 4.702
+  },
+  {
+    "name": "machete",
+    "command": "cargo machete",
+    "exit": 0,
+    "seconds": 0.135
+  },
+  {
+    "name": "reuse",
+    "command": "UV_CACHE_DIR=/tmp/Infinity-Context/validation/uv uvx --offline reuse lint",
+    "exit": 2,
+    "seconds": 0.112
+  },
+  {
+    "name": "gitleaks",
+    "command": "gitleaks git . --log-opts=\"--all --full-history -m\" --no-banner --redact --exit-code 1",
+    "exit": 1,
+    "seconds": 2.318
+  },
+  {
+    "name": "actionlint",
+    "command": "actionlint -color=false",
+    "exit": 0,
+    "seconds": 0.529
+  },
+  {
+    "name": "agy-selftest",
+    "command": "bash scripts/agy-review-selftest.sh",
+    "exit": 0,
+    "seconds": 2.151
+  },
+  {
+    "name": "cla-selftest",
+    "command": "bash .github/scripts/cla-check.sh --selftest",
+    "exit": 0,
+    "seconds": 0.424
+  }
+]

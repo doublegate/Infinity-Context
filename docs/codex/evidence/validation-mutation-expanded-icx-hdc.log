@@ -1,0 +1,27 @@
+Found 46 mutants to test
+ok       Unmutated baseline in 43s build + 25s test
+MISSED   crates/icx-hdc/src/lib.rs:68:20: replace & with ^ in bloom_bits in 1s build + 14s test
+MISSED   crates/icx-hdc/src/lib.rs:272:28: replace | with ^ in HdcAssociativeIndex::token_bloom_bits32 in 0s build + 11s test
+MISSED   crates/icx-hdc/src/lib.rs:356:68: replace * with / in HdcAssociativeIndex::observe_event_with_exit_code in 0s build + 9s test
+MISSED   crates/icx-hdc/src/lib.rs:465:33: replace + with - in HdcAssociativeIndex::score_entry in 0s build + 10s test
+MISSED   crates/icx-hdc/src/lib.rs:485:23: replace || with && in HdcAssociativeIndex::query_associative in 0s build + 21s test
+MISSED   crates/icx-hdc/src/lib.rs:529:67: replace ^ with | in HdcAssociativeIndex::query_associative in 1s build + 16s test
+MISSED   crates/icx-hdc/src/lib.rs:534:36: replace * with / in HdcAssociativeIndex::query_associative in 0s build + 10s test
+MISSED   crates/icx-hdc/src/fractal.rs:65:18: replace > with >= in FractalCoord::chebyshev_distance in 0s build + 12s test
+MISSED   crates/icx-hdc/src/fractal.rs:237:24: replace | with ^ in FractalCoord::decode_octal_addr in 1s build + 11s test
+MISSED   crates/icx-hdc/src/hv.rs:155:20: replace ^ with & in Hypervector::from_u64_seed in 0s build + 10s test
+MISSED   crates/icx-hdc/src/hv.rs:199:33: replace >> with << in Hypervector::encode_text::token_key_u64 in 0s build + 11s test
+MISSED   crates/icx-hdc/src/hv.rs:241:42: replace > with >= in Hypervector::encode_text in 0s build + 11s test
+MISSED   crates/icx-hdc/src/hv.rs:449:9: replace Hypervector::sub_hypervector_64 -> u64 with 0 in 0s build + 10s test
+MISSED   crates/icx-hdc/src/hv.rs:513:24: replace ^= with |= in Hypervector::sketch_256 in 1s build + 10s test
+MISSED   crates/icx-hdc/src/snapshot.rs:15:48: replace * with + in 0s build + 11s test
+MISSED   crates/icx-hdc/src/surprise.rs:148:32: replace += with *= in TitansSurpriseGate::shannon_entropy_norm in 0s build + 9s test
+MISSED   crates/icx-hdc/src/surprise.rs:216:39: replace + with - in TitansSurpriseGate::observe_with_exit_code in 0s build + 10s test
+ERROR Worker thread failed: Failed to copy /home/parobek/Code/OSS_Public-Projects/Infinity-Context/fuzz/target/x86_64-unknown-linux-gnu/release/ahtl_stream to /tmp/Infinity-Context/validation/cargo-mutants-Infinity-Context-GNSNL3.tmp/fuzz/target/x86_64-unknown-linux-gnu/release/ahtl_stream
+
+Caused by:
+    No space left on device (os error 28)
+Error: Failed to copy /home/parobek/Code/OSS_Public-Projects/Infinity-Context/fuzz/target/x86_64-unknown-linux-gnu/release/ahtl_stream to /tmp/Infinity-Context/validation/cargo-mutants-Infinity-Context-GNSNL3.tmp/fuzz/target/x86_64-unknown-linux-gnu/release/ahtl_stream
+
+Caused by:
+    No space left on device (os error 28)

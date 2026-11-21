@@ -1,0 +1,71 @@
+    Checking cfg-if v1.0.5
+    Checking cpufeatures v0.3.1
+    Checking itoa v1.0.19
+    Checking constant_time_eq v0.4.2
+    Checking memchr v2.8.3
+    Checking arrayvec v0.7.8
+    Checking bitflags v2.13.2
+    Checking serde_core v1.0.229
+    Checking zmij v1.0.23
+    Checking linux-raw-sys v0.12.1
+    Checking foldhash v0.2.0
+    Checking fallible-streaming-iterator v0.1.9
+    Checking smallvec v1.16.6
+    Checking thiserror v2.0.21
+    Checking fallible-iterator v0.3.0
+    Checking libsqlite3-sys v0.40.0
+    Checking rand_core v0.10.1
+    Checking libc v0.2.191
+    Checking num-traits v0.2.19
+    Checking unarray v0.1.4
+    Checking hashbrown v0.17.1
+    Checking core_detect v1.0.0
+    Checking rand_xorshift v0.5.0
+    Checking chacha20 v0.10.2
+   Compiling icx-cli v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-cli)
+    Checking regex-syntax v0.8.12
+    Checking blake3 v1.8.7
+    Checking hashlink v0.12.2
+    Checking rusqlite v0.43.0
+    Checking getrandom v0.4.3
+    Checking rand v0.10.4
+    Checking rustix v1.1.6
+    Checking serde v1.0.229
+    Checking serde_json v1.0.154
+    Checking proptest v1.12.0
+    Checking icx-core v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core)
+    Checking icx-codec v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-codec)
+    Checking icx-hdc v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-hdc)
+    Checking icx-store v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-store)
+    Checking icx-bus v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-bus)
+    Checking icx-adapters v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-adapters)
+    Checking icx-proxy v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-proxy)
+error: consider adding a `;` to the last statement for consistent formatting
+   --> crates/icx-cli/src/main.rs:236:17
+    |
+236 |                 context = Some(value.parse::<usize>().map_err(|e| e.to_string())?)
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: add a `;` here: `context = Some(value.parse::<usize>().map_err(|e| e.to_string())?);`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#semicolon_if_nothing_returned
+    = note: `-D clippy::semicolon-if-nothing-returned` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::semicolon_if_nothing_returned)]`
+
+error: consider adding a `;` to the last statement for consistent formatting
+   --> crates/icx-cli/src/main.rs:239:17
+    |
+239 |                 completion = Some(value.parse::<usize>().map_err(|e| e.to_string())?)
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: add a `;` here: `completion = Some(value.parse::<usize>().map_err(|e| e.to_string())?);`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#semicolon_if_nothing_returned
+
+error: consider adding a `;` to the last statement for consistent formatting
+   --> crates/icx-cli/src/main.rs:242:17
+    |
+242 |                 external = Some(value.parse::<usize>().map_err(|e| e.to_string())?)
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: add a `;` here: `external = Some(value.parse::<usize>().map_err(|e| e.to_string())?);`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#semicolon_if_nothing_returned
+
+error: could not compile `icx-cli` (bin "icx") due to 3 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `icx-cli` (bin "icx" test) due to 3 previous errors

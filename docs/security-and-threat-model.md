@@ -1,10 +1,10 @@
 # Security & Threat Model Specification
 
-**Applies to:** `icx` v1.1.0  
+**Applies to:** `icx` v1.2.0 development candidate
 **References:** [docs/adr/0005-v1-1-0-workspace-trust-store-and-daemon.md](adr/0005-v1-1-0-workspace-trust-store-and-daemon.md), [docs/wire-protocol-and-shm-bus.md](wire-protocol-and-shm-bus.md), Master-Core Module 60 (Security & Input Validation)
 
-This document describes what `icx` v1.1.0 actually enforces. Every control listed in §4 is
-implemented in v1.1.0 and names the code that implements it. Anything `icx` does not defend
+This document describes controls implemented in the v1.2.0 candidate. Each control in §4
+names its implementation; final qualification is tracked in [the release record](releases/v1.2.0/README.md). Anything `icx` does not defend
 against is listed in §5 (residual risks) or §6 (out of scope). The v1.0.0 version of this document
 described controls that the code did not have (audit finding ICX-AUD-017); this rewrite replaces
 it.
@@ -51,7 +51,7 @@ the file-backed telepathy ring (`icx-fabric-v1.shm`).
 
 ---
 
-## 4. Threats and Controls (all implemented in v1.1.0)
+## 4. Threats and Controls
 
 ### 4.1 Workspace selection and integrity
 
@@ -105,9 +105,24 @@ the file-backed telepathy ring (`icx-fabric-v1.shm`).
 | Oversized hook input exhausts memory (v1.0.0 buffered all of stdin before applying the cap; ICX-AUD-014). | Hook and `proxy-transform` stdin is read through a bound of 64 MiB (`ICX_MAX_INGEST_BYTES`) plus a 64 KiB envelope; over-limit input fails open (the agent's original output is left unchanged). Daemon requests have the same bound. Stored payloads are capped at 64 MiB. | `crates/icx-cli/src/main.rs` (`read_bounded`, `MAX_STDIN_BYTES`); `daemon.rs` (`MAX_REQUEST_BYTES`); `crates/icx-core/src/cas.rs` (`check_ingest_size`) |
 | Oversized or deeply nested MCP input. | MCP stdio lines are bounded at 4 MiB; at most 64 nested `fold begin:` branches (`MAX_FOLD_DEPTH`). | `main.rs` (`MAX_MCP_LINE_BYTES`); `mcp.rs` (`MAX_FOLD_DEPTH`); `crates/icx-adapters/tests/mcp_bounds.rs` |
 | Quadratic SSE re-scanning on chunked responses. | Chunked SSE line splitting is linear (scan cursor, one drain per chunk); SSE lines are bounded at 16 MiB. | `wire.rs` (`MAX_SSE_LINE_BYTES`) |
-| A hostile HDC snapshot in the store exhausts memory on load. | The `ICXHDC03` snapshot decoder is length-prefixed and bounds-checked; every count is validated against a cap before allocation. A fuzz target covers it. | `crates/icx-hdc/src/snapshot.rs`; `fuzz/fuzz_targets/hdc_snapshot.rs` |
+| A hostile HDC snapshot in the store exhausts memory on load or forges derived state. | The decoder reads `ICXHDC03` and `ICXHDC04`, bounds counts before allocation and validates finite/range and derived-state consistency. New snapshots use04; the MMU rebuilds legacy03 indexes from preserved events. A fuzz target covers decoding. | `crates/icx-hdc/src/snapshot.rs`; `fuzz/fuzz_targets/hdc_snapshot.rs` |
 
 ### 4.7 Memory safety and supply chain
+
+The v1.2.0 redactor recognizes sensitive YAML literal/folded block headers, optional indentation
+and chomping indicators, and same-line tag/anchor properties. Indented block contents are
+removed before comment, mapping or PEM detection. Indented plain scalar continuations are also
+redacted, and `=` is scalar content rather than a YAML mapping separator. Dedented public
+siblings and actual nested mappings remain intact. This follows the block indentation rules in
+[YAML1.2.2 §8.1](https://yaml.org/spec/1.2.2/#81-block-scalar-styles), rather than claiming a full
+YAML parser or universal secret detection. These rules apply to new ingestion; previously
+stored artifacts are not silently scrubbed or changed. The minimized idempotence regressions
+and real MMU CAS tests are in `redact_v120.rs` and `redaction_v120.rs`.
+
+Profile A public skeletons use the same ASCII delimiter neutralization as ingestion. Literal
+packet/header glyphs are a lossy skeleton view; CAS dereference remains the exact post-redaction
+source. Ordinary existing Profile A skeletons and percent text remain unchanged. Nested raw
+framing markers are rejected by the standalone parser.
 
 | Concern | Control | Implementation |
 | :--- | :--- | :--- |
@@ -119,7 +134,7 @@ the file-backed telepathy ring (`icx-fabric-v1.shm`).
 
 ## 5. Residual Risks and Limits
 
-These are known limits of v1.1.0, stated plainly.
+These limits also apply to the v1.2.0 candidate.
 
 1. **Redaction is pattern-based and can miss secrets.** The redactor recognizes known formats,
    sensitive key names and high-entropy tokens. A secret in an unrecognized format, a

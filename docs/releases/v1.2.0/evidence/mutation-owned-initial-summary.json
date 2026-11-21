@@ -1,0 +1,11 @@
+{
+  "selected": 3,
+  "completed_mutants": 0,
+  "exit": 4,
+  "classification": "Unmutated adapter baseline fails after tail budget change; no mutant result inferred",
+  "selected_names": [
+    "crates/icx-adapters/src/codex.rs:273:42: replace * with / in CodexRolloutTailer::compute_anchor_digest",
+    "crates/icx-adapters/src/mcp.rs:81:54: replace && with || in McpPagerServer::stateful_arguments",
+    "crates/icx-adapters/src/store.rs:239:9: delete field generation from struct StoredWorkspace expression in load"
+  ]
+}

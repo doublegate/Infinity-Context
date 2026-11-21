@@ -1,0 +1,23 @@
+   Compiling icx-adapters v1.2.0 (/tmp/Infinity-Context/v120/tail-ppr-mutant/source/crates/icx-adapters)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.50s
+     Running tests/tail_budget_v120.rs (/tmp/Infinity-Context/v120/adapter-target/debug/build/icx-adapters/0f61e937ad17dee9/out/tail_budget_v120-0f61e937ad17dee9)
+
+running 1 test
+test punctuated_query_retains_graph_recall_when_space_is_available ... FAILED
+
+failures:
+
+---- punctuated_query_retains_graph_recall_when_space_is_available stdout ----
+
+thread 'punctuated_query_retains_graph_recall_when_space_is_available' (305) panicked at crates/icx-adapters/tests/tail_budget_v120.rs:159:5:
+⟪ICX:TAIL_SLOT│agent=codex│epochs=0│cas_artifacts=1⟫
+⟦Ψ:HDC_RECALL⊢subj=graph fixture⋮sim=0.00⋮suffix=1↦#icx:02dfbaac69fe3b26⟧
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    punctuated_query_retains_graph_recall_when_space_is_available
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p icx-adapters --test tail_budget_v120`

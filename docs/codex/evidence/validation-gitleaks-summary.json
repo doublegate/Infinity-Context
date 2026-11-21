@@ -1,0 +1,72 @@
+[
+  {
+    "RuleID": "generic-api-key",
+    "File": "crates/icx-codec/tests/redact_v110.rs",
+    "StartLine": 194,
+    "Commit": "9d5982688cf027c22a50626eb112c357728cf770",
+    "Fingerprint": "9d5982688cf027c22a50626eb112c357728cf770:crates/icx-codec/tests/redact_v110.rs:generic-api-key:194",
+    "Description": "Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
+    "context_has_synthetic_or_test_marker": true,
+    "line_length": 39
+  },
+  {
+    "RuleID": "generic-api-key",
+    "File": "crates/icx-codec/tests/redact_v110.rs",
+    "StartLine": 194,
+    "Commit": "5cff2cf8098b8a83a32ed9e982465797912460b8",
+    "Fingerprint": "5cff2cf8098b8a83a32ed9e982465797912460b8:crates/icx-codec/tests/redact_v110.rs:generic-api-key:194",
+    "Description": "Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
+    "context_has_synthetic_or_test_marker": true,
+    "line_length": 39
+  },
+  {
+    "RuleID": "private-key",
+    "File": "crates/icx-codec/src/redact.rs",
+    "StartLine": 36,
+    "Commit": "9dc19e9f42a6f0f8ae1f5e6c197564f936514ec3",
+    "Fingerprint": "9dc19e9f42a6f0f8ae1f5e6c197564f936514ec3:crates/icx-codec/src/redact.rs:private-key:36",
+    "Description": "Identified a Private Key, which may compromise cryptographic security and sensitive data encryption.",
+    "context_has_synthetic_or_test_marker": true,
+    "line_length": 71
+  },
+  {
+    "RuleID": "private-key",
+    "File": ".github/workflows/ci.yml",
+    "StartLine": 111,
+    "Commit": "0ab3725ce7f637908d9972fded37b36ae56e0f2c",
+    "Fingerprint": "0ab3725ce7f637908d9972fded37b36ae56e0f2c:.github/workflows/ci.yml:private-key:111",
+    "Description": "Identified a Private Key, which may compromise cryptographic security and sensitive data encryption.",
+    "context_has_synthetic_or_test_marker": true,
+    "line_length": 51
+  },
+  {
+    "RuleID": "github-pat",
+    "File": ".github/workflows/ci.yml",
+    "StartLine": 109,
+    "Commit": "a8ff4cff2f39a1d48b49db480e6e2a025738181e",
+    "Fingerprint": "a8ff4cff2f39a1d48b49db480e6e2a025738181e:.github/workflows/ci.yml:github-pat:109",
+    "Description": "Uncovered a GitHub Personal Access Token, potentially leading to unauthorized repository access and sensitive content exposure.",
+    "context_has_synthetic_or_test_marker": true,
+    "line_length": 101
+  },
+  {
+    "RuleID": "generic-api-key",
+    "File": "crates/icx-codec/src/redact.rs",
+    "StartLine": 119,
+    "Commit": "96a1650c0446beeaf406e1645d5f07112f29f09b",
+    "Fingerprint": "96a1650c0446beeaf406e1645d5f07112f29f09b:crates/icx-codec/src/redact.rs:generic-api-key:119",
+    "Description": "Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
+    "context_has_synthetic_or_test_marker": true,
+    "line_length": 49
+  },
+  {
+    "RuleID": "github-pat",
+    "File": "crates/icx-codec/src/redact.rs",
+    "StartLine": 120,
+    "Commit": "96a1650c0446beeaf406e1645d5f07112f29f09b",
+    "Fingerprint": "96a1650c0446beeaf406e1645d5f07112f29f09b:crates/icx-codec/src/redact.rs:github-pat:120",
+    "Description": "Uncovered a GitHub Personal Access Token, potentially leading to unauthorized repository access and sensitive content exposure.",
+    "context_has_synthetic_or_test_marker": true,
+    "line_length": 47
+  }
+]

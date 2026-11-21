@@ -1,0 +1,14 @@
+{"name": "format", "command": ["cargo", "fmt", "--all", "--", "--check"], "exit": 0, "seconds": 0.294}
+{"name": "clippy", "command": ["cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"], "exit": 101, "seconds": 0.591}
+{"name": "rustdoc", "command": ["cargo", "doc", "--workspace", "--no-deps"], "exit": 0, "seconds": 1.53}
+{"name": "deny", "command": ["cargo", "deny", "--offline", "--locked", "--config", "/tmp/Infinity-Context/validation/deny-isolated.toml", "check"], "exit": 0, "seconds": 0.177}
+{"name": "audit", "command": ["cargo", "audit", "--no-fetch", "--db", "/tmp/Infinity-Context/validation/advisory-dbs-clean/advisory-db-3157b0e258782691"], "exit": 0, "seconds": 0.061}
+{"name": "notices", "command": ["cargo", "about", "generate", "--offline", "--locked", "--fail", "-c", ".github/about.toml", ".github/about.hbs", "-o", "/tmp/Infinity-Context/v120/THIRD-PARTY-NOTICES.txt"], "exit": 0, "seconds": 3.111}
+{"name": "machete", "command": ["cargo", "machete"], "exit": 0, "seconds": 0.067}
+{"name": "reuse", "command": ["/home/parobek/.cache/uv/archive-v0/DF5VlosCbTYFZNoF/bin/reuse", "lint"], "exit": 0, "seconds": 1.255}
+{"name": "secrets-history", "command": ["/tmp/Infinity-Context/validation/gitleaks", "git", ".", "--log-opts=--all --full-history -m", "--no-banner", "--redact", "--exit-code", "1"], "exit": 0, "seconds": 1.69}
+{"name": "actionlint", "command": ["actionlint", "-color=false"], "exit": 0, "seconds": 0.211}
+{"name": "agy-selftest", "command": ["bash", "scripts/agy-review-selftest.sh"], "exit": 0, "seconds": 0.32}
+{"name": "cla-selftest", "command": ["bash", ".github/scripts/cla-check.sh", "--selftest"], "exit": 0, "seconds": 0.164}
+{"name": "release-policy-tests", "command": ["python3", ".github/scripts/test-release-ci-gate.py"], "exit": 0, "seconds": 0.295}
+{"name": "benchmark-runner-tests", "command": ["python3", "scripts/test_benchmark_series.py"], "exit": 0, "seconds": 0.602}

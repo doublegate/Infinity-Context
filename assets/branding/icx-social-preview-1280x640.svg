@@ -1,4 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+  <title>Infinity-Context v1.2.0 candidate: symbolic codec, verified CAS and bounded managed text</title>
+  <metadata>generator=scripts/generate_assets_and_graphs.py; runtime=v1.2.0-candidate; source-free SVG; contracts=docs/adr/0006-v1-2-0-context-and-compatibility.md</metadata>
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#070a12"/>
@@ -13,15 +15,16 @@
   <text x="72" y="196" fill="#f8fafc" font-family="Inter, system-ui, sans-serif" font-size="56" font-weight="800">Infinity-Context (icx)</text>
   <text x="72" y="246" fill="#cbd5e1" font-family="Inter, system-ui, sans-serif" font-size="22">Alien Holographic Token Lattice (AHTL)  |  BLAKE3 Merkle-DAG  |  10,240-Bit HDC + Fractal IFS</text>
   <rect x="72" y="286" width="1136" height="96" rx="12" fill="#0f172a" stroke="#334155" stroke-width="2"/>
-  <text x="96" y="326" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="19" font-weight="600">«AHTLv1 #icx:7bf8239fb7c504f1 !0.84 @0123:0210 ⟦⣿⣷⣯⣟⡿⢿⣻⣽⟧</text>
-  <text x="96" y="360" fill="#34d399" font-family="JetBrains Mono, monospace" font-size="19" font-weight="600">  §fn:verify_ed25519_token(tok:&amp;[u8])-&gt;Result&lt;Claims,AuthErr&gt; !err:401»</text>
+  <text x="96" y="326" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="19" font-weight="600">⟦Δ:src/auth.rs#L1-8⊢⊕fn:verify_token⋮¬unwrap()</text>
+  <text x="96" y="360" fill="#34d399" font-family="JetBrains Mono, monospace" font-size="19" font-weight="600">↦#icx:7bf8239fb7c504f1⋮Ψ:⠒⠴⡖⡸⢚⢼⣞⣰⟧</text>
   <rect x="72" y="424" width="268" height="64" rx="12" fill="#0f172a" stroke="#a855f7" stroke-width="2"/>
-  <text x="206" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">72.1x AHTL Compression</text>
+  <text x="206" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">Lossy AHTL sketches</text>
   <rect x="360" y="424" width="268" height="64" rx="12" fill="#0f172a" stroke="#10b981" stroke-width="2"/>
-  <text x="494" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">100% Lossless BLAKE3</text>
+  <text x="494" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">Post-redaction CAS</text>
   <rect x="648" y="424" width="268" height="64" rx="12" fill="#0f172a" stroke="#f59e0b" stroke-width="2"/>
-  <text x="782" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">94.38% Prefix-Cache Hit</text>
+  <text x="782" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">Bounded managed text</text>
   <rect x="936" y="424" width="272" height="64" rx="12" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
-  <text x="1072" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">&lt; 50 us SIMD HDC Scan</text>
+  <text x="1072" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">Lexical-first recall</text>
   <text x="72" y="556" fill="#94a3b8" font-family="JetBrains Mono, monospace" font-size="17">Claude Code  *  OpenAI Codex CLI  *  Google Antigravity (agy)  *  Hermes Agent  *  MCP / ACP</text>
+  <text x="72" y="590" fill="#94a3b8" font-family="DejaVu Sans, sans-serif" font-size="13">v1.2.0 candidate | Managed text bound only; caller budgets external content | Contracts: docs/adr/0006</text>
 </svg>

@@ -401,29 +401,25 @@ impl Hypervector {
         ones
     }
 
-    /// Exact Hamming distance computed via hardware `POPCNT` / auto-vectorized `VPOPCNTDQ`.
+    /// Exact Hamming distance using portable integer popcounts. The compiler selects scalar
+    /// or vector instructions for the configured build target.
     #[inline]
     pub fn hamming_distance(&self, other: &Self) -> u32 {
         self.hamming_distance_simd(other)
     }
 
-    /// Four-way unrolled 160-word `XOR + POPCNT` distance kernel breaking loop-carried dependency
-    /// chains across superscalar execution ports (`docs/ahtl/08-v1-reference-implementation-blueprint.md` §3).
+    /// Contiguous 160-word `XOR + POPCNT` reduction. Accumulating into a word-sized lane avoids
+    /// LLVM's interleaved-u32 packing/shuffling path on AVX2 targets, while remaining portable
+    /// safe Rust and const-evaluable. The maximum distance is 10,240, so the final cast is exact.
     #[inline]
     pub const fn hamming_distance_simd(&self, other: &Self) -> u32 {
-        let mut d0 = 0u32;
-        let mut d1 = 0u32;
-        let mut d2 = 0u32;
-        let mut d3 = 0u32;
+        let mut distance = 0u64;
         let mut i = 0;
         while i < HV_WORDS {
-            d0 += (self.words[i] ^ other.words[i]).count_ones();
-            d1 += (self.words[i + 1] ^ other.words[i + 1]).count_ones();
-            d2 += (self.words[i + 2] ^ other.words[i + 2]).count_ones();
-            d3 += (self.words[i + 3] ^ other.words[i + 3]).count_ones();
-            i += 4;
+            distance += (self.words[i] ^ other.words[i]).count_ones() as u64;
+            i += 1;
         }
-        d0 + d1 + d2 + d3
+        distance as u32
     }
 
     /// Normalized associative similarity in `[0.0, 1.0]` where `0.0` is orthogonal (`d >= 5120`)
@@ -752,7 +748,31 @@ impl HdcBundler {
         )?;
         let mut seen_fingerprints = BTreeSet::new();
         for _ in 0..n {
-            seen_fingerprints.insert(r.u128()?);
+            if !seen_fingerprints.insert(r.u128()?) {
+                return Err(crate::snapshot::SnapshotError::Inconsistent(
+                    "bundler.fingerprints",
+                ));
+            }
+        }
+        if seen_fingerprints.len() > count || (count == 0 && acc.iter().any(|&v| v != 0)) {
+            return Err(crate::snapshot::SnapshotError::Inconsistent(
+                "bundler.count",
+            ));
+        }
+        for (word, lane) in acc.as_chunks::<64>().0.iter().enumerate() {
+            let mut expected = 0u64;
+            if count > 0 {
+                for (bit, &value) in lane.iter().enumerate() {
+                    if value > 0 || (value == 0 && (word ^ bit) & 1 == 0) {
+                        expected |= 1u64 << bit;
+                    }
+                }
+            }
+            if readout.words[word] != expected {
+                return Err(crate::snapshot::SnapshotError::Inconsistent(
+                    "bundler.readout",
+                ));
+            }
         }
         Ok(Self {
             acc,

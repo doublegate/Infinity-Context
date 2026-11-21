@@ -1,0 +1,32 @@
+{
+  "source": "docs/codex/evidence/codec-probe.rs",
+  "source_sha256": "ad06da7ce919634f8a17a6611713fa8675cf0f032f9966ca16e63ae0b95a8ab5",
+  "build_command": [
+    "cargo",
+    "build",
+    "--release",
+    "--offline",
+    "--manifest-path",
+    "/tmp/Infinity-Context/v120/retrieval/Cargo.toml"
+  ],
+  "build_exit": 0,
+  "runs": [
+    {
+      "mode": "recall",
+      "command": [
+        "/tmp/Infinity-Context/v120/retrieval-target/release/icx-v120-retrieval",
+        "recall"
+      ],
+      "exit": 0
+    },
+    {
+      "mode": "multilingual",
+      "command": [
+        "/tmp/Infinity-Context/v120/retrieval-target/release/icx-v120-retrieval",
+        "multilingual"
+      ],
+      "exit": 0
+    }
+  ],
+  "scope": "frozen synthetic corpus; quality comparison valid; timings share host with fuzz/mutation"
+}

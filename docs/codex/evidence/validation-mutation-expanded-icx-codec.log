@@ -1,0 +1,21 @@
+Found 59 mutants to test
+ok       Unmutated baseline in 49s build + 1s test
+MISSED   crates/icx-codec/src/ahtl.rs:731:31: replace || with && in AhtlWirePacketV1::parse in 3s build + 0s test
+MISSED   crates/icx-codec/src/redact.rs:139:44: replace && with || in SecretRedactor::redact_bare_value_line in 1s build + 0s test
+MISSED   crates/icx-codec/src/ahtl.rs:207:28: replace && with || in escape_clause_field in 45s build + 1s test
+MISSED   crates/icx-codec/src/redact.rs:344:13: replace && with || in SecretRedactor::redact_value_span in 3s build + 1s test
+MISSED   crates/icx-codec/src/redact.rs:376:38: replace < with == in SecretRedactor::redact_value_span in 2s build + 1s test
+MISSED   crates/icx-codec/src/redact.rs:398:17: replace || with && in SecretRedactor::redact_value_span in 2s build + 1s test
+MISSED   crates/icx-codec/src/redact.rs:460:33: replace < with <= in SecretRedactor::redact_env_assignments in 4s build + 1s test
+MISSED   crates/icx-codec/src/redact.rs:634:33: replace > with >= in SecretRedactor::redact_connection_urls in 1s build + 0s test
+MISSED   crates/icx-codec/src/redact.rs:691:34: replace + with * in SecretRedactor::redact_structured_vendor_tokens in 3s build + 0s test
+MISSED   crates/icx-codec/src/redact.rs:802:36: replace + with * in SecretRedactor::redact_auth_scheme in 3s build + 0s test
+MISSED   crates/icx-codec/src/redact.rs:892:55: replace && with || in SecretRedactor::is_high_entropy_secret_candidate in 3s build + 0s test
+MISSED   crates/icx-codec/src/redact.rs:909:38: replace > with >= in SecretRedactor::is_high_entropy_secret_candidate in 1s build + 0s test
+MISSED   crates/icx-codec/src/skeleton.rs:66:17: replace || with && in StructuralSkeletonizer::looks_like_test_or_build_log in 1s build + 0s test
+MISSED   crates/icx-codec/src/skeleton.rs:177:23: replace > with >= in StructuralSkeletonizer::skeletonize_log in 1s build + 0s test
+MISSED   crates/icx-codec/src/skeleton.rs:282:38: replace < with <= in StructuralSkeletonizer::skeletonize_diff in 1s build + 0s test
+MISSED   crates/icx-codec/src/skeleton.rs:450:58: replace || with && in StructuralSkeletonizer::extract_module_header in 1s build + 0s test
+MISSED   crates/icx-codec/src/skeleton.rs:583:48: replace - with / in StructuralSkeletonizer::resolve_block_end_line in 1s build + 0s test
+TIMEOUT  crates/icx-codec/src/redact.rs:546:36: replace + with - in SecretRedactor::redact_colon_assignments in 2s build + 60s test
+59 mutants tested in 3m: 17 missed, 41 caught, 1 timeouts

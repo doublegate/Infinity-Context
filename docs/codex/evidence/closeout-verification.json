@@ -1,0 +1,9 @@
+{
+  "audited_paths_unchanged": 519,
+  "checked_local_links": 162,
+  "current_findings": 19,
+  "prior_findings": 51,
+  "new_audit_files": 180,
+  "errors": [],
+  "preserved_preexisting_diff_warning": "AGENTS.md:99: new blank line at EOF; not modified by audit"
+}

@@ -7,6 +7,71 @@ use crate::dag::{DagNode, MerkleContextDag};
 use crate::{AgentKind, ArtifactId, IcxError};
 use serde::{Deserialize, Serialize};
 
+/// Conservative prompt accounting: one UTF-8 byte consumes one token of allowance. This is
+/// an identified upper-bound estimator, not a measured provider tokenizer. External input/tool
+/// schemas and completion space must be reserved by the caller.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PromptWindowBudget {
+    version: u8,
+    context_tokens: usize,
+    completion_reserve: usize,
+    external_input_reserve: usize,
+}
+
+impl Default for PromptWindowBudget {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            context_tokens: 32_768,
+            completion_reserve: 4_096,
+            external_input_reserve: 4_096,
+        }
+    }
+}
+
+impl PromptWindowBudget {
+    pub const fn context_tokens(self) -> usize {
+        self.context_tokens
+    }
+    pub const fn completion_reserve(self) -> usize {
+        self.completion_reserve
+    }
+    pub const fn external_input_reserve(self) -> usize {
+        self.external_input_reserve
+    }
+    /// Constructs a budget, refusing overflowing reservations or no prompt allowance.
+    pub fn new(
+        context_tokens: usize,
+        completion_reserve: usize,
+        external_input_reserve: usize,
+    ) -> Result<Self, IcxError> {
+        let reserved = completion_reserve
+            .checked_add(external_input_reserve)
+            .filter(|&reserved| reserved < context_tokens)
+            .ok_or_else(|| {
+                IcxError::Io("context reservations must fit inside the model window".into())
+            })?;
+        let _ = reserved;
+        Ok(Self {
+            version: 1,
+            context_tokens,
+            completion_reserve,
+            external_input_reserve,
+        })
+    }
+
+    /// Maximum bytes of icx-managed rendered context; invalid persisted policies fail closed.
+    pub fn window_bytes(self) -> usize {
+        if self.version != 1 {
+            return 0;
+        }
+        self.completion_reserve
+            .checked_add(self.external_input_reserve)
+            .and_then(|reserved| self.context_tokens.checked_sub(reserved))
+            .unwrap_or(0)
+    }
+}
+
 /// Configuration for the `CacheEpochController`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EpochControllerConfig {
@@ -114,6 +179,8 @@ pub struct CacheEpochController {
     sealed_epochs: Vec<DagNode>,
     unsealed_turn_ids: Vec<ArtifactId>,
     next_epoch_index: u32,
+    #[serde(default)]
+    window_budget: PromptWindowBudget,
 }
 
 impl CacheEpochController {
@@ -125,7 +192,49 @@ impl CacheEpochController {
             sealed_epochs: Vec::new(),
             unsealed_turn_ids: Vec::new(),
             next_epoch_index: 0,
+            window_budget: PromptWindowBudget::default(),
         }
+    }
+
+    /// Changes model-window policy without deleting any cold history. A smaller policy changes
+    /// the selected provider prefix, so a cache invalidation is expected.
+    pub fn set_window_budget(&mut self, budget: PromptWindowBudget) -> Result<(), IcxError> {
+        if budget.window_bytes() < self.pinned_head.len() {
+            return Err(IcxError::Io(
+                "context budget cannot hold the pinned head".into(),
+            ));
+        }
+        self.window_budget = budget;
+        Ok(())
+    }
+
+    pub const fn window_budget(&self) -> PromptWindowBudget {
+        self.window_budget
+    }
+
+    /// Bounds the direct hook/proxy recall path without assembling or cloning history.
+    /// Oversized formatted context is omitted whole so packet framing is never truncated.
+    pub fn bound_tail_slot(&self, tail: String) -> String {
+        let limit = self.tail_slot_byte_limit();
+        if tail.len() <= limit {
+            return tail;
+        }
+        let diagnostic = "⟪ICX:TAIL_OMITTED│reason=context_budget⟫";
+        if diagnostic.len() <= limit {
+            diagnostic.into()
+        } else {
+            String::new()
+        }
+    }
+
+    /// Maximum complete UTF-8 bytes available to a tail, using the conservative one-byte
+    /// accounting policy. Producers can select whole frames before committing delivery cursors.
+    pub fn tail_slot_byte_limit(&self) -> usize {
+        self.config.tail_slot_max_tokens.min(
+            self.window_budget
+                .window_bytes()
+                .saturating_sub(self.pinned_head.len()),
+        )
     }
 
     /// Number of immutable sealed Cache Epochs in Zone 1.
@@ -327,26 +436,59 @@ impl CacheEpochController {
     pub fn assemble_window(
         &self,
         dag: &MerkleContextDag,
-        ephemeral_tail_slot: String,
+        mut ephemeral_tail_slot: String,
     ) -> AssembledWindow {
-        let sealed_epochs: Vec<String> = self
+        let cap = self.window_budget.window_bytes();
+        if self.pinned_head.len() > cap {
+            let diagnostic = "ICX_CONTEXT_BUDGET_EXCEEDED";
+            let pinned_head = if diagnostic.len() <= cap {
+                diagnostic.into()
+            } else {
+                String::new()
+            };
+            return AssembledWindow {
+                total_cached_prefix_bytes: pinned_head.len(),
+                pinned_head,
+                sealed_epochs: Vec::new(),
+                active_window: Vec::new(),
+                ephemeral_tail_slot: String::new(),
+                total_uncached_tail_bytes: 0,
+            };
+        }
+        ephemeral_tail_slot = self.bound_tail_slot(ephemeral_tail_slot);
+        let mut remaining = cap - self.pinned_head.len() - ephemeral_tail_slot.len();
+        let mut take_frame = |frame: &str| {
+            let cost = frame.len().saturating_add(1); // deterministic_prefix newline
+            if cost <= remaining {
+                remaining -= cost;
+                Some(frame.to_owned())
+            } else {
+                None
+            }
+        };
+        // Select from borrowed frames, then clone only selected history. Cold DAG/CAS remains
+        // intact. Whole frames are retained; no partial packet or UTF-8 truncation is emitted.
+        let mut active_window: Vec<_> = self
+            .unsealed_turn_ids
+            .iter()
+            .rev()
+            .filter_map(|&id| dag.get_node(id))
+            .filter_map(|n| take_frame(n.ahtl_representation()))
+            .collect();
+        active_window.reverse();
+        let mut sealed_epochs: Vec<_> = self
             .sealed_epochs
             .iter()
+            .rev()
             .filter_map(|n| match n {
-                DagNode::CacheEpoch { ahtl_frame, .. } => Some(ahtl_frame.clone()),
+                DagNode::CacheEpoch { ahtl_frame, .. } => take_frame(ahtl_frame),
                 _ => None,
             })
             .collect();
-
-        let active_window: Vec<String> = self
-            .unsealed_turn_ids
-            .iter()
-            .filter_map(|&id| dag.get_node(id).map(|n| n.ahtl_representation().to_owned()))
-            .collect();
-
+        sealed_epochs.reverse();
         let total_cached_prefix_bytes = self.pinned_head.len()
-            + sealed_epochs.iter().map(String::len).sum::<usize>()
-            + active_window.iter().map(String::len).sum::<usize>();
+            + sealed_epochs.iter().map(|s| s.len() + 1).sum::<usize>()
+            + active_window.iter().map(|s| s.len() + 1).sum::<usize>();
         let total_uncached_tail_bytes = ephemeral_tail_slot.len();
 
         AssembledWindow {

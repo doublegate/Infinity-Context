@@ -1,0 +1,11 @@
+{
+  "line_hit": 19558,
+  "line_total": 20559,
+  "line_percent": 95.1310861423221,
+  "lcov_sha256": "51b254fd064c4879e8883f93630f5c4042633ac5ada4080086d4d2c401da3efe",
+  "workspace_test_passed_sum": 221,
+  "workspace_test_ignored_sum": 0,
+  "test_binary_results": 47,
+  "include_ignored": true,
+  "scope": "Source at final test launch, including pending-key-block fix and new CAS metadata tests; compiler literal separator correction is semantically identical"
+}

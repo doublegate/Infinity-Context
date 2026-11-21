@@ -1,0 +1,28 @@
+{
+  "scope": "local candidate package checks complete; final accepted production source hashes match frozen package builds",
+  "observed_utc": "2026-11-21T16:24:05.681506+00:00",
+  "production_hashes_match": true,
+  "source_binding_evidence": "package-source-drift-check.json",
+  "variants": 4,
+  "all_local_checks_pass": true,
+  "ubuntu2204_glibc235_all_variants_pass": true,
+  "root_accepted_redactor_fuzz": {
+    "attempt": 7,
+    "runs": 859078,
+    "seconds": 901,
+    "exit": 0,
+    "log": "fuzz-redact-attempt7.log"
+  },
+  "root_accepted_hdc_seeded_fuzz": {
+    "runs": 2231269,
+    "seconds": 901,
+    "exit": 0,
+    "summary": "fuzz-hdc-final-seeded-summary.json"
+  },
+  "final_release_certified": false,
+  "remaining_release_scope": [
+    "exact committed/tagged source and CI",
+    "governance",
+    "quiet performance qualification and release decision"
+  ]
+}

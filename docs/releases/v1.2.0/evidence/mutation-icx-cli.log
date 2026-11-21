@@ -1,0 +1,11 @@
+Found 14 mutants to test
+ok       Unmutated baseline in 57s build + 2s test
+MISSED   crates/icx-cli/src/main.rs:369:36: replace < with <= in run_daemon in 0s build + 2s test
+TIMEOUT  crates/icx-cli/src/main.rs:474:15: replace += with *= in parse_dir_flag in 0s build + 90s test
+MISSED   crates/icx-cli/src/main.rs:615:28: replace + with * in execute_hook in 0s build + 2s test
+MISSED   crates/icx-cli/src/main.rs:834:33: replace match guard i + 1 < args.len() with true in run_proxy_server in 0s build + 2s test
+TIMEOUT  crates/icx-cli/src/main.rs:832:19: replace += with -= in run_proxy_server in 0s build + 90s test
+MISSED   crates/icx-cli/src/main.rs:913:35: replace + with - in execute_proxy_transform in 0s build + 2s test
+MISSED   crates/icx-cli/src/main.rs:1395:26: replace * with / in varied_tool_log_fixture in 0s build + 2s test
+MISSED   crates/icx-cli/src/main.rs:1560:48: replace * with / in run_benchmark in 0s build + 2s test
+14 mutants tested in 4m: 6 missed, 5 caught, 1 unviable, 2 timeouts

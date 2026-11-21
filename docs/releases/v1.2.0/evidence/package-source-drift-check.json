@@ -1,0 +1,12 @@
+{
+  "scope": "post-fuzz local candidate source binding; committed/tagged certification remains separate",
+  "observed_utc": "2026-11-21T16:24:05.681506+00:00",
+  "frozen_source": "/tmp/Infinity-Context/v120/package-source-hmwrbjy0",
+  "changed_since_snapshot": [
+    "crates/icx-core/tests/integrity_v120.rs",
+    "crates/icx-core/tests/window_budget_v120.rs"
+  ],
+  "production_files_checked": 43,
+  "all_production_hashes_match": true,
+  "new_production_files": []
+}

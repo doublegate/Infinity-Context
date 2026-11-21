@@ -1,0 +1,213 @@
+{
+  "observed_utc": "2026-11-21T02:33:00.961537+00:00",
+  "fuzz": [
+    {
+      "target": "ahtl_stream",
+      "completed_900_seconds": true,
+      "fuzzer_exit_77": false,
+      "last_log_lines": [
+        "Base64: ",
+        "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+        "",
+        "Error: Fuzz target exited with exit status: 1"
+      ]
+    },
+    {
+      "target": "hdc_snapshot",
+      "completed_900_seconds": true,
+      "fuzzer_exit_77": false,
+      "last_log_lines": [
+        "Base64: ",
+        "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+        "",
+        "Error: Fuzz target exited with exit status: 1"
+      ]
+    },
+    {
+      "target": "mcp_jsonrpc",
+      "completed_900_seconds": true,
+      "fuzzer_exit_77": false,
+      "last_log_lines": [
+        "Base64: ",
+        "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+        "",
+        "Error: Fuzz target exited with exit status: 1"
+      ]
+    },
+    {
+      "target": "redact",
+      "completed_900_seconds": false,
+      "fuzzer_exit_77": true,
+      "last_log_lines": [
+        "Base64: IjpzX1JFRlJFU0hfVE9LRU46ClJTRVRSRkhfRU9fUkVGUkV6UFBzay1zay1zVmsta1AtUD1TU0cuR1NIX1RPS0VOOgpSU0VUUkZIX0VPRU46ClJTRVRSRkhfRU9fUkVGUkVTSF9UT0tFTjoKUlNFVFJGSF9FT3l5eVRPS0VOOgpPeXl5AC55eS55eXl5eXl5eQAAAAAAAAAF",
+        "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+        "",
+        "Error: Fuzz target exited with exit status: 77"
+      ]
+    }
+  ],
+  "expanded_mutations": [
+    {
+      "crate": "icx-core",
+      "selected": 28,
+      "completed_mutants": 28,
+      "pending": 0,
+      "counts_raw": {
+        "CaughtMutant": 18,
+        "Unviable": 4,
+        "MissedMutant": 6
+      },
+      "counts_adjudicated_with_targeted_retries": {
+        "CaughtMutant": 19,
+        "MissedMutant": 6,
+        "Unviable": 3
+      },
+      "end_time": null,
+      "worker_copy_enospc": true,
+      "outcomes_contaminated_by_enospc": [
+        "crates/icx-core/src/lib.rs:120:32: replace || with && in <impl FromStr for ArtifactId>::from_str"
+      ]
+    },
+    {
+      "crate": "icx-codec",
+      "selected": 59,
+      "completed_mutants": 59,
+      "pending": 0,
+      "counts_raw": {
+        "CaughtMutant": 41,
+        "MissedMutant": 17,
+        "Timeout": 1
+      },
+      "counts_adjudicated_with_targeted_retries": {
+        "CaughtMutant": 41,
+        "MissedMutant": 17,
+        "Timeout": 1
+      },
+      "end_time": "2026-11-21T02:21:39.073287756Z",
+      "worker_copy_enospc": false,
+      "outcomes_contaminated_by_enospc": []
+    },
+    {
+      "crate": "icx-store",
+      "selected": 9,
+      "completed_mutants": 9,
+      "pending": 0,
+      "counts_raw": {
+        "CaughtMutant": 6,
+        "Unviable": 2,
+        "MissedMutant": 1
+      },
+      "counts_adjudicated_with_targeted_retries": {
+        "CaughtMutant": 8,
+        "MissedMutant": 1
+      },
+      "end_time": "2026-11-21T02:20:02.090476222Z",
+      "worker_copy_enospc": false,
+      "outcomes_contaminated_by_enospc": [
+        "crates/icx-store/src/graph.rs:104:9: replace CsrGraphSnapshot::weights -> &[f32] with Vec::leak(Vec::new())",
+        "crates/icx-store/src/graph.rs:145:9: replace CsrGraphSnapshot::run_ppr -> Vec<PprRankedNode> with vec![]"
+      ]
+    },
+    {
+      "crate": "icx-bus",
+      "selected": 15,
+      "completed_mutants": 15,
+      "pending": 0,
+      "counts_raw": {
+        "Unviable": 2,
+        "CaughtMutant": 9,
+        "MissedMutant": 4
+      },
+      "counts_adjudicated_with_targeted_retries": {
+        "Unviable": 1,
+        "CaughtMutant": 9,
+        "MissedMutant": 5
+      },
+      "end_time": null,
+      "worker_copy_enospc": true,
+      "outcomes_contaminated_by_enospc": [
+        "crates/icx-bus/src/ring.rs:280:30: replace >> with << in unpack_meta"
+      ]
+    },
+    {
+      "crate": "icx-hdc",
+      "selected": 46,
+      "completed_mutants": 46,
+      "pending": 0,
+      "counts_raw": {
+        "CaughtMutant": 28,
+        "MissedMutant": 17,
+        "Unviable": 1
+      },
+      "counts_adjudicated_with_targeted_retries": {
+        "CaughtMutant": 28,
+        "MissedMutant": 17,
+        "Unviable": 1
+      },
+      "end_time": null,
+      "worker_copy_enospc": true,
+      "outcomes_contaminated_by_enospc": []
+    },
+    {
+      "crate": "icx-adapters",
+      "selected": 46,
+      "completed_mutants": 46,
+      "pending": 0,
+      "counts_raw": {
+        "CaughtMutant": 24,
+        "MissedMutant": 13,
+        "Unviable": 8,
+        "Timeout": 1
+      },
+      "counts_adjudicated_with_targeted_retries": {
+        "CaughtMutant": 24,
+        "MissedMutant": 13,
+        "Unviable": 8,
+        "Timeout": 1
+      },
+      "end_time": null,
+      "worker_copy_enospc": true,
+      "outcomes_contaminated_by_enospc": []
+    },
+    {
+      "crate": "icx-proxy",
+      "selected": 27,
+      "completed_mutants": 27,
+      "pending": 0,
+      "counts_raw": {
+        "Unviable": 2,
+        "CaughtMutant": 12,
+        "MissedMutant": 9,
+        "Timeout": 4
+      },
+      "counts_adjudicated_with_targeted_retries": {
+        "Unviable": 2,
+        "CaughtMutant": 12,
+        "MissedMutant": 9,
+        "Timeout": 4
+      },
+      "end_time": "2026-11-21T02:26:06.275253652Z",
+      "worker_copy_enospc": false,
+      "outcomes_contaminated_by_enospc": []
+    },
+    {
+      "crate": "icx-cli",
+      "selected": 27,
+      "completed_mutants": 27,
+      "pending": 0,
+      "counts_raw": {
+        "CaughtMutant": 14,
+        "MissedMutant": 11,
+        "Timeout": 2
+      },
+      "counts_adjudicated_with_targeted_retries": {
+        "CaughtMutant": 14,
+        "MissedMutant": 11,
+        "Timeout": 2
+      },
+      "end_time": "2026-11-21T02:26:22.007322117Z",
+      "worker_copy_enospc": false,
+      "outcomes_contaminated_by_enospc": []
+    }
+  ]
+}

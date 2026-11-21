@@ -1,0 +1,1640 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 11.68853996,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 31.614926093,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/lib.rs:54:5: replace lookup_tokens -> impl Iterator<Item = String>+'_ with ::std::iter::once(String::new())",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/lib.rs",
+          "function": {
+            "function_name": "lookup_tokens",
+            "return_type": "-> impl Iterator<Item = String>+'_",
+            "span": {
+              "start": {
+                "line": 52,
+                "column": 1
+              },
+              "end": {
+                "line": 57,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 54,
+              "column": 5
+            },
+            "end": {
+              "line": 56,
+              "column": 38
+            }
+          },
+          "replacement": "::std::iter::once(String::new())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__lib.rs_line_54_col_5.log",
+      "diff_path": "diff/crates__icx-hdc__src__lib.rs_line_54_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.475461946,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 11.668924404,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/lib.rs:126:9: replace IndexedEntry::subject_lower -> &str with \"xyzzy\"",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/lib.rs",
+          "function": {
+            "function_name": "IndexedEntry::subject_lower",
+            "return_type": "-> &str",
+            "span": {
+              "start": {
+                "line": 123,
+                "column": 5
+              },
+              "end": {
+                "line": 127,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 126,
+              "column": 9
+            },
+            "end": {
+              "line": 126,
+              "column": 28
+            }
+          },
+          "replacement": "\"xyzzy\"",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__lib.rs_line_126_col_9.log",
+      "diff_path": "diff/crates__icx-hdc__src__lib.rs_line_126_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.512679915,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.801952337,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/lib.rs:333:9: replace HdcAssociativeIndex::is_empty -> bool with false",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/lib.rs",
+          "function": {
+            "function_name": "HdcAssociativeIndex::is_empty",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 331,
+                "column": 5
+              },
+              "end": {
+                "line": 334,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 333,
+              "column": 9
+            },
+            "end": {
+              "line": 333,
+              "column": 32
+            }
+          },
+          "replacement": "false",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__lib.rs_line_333_col_9.log",
+      "diff_path": "diff/crates__icx-hdc__src__lib.rs_line_333_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.171451008,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.752114047,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/lib.rs:406:76: replace && with || in HdcAssociativeIndex::compute_subject_bloom32",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/lib.rs",
+          "function": {
+            "function_name": "HdcAssociativeIndex::compute_subject_bloom32",
+            "return_type": "-> u32",
+            "span": {
+              "start": {
+                "line": 402,
+                "column": 5
+              },
+              "end": {
+                "line": 414,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 406,
+              "column": 76
+            },
+            "end": {
+              "line": 406,
+              "column": 78
+            }
+          },
+          "replacement": "||",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-hdc__src__lib.rs_line_406_col_76.log",
+      "diff_path": "diff/crates__icx-hdc__src__lib.rs_line_406_col_76.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.045727923,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 45.987660346,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/lib.rs:533:17: replace || with && in HdcAssociativeIndex::subject_matches_token",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/lib.rs",
+          "function": {
+            "function_name": "HdcAssociativeIndex::subject_matches_token",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 503,
+                "column": 5
+              },
+              "end": {
+                "line": 547,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 533,
+              "column": 17
+            },
+            "end": {
+              "line": 533,
+              "column": 19
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__lib.rs_line_533_col_17.log",
+      "diff_path": "diff/crates__icx-hdc__src__lib.rs_line_533_col_17.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.614006384,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.8539494,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/lib.rs:638:13: replace || with && in HdcAssociativeIndex::query_associative",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/lib.rs",
+          "function": {
+            "function_name": "HdcAssociativeIndex::query_associative",
+            "return_type": "-> Vec<AssociativeHit>",
+            "span": {
+              "start": {
+                "line": 592,
+                "column": 5
+              },
+              "end": {
+                "line": 730,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 638,
+              "column": 13
+            },
+            "end": {
+              "line": 638,
+              "column": 15
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-hdc__src__lib.rs_line_638_col_13.log",
+      "diff_path": "diff/crates__icx-hdc__src__lib.rs_line_638_col_13.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.271685247,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 44.009574668,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/lib.rs:671:37: replace < with == in HdcAssociativeIndex::query_associative",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/lib.rs",
+          "function": {
+            "function_name": "HdcAssociativeIndex::query_associative",
+            "return_type": "-> Vec<AssociativeHit>",
+            "span": {
+              "start": {
+                "line": 592,
+                "column": 5
+              },
+              "end": {
+                "line": 730,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 671,
+              "column": 37
+            },
+            "end": {
+              "line": 671,
+              "column": 38
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__lib.rs_line_671_col_37.log",
+      "diff_path": "diff/crates__icx-hdc__src__lib.rs_line_671_col_37.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.850219079,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.752381301,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/fractal.rs:78:36: replace - with / in FractalCoord::euclidean_distance",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/fractal.rs",
+          "function": {
+            "function_name": "FractalCoord::euclidean_distance",
+            "return_type": "-> f64",
+            "span": {
+              "start": {
+                "line": 72,
+                "column": 5
+              },
+              "end": {
+                "line": 82,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 78,
+              "column": 36
+            },
+            "end": {
+              "line": 78,
+              "column": 37
+            }
+          },
+          "replacement": "/",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__fractal.rs_line_78_col_36.log",
+      "diff_path": "diff/crates__icx-hdc__src__fractal.rs_line_78_col_36.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.758098008,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.902614281,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/fractal.rs:124:29: replace * with / in FractalCoord::verified_suffix_depth",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/fractal.rs",
+          "function": {
+            "function_name": "FractalCoord::verified_suffix_depth",
+            "return_type": "-> u32",
+            "span": {
+              "start": {
+                "line": 100,
+                "column": 5
+              },
+              "end": {
+                "line": 137,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 124,
+              "column": 29
+            },
+            "end": {
+              "line": 124,
+              "column": 30
+            }
+          },
+          "replacement": "/",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__fractal.rs_line_124_col_29.log",
+      "diff_path": "diff/crates__icx-hdc__src__fractal.rs_line_124_col_29.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.91706999,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.702202445,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/fractal.rs:203:25: replace * with / in FractalCoord::morton_z64",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/fractal.rs",
+          "function": {
+            "function_name": "FractalCoord::morton_z64",
+            "return_type": "-> u64",
+            "span": {
+              "start": {
+                "line": 194,
+                "column": 5
+              },
+              "end": {
+                "line": 213,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 203,
+              "column": 25
+            },
+            "end": {
+              "line": 203,
+              "column": 26
+            }
+          },
+          "replacement": "/",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-hdc__src__fractal.rs_line_203_col_25.log",
+      "diff_path": "diff/crates__icx-hdc__src__fractal.rs_line_203_col_25.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.553453352,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 31.01017889,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/fractal.rs:248:24: replace ^ with & in FractalCoord::digest_u32",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/fractal.rs",
+          "function": {
+            "function_name": "FractalCoord::digest_u32",
+            "return_type": "-> u32",
+            "span": {
+              "start": {
+                "line": 240,
+                "column": 5
+              },
+              "end": {
+                "line": 252,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 248,
+              "column": 24
+            },
+            "end": {
+              "line": 248,
+              "column": 25
+            }
+          },
+          "replacement": "&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-hdc__src__fractal.rs_line_248_col_24.log",
+      "diff_path": "diff/crates__icx-hdc__src__fractal.rs_line_248_col_24.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.502424407,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 35.336976442,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/fractal.rs:388:23: replace || with && in FractalTrajectoryArchive::query_shared_suffix",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/fractal.rs",
+          "function": {
+            "function_name": "FractalTrajectoryArchive::query_shared_suffix",
+            "return_type": "-> Vec<(ArtifactId, u32, f64)>",
+            "span": {
+              "start": {
+                "line": 378,
+                "column": 5
+              },
+              "end": {
+                "line": 423,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 388,
+              "column": 23
+            },
+            "end": {
+              "line": 388,
+              "column": 25
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-hdc__src__fractal.rs_line_388_col_23.log",
+      "diff_path": "diff/crates__icx-hdc__src__fractal.rs_line_388_col_23.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.502128081,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 30.958745562,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/hv.rs:155:25: replace >> with << in Hypervector::from_u64_seed",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/hv.rs",
+          "function": {
+            "function_name": "Hypervector::from_u64_seed",
+            "return_type": "-> Self",
+            "span": {
+              "start": {
+                "line": 145,
+                "column": 5
+              },
+              "end": {
+                "line": 160,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 155,
+              "column": 25
+            },
+            "end": {
+              "line": 155,
+              "column": 27
+            }
+          },
+          "replacement": "<<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-hdc__src__hv.rs_line_155_col_25.log",
+      "diff_path": "diff/crates__icx-hdc__src__hv.rs_line_155_col_25.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.502059154,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 34.665416416,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/hv.rs:216:13: replace Hypervector::encode_text::find_reinforce_slot -> Option<(usize, u64)> with None",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/hv.rs",
+          "function": {
+            "function_name": "Hypervector::encode_text::find_reinforce_slot",
+            "return_type": "-> Option<(usize, u64)>",
+            "span": {
+              "start": {
+                "line": 210,
+                "column": 9
+              },
+              "end": {
+                "line": 239,
+                "column": 10
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 216,
+              "column": 13
+            },
+            "end": {
+              "line": 238,
+              "column": 14
+            }
+          },
+          "replacement": "None",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__hv.rs_line_216_col_13.log",
+      "diff_path": "diff/crates__icx-hdc__src__hv.rs_line_216_col_13.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.552561166,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.251434026,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/hv.rs:243:19: delete ! in Hypervector::encode_text",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/hv.rs",
+          "function": {
+            "function_name": "Hypervector::encode_text",
+            "return_type": "-> Self",
+            "span": {
+              "start": {
+                "line": 162,
+                "column": 5
+              },
+              "end": {
+                "line": 342,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 243,
+              "column": 19
+            },
+            "end": {
+              "line": 243,
+              "column": 20
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__hv.rs_line_243_col_19.log",
+      "diff_path": "diff/crates__icx-hdc__src__hv.rs_line_243_col_19.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.552664095,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.702154801,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/hv.rs:366:30: replace - with + in Hypervector::permute",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/hv.rs",
+          "function": {
+            "function_name": "Hypervector::permute",
+            "return_type": "-> Self",
+            "span": {
+              "start": {
+                "line": 360,
+                "column": 5
+              },
+              "end": {
+                "line": 374,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 366,
+              "column": 30
+            },
+            "end": {
+              "line": 366,
+              "column": 31
+            }
+          },
+          "replacement": "+",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__hv.rs_line_366_col_30.log",
+      "diff_path": "diff/crates__icx-hdc__src__hv.rs_line_366_col_30.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.50292004,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.251468101,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/hv.rs:422:16: replace += with *= in Hypervector::hamming_distance_simd",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/hv.rs",
+          "function": {
+            "function_name": "Hypervector::hamming_distance_simd",
+            "return_type": "-> u32",
+            "span": {
+              "start": {
+                "line": 410,
+                "column": 5
+              },
+              "end": {
+                "line": 427,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 422,
+              "column": 16
+            },
+            "end": {
+              "line": 422,
+              "column": 18
+            }
+          },
+          "replacement": "*=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__hv.rs_line_422_col_16.log",
+      "diff_path": "diff/crates__icx-hdc__src__hv.rs_line_422_col_16.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.451746356,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.702406989,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/hv.rs:449:9: replace Hypervector::sub_hypervector_64 -> u64 with 1",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/hv.rs",
+          "function": {
+            "function_name": "Hypervector::sub_hypervector_64",
+            "return_type": "-> u64",
+            "span": {
+              "start": {
+                "line": 445,
+                "column": 5
+              },
+              "end": {
+                "line": 456,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 449,
+              "column": 9
+            },
+            "end": {
+              "line": 455,
+              "column": 12
+            }
+          },
+          "replacement": "1",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__hv.rs_line_449_col_9.log",
+      "diff_path": "diff/crates__icx-hdc__src__hv.rs_line_449_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.552337784,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 31.211293052,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/hv.rs:513:24: replace ^= with &= in Hypervector::sketch_256",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/hv.rs",
+          "function": {
+            "function_name": "Hypervector::sketch_256",
+            "return_type": "-> [u64; 4]",
+            "span": {
+              "start": {
+                "line": 508,
+                "column": 5
+              },
+              "end": {
+                "line": 516,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 513,
+              "column": 24
+            },
+            "end": {
+              "line": 513,
+              "column": 26
+            }
+          },
+          "replacement": "&=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-hdc__src__hv.rs_line_513_col_24.log",
+      "diff_path": "diff/crates__icx-hdc__src__hv.rs_line_513_col_24.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.917557874,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 31.358183038,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/hv.rs:630:20: replace > with < in HdcBundler::is_actively_bundled",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/hv.rs",
+          "function": {
+            "function_name": "HdcBundler::is_actively_bundled",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 626,
+                "column": 5
+              },
+              "end": {
+                "line": 633,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 630,
+              "column": 20
+            },
+            "end": {
+              "line": 630,
+              "column": 21
+            }
+          },
+          "replacement": "<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__hv.rs_line_630_col_20.log",
+      "diff_path": "diff/crates__icx-hdc__src__hv.rs_line_630_col_20.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.45228366,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.701964362,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/hv.rs:716:45: replace << with >> in HdcBundler::accumulate_raw",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/hv.rs",
+          "function": {
+            "function_name": "HdcBundler::accumulate_raw",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 697,
+                "column": 5
+              },
+              "end": {
+                "line": 726,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 716,
+              "column": 45
+            },
+            "end": {
+              "line": 716,
+              "column": 47
+            }
+          },
+          "replacement": ">>",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__hv.rs_line_716_col_45.log",
+      "diff_path": "diff/crates__icx-hdc__src__hv.rs_line_716_col_45.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.451555847,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.701985561,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/snapshot.rs:13:54: replace * with +",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/snapshot.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 13,
+              "column": 54
+            },
+            "end": {
+              "line": 13,
+              "column": 55
+            }
+          },
+          "replacement": "+",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__snapshot.rs_line_13_col_54.log",
+      "diff_path": "diff/crates__icx-hdc__src__snapshot.rs_line_13_col_54.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.501647191,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 11.72146552,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/snapshot.rs:127:9: replace Reader<'a>::f32 -> Result<f32, SnapshotError> with Ok(1.0)",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/snapshot.rs",
+          "function": {
+            "function_name": "Reader<'a>::f32",
+            "return_type": "-> Result<f32, SnapshotError>",
+            "span": {
+              "start": {
+                "line": 126,
+                "column": 5
+              },
+              "end": {
+                "line": 128,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 127,
+              "column": 9
+            },
+            "end": {
+              "line": 127,
+              "column": 40
+            }
+          },
+          "replacement": "Ok(1.0)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__snapshot.rs_line_127_col_9.log",
+      "diff_path": "diff/crates__icx-hdc__src__snapshot.rs_line_127_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.503040954,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.701974715,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/surprise.rs:131:9: replace TitansSurpriseGate::events_seen -> u64 with 1",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/surprise.rs",
+          "function": {
+            "function_name": "TitansSurpriseGate::events_seen",
+            "return_type": "-> u64",
+            "span": {
+              "start": {
+                "line": 128,
+                "column": 5
+              },
+              "end": {
+                "line": 132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 131,
+              "column": 9
+            },
+            "end": {
+              "line": 131,
+              "column": 25
+            }
+          },
+          "replacement": "1",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-hdc__src__surprise.rs_line_131_col_9.log",
+      "diff_path": "diff/crates__icx-hdc__src__surprise.rs_line_131_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.452072895,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.752079714,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-hdc/src/surprise.rs:221:18: replace - with / in TitansSurpriseGate::observe_with_exit_code",
+          "package": "icx-hdc",
+          "file": "crates/icx-hdc/src/surprise.rs",
+          "function": {
+            "function_name": "TitansSurpriseGate::observe_with_exit_code",
+            "return_type": "-> SurpriseVerdict",
+            "span": {
+              "start": {
+                "line": 203,
+                "column": 5
+              },
+              "end": {
+                "line": 255,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 221,
+              "column": 18
+            },
+            "end": {
+              "line": 221,
+              "column": 19
+            }
+          },
+          "replacement": "/",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-hdc__src__surprise.rs_line_221_col_18.log",
+      "diff_path": "diff/crates__icx-hdc__src__surprise.rs_line_221_col_18.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.45243151,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 31.155488502,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-hdc@1.2.0"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 25,
+  "missed": 8,
+  "caught": 17,
+  "timeout": 0,
+  "unviable": 0,
+  "success": 0,
+  "start_time": "2026-11-21T04:48:02.82070123Z",
+  "end_time": "2026-11-21T04:54:56.813038399Z",
+  "cargo_mutants_version": "27.1.0"
+}

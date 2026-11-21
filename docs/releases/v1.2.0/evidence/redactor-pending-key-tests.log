@@ -1,0 +1,102 @@
+   Compiling icx-codec v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-codec)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.09s
+     Running unittests src/lib.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-codec/c7de08bf57cb077d/out/icx_codec-c7de08bf57cb077d)
+
+running 11 tests
+test braille::tests::channel_b_hologram_packs_and_unpacks_losslessly ... ok
+test braille::tests::braille_256_bijection_covers_all_bytes_and_utf8_triples ... ok
+test ahtl::tests::ahtl_packet_renders_and_parses_round_trip_with_all_features ... ok
+test redact::tests::redacts_api_keys_pem_blocks_and_escapes_ahtl_delimiters ... ok
+test ahtl::tests::profile_a_wire_packet_v1_compact_handles_and_stream_round_trip ... ok
+test tests::context_codec_trait_compresses_renders_and_parses ... ok
+test redact::tests::redacts_all_vendor_prefixes_jwts_urls_cli_flags_pgp_and_high_entropy_secrets ... ok
+test skeleton::tests::skeletonizes_unified_diffs_multi_language_source_code_quoted_braces_lifetimes_and_utf8 ... ok
+test skeleton::tests::compresses_large_cargo_test_log_by_over_25x_while_preserving_panic_and_all_failures ... ok
+test skeleton::tests::compresses_pytest_tsc_vitest_and_go_test_logs_with_100_percent_failure_recall ... ok
+test braille::tests::braille_10000_random_8byte_and_64byte_round_trip_and_hamming_isometry ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/codec_v110.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-codec/77cb906d0e48b15e/out/codec_v110-77cb906d0e48b15e)
+
+running 5 tests
+test epoch_header_ids_round_trip_in_hex_including_values_past_four_digits ... ok
+test dag_sealed_epoch_headers_parse_back_to_their_index ... ok
+test invalid_slice_hints_are_never_rendered_and_never_parsed ... ok
+test valid_slice_maps_round_trip ... ok
+test clause_chains_are_bounded_and_never_overflow_the_stack ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/codec_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-codec/5917f9f5cf34e798/out/codec_v120-5917f9f5cf34e798)
+
+running 7 tests
+test epoch_id_width_is_checked_even_when_the_hex_number_fits_u32 ... ok
+test hostile_profile_a_skeleton_cannot_emit_an_extra_packet ... ok
+test ordinary_skeletons_and_percent_literals_keep_their_wire_interpretation ... ok
+test profile_a_checks_hex_length_and_alphabet_independently ... ok
+test promotion_checks_hex_length_and_alphabet_independently ... ok
+test standalone_parser_rejects_unescaped_nested_packet_markers ... ok
+test arbitrary_skeleton_framing_is_single_packet_and_wire_stable ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/properties.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-codec/94862102f54ef4cf/out/properties-94862102f54ef4cf)
+
+running 5 tests
+test clause_parse_is_total ... ok
+test redact_is_identity_on_secret_free_text ... ok
+test sanitize_removes_every_delimiter ... ok
+test redact_is_idempotent ... ok
+test packet_render_parse_round_trips ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/redact_v110.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-codec/35c90f37553d3f0e/out/redact_v110-35c90f37553d3f0e)
+
+running 13 tests
+test additional_vendor_token_formats_are_redacted ... ok
+test long_letters_only_url_tokens_are_redacted ... ok
+test additional_sensitive_key_names_are_redacted ... ok
+test key_block_detection_is_scoped_to_one_banner ... ok
+test continuation_values_that_look_like_assignments_are_still_redacted ... ok
+test continuation_redaction_only_consumes_a_scalar_value_line ... ok
+test multi_line_json_and_yaml_values_are_redacted ... ok
+test redaction_is_lossless_for_secret_free_input ... ok
+test text_after_an_end_banner_goes_through_full_key_detection ... ok
+test quoted_continuation_values_containing_separators_are_redacted ... ok
+test token_only_url_userinfo_is_redacted_but_plain_usernames_are_kept ... ok
+test url_userinfo_passwords_are_redacted_for_every_scheme ... ok
+test single_line_and_unterminated_pem_blocks_do_not_swallow_the_rest ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/redact_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-codec/8c1ecdd63dad8b72/out/redact_v120-8c1ecdd63dad8b72)
+
+running 17 tests
+test adjacent_jwt_credentials_do_not_require_a_second_redaction_pass ... ok
+test extra_authority_at_signs_do_not_hide_an_earlier_url_credential ... ok
+test adjacent_sendgrid_credentials_are_removed_on_the_first_pass ... ok
+test low_entropy_jwt_and_escaped_quoted_cli_secrets_are_recognized ... ok
+test mixed_escaped_quotes_keep_following_unicode_on_a_character_boundary ... ok
+test original_pending_scalar_private_key_fuzz_artifact_is_stable ... ok
+test yaml_list_block_stops_before_a_sibling_mapping ... ok
+test nested_url_scheme_does_not_hide_a_credential_until_after_vendor_replacement ... ok
+test additional_fuzzer_artifacts_are_panic_free_and_stable ... ok
+test pending_scalar_is_redacted_before_emitting_a_private_key_marker ... ok
+test quoted_inline_values_cannot_turn_prose_into_pending_secret_headers ... ok
+test yaml_public_siblings_and_nested_mappings_stay_exact ... ok
+test yaml_scalar_contents_are_not_reclassified_as_comments_or_structures ... ok
+test yaml_plain_equals_values_are_credentials_not_nested_mappings ... ok
+test redaction_reaches_a_stable_continuation_form_on_the_first_pass ... ok
+test yaml_tagged_and_anchored_block_scalars_are_redacted ... ok
+test yaml_block_scalar_credentials_are_removed_without_consuming_siblings ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests icx_codec
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

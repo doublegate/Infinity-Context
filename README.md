@@ -11,6 +11,8 @@
   <img src="assets/branding/icx-banner-1500x500.png" alt="Infinity-Context (icx) Hero Banner: Cross-Agent Virtual Context MMU and Alien Holographic Token Lattice" width="100%" />
 </p>
 
+<p align="center"><small>Archived concept artwork; embedded metrics and packet syntax are historical, non-normative. See <a href="assets/branding/README.md">branding status</a> and <a href="docs/adr/0006-v1-2-0-context-and-compatibility.md">current v1.2.0 contracts</a>.</small></p>
+
 <p align="center">
   <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/ci.yml"><img src="https://github.com/doublegate/Infinity-Context/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
   <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/reuse.yml"><img src="https://img.shields.io/badge/REUSE-3.3%20compliant-brightgreen.svg" alt="REUSE 3.3 Compliant"></a>
@@ -60,7 +62,18 @@ The inline size reduction depends on the input. In the built-in synthetic benchm
 
 ---
 
-## What Changed in v1.1.0
+## v1.2.0 development candidate
+
+The current branch implements the [v1.2.0 remediation plan](to-dos/v1.2.0-remediation.md).
+See [qualification and upgrade notes](docs/releases/v1.2.0/README.md) for measured results,
+compatibility, unresolved gates and governance decisions. It is not yet a published release.
+Current contracts are defined by [ADR0006](docs/adr/0006-v1-2-0-context-and-compatibility.md):
+exact post-redaction CAS bytes, lossy skeletons, hybrid lexical/HDC recall, bounded icx-managed
+context and committed daemon receipts. Native Codex hooks capture output but cannot replace it.
+Historical figures and diagrams below are dated evidence/design summaries, not v1.2.0 timing,
+provider-cache, tokenizer or universal model-effectiveness guarantees.
+
+## What Changed in v1.1.0 (historical)
 
 v1.1.0 is a remediation release that follows an internal audit of v1.0.0 (findings `ICX-AUD-001` through `ICX-AUD-055`, in [`docs/claude/`](docs/claude/README.md)). Workspaces now default to a private per-project directory under `$XDG_STATE_HOME/icx/workspaces/` and are stored in a single owner-sealed SQLite file. A repository-local `.icx/` from v1.0.x is no longer loaded implicitly and must be adopted with `icx trust`. Hook cost no longer grows with workspace size: on a 338-artifact workspace an in-process hook fell from 940 ms to 14 ms, and with the new resident `icx daemon` the median on a workspace of about 2,000 artifacts is 3.1 ms. The proxy now requires a per-install token. Hook outputs were aligned with the current Claude Code, Codex, Antigravity (`agy`) and MCP contracts. The cache figure was renamed to what it measures, a byte-weighted prefix-reuse proxy. The bus reports dropped publishes instead of reporting success. Ten arXiv PDFs that may not be redistributed were removed. See [`CHANGELOG.md`](CHANGELOG.md) for the full list and [`ref-docs/corrections-2026-11-18.md`](ref-docs/corrections-2026-11-18.md) for corrections to the research corpus.
 

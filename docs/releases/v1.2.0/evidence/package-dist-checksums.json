@@ -1,0 +1,7 @@
+{
+  "scope": "preliminary local dist only; not published release assets",
+  "directory": "/tmp/Infinity-Context/v120/package-dist-preliminary-xi2x8f9j",
+  "sha256sums": "53289ff970179d2c55caa8d0c12741099b4660621aa84c2a29fc625553147159  icx-v1.2.0-x86_64-unknown-linux-gnu.tar.gz\na5ac57be57c9c31905650a77a244a9a562a8b38dafcc79f371ac76318d7f014f  icx-v1.2.0-x86_64-unknown-linux-musl.tar.gz\nfeae28dbb96ae6168ffa457db86e5106f2b0a08172a9355e72d92e64da0f3f09  icx-v1.2.0-x86_64_v3-unknown-linux-gnu.tar.gz\n518b579a6830b975ab01b9885e28ca89d5c86c3a6f61696dfc57b8070a5959bc  icx-v1.2.0-x86_64_v3-unknown-linux-musl.tar.gz\n",
+  "verification": "icx-v1.2.0-x86_64-unknown-linux-gnu.tar.gz: OK\nicx-v1.2.0-x86_64-unknown-linux-musl.tar.gz: OK\nicx-v1.2.0-x86_64_v3-unknown-linux-gnu.tar.gz: OK\nicx-v1.2.0-x86_64_v3-unknown-linux-musl.tar.gz: OK\n",
+  "exit": 0
+}

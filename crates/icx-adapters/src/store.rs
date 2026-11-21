@@ -154,7 +154,9 @@ pub(crate) fn open(dir: &Path) -> Result<Connection, IcxError> {
         .map_err(db_err)?;
     conn.pragma_update(None, "journal_mode", "WAL")
         .map_err(db_err)?;
-    conn.pragma_update(None, "synchronous", "NORMAL")
+    // A successful daemon receipt follows this commit. WAL FULL synchronizes the log at
+    // every commit; NORMAL can lose committed transactions after a power interruption.
+    conn.pragma_update(None, "synchronous", "FULL")
         .map_err(db_err)?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v BLOB NOT NULL);
@@ -464,4 +466,23 @@ pub(crate) fn save<'c>(
     persisted.artifacts.extend(new_artifacts);
     persisted.emitted.extend(new_emitted);
     Ok(next_gen)
+}
+
+#[cfg(test)]
+mod durability_tests {
+    #[test]
+    fn workspace_connections_require_full_wal_commit_synchronization() {
+        let dir = std::path::PathBuf::from("/tmp/Infinity-Context/v120")
+            .join(format!("sync-policy-{}", std::process::id()));
+        let connection = super::open(&dir).unwrap();
+        let mode: i64 = connection
+            .query_row("PRAGMA synchronous", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            mode, 2,
+            "acknowledged WAL transactions must synchronize at commit"
+        );
+        drop(connection);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

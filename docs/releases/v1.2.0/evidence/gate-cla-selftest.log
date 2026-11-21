@@ -1,0 +1,44 @@
+  ok    an unsigned author is listed
+  ok    the maintainer's own pull request
+  ok    a bot's pull request
+  ok    a bot's own linked commits
+  ok    authors are listed once
+  ok    an unlinked author can never match
+  ok    everyone signed
+  ok    an outside opener must sign
+  ok    a forged bot author in an outside pull request
+  ok    the maintainer's e-mail forged by a signed opener
+  ok    a user account named like a bot is not exempt
+  ok    a bot account without the suffix is not exempt
+  ok    a login named like the maintainer is not the maintainer
+  ok    a renamed account keeps its signature
+  ok    a reused login does not inherit a signature
+  ok    a linked bot commit in the maintainer's pull request
+  ok    a linked bot commit in an outside pull request still counts
+  ok    the opener may sign
+  ok    a commit author may sign
+  ok    a bystander's signature is not recorded
+  ok    the signing text signs
+  ok    surrounding whitespace is ignored
+  ok    anything more does not sign
+  ok    recheck does not sign
+  ok    a pasted quotation signs
+  ok    text before the signing text does not sign
+  ok    a quotation after blank lines signs
+  ok    the CLA.md documented statement with backticks and period signs
+  ok    co-authors from Commit.authors.nodes are extracted
+  ok    PR body and comments recover valid party signers only
+  ok    production collector extracts multi-page paginated authors and co-authors across commits
+  ok    compare API failure propagates and fails closed
+  ok    per-commit author lookup failure propagates and fails closed
+  ok    shared-SHA open PR lookup failure propagates and fails closed
+  ok    lookup failure helper publishes failure status to overwrite stale success
+  ok    release_cla_lock CAS precondition prevents overwriting a newer owner's lock
+  ok    acquire_cla_lock does not evict a live lock holder and fails closed on exhaustion
+  ok    acquire_cla_lock atomically CAS-takes over an expired lock
+  ok    recheck with a newline rechecks
+  ok    a sentence containing recheck does not
+  ok    a signature is recorded by account ID
+  ok    its fields
+  ok    a hostile login stays data
+all checks passed

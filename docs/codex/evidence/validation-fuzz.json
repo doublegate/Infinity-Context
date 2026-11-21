@@ -1,0 +1,70 @@
+[
+  {
+    "target": "ahtl_stream",
+    "command": [
+      "cargo",
+      "+nightly",
+      "fuzz",
+      "run",
+      "ahtl_stream",
+      "/tmp/Infinity-Context/validation/fuzz/ahtl_stream/corpus",
+      "--",
+      "-max_total_time=900",
+      "-rss_limit_mb=2048",
+      "-artifact_prefix=/tmp/Infinity-Context/validation/fuzz/ahtl_stream/artifacts/"
+    ],
+    "exit": 1,
+    "seconds": 1518.37
+  },
+  {
+    "target": "hdc_snapshot",
+    "command": [
+      "cargo",
+      "+nightly",
+      "fuzz",
+      "run",
+      "hdc_snapshot",
+      "/tmp/Infinity-Context/validation/fuzz/hdc_snapshot/corpus",
+      "--",
+      "-max_total_time=900",
+      "-rss_limit_mb=2048",
+      "-artifact_prefix=/tmp/Infinity-Context/validation/fuzz/hdc_snapshot/artifacts/"
+    ],
+    "exit": 1,
+    "seconds": 1521.29
+  },
+  {
+    "target": "mcp_jsonrpc",
+    "command": [
+      "cargo",
+      "+nightly",
+      "fuzz",
+      "run",
+      "mcp_jsonrpc",
+      "/tmp/Infinity-Context/validation/fuzz/mcp_jsonrpc/corpus",
+      "--",
+      "-max_total_time=900",
+      "-rss_limit_mb=2048",
+      "-artifact_prefix=/tmp/Infinity-Context/validation/fuzz/mcp_jsonrpc/artifacts/"
+    ],
+    "exit": 1,
+    "seconds": 1520.82
+  },
+  {
+    "target": "redact",
+    "command": [
+      "cargo",
+      "+nightly",
+      "fuzz",
+      "run",
+      "redact",
+      "/tmp/Infinity-Context/validation/fuzz/redact/corpus",
+      "--",
+      "-max_total_time=900",
+      "-rss_limit_mb=2048",
+      "-artifact_prefix=/tmp/Infinity-Context/validation/fuzz/redact/artifacts/"
+    ],
+    "exit": 1,
+    "seconds": 799.48
+  }
+]

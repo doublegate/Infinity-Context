@@ -59,13 +59,25 @@ impl TitansSurpriseGate {
     pub(crate) fn read_snapshot(
         r: &mut crate::snapshot::Reader<'_>,
     ) -> Result<Self, crate::snapshot::SnapshotError> {
-        Ok(Self {
+        let state = Self {
             bundler: HdcBundler::read_snapshot(r)?,
             momentum: r.f32()?,
             eta: r.f32()?,
             alpha: r.f32()?,
             events_seen: r.u64()?,
-        })
+        };
+        if !state.momentum.is_finite()
+            || !(0.0..=1.0).contains(&state.momentum)
+            || !state.eta.is_finite()
+            || !(0.1..=0.98).contains(&state.eta)
+            || !state.alpha.is_finite()
+            || !(0.0..=0.5).contains(&state.alpha)
+        {
+            return Err(crate::snapshot::SnapshotError::Inconsistent(
+                "surprise.parameters",
+            ));
+        }
+        Ok(state)
     }
 
     /// Creates a new `TitansSurpriseGate` with momentum decay factor `eta` (typically `0.82`)

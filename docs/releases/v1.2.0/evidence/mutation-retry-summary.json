@@ -1,0 +1,94 @@
+{
+  "observed_utc": "2026-11-21T05:48:00.312367+00:00",
+  "scope": "round-robin 1/40 per crate, full inventories recorded; full space NOT exhausted",
+  "source_files": 79,
+  "rows": [
+    {
+      "crate": "icx-adapters",
+      "full_inventory_count": 942,
+      "selected": 24,
+      "completed_mutants": 24,
+      "counts": {
+        "CaughtMutant": 14,
+        "MissedMutant": 7,
+        "Unviable": 3
+      },
+      "command": [
+        "cargo",
+        "mutants",
+        "-d",
+        "/tmp/Infinity-Context/v120/mutation-retry/source",
+        "-p",
+        "icx-adapters",
+        "--shard",
+        "1/40",
+        "--sharding",
+        "round-robin",
+        "--timeout",
+        "90",
+        "--build-timeout",
+        "240",
+        "-j",
+        "1",
+        "--output",
+        "/tmp/Infinity-Context/v120/mutation-retry/icx-adapters"
+      ],
+      "inventory_command": [
+        "cargo",
+        "mutants",
+        "-d",
+        "/tmp/Infinity-Context/v120/mutation-retry/source",
+        "-p",
+        "icx-adapters",
+        "--list",
+        "--json"
+      ],
+      "exit": 2,
+      "seconds": 333.18
+    },
+    {
+      "crate": "icx-proxy",
+      "full_inventory_count": 525,
+      "selected": 14,
+      "completed_mutants": 14,
+      "counts": {
+        "Unviable": 1,
+        "CaughtMutant": 7,
+        "MissedMutant": 4,
+        "Timeout": 2
+      },
+      "command": [
+        "cargo",
+        "mutants",
+        "-d",
+        "/tmp/Infinity-Context/v120/mutation-retry/source",
+        "-p",
+        "icx-proxy",
+        "--shard",
+        "1/40",
+        "--sharding",
+        "round-robin",
+        "--timeout",
+        "90",
+        "--build-timeout",
+        "240",
+        "-j",
+        "1",
+        "--output",
+        "/tmp/Infinity-Context/v120/mutation-retry/icx-proxy"
+      ],
+      "inventory_command": [
+        "cargo",
+        "mutants",
+        "-d",
+        "/tmp/Infinity-Context/v120/mutation-retry/source",
+        "-p",
+        "icx-proxy",
+        "--list",
+        "--json"
+      ],
+      "exit": 3,
+      "seconds": 279.44
+    }
+  ]
+}

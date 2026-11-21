@@ -1,0 +1,14 @@
+Found 15 mutants to test
+ok       Unmutated baseline in 47s build + 0s test
+MISSED   crates/icx-bus/src/ring.rs:305:26: replace * with + in unpack_fractal_q15 in 1s build + 0s test
+MISSED   crates/icx-bus/src/ring.rs:705:41: replace & with | in SeqlockTelemetryBus::try_publish in 2s build + 0s test
+MISSED   crates/icx-bus/src/ring.rs:902:42: replace || with && in SeqlockTelemetryBus::poll_since in 2s build + 0s test
+MISSED   crates/icx-bus/src/ring.rs:953:49: replace * with + in SeqlockTelemetryBus::poll_since in 2s build + 0s test
+ERROR Worker thread failed: Failed to copy /home/parobek/Code/OSS_Public-Projects/Infinity-Context/fuzz/target/x86_64-unknown-linux-gnu/release/build/icx-fuzz/eab98ae3bbf94af4/out/mcp_jsonrpc to /tmp/Infinity-Context/validation/cargo-mutants-Infinity-Context-AILm7Z.tmp/fuzz/target/x86_64-unknown-linux-gnu/release/build/icx-fuzz/eab98ae3bbf94af4/out/mcp_jsonrpc
+
+Caused by:
+    No space left on device (os error 28)
+Error: Failed to copy /home/parobek/Code/OSS_Public-Projects/Infinity-Context/fuzz/target/x86_64-unknown-linux-gnu/release/build/icx-fuzz/eab98ae3bbf94af4/out/mcp_jsonrpc to /tmp/Infinity-Context/validation/cargo-mutants-Infinity-Context-AILm7Z.tmp/fuzz/target/x86_64-unknown-linux-gnu/release/build/icx-fuzz/eab98ae3bbf94af4/out/mcp_jsonrpc
+
+Caused by:
+    No space left on device (os error 28)

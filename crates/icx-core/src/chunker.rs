@@ -72,7 +72,7 @@ pub fn chunk_bytes(data: &[u8], cfg: ChunkerConfig) -> Vec<(usize, usize)> {
         return Vec::new();
     }
     let min_size = cfg.min_size.max(64);
-    let max_size = cfg.max_size.max(min_size + 64);
+    let max_size = cfg.max_size.max(min_size.saturating_add(64));
     let avg_size = cfg.avg_size.clamp(min_size, max_size);
     let bits = avg_size.max(128).ilog2();
     let mask_s: u64 = spread_mask((bits + 1).min(47));
@@ -90,7 +90,7 @@ pub fn chunk_bytes(data: &[u8], cfg: ChunkerConfig) -> Vec<(usize, usize)> {
         }
 
         let limit = offset + remaining.min(max_size);
-        let normal_pivot = (offset + avg_size).min(limit);
+        let normal_pivot = offset.saturating_add(avg_size).min(limit);
         let mut pos = offset + min_size;
         let mut fp: u64 = 0;
         let mut cut_found = false;

@@ -1,0 +1,37 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index c9f968b..f4384be 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -1,4 +1,24 @@
+-# AGENTS.md — Infinity-Context (`icx`) Agent Guide
++<!-- Managed by Master-Claude. Universal rules come from the imported/inlined core.
++     Edit only inside the MC-PROJECT block; mc-sync overwrites everything else. -->
++<!-- mc-core: 0.2.0 | mode=import | lang=rust -->
++# AGENTS.md — Infinity-Context
++
++@~/.claude/master-core/AGENTS.base.md
++@~/.claude/master-core/lang/rust.md
++@~/.claude/master-core/modules/10-commits-and-versioning.md
++@~/.claude/master-core/modules/20-testing-and-accuracy.md
++@~/.claude/master-core/modules/30-quality-gates.md
++@~/.claude/master-core/modules/40-docs-and-adrs.md
++@~/.claude/master-core/modules/50-architecture-patterns.md
++@~/.claude/master-core/modules/60-security.md
++@~/.claude/master-core/modules/70-release-ceremony.md
++@~/.claude/master-core/modules/80-phase-sprint-workflow.md
++@~/.claude/master-core/modules/90-multi-language-integration.md
++@~/.claude/master-core/modules/91-agent-system-architecture.md
++@~/.claude/master-core/modules/95-named-pattern-library.md
++
++<<< MC-PROJECT-START >>>
++## Project: Infinity-Context (`icx`)
+ 
+ ## 1. Project Summary
+ 
+@@ -74,3 +94,6 @@
+ 
+ - Tuning provider-specific `epoch_token_threshold` defaults (`16,384` tokens for Anthropic 4-breakpoint cache vs. `8,192` tokens for OpenAI automatic 1024-token prefix cache).
+ - Optional CUDA Tensor-Core Residual Vector Quantization (`RVQ`) acceleration on RTX 5080 for dense multimodal activations.
++
++<<< MC-PROJECT-END >>>
++

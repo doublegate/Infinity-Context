@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted (2026-11-16)
+Historical decision (2026-11-16); capability and measurement claims superseded by
+[ADR0006](0006-v1-2-0-context-and-compatibility.md). Preserve the original rationale below.
 
 ## Context
 

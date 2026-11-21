@@ -1,0 +1,16 @@
+Found 27 mutants to test
+ok       Unmutated baseline in 99s build + 0s test
+MISSED   crates/icx-proxy/src/wire.rs:1039:24: delete ! in WireProxyTransformer::transform_sse_line_stateful in 1s build + 0s test
+TIMEOUT  crates/icx-proxy/src/wire.rs:1216:9: replace WireProxyTransformer::strip_provider_route_prefix -> String with String::new() in 2s build + 60s test
+TIMEOUT  crates/icx-proxy/src/wire.rs:1260:9: replace WireProxyTransformer::read_next_http_chunk -> io::Result<Option<Vec<u8>>> with Ok(Some(vec![])) in 1s build + 60s test
+TIMEOUT  crates/icx-proxy/src/wire.rs:1293:38: replace == with != in WireProxyTransformer::read_next_http_chunk in 1s build + 60s test
+MISSED   crates/icx-proxy/src/wire.rs:1500:57: replace || with && in WireProxyTransformer::relay_upstream_response_with_eof in 1s build + 0s test
+MISSED   crates/icx-proxy/src/wire.rs:1643:66: replace + with - in WireProxyTransformer::relay_upstream_response_with_eof in 0s build + 0s test
+MISSED   crates/icx-proxy/src/wire.rs:1829:13: replace || with && in WireProxyTransformer::is_loopback_upstream in 0s build + 0s test
+MISSED   crates/icx-proxy/src/wire.rs:2136:40: replace > with >= in WireProxyTransformer::sweep_stale_curl_header_files in 0s build + 0s test
+MISSED   crates/icx-proxy/src/wire.rs:2222:21: replace && with || in WireProxyTransformer::handle_http_request_concurrent in 0s build + 0s test
+MISSED   crates/icx-proxy/src/wire.rs:2287:34: replace > with >= in WireProxyTransformer::handle_http_request_concurrent in 0s build + 0s test
+MISSED   crates/icx-proxy/src/wire.rs:2662:9: replace WireProxyTransformer::extract_item_text -> Option<&str> with None in 1s build + 1s test
+MISSED   crates/icx-proxy/src/wire.rs:2744:26: replace += with *= in WireProxyTransformer::virtualize_item_text in 1s build + 0s test
+TIMEOUT  crates/icx-proxy/src/wire.rs:1414:32: delete ! in WireProxyTransformer::transform_sse_line_shared in 2s build + 60s test
+27 mutants tested in 5m: 9 missed, 12 caught, 2 unviable, 4 timeouts

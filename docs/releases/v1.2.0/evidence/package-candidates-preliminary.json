@@ -1,0 +1,26 @@
+[
+  {
+    "label": "x86_64-unknown-linux-musl",
+    "binary": "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx",
+    "build_provenance": "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/build/icx-cli/290bff38d0702ace/run/stdout",
+    "note": "existing preliminary binary; source binding not established"
+  },
+  {
+    "label": "x86_64_v3-unknown-linux-musl",
+    "binary": "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx",
+    "build_provenance": "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/build/icx-cli/4128e86b408630cf/run/stdout",
+    "note": "existing preliminary binary; source binding not established"
+  },
+  {
+    "label": "x86_64-unknown-linux-gnu",
+    "binary": "/tmp/Infinity-Context/v120/bench-portable/release/icx",
+    "build_provenance": "/tmp/Infinity-Context/v120/bench-portable/release/build/icx-cli/14fe0ee08b352647/run/stdout",
+    "note": "existing preliminary binary; source binding not established"
+  },
+  {
+    "label": "x86_64_v3-unknown-linux-gnu",
+    "binary": "/tmp/Infinity-Context/v120/bench-native/release/icx",
+    "build_provenance": "/tmp/Infinity-Context/v120/bench-native/release/build/icx-cli/5d966bf40594f5ee/run/stdout",
+    "note": "existing preliminary binary; native GNU candidate is NOT exact v3 qualification"
+  }
+]

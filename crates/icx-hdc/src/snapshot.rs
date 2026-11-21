@@ -8,7 +8,7 @@
 use thiserror::Error;
 
 /// Snapshot file magic (`ICXHDC` + format version).
-pub(crate) const SNAPSHOT_MAGIC: &[u8; 8] = b"ICXHDC03";
+pub(crate) const SNAPSHOT_MAGIC: &[u8; 8] = b"ICXHDC04";
 /// Upper bound on any length-prefixed collection inside a snapshot.
 pub(crate) const MAX_SNAPSHOT_ITEMS: u64 = 16 * 1024 * 1024;
 /// Upper bound on any length-prefixed string inside a snapshot.
@@ -98,11 +98,11 @@ impl<'a> Reader<'a> {
         Ok(out)
     }
 
-    pub(crate) fn expect_magic(&mut self) -> Result<(), SnapshotError> {
-        if self.take(SNAPSHOT_MAGIC.len()).ok() == Some(SNAPSHOT_MAGIC.as_slice()) {
-            Ok(())
-        } else {
-            Err(SnapshotError::BadMagic)
+    pub(crate) fn expect_magic(&mut self) -> Result<u8, SnapshotError> {
+        match self.take(SNAPSHOT_MAGIC.len())? {
+            b"ICXHDC03" => Ok(3),
+            b"ICXHDC04" => Ok(4),
+            _ => Err(SnapshotError::BadMagic),
         }
     }
     pub(crate) fn u8(&mut self) -> Result<u8, SnapshotError> {

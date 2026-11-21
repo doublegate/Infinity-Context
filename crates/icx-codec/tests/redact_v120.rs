@@ -1,0 +1,218 @@
+//! Regression fixtures from ICX-CODEX-001/006; all credentials are synthetic.
+
+use icx_codec::SecretRedactor;
+
+#[test]
+fn yaml_block_scalar_credentials_are_removed_without_consuming_siblings() {
+    for header in ["|", "|-", "|+", "|2-", ">", ">-", ">+", ">2"] {
+        let input = format!(
+            "db:\r\n  password: {header}\r\n    lowentropyfirst\r\n    secondsecretline\r\n\r\n  host: localhost\r\npublic: ok\r\n"
+        );
+        let clean = SecretRedactor::redact(&input);
+        assert!(!clean.contains("lowentropyfirst"), "{header}: {clean:?}");
+        assert!(!clean.contains("secondsecretline"), "{header}: {clean:?}");
+        assert!(
+            clean.contains("  host: localhost\r\npublic: ok\r\n"),
+            "{clean:?}"
+        );
+        assert_eq!(SecretRedactor::redact(&clean), clean);
+    }
+}
+
+#[test]
+fn yaml_plain_equals_values_are_credentials_not_nested_mappings() {
+    for value in ["user=correcthorse", "provider = vault", "ask-123456789=x"] {
+        let input = format!("password:\n  {value}\npublic: ok\n");
+        assert_eq!(
+            SecretRedactor::redact(&input),
+            "password:\n  [REDACTED:SECRET]\npublic: ok\n"
+        );
+    }
+}
+
+#[test]
+fn redaction_reaches_a_stable_continuation_form_on_the_first_pass() {
+    for input in [
+        "TOKEN:\nPsk-ssVk-kP-P=S",
+        "TOKEN:\nPsk-OyyyTOKEN:",
+        "password:\n  ask-123456789=x\n",
+        std::str::from_utf8(include_bytes!("fixtures/redact-original-v120.bin")).unwrap(),
+    ] {
+        let clean = SecretRedactor::redact(input);
+        assert_eq!(SecretRedactor::redact(&clean), clean, "{input:?}");
+    }
+}
+
+#[test]
+fn yaml_public_siblings_and_nested_mappings_stay_exact() {
+    for input in [
+        "credentials:\n  username: alice\n  region: local\n",
+        "password:\npublic: ok\n",
+        "password: |\npublic: ok\n",
+    ] {
+        assert_eq!(SecretRedactor::redact(input), input);
+    }
+}
+
+#[test]
+fn yaml_list_block_stops_before_a_sibling_mapping() {
+    assert_eq!(
+        SecretRedactor::redact("- password: |2\n    firstpiece\n  public: ok\n"),
+        "- password: |2\n    [REDACTED:SECRET]\n  public: ok\n"
+    );
+}
+
+#[test]
+fn yaml_tagged_and_anchored_block_scalars_are_redacted() {
+    for header in ["&anchor |", "!!str >", "|2- # vault", ">-2\t# vault"] {
+        let input = format!("password: {header}\n  firstpiece\npublic: ok\n");
+        let clean = SecretRedactor::redact(&input);
+        assert!(!clean.contains("firstpiece"), "{clean:?}");
+        assert!(clean.ends_with("public: ok\n"), "{clean:?}");
+        assert_eq!(SecretRedactor::redact(&clean), clean);
+    }
+}
+
+#[test]
+fn yaml_scalar_contents_are_not_reclassified_as_comments_or_structures() {
+    let input = "password: |\n  # firstpiece\n  user: secondpiece\n  -----BEGIN PRIVATE KEY-----\n  thirdpiece\npublic: ok\n";
+    assert_eq!(
+        SecretRedactor::redact(input),
+        "password: |\n  [REDACTED:SECRET]\n  [REDACTED:SECRET]\n  [REDACTED:SECRET]\n  [REDACTED:SECRET]\npublic: ok\n"
+    );
+    assert_eq!(
+        SecretRedactor::redact("password:\n  firstpiece\n  secondpiece\npublic: ok\n"),
+        "password:\n  [REDACTED:SECRET]\n  [REDACTED:SECRET]\npublic: ok\n"
+    );
+}
+
+#[test]
+fn adjacent_sendgrid_credentials_are_removed_on_the_first_pass() {
+    let first = format!("SG.{}.{}", "A".repeat(22), "B".repeat(43));
+    let second = format!("SG.{}.{}", "C".repeat(22), "D".repeat(43));
+    let input = format!("before {first}{second} after");
+    let once = SecretRedactor::redact(&input);
+    assert!(!once.contains(&first), "{once}");
+    assert!(!once.contains(&second), "{once}");
+    assert_eq!(
+        once,
+        "before [REDACTED:SENDGRID_KEY][REDACTED:SENDGRID_KEY] after"
+    );
+    assert_eq!(SecretRedactor::redact(&once), once);
+    let fuzz = std::str::from_utf8(include_bytes!("fixtures/redact-sendgrid-v120.bin")).unwrap();
+    let once = SecretRedactor::redact(fuzz);
+    assert_eq!(SecretRedactor::redact(&once), once);
+}
+
+#[test]
+fn quoted_inline_values_cannot_turn_prose_into_pending_secret_headers() {
+    let input = "TOKEN:' '_TOKEN:\n:";
+    assert_eq!(
+        SecretRedactor::redact(input),
+        "TOKEN:'[REDACTED:CONFIG_SECRET]'_TOKEN:\n:"
+    );
+    let once = SecretRedactor::redact(input);
+    assert_eq!(SecretRedactor::redact(&once), once);
+    let original = std::str::from_utf8(include_bytes!("fixtures/redact-header-v120.bin")).unwrap();
+    let once = SecretRedactor::redact(original);
+    assert_eq!(SecretRedactor::redact(&once), once);
+}
+
+#[test]
+fn low_entropy_jwt_and_escaped_quoted_cli_secrets_are_recognized() {
+    let jwt = "eyJhbGciOiJub25lIn0.eyJhIjoxfQ.aaaaaa";
+    assert_eq!(SecretRedactor::redact(jwt), "[REDACTED:JWT_TOKEN]");
+    let command = r#"run --password=\"firstpiece\" --api-key 'secondpiece' --public keep"#;
+    let clean = SecretRedactor::redact(command);
+    assert!(!clean.contains("firstpiece"));
+    assert!(!clean.contains("secondpiece"));
+    assert!(clean.ends_with("--public keep"));
+    assert_eq!(SecretRedactor::redact(&clean), clean);
+}
+
+#[test]
+fn nested_url_scheme_does_not_hide_a_credential_until_after_vendor_replacement() {
+    let input = format!("sk-abcdefghijklmn://inner://{}@host/path", "A".repeat(32));
+    let clean = SecretRedactor::redact(&input);
+    assert!(!clean.contains(&"A".repeat(32)), "{clean}");
+    assert!(!clean.contains("sk-abcdefghijklmn"));
+    assert!(clean.ends_with("@host/path"));
+    assert_eq!(SecretRedactor::redact(&clean), clean);
+    let original =
+        std::str::from_utf8(include_bytes!("fixtures/redact-nested-url-v120.bin")).unwrap();
+    let once = SecretRedactor::redact(original);
+    assert_eq!(SecretRedactor::redact(&once), once);
+}
+
+#[test]
+fn adjacent_jwt_credentials_do_not_require_a_second_redaction_pass() {
+    let jwt = "eyJhbGciOiJub25lIn0.eyJhIjoxfQ.aaaaaa";
+    let input = format!("before {jwt}{jwt} after");
+    let once = SecretRedactor::redact(&input);
+    assert!(!once.contains(jwt), "{once}");
+    assert_eq!(SecretRedactor::redact(&once), once);
+    assert!(once.starts_with("before ") && once.ends_with(" after"));
+}
+
+#[test]
+fn mixed_escaped_quotes_keep_following_unicode_on_a_character_boundary() {
+    for (input, expected) in [
+        (
+            "token:\\'secret'🦀:public",
+            "token:\\'[REDACTED:CONFIG_SECRET]'🦀:public",
+        ),
+        (
+            "TOKEN=\\'secret'🦀 public",
+            "TOKEN=\\'[REDACTED:ENV_SECRET]'🦀 public",
+        ),
+    ] {
+        let clean = SecretRedactor::redact(input);
+        assert_eq!(clean, expected);
+        assert_eq!(SecretRedactor::redact(&clean), clean);
+    }
+}
+
+#[test]
+fn extra_authority_at_signs_do_not_hide_an_earlier_url_credential() {
+    let input = format!("https://{}@public-host@trailing", "A".repeat(32));
+    assert_eq!(
+        SecretRedactor::redact(&input),
+        "https://[REDACTED:URL_TOKEN]@public-host@trailing"
+    );
+}
+
+#[test]
+fn additional_fuzzer_artifacts_are_panic_free_and_stable() {
+    for bytes in [
+        include_bytes!("fixtures/redact-unicode-panic-v120.bin").as_slice(),
+        include_bytes!("fixtures/redact-overlapping-authority-v120.bin").as_slice(),
+    ] {
+        let input = std::str::from_utf8(bytes).unwrap();
+        let once = SecretRedactor::redact(input);
+        assert_eq!(SecretRedactor::redact(&once), once);
+    }
+}
+
+#[test]
+fn pending_scalar_is_redacted_before_emitting_a_private_key_marker() {
+    for kind in ["PRIVATE KEY", "PGP PRIVATE KEY BLOCK"] {
+        let input = format!(
+            "TOKEN:\nfirstpiece -----BEGIN {kind}-----\nsecondpiece\n-----END {kind}-----\npublic: ok\n"
+        );
+        let clean = SecretRedactor::redact(&input);
+        assert_eq!(clean, "TOKEN:\n[REDACTED:SECRET]\npublic: ok\n");
+        assert_eq!(SecretRedactor::redact(&clean), clean);
+        let inline = format!(
+            "TOKEN:\nfirstpiece -----BEGIN {kind}-----secondpiece-----END {kind}-----\npublic: ok\n"
+        );
+        assert_eq!(SecretRedactor::redact(&inline), clean);
+    }
+}
+
+#[test]
+fn original_pending_scalar_private_key_fuzz_artifact_is_stable() {
+    let input =
+        std::str::from_utf8(include_bytes!("fixtures/redact-pending-key-block-v120.bin")).unwrap();
+    let once = SecretRedactor::redact(input);
+    assert_eq!(SecretRedactor::redact(&once), once);
+}

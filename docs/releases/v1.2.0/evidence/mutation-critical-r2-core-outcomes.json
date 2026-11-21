@@ -1,0 +1,1956 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 21.93448283,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.302975831,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/cas.rs:529:17: replace || with && in CasStore::from_parts",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/cas.rs",
+          "function": {
+            "function_name": "CasStore::from_parts",
+            "return_type": "-> Result<Self, IcxError>",
+            "span": {
+              "start": {
+                "line": 516,
+                "column": 5
+              },
+              "end": {
+                "line": 597,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 529,
+              "column": 17
+            },
+            "end": {
+              "line": 529,
+              "column": 19
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__cas.rs_line_529_col_17.log",
+      "diff_path": "diff/crates__icx-core__src__cas.rs_line_529_col_17.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.547920329,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.151444798,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/cas.rs:528:17: replace || with && in CasStore::from_parts",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/cas.rs",
+          "function": {
+            "function_name": "CasStore::from_parts",
+            "return_type": "-> Result<Self, IcxError>",
+            "span": {
+              "start": {
+                "line": 516,
+                "column": 5
+              },
+              "end": {
+                "line": 597,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 528,
+              "column": 17
+            },
+            "end": {
+              "line": 528,
+              "column": 19
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__cas.rs_line_528_col_17.log",
+      "diff_path": "diff/crates__icx-core__src__cas.rs_line_528_col_17.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.924075253,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.201172875,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/cas.rs:541:17: replace || with && in CasStore::from_parts",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/cas.rs",
+          "function": {
+            "function_name": "CasStore::from_parts",
+            "return_type": "-> Result<Self, IcxError>",
+            "span": {
+              "start": {
+                "line": 516,
+                "column": 5
+              },
+              "end": {
+                "line": 597,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 541,
+              "column": 17
+            },
+            "end": {
+              "line": 541,
+              "column": 19
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__cas.rs_line_541_col_17.log",
+      "diff_path": "diff/crates__icx-core__src__cas.rs_line_541_col_17.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.854057777,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.20114283,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/cas.rs:540:17: replace || with && in CasStore::from_parts",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/cas.rs",
+          "function": {
+            "function_name": "CasStore::from_parts",
+            "return_type": "-> Result<Self, IcxError>",
+            "span": {
+              "start": {
+                "line": 516,
+                "column": 5
+              },
+              "end": {
+                "line": 597,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 540,
+              "column": 17
+            },
+            "end": {
+              "line": 540,
+              "column": 19
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__cas.rs_line_540_col_17.log",
+      "diff_path": "diff/crates__icx-core__src__cas.rs_line_540_col_17.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.853398999,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.150937779,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/cas.rs:552:50: replace || with && in CasStore::from_parts",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/cas.rs",
+          "function": {
+            "function_name": "CasStore::from_parts",
+            "return_type": "-> Result<Self, IcxError>",
+            "span": {
+              "start": {
+                "line": 516,
+                "column": 5
+              },
+              "end": {
+                "line": 597,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 552,
+              "column": 50
+            },
+            "end": {
+              "line": 552,
+              "column": 52
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__cas.rs_line_552_col_50.log",
+      "diff_path": "diff/crates__icx-core__src__cas.rs_line_552_col_50.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.659891822,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.151142485,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/cas.rs:568:21: replace || with && in CasStore::from_parts",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/cas.rs",
+          "function": {
+            "function_name": "CasStore::from_parts",
+            "return_type": "-> Result<Self, IcxError>",
+            "span": {
+              "start": {
+                "line": 516,
+                "column": 5
+              },
+              "end": {
+                "line": 597,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 568,
+              "column": 21
+            },
+            "end": {
+              "line": 568,
+              "column": 23
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-core__src__cas.rs_line_568_col_21.log",
+      "diff_path": "diff/crates__icx-core__src__cas.rs_line_568_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.673186373,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.100971716,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/cas.rs:567:21: replace || with && in CasStore::from_parts",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/cas.rs",
+          "function": {
+            "function_name": "CasStore::from_parts",
+            "return_type": "-> Result<Self, IcxError>",
+            "span": {
+              "start": {
+                "line": 516,
+                "column": 5
+              },
+              "end": {
+                "line": 597,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 567,
+              "column": 21
+            },
+            "end": {
+              "line": 567,
+              "column": 23
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-core__src__cas.rs_line_567_col_21.log",
+      "diff_path": "diff/crates__icx-core__src__cas.rs_line_567_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.76237675,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.101085031,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/cas.rs:566:21: replace || with && in CasStore::from_parts",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/cas.rs",
+          "function": {
+            "function_name": "CasStore::from_parts",
+            "return_type": "-> Result<Self, IcxError>",
+            "span": {
+              "start": {
+                "line": 516,
+                "column": 5
+              },
+              "end": {
+                "line": 597,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 566,
+              "column": 21
+            },
+            "end": {
+              "line": 566,
+              "column": 23
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-core__src__cas.rs_line_566_col_21.log",
+      "diff_path": "diff/crates__icx-core__src__cas.rs_line_566_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.866857922,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.10099855,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/cas.rs:565:21: replace || with && in CasStore::from_parts",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/cas.rs",
+          "function": {
+            "function_name": "CasStore::from_parts",
+            "return_type": "-> Result<Self, IcxError>",
+            "span": {
+              "start": {
+                "line": 516,
+                "column": 5
+              },
+              "end": {
+                "line": 597,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 565,
+              "column": 21
+            },
+            "end": {
+              "line": 565,
+              "column": 23
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-core__src__cas.rs_line_565_col_21.log",
+      "diff_path": "diff/crates__icx-core__src__cas.rs_line_565_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.96140315,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.101061034,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/cas.rs:583:17: replace || with && in CasStore::from_parts",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/cas.rs",
+          "function": {
+            "function_name": "CasStore::from_parts",
+            "return_type": "-> Result<Self, IcxError>",
+            "span": {
+              "start": {
+                "line": 516,
+                "column": 5
+              },
+              "end": {
+                "line": 597,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 583,
+              "column": 17
+            },
+            "end": {
+              "line": 583,
+              "column": 19
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__cas.rs_line_583_col_17.log",
+      "diff_path": "diff/crates__icx-core__src__cas.rs_line_583_col_17.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.916156307,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.251805897,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:324:22: replace match guard *n_agent == agent && n_role == role && *n_raw == raw_artifact with false in MerkleContextDag::find_turn",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::find_turn",
+            "return_type": "-> Option<(&str, f32)>",
+            "span": {
+              "start": {
+                "line": 291,
+                "column": 5
+              },
+              "end": {
+                "line": 331,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 324,
+              "column": 22
+            },
+            "end": {
+              "line": 324,
+              "column": 83
+            }
+          },
+          "replacement": "false",
+          "genre": "MatchArmGuard"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_324_col_22.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_324_col_22.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.257398387,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.100997846,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:976:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 976,
+              "column": 21
+            },
+            "end": {
+              "line": 976,
+              "column": 23
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_976_col_21.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_976_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.956371485,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.101120461,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:975:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 975,
+              "column": 21
+            },
+            "end": {
+              "line": 975,
+              "column": 23
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_975_col_21.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_975_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.119185947,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.10110302,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:987:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 987,
+              "column": 21
+            },
+            "end": {
+              "line": 987,
+              "column": 23
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_987_col_21.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_987_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.059506697,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.201018215,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:986:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 986,
+              "column": 21
+            },
+            "end": {
+              "line": 986,
+              "column": 23
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_986_col_21.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_986_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.120608168,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.201564928,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:1006:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1006,
+              "column": 21
+            },
+            "end": {
+              "line": 1006,
+              "column": 23
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_1006_col_21.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_1006_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.861526605,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.20130117,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:1005:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1005,
+              "column": 21
+            },
+            "end": {
+              "line": 1005,
+              "column": 23
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_1005_col_21.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_1005_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.929530555,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.20131418,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:1036:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1036,
+              "column": 21
+            },
+            "end": {
+              "line": 1036,
+              "column": 23
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_1036_col_21.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_1036_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.912195028,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.201084344,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:1035:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1035,
+              "column": 21
+            },
+            "end": {
+              "line": 1035,
+              "column": 23
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_1035_col_21.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_1035_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.832505059,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.151056521,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:1034:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1034,
+              "column": 21
+            },
+            "end": {
+              "line": 1034,
+              "column": 23
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_1034_col_21.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_1034_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.807842373,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.150982671,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:1075:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1075,
+              "column": 29
+            },
+            "end": {
+              "line": 1075,
+              "column": 31
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_1075_col_29.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_1075_col_29.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.883839199,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.151614546,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:1074:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1074,
+              "column": 29
+            },
+            "end": {
+              "line": 1074,
+              "column": 31
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_1074_col_29.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_1074_col_29.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.81287336,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.201055207,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:1073:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1073,
+              "column": 29
+            },
+            "end": {
+              "line": 1073,
+              "column": 31
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_1073_col_29.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_1073_col_29.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.005356319,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.201059291,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:1072:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1072,
+              "column": 29
+            },
+            "end": {
+              "line": 1072,
+              "column": 31
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_1072_col_29.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_1072_col_29.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.020477791,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.201351668,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:1071:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1071,
+              "column": 29
+            },
+            "end": {
+              "line": 1071,
+              "column": 31
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_1071_col_29.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_1071_col_29.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.806850324,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.201112441,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:1113:25: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1113,
+              "column": 25
+            },
+            "end": {
+              "line": 1113,
+              "column": 27
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_1113_col_25.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_1113_col_25.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.853850796,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.10098037,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:1112:25: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1112,
+              "column": 25
+            },
+            "end": {
+              "line": 1112,
+              "column": 27
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_1112_col_25.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_1112_col_25.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.837840268,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.100974191,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/dag.rs:1111:25: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/dag.rs",
+          "function": {
+            "function_name": "MerkleContextDag::verify_merkle_integrity_with_ancestors",
+            "return_type": "-> Result<bool, IcxError>",
+            "span": {
+              "start": {
+                "line": 939,
+                "column": 5
+              },
+              "end": {
+                "line": 1132,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1111,
+              "column": 25
+            },
+            "end": {
+              "line": 1111,
+              "column": 27
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-core__src__dag.rs_line_1111_col_25.log",
+      "diff_path": "diff/crates__icx-core__src__dag.rs_line_1111_col_25.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.80518494,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.100779349,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/epoch.rs:444:51: replace <= with > in CacheEpochController::assemble_window",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/epoch.rs",
+          "function": {
+            "function_name": "CacheEpochController::assemble_window",
+            "return_type": "-> AssembledWindow",
+            "span": {
+              "start": {
+                "line": 435,
+                "column": 5
+              },
+              "end": {
+                "line": 502,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 444,
+              "column": 51
+            },
+            "end": {
+              "line": 444,
+              "column": 53
+            }
+          },
+          "replacement": ">",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-core__src__epoch.rs_line_444_col_51.log",
+      "diff_path": "diff/crates__icx-core__src__epoch.rs_line_444_col_51.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.856226215,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.201247209,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-core/src/epoch.rs:462:21: replace <= with > in CacheEpochController::assemble_window",
+          "package": "icx-core",
+          "file": "crates/icx-core/src/epoch.rs",
+          "function": {
+            "function_name": "CacheEpochController::assemble_window",
+            "return_type": "-> AssembledWindow",
+            "span": {
+              "start": {
+                "line": 435,
+                "column": 5
+              },
+              "end": {
+                "line": 502,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 462,
+              "column": 21
+            },
+            "end": {
+              "line": 462,
+              "column": 23
+            }
+          },
+          "replacement": ">",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-core__src__epoch.rs_line_462_col_21.log",
+      "diff_path": "diff/crates__icx-core__src__epoch.rs_line_462_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.753183245,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.10138682,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-core@1.2.0"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 30,
+  "missed": 19,
+  "caught": 11,
+  "timeout": 0,
+  "unviable": 0,
+  "success": 0,
+  "start_time": "2026-11-21T16:06:17.447468293Z",
+  "end_time": "2026-11-21T16:07:11.971103395Z",
+  "cargo_mutants_version": "27.1.0"
+}

@@ -1,0 +1,6 @@
+Found 10 mutants to test
+ok       Unmutated baseline in 21s build + 10s test
+MISSED   crates/icx-hdc/src/lib.rs:534:36: replace * with / in HdcAssociativeIndex::query_associative in 1s build + 12s test
+MISSED   crates/icx-hdc/src/lib.rs:356:68: replace * with / in HdcAssociativeIndex::observe_event_with_exit_code in 26s build + 12s test
+MISSED   crates/icx-hdc/src/surprise.rs:216:39: replace + with - in TitansSurpriseGate::observe_with_exit_code in 2s build + 11s test
+10 mutants tested in 2m: 3 missed, 6 caught, 1 unviable

@@ -1,0 +1,606 @@
+000000000001d700 <icx_hamming_probe::scan_four_u32>:
+   1d700:	48 85 d2             	test   %rdx,%rdx
+   1d703:	0f 84 b1 04 00 00    	je     1dbba <icx_hamming_probe::scan_four_u32+0x4ba>
+   1d709:	48 8d 0c 92          	lea    (%rdx,%rdx,4),%rcx
+   1d70d:	48 c1 e1 08          	shl    $0x8,%rcx
+   1d711:	48 01 f1             	add    %rsi,%rcx
+   1d714:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1d719:	66 0f 6f 05 4f bb ff 	movdqa -0x44b1(%rip),%xmm0        # 19270 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x31c>
+   1d720:	ff 
+   1d721:	66 0f 6f 0d c7 bc ff 	movdqa -0x4339(%rip),%xmm1        # 193f0 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x49c>
+   1d728:	ff 
+   1d729:	66 0f 6f 15 ff bb ff 	movdqa -0x4401(%rip),%xmm2        # 19330 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x3dc>
+   1d730:	ff 
+   1d731:	66 0f ef db          	pxor   %xmm3,%xmm3
+   1d735:	66 66 2e 0f 1f 84 00 	data16 cs nopw 0x0(%rax,%rax,1)
+   1d73c:	00 00 00 00 
+   1d740:	ba 78 00 00 00       	mov    $0x78,%edx
+   1d745:	66 0f ef ed          	pxor   %xmm5,%xmm5
+   1d749:	66 0f ef e4          	pxor   %xmm4,%xmm4
+   1d74d:	66 45 0f ef c0       	pxor   %xmm8,%xmm8
+   1d752:	66 0f ef f6          	pxor   %xmm6,%xmm6
+   1d756:	66 45 0f ef c9       	pxor   %xmm9,%xmm9
+   1d75b:	66 0f ef ff          	pxor   %xmm7,%xmm7
+   1d75f:	66 45 0f ef db       	pxor   %xmm11,%xmm11
+   1d764:	66 45 0f ef d2       	pxor   %xmm10,%xmm10
+   1d769:	0f 1f 80 00 00 00 00 	nopl   0x0(%rax)
+   1d770:	f3 44 0f 7e 64 17 a8 	movq   -0x58(%rdi,%rdx,1),%xmm12
+   1d777:	f3 44 0f 7e 6c 17 88 	movq   -0x78(%rdi,%rdx,1),%xmm13
+   1d77e:	66 45 0f 6c ec       	punpcklqdq %xmm12,%xmm13
+   1d783:	f3 44 0f 7e 64 17 e8 	movq   -0x18(%rdi,%rdx,1),%xmm12
+   1d78a:	f3 44 0f 7e 74 17 c8 	movq   -0x38(%rdi,%rdx,1),%xmm14
+   1d791:	66 45 0f 6c f4       	punpcklqdq %xmm12,%xmm14
+   1d796:	f3 44 0f 7e 64 16 a8 	movq   -0x58(%rsi,%rdx,1),%xmm12
+   1d79d:	f3 44 0f 7e 7c 16 88 	movq   -0x78(%rsi,%rdx,1),%xmm15
+   1d7a4:	66 45 0f 6c fc       	punpcklqdq %xmm12,%xmm15
+   1d7a9:	66 45 0f ef fd       	pxor   %xmm13,%xmm15
+   1d7ae:	f3 44 0f 7e 6c 16 e8 	movq   -0x18(%rsi,%rdx,1),%xmm13
+   1d7b5:	f3 44 0f 7e 64 16 c8 	movq   -0x38(%rsi,%rdx,1),%xmm12
+   1d7bc:	66 45 0f 6c e5       	punpcklqdq %xmm13,%xmm12
+   1d7c1:	66 45 0f ef e6       	pxor   %xmm14,%xmm12
+   1d7c6:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1d7cb:	66 41 0f 71 d5 01    	psrlw  $0x1,%xmm13
+   1d7d1:	66 44 0f db e8       	pand   %xmm0,%xmm13
+   1d7d6:	66 45 0f f8 fd       	psubb  %xmm13,%xmm15
+   1d7db:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1d7e0:	66 44 0f db e9       	pand   %xmm1,%xmm13
+   1d7e5:	66 41 0f 71 d7 02    	psrlw  $0x2,%xmm15
+   1d7eb:	66 44 0f db f9       	pand   %xmm1,%xmm15
+   1d7f0:	66 45 0f fc fd       	paddb  %xmm13,%xmm15
+   1d7f5:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1d7fa:	66 41 0f 71 d5 04    	psrlw  $0x4,%xmm13
+   1d800:	66 45 0f fc ef       	paddb  %xmm15,%xmm13
+   1d805:	66 44 0f db ea       	pand   %xmm2,%xmm13
+   1d80a:	66 44 0f f6 eb       	psadbw %xmm3,%xmm13
+   1d80f:	66 45 0f 6f f4       	movdqa %xmm12,%xmm14
+   1d814:	66 41 0f 71 d6 01    	psrlw  $0x1,%xmm14
+   1d81a:	66 44 0f db f0       	pand   %xmm0,%xmm14
+   1d81f:	66 45 0f f8 e6       	psubb  %xmm14,%xmm12
+   1d824:	66 45 0f 6f f4       	movdqa %xmm12,%xmm14
+   1d829:	66 44 0f db f1       	pand   %xmm1,%xmm14
+   1d82e:	66 41 0f 71 d4 02    	psrlw  $0x2,%xmm12
+   1d834:	66 44 0f db e1       	pand   %xmm1,%xmm12
+   1d839:	66 45 0f fc e6       	paddb  %xmm14,%xmm12
+   1d83e:	66 45 0f 6f f4       	movdqa %xmm12,%xmm14
+   1d843:	66 41 0f 71 d6 04    	psrlw  $0x4,%xmm14
+   1d849:	66 45 0f fc f4       	paddb  %xmm12,%xmm14
+   1d84e:	66 44 0f db f2       	pand   %xmm2,%xmm14
+   1d853:	66 44 0f f6 f3       	psadbw %xmm3,%xmm14
+   1d858:	66 45 0f 70 e5 e8    	pshufd $0xe8,%xmm13,%xmm12
+   1d85e:	66 41 0f fe ec       	paddd  %xmm12,%xmm5
+   1d863:	66 45 0f 70 e6 e8    	pshufd $0xe8,%xmm14,%xmm12
+   1d869:	66 41 0f fe e4       	paddd  %xmm12,%xmm4
+   1d86e:	f3 44 0f 7e 64 17 b0 	movq   -0x50(%rdi,%rdx,1),%xmm12
+   1d875:	f3 44 0f 7e 6c 17 90 	movq   -0x70(%rdi,%rdx,1),%xmm13
+   1d87c:	66 45 0f 6c ec       	punpcklqdq %xmm12,%xmm13
+   1d881:	f3 44 0f 7e 64 17 f0 	movq   -0x10(%rdi,%rdx,1),%xmm12
+   1d888:	f3 44 0f 7e 74 17 d0 	movq   -0x30(%rdi,%rdx,1),%xmm14
+   1d88f:	66 45 0f 6c f4       	punpcklqdq %xmm12,%xmm14
+   1d894:	f3 44 0f 7e 64 16 b0 	movq   -0x50(%rsi,%rdx,1),%xmm12
+   1d89b:	f3 44 0f 7e 7c 16 90 	movq   -0x70(%rsi,%rdx,1),%xmm15
+   1d8a2:	66 45 0f 6c fc       	punpcklqdq %xmm12,%xmm15
+   1d8a7:	66 45 0f ef fd       	pxor   %xmm13,%xmm15
+   1d8ac:	f3 44 0f 7e 6c 16 f0 	movq   -0x10(%rsi,%rdx,1),%xmm13
+   1d8b3:	f3 44 0f 7e 64 16 d0 	movq   -0x30(%rsi,%rdx,1),%xmm12
+   1d8ba:	66 45 0f 6c e5       	punpcklqdq %xmm13,%xmm12
+   1d8bf:	66 45 0f ef e6       	pxor   %xmm14,%xmm12
+   1d8c4:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1d8c9:	66 41 0f 71 d5 01    	psrlw  $0x1,%xmm13
+   1d8cf:	66 44 0f db e8       	pand   %xmm0,%xmm13
+   1d8d4:	66 45 0f f8 fd       	psubb  %xmm13,%xmm15
+   1d8d9:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1d8de:	66 44 0f db e9       	pand   %xmm1,%xmm13
+   1d8e3:	66 41 0f 71 d7 02    	psrlw  $0x2,%xmm15
+   1d8e9:	66 44 0f db f9       	pand   %xmm1,%xmm15
+   1d8ee:	66 45 0f fc fd       	paddb  %xmm13,%xmm15
+   1d8f3:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1d8f8:	66 41 0f 71 d5 04    	psrlw  $0x4,%xmm13
+   1d8fe:	66 45 0f fc ef       	paddb  %xmm15,%xmm13
+   1d903:	66 44 0f db ea       	pand   %xmm2,%xmm13
+   1d908:	66 44 0f f6 eb       	psadbw %xmm3,%xmm13
+   1d90d:	66 45 0f 6f f4       	movdqa %xmm12,%xmm14
+   1d912:	66 41 0f 71 d6 01    	psrlw  $0x1,%xmm14
+   1d918:	66 44 0f db f0       	pand   %xmm0,%xmm14
+   1d91d:	66 45 0f f8 e6       	psubb  %xmm14,%xmm12
+   1d922:	66 45 0f 6f f4       	movdqa %xmm12,%xmm14
+   1d927:	66 44 0f db f1       	pand   %xmm1,%xmm14
+   1d92c:	66 41 0f 71 d4 02    	psrlw  $0x2,%xmm12
+   1d932:	66 44 0f db e1       	pand   %xmm1,%xmm12
+   1d937:	66 45 0f fc e6       	paddb  %xmm14,%xmm12
+   1d93c:	66 45 0f 6f f4       	movdqa %xmm12,%xmm14
+   1d941:	66 41 0f 71 d6 04    	psrlw  $0x4,%xmm14
+   1d947:	66 45 0f fc f4       	paddb  %xmm12,%xmm14
+   1d94c:	66 44 0f db f2       	pand   %xmm2,%xmm14
+   1d951:	66 44 0f f6 f3       	psadbw %xmm3,%xmm14
+   1d956:	66 45 0f 70 e5 e8    	pshufd $0xe8,%xmm13,%xmm12
+   1d95c:	66 45 0f fe c4       	paddd  %xmm12,%xmm8
+   1d961:	66 45 0f 70 e6 e8    	pshufd $0xe8,%xmm14,%xmm12
+   1d967:	66 41 0f fe f4       	paddd  %xmm12,%xmm6
+   1d96c:	f3 44 0f 7e 64 17 b8 	movq   -0x48(%rdi,%rdx,1),%xmm12
+   1d973:	f3 44 0f 7e 6c 17 98 	movq   -0x68(%rdi,%rdx,1),%xmm13
+   1d97a:	66 45 0f 6c ec       	punpcklqdq %xmm12,%xmm13
+   1d97f:	f3 44 0f 7e 64 17 f8 	movq   -0x8(%rdi,%rdx,1),%xmm12
+   1d986:	f3 44 0f 7e 74 17 d8 	movq   -0x28(%rdi,%rdx,1),%xmm14
+   1d98d:	66 45 0f 6c f4       	punpcklqdq %xmm12,%xmm14
+   1d992:	f3 44 0f 7e 64 16 b8 	movq   -0x48(%rsi,%rdx,1),%xmm12
+   1d999:	f3 44 0f 7e 7c 16 98 	movq   -0x68(%rsi,%rdx,1),%xmm15
+   1d9a0:	66 45 0f 6c fc       	punpcklqdq %xmm12,%xmm15
+   1d9a5:	66 45 0f ef fd       	pxor   %xmm13,%xmm15
+   1d9aa:	f3 44 0f 7e 6c 16 f8 	movq   -0x8(%rsi,%rdx,1),%xmm13
+   1d9b1:	f3 44 0f 7e 64 16 d8 	movq   -0x28(%rsi,%rdx,1),%xmm12
+   1d9b8:	66 45 0f 6c e5       	punpcklqdq %xmm13,%xmm12
+   1d9bd:	66 45 0f ef e6       	pxor   %xmm14,%xmm12
+   1d9c2:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1d9c7:	66 41 0f 71 d5 01    	psrlw  $0x1,%xmm13
+   1d9cd:	66 44 0f db e8       	pand   %xmm0,%xmm13
+   1d9d2:	66 45 0f f8 fd       	psubb  %xmm13,%xmm15
+   1d9d7:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1d9dc:	66 44 0f db e9       	pand   %xmm1,%xmm13
+   1d9e1:	66 41 0f 71 d7 02    	psrlw  $0x2,%xmm15
+   1d9e7:	66 44 0f db f9       	pand   %xmm1,%xmm15
+   1d9ec:	66 45 0f fc fd       	paddb  %xmm13,%xmm15
+   1d9f1:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1d9f6:	66 41 0f 71 d5 04    	psrlw  $0x4,%xmm13
+   1d9fc:	66 45 0f fc ef       	paddb  %xmm15,%xmm13
+   1da01:	66 44 0f db ea       	pand   %xmm2,%xmm13
+   1da06:	66 44 0f f6 eb       	psadbw %xmm3,%xmm13
+   1da0b:	66 45 0f 6f f4       	movdqa %xmm12,%xmm14
+   1da10:	66 41 0f 71 d6 01    	psrlw  $0x1,%xmm14
+   1da16:	66 44 0f db f0       	pand   %xmm0,%xmm14
+   1da1b:	66 45 0f f8 e6       	psubb  %xmm14,%xmm12
+   1da20:	66 45 0f 6f f4       	movdqa %xmm12,%xmm14
+   1da25:	66 44 0f db f1       	pand   %xmm1,%xmm14
+   1da2a:	66 41 0f 71 d4 02    	psrlw  $0x2,%xmm12
+   1da30:	66 44 0f db e1       	pand   %xmm1,%xmm12
+   1da35:	66 45 0f fc e6       	paddb  %xmm14,%xmm12
+   1da3a:	66 45 0f 6f f4       	movdqa %xmm12,%xmm14
+   1da3f:	66 41 0f 71 d6 04    	psrlw  $0x4,%xmm14
+   1da45:	66 45 0f fc f4       	paddb  %xmm12,%xmm14
+   1da4a:	66 44 0f db f2       	pand   %xmm2,%xmm14
+   1da4f:	66 44 0f f6 f3       	psadbw %xmm3,%xmm14
+   1da54:	66 45 0f 70 e5 e8    	pshufd $0xe8,%xmm13,%xmm12
+   1da5a:	66 45 0f fe cc       	paddd  %xmm12,%xmm9
+   1da5f:	66 45 0f 70 e6 e8    	pshufd $0xe8,%xmm14,%xmm12
+   1da65:	66 41 0f fe fc       	paddd  %xmm12,%xmm7
+   1da6a:	f3 44 0f 7e 64 17 c0 	movq   -0x40(%rdi,%rdx,1),%xmm12
+   1da71:	f3 44 0f 7e 6c 17 a0 	movq   -0x60(%rdi,%rdx,1),%xmm13
+   1da78:	66 45 0f 6c ec       	punpcklqdq %xmm12,%xmm13
+   1da7d:	f3 44 0f 7e 24 17    	movq   (%rdi,%rdx,1),%xmm12
+   1da83:	f3 44 0f 7e 74 17 e0 	movq   -0x20(%rdi,%rdx,1),%xmm14
+   1da8a:	66 45 0f 6c f4       	punpcklqdq %xmm12,%xmm14
+   1da8f:	f3 44 0f 7e 64 16 c0 	movq   -0x40(%rsi,%rdx,1),%xmm12
+   1da96:	f3 44 0f 7e 7c 16 a0 	movq   -0x60(%rsi,%rdx,1),%xmm15
+   1da9d:	66 45 0f 6c fc       	punpcklqdq %xmm12,%xmm15
+   1daa2:	66 45 0f ef fd       	pxor   %xmm13,%xmm15
+   1daa7:	f3 44 0f 7e 2c 16    	movq   (%rsi,%rdx,1),%xmm13
+   1daad:	f3 44 0f 7e 64 16 e0 	movq   -0x20(%rsi,%rdx,1),%xmm12
+   1dab4:	66 45 0f 6c e5       	punpcklqdq %xmm13,%xmm12
+   1dab9:	66 45 0f ef e6       	pxor   %xmm14,%xmm12
+   1dabe:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1dac3:	66 41 0f 71 d5 01    	psrlw  $0x1,%xmm13
+   1dac9:	66 44 0f db e8       	pand   %xmm0,%xmm13
+   1dace:	66 45 0f f8 fd       	psubb  %xmm13,%xmm15
+   1dad3:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1dad8:	66 44 0f db e9       	pand   %xmm1,%xmm13
+   1dadd:	66 41 0f 71 d7 02    	psrlw  $0x2,%xmm15
+   1dae3:	66 44 0f db f9       	pand   %xmm1,%xmm15
+   1dae8:	66 45 0f fc fd       	paddb  %xmm13,%xmm15
+   1daed:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1daf2:	66 41 0f 71 d5 04    	psrlw  $0x4,%xmm13
+   1daf8:	66 45 0f fc ef       	paddb  %xmm15,%xmm13
+   1dafd:	66 44 0f db ea       	pand   %xmm2,%xmm13
+   1db02:	66 44 0f f6 eb       	psadbw %xmm3,%xmm13
+   1db07:	66 45 0f 6f f4       	movdqa %xmm12,%xmm14
+   1db0c:	66 41 0f 71 d6 01    	psrlw  $0x1,%xmm14
+   1db12:	66 44 0f db f0       	pand   %xmm0,%xmm14
+   1db17:	66 45 0f f8 e6       	psubb  %xmm14,%xmm12
+   1db1c:	66 45 0f 6f f4       	movdqa %xmm12,%xmm14
+   1db21:	66 44 0f db f1       	pand   %xmm1,%xmm14
+   1db26:	66 41 0f 71 d4 02    	psrlw  $0x2,%xmm12
+   1db2c:	66 44 0f db e1       	pand   %xmm1,%xmm12
+   1db31:	66 45 0f fc e6       	paddb  %xmm14,%xmm12
+   1db36:	66 45 0f 6f f4       	movdqa %xmm12,%xmm14
+   1db3b:	66 41 0f 71 d6 04    	psrlw  $0x4,%xmm14
+   1db41:	66 45 0f fc f4       	paddb  %xmm12,%xmm14
+   1db46:	66 44 0f db f2       	pand   %xmm2,%xmm14
+   1db4b:	66 44 0f f6 f3       	psadbw %xmm3,%xmm14
+   1db50:	66 45 0f 70 e5 e8    	pshufd $0xe8,%xmm13,%xmm12
+   1db56:	66 45 0f fe dc       	paddd  %xmm12,%xmm11
+   1db5b:	66 45 0f 70 e6 e8    	pshufd $0xe8,%xmm14,%xmm12
+   1db61:	66 45 0f fe d4       	paddd  %xmm12,%xmm10
+   1db66:	48 83 ea 80          	sub    $0xffffffffffffff80,%rdx
+   1db6a:	48 81 fa 78 05 00 00 	cmp    $0x578,%rdx
+   1db71:	0f 85 f9 fb ff ff    	jne    1d770 <icx_hamming_probe::scan_four_u32+0x70>
+   1db77:	66 45 0f fe d3       	paddd  %xmm11,%xmm10
+   1db7c:	66 41 0f fe f9       	paddd  %xmm9,%xmm7
+   1db81:	66 41 0f fe fa       	paddd  %xmm10,%xmm7
+   1db86:	66 41 0f fe f0       	paddd  %xmm8,%xmm6
+   1db8b:	66 0f fe e5          	paddd  %xmm5,%xmm4
+   1db8f:	66 0f fe e6          	paddd  %xmm6,%xmm4
+   1db93:	66 0f fe e7          	paddd  %xmm7,%xmm4
+   1db97:	48 81 c6 00 05 00 00 	add    $0x500,%rsi
+   1db9e:	66 0f 70 ec 55       	pshufd $0x55,%xmm4,%xmm5
+   1dba3:	66 0f fe ec          	paddd  %xmm4,%xmm5
+   1dba7:	66 0f 7e ea          	movd   %xmm5,%edx
+   1dbab:	39 d0                	cmp    %edx,%eax
+   1dbad:	0f 43 c2             	cmovae %edx,%eax
+   1dbb0:	48 39 ce             	cmp    %rcx,%rsi
+   1dbb3:	0f 85 87 fb ff ff    	jne    1d740 <icx_hamming_probe::scan_four_u32+0x40>
+   1dbb9:	c3                   	ret
+   1dbba:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1dbbf:	c3                   	ret
+
+000000000001dbc0 <icx_hamming_probe::scan_four_u64>:
+   1dbc0:	48 85 d2             	test   %rdx,%rdx
+   1dbc3:	0f 84 81 04 00 00    	je     1e04a <icx_hamming_probe::scan_four_u64+0x48a>
+   1dbc9:	48 8d 0c 92          	lea    (%rdx,%rdx,4),%rcx
+   1dbcd:	48 c1 e1 08          	shl    $0x8,%rcx
+   1dbd1:	48 01 f1             	add    %rsi,%rcx
+   1dbd4:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1dbd9:	66 0f 6f 05 8f b6 ff 	movdqa -0x4971(%rip),%xmm0        # 19270 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x31c>
+   1dbe0:	ff 
+   1dbe1:	66 0f 6f 0d 07 b8 ff 	movdqa -0x47f9(%rip),%xmm1        # 193f0 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x49c>
+   1dbe8:	ff 
+   1dbe9:	66 0f 6f 15 3f b7 ff 	movdqa -0x48c1(%rip),%xmm2        # 19330 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x3dc>
+   1dbf0:	ff 
+   1dbf1:	66 0f ef db          	pxor   %xmm3,%xmm3
+   1dbf5:	66 66 2e 0f 1f 84 00 	data16 cs nopw 0x0(%rax,%rax,1)
+   1dbfc:	00 00 00 00 
+   1dc00:	ba 78 00 00 00       	mov    $0x78,%edx
+   1dc05:	66 0f ef ed          	pxor   %xmm5,%xmm5
+   1dc09:	66 0f ef e4          	pxor   %xmm4,%xmm4
+   1dc0d:	66 45 0f ef c0       	pxor   %xmm8,%xmm8
+   1dc12:	66 0f ef f6          	pxor   %xmm6,%xmm6
+   1dc16:	66 45 0f ef c9       	pxor   %xmm9,%xmm9
+   1dc1b:	66 0f ef ff          	pxor   %xmm7,%xmm7
+   1dc1f:	66 45 0f ef db       	pxor   %xmm11,%xmm11
+   1dc24:	66 45 0f ef d2       	pxor   %xmm10,%xmm10
+   1dc29:	0f 1f 80 00 00 00 00 	nopl   0x0(%rax)
+   1dc30:	f3 44 0f 7e 64 17 a8 	movq   -0x58(%rdi,%rdx,1),%xmm12
+   1dc37:	f3 44 0f 7e 6c 17 88 	movq   -0x78(%rdi,%rdx,1),%xmm13
+   1dc3e:	66 45 0f 6c ec       	punpcklqdq %xmm12,%xmm13
+   1dc43:	f3 44 0f 7e 64 17 e8 	movq   -0x18(%rdi,%rdx,1),%xmm12
+   1dc4a:	f3 44 0f 7e 74 17 c8 	movq   -0x38(%rdi,%rdx,1),%xmm14
+   1dc51:	66 45 0f 6c f4       	punpcklqdq %xmm12,%xmm14
+   1dc56:	f3 44 0f 7e 64 16 a8 	movq   -0x58(%rsi,%rdx,1),%xmm12
+   1dc5d:	f3 44 0f 7e 7c 16 88 	movq   -0x78(%rsi,%rdx,1),%xmm15
+   1dc64:	66 45 0f 6c fc       	punpcklqdq %xmm12,%xmm15
+   1dc69:	66 45 0f ef fd       	pxor   %xmm13,%xmm15
+   1dc6e:	f3 44 0f 7e 6c 16 e8 	movq   -0x18(%rsi,%rdx,1),%xmm13
+   1dc75:	f3 44 0f 7e 64 16 c8 	movq   -0x38(%rsi,%rdx,1),%xmm12
+   1dc7c:	66 45 0f 6c e5       	punpcklqdq %xmm13,%xmm12
+   1dc81:	66 45 0f ef e6       	pxor   %xmm14,%xmm12
+   1dc86:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1dc8b:	66 41 0f 71 d5 01    	psrlw  $0x1,%xmm13
+   1dc91:	66 44 0f db e8       	pand   %xmm0,%xmm13
+   1dc96:	66 45 0f f8 fd       	psubb  %xmm13,%xmm15
+   1dc9b:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1dca0:	66 44 0f db e9       	pand   %xmm1,%xmm13
+   1dca5:	66 41 0f 71 d7 02    	psrlw  $0x2,%xmm15
+   1dcab:	66 44 0f db f9       	pand   %xmm1,%xmm15
+   1dcb0:	66 45 0f fc fd       	paddb  %xmm13,%xmm15
+   1dcb5:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1dcba:	66 41 0f 71 d5 04    	psrlw  $0x4,%xmm13
+   1dcc0:	66 45 0f fc ef       	paddb  %xmm15,%xmm13
+   1dcc5:	66 44 0f db ea       	pand   %xmm2,%xmm13
+   1dcca:	66 44 0f f6 eb       	psadbw %xmm3,%xmm13
+   1dccf:	66 41 0f d4 ed       	paddq  %xmm13,%xmm5
+   1dcd4:	66 45 0f 6f ec       	movdqa %xmm12,%xmm13
+   1dcd9:	66 41 0f 71 d5 01    	psrlw  $0x1,%xmm13
+   1dcdf:	66 44 0f db e8       	pand   %xmm0,%xmm13
+   1dce4:	66 45 0f f8 e5       	psubb  %xmm13,%xmm12
+   1dce9:	66 45 0f 6f ec       	movdqa %xmm12,%xmm13
+   1dcee:	66 44 0f db e9       	pand   %xmm1,%xmm13
+   1dcf3:	66 41 0f 71 d4 02    	psrlw  $0x2,%xmm12
+   1dcf9:	66 44 0f db e1       	pand   %xmm1,%xmm12
+   1dcfe:	66 45 0f fc e5       	paddb  %xmm13,%xmm12
+   1dd03:	66 45 0f 6f ec       	movdqa %xmm12,%xmm13
+   1dd08:	66 41 0f 71 d5 04    	psrlw  $0x4,%xmm13
+   1dd0e:	66 45 0f fc ec       	paddb  %xmm12,%xmm13
+   1dd13:	66 44 0f db ea       	pand   %xmm2,%xmm13
+   1dd18:	66 44 0f f6 eb       	psadbw %xmm3,%xmm13
+   1dd1d:	66 41 0f d4 e5       	paddq  %xmm13,%xmm4
+   1dd22:	f3 44 0f 7e 64 17 b0 	movq   -0x50(%rdi,%rdx,1),%xmm12
+   1dd29:	f3 44 0f 7e 6c 17 90 	movq   -0x70(%rdi,%rdx,1),%xmm13
+   1dd30:	66 45 0f 6c ec       	punpcklqdq %xmm12,%xmm13
+   1dd35:	f3 44 0f 7e 64 17 f0 	movq   -0x10(%rdi,%rdx,1),%xmm12
+   1dd3c:	f3 44 0f 7e 74 17 d0 	movq   -0x30(%rdi,%rdx,1),%xmm14
+   1dd43:	66 45 0f 6c f4       	punpcklqdq %xmm12,%xmm14
+   1dd48:	f3 44 0f 7e 64 16 b0 	movq   -0x50(%rsi,%rdx,1),%xmm12
+   1dd4f:	f3 44 0f 7e 7c 16 90 	movq   -0x70(%rsi,%rdx,1),%xmm15
+   1dd56:	66 45 0f 6c fc       	punpcklqdq %xmm12,%xmm15
+   1dd5b:	66 45 0f ef fd       	pxor   %xmm13,%xmm15
+   1dd60:	f3 44 0f 7e 6c 16 f0 	movq   -0x10(%rsi,%rdx,1),%xmm13
+   1dd67:	f3 44 0f 7e 64 16 d0 	movq   -0x30(%rsi,%rdx,1),%xmm12
+   1dd6e:	66 45 0f 6c e5       	punpcklqdq %xmm13,%xmm12
+   1dd73:	66 45 0f ef e6       	pxor   %xmm14,%xmm12
+   1dd78:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1dd7d:	66 41 0f 71 d5 01    	psrlw  $0x1,%xmm13
+   1dd83:	66 44 0f db e8       	pand   %xmm0,%xmm13
+   1dd88:	66 45 0f f8 fd       	psubb  %xmm13,%xmm15
+   1dd8d:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1dd92:	66 44 0f db e9       	pand   %xmm1,%xmm13
+   1dd97:	66 41 0f 71 d7 02    	psrlw  $0x2,%xmm15
+   1dd9d:	66 44 0f db f9       	pand   %xmm1,%xmm15
+   1dda2:	66 45 0f fc fd       	paddb  %xmm13,%xmm15
+   1dda7:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1ddac:	66 41 0f 71 d5 04    	psrlw  $0x4,%xmm13
+   1ddb2:	66 45 0f fc ef       	paddb  %xmm15,%xmm13
+   1ddb7:	66 44 0f db ea       	pand   %xmm2,%xmm13
+   1ddbc:	66 44 0f f6 eb       	psadbw %xmm3,%xmm13
+   1ddc1:	66 45 0f d4 c5       	paddq  %xmm13,%xmm8
+   1ddc6:	66 45 0f 6f ec       	movdqa %xmm12,%xmm13
+   1ddcb:	66 41 0f 71 d5 01    	psrlw  $0x1,%xmm13
+   1ddd1:	66 44 0f db e8       	pand   %xmm0,%xmm13
+   1ddd6:	66 45 0f f8 e5       	psubb  %xmm13,%xmm12
+   1dddb:	66 45 0f 6f ec       	movdqa %xmm12,%xmm13
+   1dde0:	66 44 0f db e9       	pand   %xmm1,%xmm13
+   1dde5:	66 41 0f 71 d4 02    	psrlw  $0x2,%xmm12
+   1ddeb:	66 44 0f db e1       	pand   %xmm1,%xmm12
+   1ddf0:	66 45 0f fc e5       	paddb  %xmm13,%xmm12
+   1ddf5:	66 45 0f 6f ec       	movdqa %xmm12,%xmm13
+   1ddfa:	66 41 0f 71 d5 04    	psrlw  $0x4,%xmm13
+   1de00:	66 45 0f fc ec       	paddb  %xmm12,%xmm13
+   1de05:	66 44 0f db ea       	pand   %xmm2,%xmm13
+   1de0a:	66 44 0f f6 eb       	psadbw %xmm3,%xmm13
+   1de0f:	66 41 0f d4 f5       	paddq  %xmm13,%xmm6
+   1de14:	f3 44 0f 7e 64 17 b8 	movq   -0x48(%rdi,%rdx,1),%xmm12
+   1de1b:	f3 44 0f 7e 6c 17 98 	movq   -0x68(%rdi,%rdx,1),%xmm13
+   1de22:	66 45 0f 6c ec       	punpcklqdq %xmm12,%xmm13
+   1de27:	f3 44 0f 7e 64 17 f8 	movq   -0x8(%rdi,%rdx,1),%xmm12
+   1de2e:	f3 44 0f 7e 74 17 d8 	movq   -0x28(%rdi,%rdx,1),%xmm14
+   1de35:	66 45 0f 6c f4       	punpcklqdq %xmm12,%xmm14
+   1de3a:	f3 44 0f 7e 64 16 b8 	movq   -0x48(%rsi,%rdx,1),%xmm12
+   1de41:	f3 44 0f 7e 7c 16 98 	movq   -0x68(%rsi,%rdx,1),%xmm15
+   1de48:	66 45 0f 6c fc       	punpcklqdq %xmm12,%xmm15
+   1de4d:	66 45 0f ef fd       	pxor   %xmm13,%xmm15
+   1de52:	f3 44 0f 7e 6c 16 f8 	movq   -0x8(%rsi,%rdx,1),%xmm13
+   1de59:	f3 44 0f 7e 64 16 d8 	movq   -0x28(%rsi,%rdx,1),%xmm12
+   1de60:	66 45 0f 6c e5       	punpcklqdq %xmm13,%xmm12
+   1de65:	66 45 0f ef e6       	pxor   %xmm14,%xmm12
+   1de6a:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1de6f:	66 41 0f 71 d5 01    	psrlw  $0x1,%xmm13
+   1de75:	66 44 0f db e8       	pand   %xmm0,%xmm13
+   1de7a:	66 45 0f f8 fd       	psubb  %xmm13,%xmm15
+   1de7f:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1de84:	66 44 0f db e9       	pand   %xmm1,%xmm13
+   1de89:	66 41 0f 71 d7 02    	psrlw  $0x2,%xmm15
+   1de8f:	66 44 0f db f9       	pand   %xmm1,%xmm15
+   1de94:	66 45 0f fc fd       	paddb  %xmm13,%xmm15
+   1de99:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1de9e:	66 41 0f 71 d5 04    	psrlw  $0x4,%xmm13
+   1dea4:	66 45 0f fc ef       	paddb  %xmm15,%xmm13
+   1dea9:	66 44 0f db ea       	pand   %xmm2,%xmm13
+   1deae:	66 44 0f f6 eb       	psadbw %xmm3,%xmm13
+   1deb3:	66 45 0f d4 cd       	paddq  %xmm13,%xmm9
+   1deb8:	66 45 0f 6f ec       	movdqa %xmm12,%xmm13
+   1debd:	66 41 0f 71 d5 01    	psrlw  $0x1,%xmm13
+   1dec3:	66 44 0f db e8       	pand   %xmm0,%xmm13
+   1dec8:	66 45 0f f8 e5       	psubb  %xmm13,%xmm12
+   1decd:	66 45 0f 6f ec       	movdqa %xmm12,%xmm13
+   1ded2:	66 44 0f db e9       	pand   %xmm1,%xmm13
+   1ded7:	66 41 0f 71 d4 02    	psrlw  $0x2,%xmm12
+   1dedd:	66 44 0f db e1       	pand   %xmm1,%xmm12
+   1dee2:	66 45 0f fc e5       	paddb  %xmm13,%xmm12
+   1dee7:	66 45 0f 6f ec       	movdqa %xmm12,%xmm13
+   1deec:	66 41 0f 71 d5 04    	psrlw  $0x4,%xmm13
+   1def2:	66 45 0f fc ec       	paddb  %xmm12,%xmm13
+   1def7:	66 44 0f db ea       	pand   %xmm2,%xmm13
+   1defc:	66 44 0f f6 eb       	psadbw %xmm3,%xmm13
+   1df01:	66 41 0f d4 fd       	paddq  %xmm13,%xmm7
+   1df06:	f3 44 0f 7e 64 17 c0 	movq   -0x40(%rdi,%rdx,1),%xmm12
+   1df0d:	f3 44 0f 7e 6c 17 a0 	movq   -0x60(%rdi,%rdx,1),%xmm13
+   1df14:	66 45 0f 6c ec       	punpcklqdq %xmm12,%xmm13
+   1df19:	f3 44 0f 7e 24 17    	movq   (%rdi,%rdx,1),%xmm12
+   1df1f:	f3 44 0f 7e 74 17 e0 	movq   -0x20(%rdi,%rdx,1),%xmm14
+   1df26:	66 45 0f 6c f4       	punpcklqdq %xmm12,%xmm14
+   1df2b:	f3 44 0f 7e 64 16 c0 	movq   -0x40(%rsi,%rdx,1),%xmm12
+   1df32:	f3 44 0f 7e 7c 16 a0 	movq   -0x60(%rsi,%rdx,1),%xmm15
+   1df39:	66 45 0f 6c fc       	punpcklqdq %xmm12,%xmm15
+   1df3e:	66 45 0f ef fd       	pxor   %xmm13,%xmm15
+   1df43:	f3 44 0f 7e 2c 16    	movq   (%rsi,%rdx,1),%xmm13
+   1df49:	f3 44 0f 7e 64 16 e0 	movq   -0x20(%rsi,%rdx,1),%xmm12
+   1df50:	66 45 0f 6c e5       	punpcklqdq %xmm13,%xmm12
+   1df55:	66 45 0f ef e6       	pxor   %xmm14,%xmm12
+   1df5a:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1df5f:	66 41 0f 71 d5 01    	psrlw  $0x1,%xmm13
+   1df65:	66 44 0f db e8       	pand   %xmm0,%xmm13
+   1df6a:	66 45 0f f8 fd       	psubb  %xmm13,%xmm15
+   1df6f:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1df74:	66 44 0f db e9       	pand   %xmm1,%xmm13
+   1df79:	66 41 0f 71 d7 02    	psrlw  $0x2,%xmm15
+   1df7f:	66 44 0f db f9       	pand   %xmm1,%xmm15
+   1df84:	66 45 0f fc fd       	paddb  %xmm13,%xmm15
+   1df89:	66 45 0f 6f ef       	movdqa %xmm15,%xmm13
+   1df8e:	66 41 0f 71 d5 04    	psrlw  $0x4,%xmm13
+   1df94:	66 45 0f fc ef       	paddb  %xmm15,%xmm13
+   1df99:	66 44 0f db ea       	pand   %xmm2,%xmm13
+   1df9e:	66 44 0f f6 eb       	psadbw %xmm3,%xmm13
+   1dfa3:	66 45 0f d4 dd       	paddq  %xmm13,%xmm11
+   1dfa8:	66 45 0f 6f ec       	movdqa %xmm12,%xmm13
+   1dfad:	66 41 0f 71 d5 01    	psrlw  $0x1,%xmm13
+   1dfb3:	66 44 0f db e8       	pand   %xmm0,%xmm13
+   1dfb8:	66 45 0f f8 e5       	psubb  %xmm13,%xmm12
+   1dfbd:	66 45 0f 6f ec       	movdqa %xmm12,%xmm13
+   1dfc2:	66 44 0f db e9       	pand   %xmm1,%xmm13
+   1dfc7:	66 41 0f 71 d4 02    	psrlw  $0x2,%xmm12
+   1dfcd:	66 44 0f db e1       	pand   %xmm1,%xmm12
+   1dfd2:	66 45 0f fc e5       	paddb  %xmm13,%xmm12
+   1dfd7:	66 45 0f 6f ec       	movdqa %xmm12,%xmm13
+   1dfdc:	66 41 0f 71 d5 04    	psrlw  $0x4,%xmm13
+   1dfe2:	66 45 0f fc ec       	paddb  %xmm12,%xmm13
+   1dfe7:	66 44 0f db ea       	pand   %xmm2,%xmm13
+   1dfec:	66 44 0f f6 eb       	psadbw %xmm3,%xmm13
+   1dff1:	66 45 0f d4 d5       	paddq  %xmm13,%xmm10
+   1dff6:	48 83 ea 80          	sub    $0xffffffffffffff80,%rdx
+   1dffa:	48 81 fa 78 05 00 00 	cmp    $0x578,%rdx
+   1e001:	0f 85 29 fc ff ff    	jne    1dc30 <icx_hamming_probe::scan_four_u64+0x70>
+   1e007:	66 45 0f d4 d3       	paddq  %xmm11,%xmm10
+   1e00c:	66 41 0f d4 f9       	paddq  %xmm9,%xmm7
+   1e011:	66 41 0f d4 fa       	paddq  %xmm10,%xmm7
+   1e016:	66 41 0f d4 f0       	paddq  %xmm8,%xmm6
+   1e01b:	66 0f d4 e5          	paddq  %xmm5,%xmm4
+   1e01f:	66 0f d4 e6          	paddq  %xmm6,%xmm4
+   1e023:	66 0f d4 e7          	paddq  %xmm7,%xmm4
+   1e027:	48 81 c6 00 05 00 00 	add    $0x500,%rsi
+   1e02e:	66 0f 70 ec ee       	pshufd $0xee,%xmm4,%xmm5
+   1e033:	66 0f d4 ec          	paddq  %xmm4,%xmm5
+   1e037:	66 0f 7e ea          	movd   %xmm5,%edx
+   1e03b:	39 d0                	cmp    %edx,%eax
+   1e03d:	0f 43 c2             	cmovae %edx,%eax
+   1e040:	48 39 ce             	cmp    %rcx,%rsi
+   1e043:	0f 85 b7 fb ff ff    	jne    1dc00 <icx_hamming_probe::scan_four_u64+0x40>
+   1e049:	c3                   	ret
+   1e04a:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1e04f:	c3                   	ret
+
+000000000001e050 <icx_hamming_probe::scan_single_u32>:
+   1e050:	48 85 d2             	test   %rdx,%rdx
+   1e053:	0f 84 2a 01 00 00    	je     1e183 <icx_hamming_probe::scan_single_u32+0x133>
+   1e059:	48 8d 0c 92          	lea    (%rdx,%rdx,4),%rcx
+   1e05d:	48 c1 e1 08          	shl    $0x8,%rcx
+   1e061:	48 01 f1             	add    %rsi,%rcx
+   1e064:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1e069:	66 0f 6f 05 ff b1 ff 	movdqa -0x4e01(%rip),%xmm0        # 19270 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x31c>
+   1e070:	ff 
+   1e071:	66 0f 6f 0d 77 b3 ff 	movdqa -0x4c89(%rip),%xmm1        # 193f0 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x49c>
+   1e078:	ff 
+   1e079:	66 0f 6f 15 af b2 ff 	movdqa -0x4d51(%rip),%xmm2        # 19330 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x3dc>
+   1e080:	ff 
+   1e081:	66 0f ef db          	pxor   %xmm3,%xmm3
+   1e085:	66 66 2e 0f 1f 84 00 	data16 cs nopw 0x0(%rax,%rax,1)
+   1e08c:	00 00 00 00 
+   1e090:	ba 02 00 00 00       	mov    $0x2,%edx
+   1e095:	66 0f ef ed          	pxor   %xmm5,%xmm5
+   1e099:	66 0f ef e4          	pxor   %xmm4,%xmm4
+   1e09d:	0f 1f 00             	nopl   (%rax)
+   1e0a0:	f3 0f 6f 7c d6 f0    	movdqu -0x10(%rsi,%rdx,8),%xmm7
+   1e0a6:	f3 0f 6f 34 d6       	movdqu (%rsi,%rdx,8),%xmm6
+   1e0ab:	66 0f ef 7c d7 f0    	pxor   -0x10(%rdi,%rdx,8),%xmm7
+   1e0b1:	66 0f ef 34 d7       	pxor   (%rdi,%rdx,8),%xmm6
+   1e0b6:	66 44 0f 6f c7       	movdqa %xmm7,%xmm8
+   1e0bb:	66 41 0f 71 d0 01    	psrlw  $0x1,%xmm8
+   1e0c1:	66 44 0f db c0       	pand   %xmm0,%xmm8
+   1e0c6:	66 41 0f f8 f8       	psubb  %xmm8,%xmm7
+   1e0cb:	66 44 0f 6f c7       	movdqa %xmm7,%xmm8
+   1e0d0:	66 44 0f db c1       	pand   %xmm1,%xmm8
+   1e0d5:	66 0f 71 d7 02       	psrlw  $0x2,%xmm7
+   1e0da:	66 0f db f9          	pand   %xmm1,%xmm7
+   1e0de:	66 41 0f fc f8       	paddb  %xmm8,%xmm7
+   1e0e3:	66 44 0f 6f c7       	movdqa %xmm7,%xmm8
+   1e0e8:	66 41 0f 71 d0 04    	psrlw  $0x4,%xmm8
+   1e0ee:	66 44 0f fc c7       	paddb  %xmm7,%xmm8
+   1e0f3:	66 44 0f db c2       	pand   %xmm2,%xmm8
+   1e0f8:	66 44 0f f6 c3       	psadbw %xmm3,%xmm8
+   1e0fd:	66 0f 6f fe          	movdqa %xmm6,%xmm7
+   1e101:	66 0f 71 d7 01       	psrlw  $0x1,%xmm7
+   1e106:	66 0f db f8          	pand   %xmm0,%xmm7
+   1e10a:	66 0f f8 f7          	psubb  %xmm7,%xmm6
+   1e10e:	66 0f 6f fe          	movdqa %xmm6,%xmm7
+   1e112:	66 0f db f9          	pand   %xmm1,%xmm7
+   1e116:	66 0f 71 d6 02       	psrlw  $0x2,%xmm6
+   1e11b:	66 0f db f1          	pand   %xmm1,%xmm6
+   1e11f:	66 0f fc f7          	paddb  %xmm7,%xmm6
+   1e123:	66 0f 6f fe          	movdqa %xmm6,%xmm7
+   1e127:	66 0f 71 d7 04       	psrlw  $0x4,%xmm7
+   1e12c:	66 0f fc fe          	paddb  %xmm6,%xmm7
+   1e130:	66 0f db fa          	pand   %xmm2,%xmm7
+   1e134:	66 0f f6 fb          	psadbw %xmm3,%xmm7
+   1e138:	66 41 0f 70 f0 e8    	pshufd $0xe8,%xmm8,%xmm6
+   1e13e:	66 0f fe ee          	paddd  %xmm6,%xmm5
+   1e142:	66 0f 70 f7 e8       	pshufd $0xe8,%xmm7,%xmm6
+   1e147:	66 0f fe e6          	paddd  %xmm6,%xmm4
+   1e14b:	48 83 c2 04          	add    $0x4,%rdx
+   1e14f:	48 81 fa a2 00 00 00 	cmp    $0xa2,%rdx
+   1e156:	0f 85 44 ff ff ff    	jne    1e0a0 <icx_hamming_probe::scan_single_u32+0x50>
+   1e15c:	66 0f fe e5          	paddd  %xmm5,%xmm4
+   1e160:	66 0f 70 ec 55       	pshufd $0x55,%xmm4,%xmm5
+   1e165:	66 0f fe ec          	paddd  %xmm4,%xmm5
+   1e169:	66 0f 7e ea          	movd   %xmm5,%edx
+   1e16d:	48 81 c6 00 05 00 00 	add    $0x500,%rsi
+   1e174:	39 d0                	cmp    %edx,%eax
+   1e176:	0f 43 c2             	cmovae %edx,%eax
+   1e179:	48 39 ce             	cmp    %rcx,%rsi
+   1e17c:	0f 85 0e ff ff ff    	jne    1e090 <icx_hamming_probe::scan_single_u32+0x40>
+   1e182:	c3                   	ret
+   1e183:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1e188:	c3                   	ret
+   1e189:	cc                   	int3
+   1e18a:	cc                   	int3
+   1e18b:	cc                   	int3
+   1e18c:	cc                   	int3
+   1e18d:	cc                   	int3
+   1e18e:	cc                   	int3
+   1e18f:	cc                   	int3
+
+000000000001e190 <icx_hamming_probe::scan_single_u64>:
+   1e190:	48 85 d2             	test   %rdx,%rdx
+   1e193:	0f 84 20 01 00 00    	je     1e2b9 <icx_hamming_probe::scan_single_u64+0x129>
+   1e199:	48 8d 0c 92          	lea    (%rdx,%rdx,4),%rcx
+   1e19d:	48 c1 e1 08          	shl    $0x8,%rcx
+   1e1a1:	48 01 f1             	add    %rsi,%rcx
+   1e1a4:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1e1a9:	66 0f 6f 05 bf b0 ff 	movdqa -0x4f41(%rip),%xmm0        # 19270 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x31c>
+   1e1b0:	ff 
+   1e1b1:	66 0f 6f 0d 37 b2 ff 	movdqa -0x4dc9(%rip),%xmm1        # 193f0 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x49c>
+   1e1b8:	ff 
+   1e1b9:	66 0f 6f 15 6f b1 ff 	movdqa -0x4e91(%rip),%xmm2        # 19330 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x3dc>
+   1e1c0:	ff 
+   1e1c1:	66 0f ef db          	pxor   %xmm3,%xmm3
+   1e1c5:	66 66 2e 0f 1f 84 00 	data16 cs nopw 0x0(%rax,%rax,1)
+   1e1cc:	00 00 00 00 
+   1e1d0:	ba 02 00 00 00       	mov    $0x2,%edx
+   1e1d5:	66 0f ef ed          	pxor   %xmm5,%xmm5
+   1e1d9:	66 0f ef e4          	pxor   %xmm4,%xmm4
+   1e1dd:	0f 1f 00             	nopl   (%rax)
+   1e1e0:	f3 0f 6f 7c d6 f0    	movdqu -0x10(%rsi,%rdx,8),%xmm7
+   1e1e6:	f3 0f 6f 34 d6       	movdqu (%rsi,%rdx,8),%xmm6
+   1e1eb:	66 0f ef 7c d7 f0    	pxor   -0x10(%rdi,%rdx,8),%xmm7
+   1e1f1:	66 0f ef 34 d7       	pxor   (%rdi,%rdx,8),%xmm6
+   1e1f6:	66 44 0f 6f c7       	movdqa %xmm7,%xmm8
+   1e1fb:	66 41 0f 71 d0 01    	psrlw  $0x1,%xmm8
+   1e201:	66 44 0f db c0       	pand   %xmm0,%xmm8
+   1e206:	66 41 0f f8 f8       	psubb  %xmm8,%xmm7
+   1e20b:	66 44 0f 6f c7       	movdqa %xmm7,%xmm8
+   1e210:	66 44 0f db c1       	pand   %xmm1,%xmm8
+   1e215:	66 0f 71 d7 02       	psrlw  $0x2,%xmm7
+   1e21a:	66 0f db f9          	pand   %xmm1,%xmm7
+   1e21e:	66 41 0f fc f8       	paddb  %xmm8,%xmm7
+   1e223:	66 44 0f 6f c7       	movdqa %xmm7,%xmm8
+   1e228:	66 41 0f 71 d0 04    	psrlw  $0x4,%xmm8
+   1e22e:	66 44 0f fc c7       	paddb  %xmm7,%xmm8
+   1e233:	66 44 0f db c2       	pand   %xmm2,%xmm8
+   1e238:	66 44 0f f6 c3       	psadbw %xmm3,%xmm8
+   1e23d:	66 41 0f d4 e8       	paddq  %xmm8,%xmm5
+   1e242:	66 0f 6f fe          	movdqa %xmm6,%xmm7
+   1e246:	66 0f 71 d7 01       	psrlw  $0x1,%xmm7
+   1e24b:	66 0f db f8          	pand   %xmm0,%xmm7
+   1e24f:	66 0f f8 f7          	psubb  %xmm7,%xmm6
+   1e253:	66 0f 6f fe          	movdqa %xmm6,%xmm7
+   1e257:	66 0f db f9          	pand   %xmm1,%xmm7
+   1e25b:	66 0f 71 d6 02       	psrlw  $0x2,%xmm6
+   1e260:	66 0f db f1          	pand   %xmm1,%xmm6
+   1e264:	66 0f fc f7          	paddb  %xmm7,%xmm6
+   1e268:	66 0f 6f fe          	movdqa %xmm6,%xmm7
+   1e26c:	66 0f 71 d7 04       	psrlw  $0x4,%xmm7
+   1e271:	66 0f fc fe          	paddb  %xmm6,%xmm7
+   1e275:	66 0f db fa          	pand   %xmm2,%xmm7
+   1e279:	66 0f f6 fb          	psadbw %xmm3,%xmm7
+   1e27d:	66 0f d4 e7          	paddq  %xmm7,%xmm4
+   1e281:	48 83 c2 04          	add    $0x4,%rdx
+   1e285:	48 81 fa a2 00 00 00 	cmp    $0xa2,%rdx
+   1e28c:	0f 85 4e ff ff ff    	jne    1e1e0 <icx_hamming_probe::scan_single_u64+0x50>
+   1e292:	66 0f d4 e5          	paddq  %xmm5,%xmm4
+   1e296:	66 0f 70 ec ee       	pshufd $0xee,%xmm4,%xmm5
+   1e29b:	66 0f d4 ec          	paddq  %xmm4,%xmm5
+   1e29f:	48 81 c6 00 05 00 00 	add    $0x500,%rsi
+   1e2a6:	66 0f 7e ea          	movd   %xmm5,%edx
+   1e2aa:	39 d0                	cmp    %edx,%eax
+   1e2ac:	0f 43 c2             	cmovae %edx,%eax
+   1e2af:	48 39 ce             	cmp    %rcx,%rsi
+   1e2b2:	0f 85 18 ff ff ff    	jne    1e1d0 <icx_hamming_probe::scan_single_u64+0x40>
+   1e2b8:	c3                   	ret
+   1e2b9:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1e2be:	c3                   	ret
+   1e2bf:	cc                   	int3
+

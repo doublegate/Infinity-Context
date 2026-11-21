@@ -1,0 +1,10 @@
+{
+  "target": "hdc_snapshot",
+  "runs": 2231269,
+  "fuzzer_seconds": 901,
+  "max_len": 65536,
+  "seeds": "Valid independently produced03 and current04 snapshots, including ~44KiB complete snapshots",
+  "exit": 0,
+  "log_sha256": "acacbb7e8201ba23e65f18a84786101951d841eddd531165f6e771d1dad95a25",
+  "sanitizer": "cargo-fuzz default ASAN/LSAN, normal shutdown, no leak override"
+}

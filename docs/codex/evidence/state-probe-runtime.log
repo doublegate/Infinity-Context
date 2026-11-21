@@ -1,0 +1,7 @@
+
+thread 'main' (2809383) panicked at /home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core/src/chunker.rs:75:37:
+attempt to add with overflow
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+icx daemon: serving /tmp/Infinity-Context/state-reproduction-2809383/workspace on /tmp/Infinity-Context/state-reproduction-2809383/workspace/audit.sock
+icx daemon: serving /tmp/Infinity-Context/state-reproduction-2809383/flush-fail on /tmp/Infinity-Context/state-reproduction-2809383/flush-fail/audit.sock
+icx daemon: ERROR: final flush failed; unsaved workspace changes are lost: I/O error in Content-Addressed Store: workspace store: unable to open database file: /tmp/Infinity-Context/state-reproduction-2809383/flush-fail/icx.sqlite3

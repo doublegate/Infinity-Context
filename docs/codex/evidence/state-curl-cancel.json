@@ -1,0 +1,1 @@
+{"probe": "real_curl_closed_stdout", "exited_within_3_seconds": true, "status": 23, "elapsed_ms": 16.093, "stderr": "curl: (23) client returned ERROR on write of 9 bytes"}

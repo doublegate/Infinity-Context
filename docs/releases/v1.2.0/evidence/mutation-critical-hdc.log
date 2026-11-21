@@ -1,0 +1,5 @@
+Found 13 mutants to test
+ok       Unmutated baseline in 17s build + 35s test
+MISSED   crates/icx-hdc/src/fractal.rs:205:29: replace * with / in FractalCoord::morton_z64 in 0s build + 29s test
+MISSED   crates/icx-hdc/src/surprise.rs:221:18: replace - with / in TitansSurpriseGate::observe_with_exit_code in 0s build + 29s test
+13 mutants tested in 5m: 2 missed, 11 caught

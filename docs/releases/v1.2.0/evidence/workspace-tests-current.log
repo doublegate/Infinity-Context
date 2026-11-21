@@ -1,0 +1,488 @@
+   Compiling icx-cli v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-cli)
+   Compiling icx-core v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core)
+   Compiling icx-codec v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-codec)
+   Compiling icx-store v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-store)
+   Compiling icx-hdc v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-hdc)
+   Compiling icx-bus v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-bus)
+   Compiling icx-adapters v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-adapters)
+   Compiling icx-proxy v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-proxy)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.10s
+     Running unittests src/lib.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-adapters/10993964499806ac/out/icx_adapters-10993964499806ac)
+
+running 7 tests
+test store::durability_tests::workspace_connections_require_full_wal_commit_synchronization ... ok
+test tests::sprint_4_3_single_tool_mcp_pager_provenance_and_ambiguity_conformance ... ok
+test tests::sprint_5_1_four_agent_shared_shm_telepathy_and_sub_100us_propagation ... ok
+test tests::cross_agent_telepathy_and_lossless_mcp_deref_work_end_to_end ... ok
+test tests::all_adapters_and_mcp_operations_conform_to_wire_contracts ... ok
+test tests::sprint_4_2_antigravity_and_hermes_adapters_conformance ... ok
+test tests::sprint_5_1_500_turn_two_million_token_nih_oolong_and_prefix_cache_simulation ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.18s
+
+     Running tests/claude_contract.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-adapters/6c6761db0b254cd6/out/claude_contract-6c6761db0b254cd6)
+
+running 8 tests
+test subagent_stop_folds_with_last_assistant_message_and_never_keeps_it_running ... ok
+test postcompact_stores_the_summary_and_emits_nothing_model_facing ... ok
+test mcp_tools_receive_a_string_replacement ... ok
+test precompact_emits_plain_text_instructions_under_the_cap ... ok
+test bash_replacement_matches_the_builtin_output_shape ... ok
+test nested_builtin_shapes_keep_their_structure ... ok
+test array_and_non_textual_responses_keep_a_valid_shape ... ok
+test precompact_instructions_are_capped_on_large_workspaces ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s
+
+     Running tests/context_budget_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-adapters/aa08c5b3f67840ea/out/context_budget_v120-aa08c5b3f67840ea)
+
+running 4 tests
+test ten_thousand_turns_remain_bounded_without_test_retargeting ... ignored, release qualification: actual ingestion beyond ten thousand turns
+test smaller_model_policy_survives_restart_and_keeps_cold_history ... ok
+test direct_hook_and_proxy_tail_path_obeys_the_same_budget ... ok
+test production_prompt_assembly_is_bounded_without_test_only_retargeting ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.57s
+
+     Running tests/hardening.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-adapters/06ce4c4c083298d4/out/hardening-06ce4c4c083298d4)
+
+running 3 tests
+test transcript_symlink_is_not_followed ... ok
+test bus_file_refuses_symlinks_and_permissive_preexisting_files ... ok
+test transcript_path_pointing_at_a_fifo_returns_immediately ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/mcp_bounds.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-adapters/c01413f6baf36e47/out/mcp_bounds-c01413f6baf36e47)
+
+running 6 tests
+test server_discover_advertises_versions_capabilities_and_identity ... ok
+test unknown_tool_names_are_reported_as_errors ... ok
+test nested_fold_branches_are_bounded ... ok
+test grep_results_carry_the_untrusted_data_provenance_header ... ok
+test modern_requests_carry_result_type_and_reject_unknown_versions ... ok
+test legacy_initialize_negotiates_the_requested_supported_version ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/protocol_validation_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-adapters/ee2a85b44c285716/out/protocol_validation_v120-ee2a85b44c285716)
+
+running 7 tests
+test workspace_access_and_mutation_require_a_valid_named_tool_call ... ok
+test malformed_call_params_report_invalid_params ... ok
+test pager_like_hook_aliases_are_not_advertised_mcp_tool_names ... ok
+test invalid_rpc_envelopes_are_rejected_before_dispatch ... ok
+test valid_notifications_are_silent_and_explicit_status_still_works ... ok
+test invalid_tool_arguments_are_errors_and_do_not_mutate_state ... ok
+test codex_large_mcp_outputs_are_captured_without_unsupported_replacement ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/redaction_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-adapters/5a3d013a18f2d39f/out/redaction_v120-5a3d013a18f2d39f)
+
+running 1 test
+test yaml_secrets_cannot_be_recovered_from_ingested_cas_bytes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/rollout_anchor_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-adapters/2f2cd3f402478a9c/out/rollout_anchor_v120-2f2cd3f402478a9c)
+
+running 1 test
+test rewrite_in_two_thirds_anchor_window_replays_changed_output ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.85s
+
+     Running tests/tail_budget_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-adapters/0f61e937ad17dee9/out/tail_budget_v120-0f61e937ad17dee9)
+
+running 5 tests
+test unsent_bus_frame_stays_queued_until_budget_allows_delivery ... ok
+test punctuated_query_retains_graph_recall_when_space_is_available ... ok
+test paging_a_stored_bus_event_keeps_its_short_agent_and_subject_header ... ok
+test oversized_stored_event_uses_a_complete_handle_without_starving_following_event ... ok
+test bounded_tail_keeps_header_and_best_recall_instead_of_omitting_everything ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/workspace_store.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-adapters/7e3889b788c56a06/out/workspace_store-7e3889b788c56a06)
+
+running 13 tests
+test wall_clock_mode_records_real_monotonic_timestamps ... ok
+test loading_an_empty_directory_clears_emitted_block_digests ... ok
+test sqlite_store_files_are_owner_only ... ok
+test reopening_a_store_tightens_widened_file_modes ... ok
+test state_built_on_a_new_workspace_survives_a_store_appearing_empty ... ok
+test emitted_block_digests_live_in_their_own_table_not_the_state_blob ... ok
+test extra_rows_in_the_tables_are_removed_before_sealing ... ok
+test sqlite_store_generation_advances_once_per_save ... ok
+test a_save_repairs_rows_deleted_behind_a_long_lived_mmu ... ok
+test saving_a_stale_snapshot_over_a_newer_store_is_refused ... ok
+test legacy_json_workspace_is_migrated_without_deleting_it ... ok
+test saving_one_mmu_to_a_second_directory_writes_all_content_there ... ok
+test sqlite_store_round_trips_cas_index_dag_and_graph ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
+     Running tests/workspace_trust.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-adapters/fb81dcc23afd9a51/out/workspace_trust-fb81dcc23afd9a51)
+
+running 18 tests
+test default_workspace_lives_outside_the_repository_and_is_stable_across_subdirs ... ok
+test permissive_install_key_is_rejected ... ok
+test existing_unsealed_workspace_is_refused_until_explicitly_trusted ... ok
+test group_or_world_accessible_workspace_is_refused ... ok
+test explicit_and_env_directories_take_precedence_over_default ... ok
+test seal_does_not_transfer_to_a_copied_or_moved_workspace ... ok
+test repo_local_icx_is_reported_but_never_selected_by_default ... ok
+test new_workspace_is_created_private_sealed_and_ignored_by_git ... ok
+test trust_and_key_errors_fail_closed ... ok
+test unresolvable_roots_fail_closed_instead_of_using_a_shared_directory ... ok
+test seal_from_another_install_key_is_rejected ... ok
+test trust_tightens_contained_files_and_skips_symlinks ... ok
+test install_key_checks_metadata_before_reading_and_never_blocks_on_a_fifo ... ok
+test concurrent_first_use_of_the_install_key_agrees_on_one_key ... ok
+test store_replaced_through_version_control_is_rejected_even_in_a_trusted_dir ... ok
+test a_resident_mmu_saving_over_a_tampered_row_does_not_launder_it ... ok
+test editing_any_persisted_row_of_a_sealed_store_is_rejected ... ok
+test concurrent_prepare_of_one_directory_does_not_race_on_temp_files ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+     Running unittests src/lib.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-bus/1668bcf6daa8cd1d/out/icx_bus-1668bcf6daa8cd1d)
+
+running 3 tests
+test ring::tests::packet_kind_classification_agent_decoding_and_validation_errors ... ok
+test ring::tests::seqlock_8_writers_8_readers_10000_messages_stress_test_and_shared_file_attach ... ok
+test ring::tests::seqlock_ring_publishes_and_reads_concurrently_without_torn_reads ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/loss_signalling.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-bus/935f90a229efc23a/out/loss_signalling-935f90a229efc23a)
+
+running 5 tests
+test file_backed_bus_preserves_nonzero_metadata_and_each_coordinate_lane ... ok
+test separately_opened_file_handles_see_each_others_events ... ok
+test caught_up_reader_reports_no_loss ... ok
+test coherent_future_sequence_is_rejected_and_reported_lost ... ok
+test reader_that_falls_behind_by_more_than_the_ring_is_told_how_many_it_lost ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-cli/4c0e94638923d0d7/out/icx-4c0e94638923d0d7)
+
+running 17 tests
+test tests::benchmark_duration_units_are_microseconds ... ok
+test tests::deref_output_is_framed_as_untrusted_unless_raw ... ok
+test tests::encode_ahtl_refuses_an_untrusted_workspace_instead_of_printing_a_dangling_handle ... ok
+test tests::daemon_rejects_overlong_socket_paths ... ok
+test tests::stdin_and_mcp_lines_are_bounded ... ok
+test tests::failed_trust_leaves_the_directory_unadopted ... ok
+test daemon::tests::save_failure_is_not_acknowledged_and_serve_returns_error ... ok
+test tests::daemon_reports_persistent_commit_failure_and_exits_unsuccessfully ... ok
+test tests::trust_does_not_adopt_emitted_block_digests_from_the_adopted_store ... ok
+test tests::daemon_serves_hooks_over_private_socket_and_flushes_state_on_exit ... ok
+test tests::daemon_refuses_an_uncommitted_response_and_releases_the_lock_for_retry ... ok
+test tests::cloned_repo_workspace_is_not_injected_into_agent_context_until_trusted ... ok
+test tests::cli_init_and_deref_round_trip_with_full_and_short_handles ... ok
+test daemon::tests::successful_ack_is_already_committed_before_idle_or_exit ... ok
+test tests::daemon_does_not_save_after_requests_it_could_not_dispatch ... ok
+test tests::daemon_handles_bad_requests_refuses_a_second_instance_and_idle_exits_after_flushing ... ok
+{"id":1,"jsonrpc":"2.0","result":{"capabilities":{"tools":{}},"protocolVersion":"2025-11-25","serverInfo":{"name":"infinity-context-mmu","version":"1.2.0"}}}
+{"id":2,"jsonrpc":"2.0","result":{"content":[{"text":"ERR: no active sub-trajectory branch to fold","type":"text"}],"isError":true}}
+{"id":1,"jsonrpc":"2.0","result":{}}
+test tests::cli_subcommands_status_doctor_benchmark_encode_decode_hook_and_mcp_run_cleanly ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.09s
+
+     Running tests/benchmark_report_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-cli/67ae1130aa5ba434/out/benchmark_report_v120-67ae1130aa5ba434)
+
+running 1 test
+test json_benchmark_reports_measured_scans_and_build_provenance ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.94s
+
+     Running tests/cli_bin.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-cli/dcd0f4cb46ed9498/out/cli_bin-dcd0f4cb46ed9498)
+
+running 1 test
+test icx_binary_main_entrypoint_handles_success_and_error_exit_codes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/context_budget_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-cli/0ae405879e29cf95/out/context_budget_v120-0ae405879e29cf95)
+
+running 1 test
+test cli_can_set_and_inspect_a_persisted_model_budget ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/daemon_durability_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-cli/5ed009a06e58945c/out/daemon_durability_v120-5ed009a06e58945c)
+
+running 1 test
+test every_successful_ack_survives_sigkill_and_cli_reopen ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-codec/b234cb0d9233f59f/out/icx_codec-b234cb0d9233f59f)
+
+running 11 tests
+test braille::tests::channel_b_hologram_packs_and_unpacks_losslessly ... ok
+test braille::tests::braille_256_bijection_covers_all_bytes_and_utf8_triples ... ok
+test ahtl::tests::ahtl_packet_renders_and_parses_round_trip_with_all_features ... ok
+test tests::context_codec_trait_compresses_renders_and_parses ... ok
+test redact::tests::redacts_api_keys_pem_blocks_and_escapes_ahtl_delimiters ... ok
+test ahtl::tests::profile_a_wire_packet_v1_compact_handles_and_stream_round_trip ... ok
+test redact::tests::redacts_all_vendor_prefixes_jwts_urls_cli_flags_pgp_and_high_entropy_secrets ... ok
+test skeleton::tests::skeletonizes_unified_diffs_multi_language_source_code_quoted_braces_lifetimes_and_utf8 ... ok
+test skeleton::tests::compresses_large_cargo_test_log_by_over_25x_while_preserving_panic_and_all_failures ... ok
+test skeleton::tests::compresses_pytest_tsc_vitest_and_go_test_logs_with_100_percent_failure_recall ... ok
+test braille::tests::braille_10000_random_8byte_and_64byte_round_trip_and_hamming_isometry ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/codec_v110.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-codec/94cbbec2abc72e95/out/codec_v110-94cbbec2abc72e95)
+
+running 5 tests
+test valid_slice_maps_round_trip ... ok
+test invalid_slice_hints_are_never_rendered_and_never_parsed ... ok
+test epoch_header_ids_round_trip_in_hex_including_values_past_four_digits ... ok
+test dag_sealed_epoch_headers_parse_back_to_their_index ... ok
+test clause_chains_are_bounded_and_never_overflow_the_stack ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/codec_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-codec/4daa434764aebc55/out/codec_v120-4daa434764aebc55)
+
+running 4 tests
+test hostile_profile_a_skeleton_cannot_emit_an_extra_packet ... ok
+test ordinary_skeletons_and_percent_literals_keep_their_wire_interpretation ... ok
+test standalone_parser_rejects_unescaped_nested_packet_markers ... ok
+test profile_a_checks_hex_length_and_alphabet_independently ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/properties.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-codec/b918204dedd27d6a/out/properties-b918204dedd27d6a)
+
+running 5 tests
+test redact_is_identity_on_secret_free_text ... ok
+test clause_parse_is_total ... ok
+test sanitize_removes_every_delimiter ... ok
+test redact_is_idempotent ... ok
+test packet_render_parse_round_trips ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/redact_v110.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-codec/95f9c1b2b3e8fabd/out/redact_v110-95f9c1b2b3e8fabd)
+
+running 13 tests
+test additional_vendor_token_formats_are_redacted ... ok
+test additional_sensitive_key_names_are_redacted ... ok
+test redaction_is_lossless_for_secret_free_input ... ok
+test key_block_detection_is_scoped_to_one_banner ... ok
+test long_letters_only_url_tokens_are_redacted ... ok
+test token_only_url_userinfo_is_redacted_but_plain_usernames_are_kept ... ok
+test text_after_an_end_banner_goes_through_full_key_detection ... ok
+test continuation_values_that_look_like_assignments_are_still_redacted ... ok
+test quoted_continuation_values_containing_separators_are_redacted ... ok
+test continuation_redaction_only_consumes_a_scalar_value_line ... ok
+test multi_line_json_and_yaml_values_are_redacted ... ok
+test url_userinfo_passwords_are_redacted_for_every_scheme ... ok
+test single_line_and_unterminated_pem_blocks_do_not_swallow_the_rest ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/redact_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-codec/3d8be84118e983d3/out/redact_v120-3d8be84118e983d3)
+
+running 9 tests
+test quoted_inline_values_cannot_turn_prose_into_pending_secret_headers ... ok
+test yaml_list_block_stops_before_a_sibling_mapping ... ok
+test yaml_scalar_contents_are_not_reclassified_as_comments_or_structures ... ok
+test yaml_plain_equals_values_are_credentials_not_nested_mappings ... ok
+test yaml_public_siblings_and_nested_mappings_stay_exact ... ok
+test adjacent_sendgrid_credentials_are_removed_on_the_first_pass ... ok
+test yaml_tagged_and_anchored_block_scalars_are_redacted ... ok
+test redaction_reaches_a_stable_continuation_form_on_the_first_pass ... ok
+test yaml_block_scalar_credentials_are_removed_without_consuming_siblings ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-core/3ad8941c4e6afffb/out/icx_core-3ad8941c4e6afffb)
+
+running 16 tests
+test cas::tests::cas_round_trips_bytes_and_line_slices_and_detects_tampering ... ok
+test cas::tests::cas_trait_context_grep_and_ambiguity_guards ... ok
+test cas::tests::colliding_id_with_different_content_is_a_typed_error_never_a_silent_reuse ... ok
+test dag::tests::colliding_dag_id_never_overwrites_an_existing_node ... ok
+test dag::tests::context_folding_collapses_subtrajectory_and_preserves_child_turns ... ok
+test tests::artifact_id_round_trips_display_from_str_and_short_prefix ... ok
+test dag::tests::nested_branches_tool_artifacts_epoch_folding_and_merkle_integrity ... ok
+test dag::tests::v1_0_decimal_epoch_frames_still_verify_after_migration ... ok
+test epoch::tests::branch_folding_synchronizes_active_window_and_retarget_skips_non_shrinking_pairs ... ok
+test tests::domain_separated_blake3_and_xof_are_deterministic_and_distinct ... ok
+test tests::rejects_malformed_handles ... ok
+test chunker::tests::chunk_bytes_with_lines_tracks_exact_line_boundaries ... ok
+test cas::tests::cas_selective_multi_chunk_deref_lines_and_persistence ... ok
+test chunker::tests::fastcdc_reconstructs_exact_bytes_and_realigns_after_insert ... ok
+test epoch::tests::sealed_epochs_remain_byte_identical_and_sustain_94_percent_cache_hit_rate ... ok
+test epoch::tests::prefix_cache_200_turn_simulation_and_retarget_budget_l4_folding ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/chunker_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-core/939d14aef93dd451/out/chunker_v120-939d14aef93dd451)
+
+running 1 test
+test extreme_chunker_sizes_preserve_all_input_without_overflow ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/integrity_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-core/6c59312c4e936948/out/integrity_v120-6c59312c4e936948)
+
+running 2 tests
+test cas_rejects_a_single_forged_line_offset_and_deduplicates_real_chunks ... ok
+test individual_turn_and_epoch_digest_tampering_cannot_pass_verification ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/window_budget_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-core/2c24b36655e650f9/out/window_budget_v120-2c24b36655e650f9)
+
+running 3 tests
+test invalid_or_insufficient_reservations_are_refused ... ok
+test oversized_tail_is_omitted_whole_and_legacy_policy_defaults_are_bounded ... ok
+test fitting_recent_history_is_retained_and_oversized_frames_are_omitted_whole ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-hdc/c2d19f2badbbc83a/out/icx_hdc-c2d19f2badbbc83a)
+
+running 11 tests
+test fractal::tests::fractal_coord_fc_hex64_q15_q14_morton_octal_and_archive_round_trip ... ok
+test fractal::tests::fractal_chaos_game_coordinate_detects_exact_shared_suffix_in_o1 ... ok
+test hv::tests::hypervector_orthogonality_and_xor_self_inverse ... ok
+test hv::tests::accumulate_tie_break_matches_coordinate_parity_rule ... ok
+test surprise::tests::surprise_gate_spikes_on_panic_and_maintains_momentum_for_followup_fix ... ok
+test hv::tests::splitmix64_seed_and_1_lipschitz_spectral_bands_64 ... ok
+test tests::snapshot_decode_rejects_corrupt_and_truncated_input ... ok
+test hv::tests::bundler_majority_survives_long_histories_without_counter_saturation ... ok
+test tests::hdc_associative_index_tracks_empty_state_and_trajectory ... ok
+test hv::tests::delta_rule_bundler_prevents_boilerplate_saturation ... ok
+test tests::snapshot_round_trip_preserves_queries_and_future_observations ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+
+     Running tests/fc_wire_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-hdc/668a3435366d22ed/out/fc_wire_v120-668a3435366d22ed)
+
+running 1 test
+test shipped_profile_a_q15_scale_remains_backward_compatible ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/lexical_recall_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-hdc/23d0c8254e5f79a8/out/lexical_recall_v120-23d0c8254e5f79a8)
+
+running 1 test
+test varied_and_multilingual_identifiers_are_not_lost_by_candidate_filtering ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.99s
+
+     Running tests/numeric_vectors_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-hdc/6ecd41c889679bc2/out/numeric_vectors_v120-6ecd41c889679bc2)
+
+running 3 tests
+test splitmix_seed_and_sparse_rotating_sketch_match_independent_vectors ... ok
+test morton_planes_and_coordinate_digest_have_literal_expected_values ... ok
+test surprise_momentum_matches_a_hand_calculated_zero_entropy_sequence ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/recall_v110.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-hdc/f9e6348f64bef130/out/recall_v110-f9e6348f64bef130)
+
+running 2 tests
+test recall_returns_each_artifact_at_most_once ... ok
+test unique_token_recall_at_5_is_at_least_95_percent ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.79s
+
+     Running tests/snapshot_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-hdc/820ebe03c6644eb0/out/snapshot_v120-820ebe03c6644eb0)
+
+running 4 tests
+test snapshots_reject_nonfinite_surprise_parameters_and_false_bundle_readout ... ok
+test independently_generated_legacy03_snapshot_remains_readable ... ok
+test snapshots_reject_nonfinite_and_out_of_range_entry_state ... ok
+test snapshots_reject_forged_cached_entry_summaries ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-proxy/3887c84d2d93226a/out/icx_proxy-3887c84d2d93226a)
+
+running 1 test
+test wire::tests::anthropic_and_openai_wire_transformers_inject_cache_control_and_virtualize_middle_history ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/cache_placement.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-proxy/569b2370db5fdcc5/out/cache_placement-569b2370db5fdcc5)
+
+running 8 tests
+test pager_shaped_objects_nested_in_tool_data_are_not_exempt ... ok
+test forged_markers_anywhere_in_any_message_are_neutralized_but_emitted_blocks_survive ... ok
+test pager_named_objects_inside_tool_output_are_still_neutralized ... ok
+test transforming_already_transformed_output_is_stable ... ok
+test icx_breakpoint_inherits_one_hour_ttl_when_a_later_breakpoint_uses_it ... ok
+test breakpoint_is_placed_on_a_content_block_never_on_a_message_object ... ok
+test folded_history_is_byte_stable_across_turns_so_prior_cache_writes_are_readable ... ok
+test client_breakpoints_are_preserved_and_the_four_breakpoint_limit_is_respected ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/proxy_auth.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-proxy/fb91d530adfd9404/out/proxy_auth-fb91d530adfd9404)
+
+running 3 tests
+test curl_header_dir_must_be_private_and_ours_else_a_per_user_temp_dir_is_used ... ok
+test every_route_requires_the_install_token ... ok
+test the_workspace_gate_is_consulted_on_every_request ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-store/07f129c57233eece/out/icx_store-07f129c57233eece)
+
+running 1 test
+test graph::tests::bitemporal_graph_invalidates_functional_contradictions_and_walks_multi_hop_ppr ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests icx_adapters
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests icx_bus
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests icx_codec
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests icx_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests icx_hdc
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests icx_proxy
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests icx_store
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

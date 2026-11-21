@@ -1,0 +1,4 @@
+Found 30 mutants to test
+ok       Unmutated baseline in 13s build + 0s test
+MISSED   crates/icx-core/src/epoch.rs:444:51: replace <= with > in CacheEpochController::assemble_window in 0s build + 0s test
+30 mutants tested in 45s: 1 missed, 29 caught

@@ -1,0 +1,17 @@
+Found 30 mutants to test
+ok       Unmutated baseline in 13s build + 0s test
+MISSED   crates/icx-core/src/cas.rs:528:17: replace || with && in CasStore::from_parts in 0s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:987:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors in 1s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:986:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors in 1s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:1006:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors in 1s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:1005:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors in 1s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:1036:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors in 1s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:1035:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors in 1s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:1034:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors in 1s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:1075:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors in 1s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:1074:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors in 1s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:1073:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors in 1s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:1072:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors in 1s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:1071:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors in 1s build + 0s test
+MISSED   crates/icx-core/src/epoch.rs:444:51: replace <= with > in CacheEpochController::assemble_window in 1s build + 0s test
+30 mutants tested in 60s: 14 missed, 16 caught

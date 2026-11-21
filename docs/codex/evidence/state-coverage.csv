@@ -1,0 +1,32 @@
+path,review_depth,reports
+crates/icx-adapters/Cargo.toml,inventory; manifest dependency review delegated to validation worker,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-adapters/src/antigravity.rs,targeted production-path and symbol review; not every test assertion read,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-adapters/src/claude.rs,complete text read; targeted semantic tracing,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-adapters/src/codex.rs,targeted production-path and symbol review; not every test assertion read,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-adapters/src/hermes.rs,targeted production-path and symbol review; not every test assertion read,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-adapters/src/lib.rs,targeted production-path and symbol review; not every test assertion read,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-adapters/src/mcp.rs,complete text read; targeted semantic tracing,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-adapters/src/mmu.rs,targeted production-path and symbol review; not every test assertion read,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-adapters/src/store.rs,complete text read; targeted semantic tracing,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-adapters/src/workspace.rs,complete text read; targeted semantic tracing,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-adapters/tests/claude_contract.rs,inventory and named-control/oracle review; execution belongs to baseline validation worker,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-adapters/tests/hardening.rs,inventory and named-control/oracle review; execution belongs to baseline validation worker,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-adapters/tests/mcp_bounds.rs,inventory and named-control/oracle review; execution belongs to baseline validation worker,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-adapters/tests/workspace_store.rs,inventory and named-control/oracle review; execution belongs to baseline validation worker,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-adapters/tests/workspace_trust.rs,complete text read; targeted semantic tracing,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-bus/Cargo.toml,inventory; manifest dependency review delegated to validation worker,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-bus/src/lib.rs,targeted production-path and symbol review; not every test assertion read,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-bus/src/ring.rs,targeted production-path and symbol review; not every test assertion read,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-bus/tests/loss_signalling.rs,inventory and named-control/oracle review; execution belongs to baseline validation worker,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-cli/src/daemon.rs,complete text read; targeted semantic tracing,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-core/Cargo.toml,inventory; manifest dependency review delegated to validation worker,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-core/src/cas.rs,targeted production-path and symbol review; not every test assertion read,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-core/src/chunker.rs,targeted production-path and symbol review; not every test assertion read,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-core/src/dag.rs,targeted production-path and symbol review; not every test assertion read,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-core/src/epoch.rs,targeted production-path and symbol review; not every test assertion read,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-core/src/lib.rs,targeted production-path and symbol review; not every test assertion read,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-proxy/Cargo.toml,inventory; manifest dependency review delegated to validation worker,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-proxy/src/lib.rs,targeted production-path and symbol review; not every test assertion read,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-proxy/src/wire.rs,targeted production-path and symbol review; not every test assertion read,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-proxy/tests/cache_placement.rs,inventory and named-control/oracle review; execution belongs to baseline validation worker,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md
+crates/icx-proxy/tests/proxy_auth.rs,inventory and named-control/oracle review; execution belongs to baseline validation worker,03-integrity-persistence-security.md;04-bus-concurrency.md;05-integrations-proxy.md

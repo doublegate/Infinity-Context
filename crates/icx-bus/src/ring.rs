@@ -837,7 +837,7 @@ impl SeqlockTelemetryBus {
                             continue;
                         }
                         let committed_seq = s1 >> 1;
-                        if committed_seq <= since_seq {
+                        if committed_seq <= since_seq || committed_seq != seq + 1 {
                             break;
                         }
 
@@ -904,7 +904,7 @@ impl SeqlockTelemetryBus {
                             continue;
                         }
                         let committed_seq = s1 >> 1;
-                        if committed_seq <= since_seq {
+                        if committed_seq <= since_seq || committed_seq != seq + 1 {
                             break;
                         }
 

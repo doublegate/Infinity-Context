@@ -1,0 +1,32 @@
+[
+  {
+    "id": "ICX-CODEX-100",
+    "title": "Accepted ADRs and completed roadmap retain superseded guarantees",
+    "severity": "Medium",
+    "category": "documentation contradiction",
+    "confidence": "high",
+    "location": "docs/adr/0001-five-plane-hybrid-interception.md:22; docs/adr/0002-alien-holographic-token-lattice.md:14; docs/adr/0003-prefix-cache-epoch-pinning.md:9; to-dos/ROADMAP.md:9",
+    "report": "08-documentation-and-claim-traceability.md",
+    "prior_ids": ["ICX-AUD-028", "ICX-AUD-031", "ICX-AUD-033", "ICX-AUD-046"]
+  },
+  {
+    "id": "ICX-CODEX-101",
+    "title": "Production epoch accumulation has no automatic overall context cap",
+    "severity": "Medium",
+    "category": "architecture limitation and unsupported capability",
+    "confidence": "high",
+    "location": "crates/icx-core/src/epoch.rs:236,308,333; crates/icx-adapters/src/mmu.rs:896",
+    "report": "09-context-budget-and-enhancements.md",
+    "prior_ids": ["ICX-AUD-001", "ICX-AUD-002", "ICX-AUD-031"]
+  },
+  {
+    "id": "ICX-CODEX-102",
+    "title": "Worked Braille example contains a different Unicode character",
+    "severity": "Low",
+    "category": "reference specification defect",
+    "confidence": "high",
+    "location": "ref-docs/unicode-braille-patterns/README.md:90,92 (section3.3)",
+    "report": "08-documentation-and-claim-traceability.md",
+    "prior_ids": []
+  }
+]

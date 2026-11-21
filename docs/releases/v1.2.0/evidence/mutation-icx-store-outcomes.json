@@ -1,0 +1,369 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.854394425,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-store@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.101149041,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-store@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-store/src/graph.rs:34:9: replace BiTemporalEdge::is_active_at -> bool with false",
+          "package": "icx-store",
+          "file": "crates/icx-store/src/graph.rs",
+          "function": {
+            "function_name": "BiTemporalEdge::is_active_at",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 32,
+                "column": 5
+              },
+              "end": {
+                "line": 46,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 34,
+              "column": 9
+            },
+            "end": {
+              "line": 45,
+              "column": 10
+            }
+          },
+          "replacement": "false",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-store__src__graph.rs_line_34_col_9.log",
+      "diff_path": "diff/crates__icx-store__src__graph.rs_line_34_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.401742273,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-store@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.05096624,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-store@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-store/src/graph.rs:145:9: replace CsrGraphSnapshot::run_ppr -> Vec<PprRankedNode> with vec![]",
+          "package": "icx-store",
+          "file": "crates/icx-store/src/graph.rs",
+          "function": {
+            "function_name": "CsrGraphSnapshot::run_ppr",
+            "return_type": "-> Vec<PprRankedNode>",
+            "span": {
+              "start": {
+                "line": 136,
+                "column": 5
+              },
+              "end": {
+                "line": 215,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 145,
+              "column": 9
+            },
+            "end": {
+              "line": 214,
+              "column": 16
+            }
+          },
+          "replacement": "vec![]",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-store__src__graph.rs_line_145_col_9.log",
+      "diff_path": "diff/crates__icx-store__src__graph.rs_line_145_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.45161215,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-store@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051076641,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-store@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-store/src/graph.rs:255:9: replace BiTemporalGraph::edge_count -> usize with 1",
+          "package": "icx-store",
+          "file": "crates/icx-store/src/graph.rs",
+          "function": {
+            "function_name": "BiTemporalGraph::edge_count",
+            "return_type": "-> usize",
+            "span": {
+              "start": {
+                "line": 253,
+                "column": 5
+              },
+              "end": {
+                "line": 256,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 255,
+              "column": 9
+            },
+            "end": {
+              "line": 255,
+              "column": 25
+            }
+          },
+          "replacement": "1",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-store__src__graph.rs_line_255_col_9.log",
+      "diff_path": "diff/crates__icx-store__src__graph.rs_line_255_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.452167024,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-store@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.050954752,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-store@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-store/src/graph.rs:436:23: replace += with *= in BiTemporalGraph::build_csr",
+          "package": "icx-store",
+          "file": "crates/icx-store/src/graph.rs",
+          "function": {
+            "function_name": "BiTemporalGraph::build_csr",
+            "return_type": "-> CsrGraphSnapshot",
+            "span": {
+              "start": {
+                "line": 383,
+                "column": 5
+              },
+              "end": {
+                "line": 456,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 436,
+              "column": 23
+            },
+            "end": {
+              "line": 436,
+              "column": 25
+            }
+          },
+          "replacement": "*=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-store__src__graph.rs_line_436_col_23.log",
+      "diff_path": "diff/crates__icx-store__src__graph.rs_line_436_col_23.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.301542821,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-store@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.050970817,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-store@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-store/src/graph.rs:631:53: replace + with * in BiTemporalGraph::from_json_bytes",
+          "package": "icx-store",
+          "file": "crates/icx-store/src/graph.rs",
+          "function": {
+            "function_name": "BiTemporalGraph::from_json_bytes",
+            "return_type": "-> Result<Self, IcxError>",
+            "span": {
+              "start": {
+                "line": 519,
+                "column": 5
+              },
+              "end": {
+                "line": 668,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 631,
+              "column": 53
+            },
+            "end": {
+              "line": 631,
+              "column": 54
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-store__src__graph.rs_line_631_col_53.log",
+      "diff_path": "diff/crates__icx-store__src__graph.rs_line_631_col_53.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.301327765,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-store@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051151758,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-store@1.2.0"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 5,
+  "missed": 0,
+  "caught": 5,
+  "timeout": 0,
+  "unviable": 0,
+  "success": 0,
+  "start_time": "2026-11-21T04:49:57.856442279Z",
+  "end_time": "2026-11-21T04:50:10.994257483Z",
+  "cargo_mutants_version": "27.1.0"
+}

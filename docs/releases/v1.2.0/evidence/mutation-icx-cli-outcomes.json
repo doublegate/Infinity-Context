@@ -1,0 +1,927 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 57.158832467,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.355642345,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-cli/src/main.rs:34:5: replace dispatch_cli_args -> Result<(), String> with Ok(())",
+          "package": "icx-cli",
+          "file": "crates/icx-cli/src/main.rs",
+          "function": {
+            "function_name": "dispatch_cli_args",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 33,
+                "column": 1
+              },
+              "end": {
+                "line": 86,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 34,
+              "column": 5
+            },
+            "end": {
+              "line": 85,
+              "column": 6
+            }
+          },
+          "replacement": "Ok(())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-cli__src__main.rs_line_34_col_5.log",
+      "diff_path": "diff/crates__icx-cli__src__main.rs_line_34_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.219661742,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.602102456,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-cli/src/main.rs:127:36: replace + with * in read_bounded_line",
+          "package": "icx-cli",
+          "file": "crates/icx-cli/src/main.rs",
+          "function": {
+            "function_name": "read_bounded_line",
+            "return_type": "-> io::Result<Option<Result<String, ()>>>",
+            "span": {
+              "start": {
+                "line": 107,
+                "column": 1
+              },
+              "end": {
+                "line": 136,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 127,
+              "column": 36
+            },
+            "end": {
+              "line": 127,
+              "column": 37
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-cli__src__main.rs_line_127_col_36.log",
+      "diff_path": "diff/crates__icx-cli__src__main.rs_line_127_col_36.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.853664455,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.25334269,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-cli/src/main.rs:369:36: replace < with <= in run_daemon",
+          "package": "icx-cli",
+          "file": "crates/icx-cli/src/main.rs",
+          "function": {
+            "function_name": "run_daemon",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 363,
+                "column": 1
+              },
+              "end": {
+                "line": 397,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 369,
+              "column": 36
+            },
+            "end": {
+              "line": 369,
+              "column": 37
+            }
+          },
+          "replacement": "<=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-cli__src__main.rs_line_369_col_36.log",
+      "diff_path": "diff/crates__icx-cli__src__main.rs_line_369_col_36.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.503564469,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.305355306,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-cli/src/main.rs:474:15: replace += with *= in parse_dir_flag",
+          "package": "icx-cli",
+          "file": "crates/icx-cli/src/main.rs",
+          "function": {
+            "function_name": "parse_dir_flag",
+            "return_type": "-> Option<&str>",
+            "span": {
+              "start": {
+                "line": 468,
+                "column": 1
+              },
+              "end": {
+                "line": 480,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 474,
+              "column": 15
+            },
+            "end": {
+              "line": 474,
+              "column": 17
+            }
+          },
+          "replacement": "*=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Timeout",
+      "log_path": "log/crates__icx-cli__src__main.rs_line_474_col_15.log",
+      "diff_path": "diff/crates__icx-cli__src__main.rs_line_474_col_15.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.502463876,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 90.011371948,
+          "process_status": "Timeout",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-cli/src/main.rs:553:58: replace + with - in run_deref",
+          "package": "icx-cli",
+          "file": "crates/icx-cli/src/main.rs",
+          "function": {
+            "function_name": "run_deref",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 534,
+                "column": 1
+              },
+              "end": {
+                "line": 566,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 553,
+              "column": 58
+            },
+            "end": {
+              "line": 553,
+              "column": 59
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-cli__src__main.rs_line_553_col_58.log",
+      "diff_path": "diff/crates__icx-cli__src__main.rs_line_553_col_58.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.552194158,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.153128036,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-cli/src/main.rs:615:28: replace + with * in execute_hook",
+          "package": "icx-cli",
+          "file": "crates/icx-cli/src/main.rs",
+          "function": {
+            "function_name": "execute_hook",
+            "return_type": "-> Result<String, serde_json::Error>",
+            "span": {
+              "start": {
+                "line": 604,
+                "column": 1
+              },
+              "end": {
+                "line": 687,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 615,
+              "column": 28
+            },
+            "end": {
+              "line": 615,
+              "column": 29
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-cli__src__main.rs_line_615_col_28.log",
+      "diff_path": "diff/crates__icx-cli__src__main.rs_line_615_col_28.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.551973341,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.305387763,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-cli/src/main.rs:834:33: replace match guard i + 1 < args.len() with true in run_proxy_server",
+          "package": "icx-cli",
+          "file": "crates/icx-cli/src/main.rs",
+          "function": {
+            "function_name": "run_proxy_server",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 791,
+                "column": 1
+              },
+              "end": {
+                "line": 897,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 834,
+              "column": 33
+            },
+            "end": {
+              "line": 834,
+              "column": 51
+            }
+          },
+          "replacement": "true",
+          "genre": "MatchArmGuard"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-cli__src__main.rs_line_834_col_33.log",
+      "diff_path": "diff/crates__icx-cli__src__main.rs_line_834_col_33.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.553218748,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.305000348,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-cli/src/main.rs:832:19: replace += with -= in run_proxy_server",
+          "package": "icx-cli",
+          "file": "crates/icx-cli/src/main.rs",
+          "function": {
+            "function_name": "run_proxy_server",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 791,
+                "column": 1
+              },
+              "end": {
+                "line": 897,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 832,
+              "column": 19
+            },
+            "end": {
+              "line": 832,
+              "column": 21
+            }
+          },
+          "replacement": "-=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Timeout",
+      "log_path": "log/crates__icx-cli__src__main.rs_line_832_col_19.log",
+      "diff_path": "diff/crates__icx-cli__src__main.rs_line_832_col_19.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.503616077,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 90.020382272,
+          "process_status": "Timeout",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-cli/src/main.rs:913:35: replace + with - in execute_proxy_transform",
+          "package": "icx-cli",
+          "file": "crates/icx-cli/src/main.rs",
+          "function": {
+            "function_name": "execute_proxy_transform",
+            "return_type": "-> Result<String, String>",
+            "span": {
+              "start": {
+                "line": 899,
+                "column": 1
+              },
+              "end": {
+                "line": 932,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 913,
+              "column": 35
+            },
+            "end": {
+              "line": 913,
+              "column": 36
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-cli__src__main.rs_line_913_col_35.log",
+      "diff_path": "diff/crates__icx-cli__src__main.rs_line_913_col_35.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.503083103,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.305168277,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-cli/src/main.rs:1121:5: replace find_executable_in_path -> Option<PathBuf> with Some(Default::default())",
+          "package": "icx-cli",
+          "file": "crates/icx-cli/src/main.rs",
+          "function": {
+            "function_name": "find_executable_in_path",
+            "return_type": "-> Option<PathBuf>",
+            "span": {
+              "start": {
+                "line": 1120,
+                "column": 1
+              },
+              "end": {
+                "line": 1129,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1121,
+              "column": 5
+            },
+            "end": {
+              "line": 1128,
+              "column": 9
+            }
+          },
+          "replacement": "Some(Default::default())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-cli__src__main.rs_line_1121_col_5.log",
+      "diff_path": "diff/crates__icx-cli__src__main.rs_line_1121_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.653892654,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.103235402,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-cli/src/main.rs:1395:26: replace * with / in varied_tool_log_fixture",
+          "package": "icx-cli",
+          "file": "crates/icx-cli/src/main.rs",
+          "function": {
+            "function_name": "varied_tool_log_fixture",
+            "return_type": "-> String",
+            "span": {
+              "start": {
+                "line": 1387,
+                "column": 1
+              },
+              "end": {
+                "line": 1424,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1395,
+              "column": 26
+            },
+            "end": {
+              "line": 1395,
+              "column": 27
+            }
+          },
+          "replacement": "/",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-cli__src__main.rs_line_1395_col_26.log",
+      "diff_path": "diff/crates__icx-cli__src__main.rs_line_1395_col_26.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.65328685,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.305389049,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-cli/src/main.rs:1560:48: replace * with / in run_benchmark",
+          "package": "icx-cli",
+          "file": "crates/icx-cli/src/main.rs",
+          "function": {
+            "function_name": "run_benchmark",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 1429,
+                "column": 1
+              },
+              "end": {
+                "line": 1826,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1560,
+              "column": 48
+            },
+            "end": {
+              "line": 1560,
+              "column": 49
+            }
+          },
+          "replacement": "/",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-cli__src__main.rs_line_1560_col_48.log",
+      "diff_path": "diff/crates__icx-cli__src__main.rs_line_1560_col_48.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.553913029,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.3053436019999998,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-cli/src/main.rs:1696:50: replace * with + in run_benchmark",
+          "package": "icx-cli",
+          "file": "crates/icx-cli/src/main.rs",
+          "function": {
+            "function_name": "run_benchmark",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 1429,
+                "column": 1
+              },
+              "end": {
+                "line": 1826,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1696,
+              "column": 50
+            },
+            "end": {
+              "line": 1696,
+              "column": 51
+            }
+          },
+          "replacement": "+",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-cli__src__main.rs_line_1696_col_50.log",
+      "diff_path": "diff/crates__icx-cli__src__main.rs_line_1696_col_50.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.502090784,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.053013261,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-cli/src/daemon.rs:133:39: replace + with * in serve",
+          "package": "icx-cli",
+          "file": "crates/icx-cli/src/daemon.rs",
+          "function": {
+            "function_name": "serve",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 88,
+                "column": 1
+              },
+              "end": {
+                "line": 167,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 133,
+              "column": 39
+            },
+            "end": {
+              "line": 133,
+              "column": 40
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__icx-cli__src__daemon.rs_line_133_col_39.log",
+      "diff_path": "diff/crates__icx-cli__src__daemon.rs_line_133_col_39.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.201312532,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-cli@1.2.0"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 14,
+  "missed": 6,
+  "caught": 5,
+  "timeout": 2,
+  "unviable": 1,
+  "success": 0,
+  "start_time": "2026-11-21T04:52:36.716814122Z",
+  "end_time": "2026-11-21T04:57:03.641749287Z",
+  "cargo_mutants_version": "27.1.0"
+}

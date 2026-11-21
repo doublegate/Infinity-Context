@@ -26,3 +26,19 @@ description = "v1.1.0 redactor recall fixtures: synthetic, non-functional creden
 paths = [
   '''^crates/icx-codec/tests/redact_v110\.rs$''',
 ]
+
+[[allowlists]]
+description = "Reviewed SHA256 hashes of proxy_auth.rs and the synthetic pending-key-block fuzz fixture"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^docs/releases/v1\.2\.0/evidence/[a-z0-9-]+-source-manifest\.json$''']
+regexTarget = "secret"
+regexes = ['''^(d83f9227947c23a92abf05e9ce00ad5c8f83e475d1c7890be92b75869dbaca12|2a872b81206dd5b4d960cc132db9cadbb2c3eb1115d136e5e7952f97eea3145f)$''']
+
+[[allowlists]]
+description = "Exact synthetic minimized redaction counterexample retained by the independent audit"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^docs/codex/evidence/codec-redact-readable\.txt$''']
+regexTarget = "secret"
+regexes = ['''^ask-123456789=x$''']

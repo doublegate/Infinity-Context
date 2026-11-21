@@ -1,0 +1,7 @@
+[
+  {"id":"ICX-CODEX-030","title":"Acknowledged daemon artifacts can disappear before persistence","severity":"Medium","category":"durability and failure reporting","confidence":"High","location":"crates/icx-cli/src/daemon.rs:233","report":"03-integrity-persistence-security.md","prior_ids":["ICX-AUD-001","ICX-AUD-047"]},
+  {"id":"ICX-CODEX-031","title":"MCP accepts invalid envelopes and arguments as successful operations","severity":"Low","category":"protocol correctness","confidence":"High","location":"crates/icx-adapters/src/mcp.rs:146","report":"05-integrations-proxy.md","prior_ids":["ICX-AUD-008"]},
+  {"id":"ICX-CODEX-032","title":"Bus reader accepts coherent slots outside its expected sequence","severity":"Low","category":"concurrency and specification discrepancy","confidence":"High for invariant; Medium for live race impact","location":"crates/icx-bus/src/ring.rs:839","report":"04-bus-concurrency.md","prior_ids":["ICX-AUD-054"]},
+  {"id":"ICX-CODEX-033","title":"Extreme public chunker configuration panics","severity":"Low","category":"public API robustness","confidence":"High","location":"crates/icx-core/src/chunker.rs:75","report":"03-integrity-persistence-security.md","prior_ids":[]},
+  {"id":"ICX-CODEX-035","title":"Codex adapter emits an explicitly unsupported replacement field","severity":"Medium","category":"integration capability gap","confidence":"High source and contract; live effect untested","location":"crates/icx-adapters/src/codex.rs:139","report":"05-integrations-proxy.md","prior_ids":["ICX-AUD-005"]}
+]

@@ -1,0 +1,12 @@
+{
+  "writer_revision": "a996d59f1eb468e7c386747e15f4c7e58d08410e",
+  "writer_sources": "icx-hdc lib.rs,hv.rs,fractal.rs,snapshot.rs,surprise.rs read with git show; icx-core only supplies compatible ArtifactId/hash types",
+  "input": {
+    "artifact_id": 1,
+    "subject": "legacy",
+    "content": "legacy unique",
+    "anomaly": false
+  },
+  "bytes": 44082,
+  "sha256": "70591dbc6ac505a0cc92527745e889b9bdb3b9c031883cfe08a1df60b8d0df77"
+}

@@ -1,0 +1,12 @@
+{
+  "command": [
+    "cargo",
+    "run",
+    "--release",
+    "--manifest-path",
+    "/tmp/Infinity-Context/epoch-growth/Cargo.toml"
+  ],
+  "exit": 0,
+  "output": "   Compiling icx-epoch-growth-audit v0.0.0 (/tmp/Infinity-Context/epoch-growth)\n    Finished `release` profile [optimized] target(s) in 2.03s\n     Running `/tmp/Infinity-Context/epoch-growth-target/release/icx-epoch-growth-audit`\nturns,sealed_epochs,prefix_bytes,zone1_estimated_tokens\n10,6,742,126\n100,96,8576,2016\n1000,996,86880,20916\n",
+  "rustflags": ""
+}

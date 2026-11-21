@@ -1,0 +1,26 @@
+[
+  {
+    "label": "x86_64-unknown-linux-musl",
+    "binary": "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx",
+    "build_provenance": "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/build/icx-cli/290bff38d0702ace/run/stdout",
+    "note": "preliminary rebuilt frozen source; final fuzz pending; build+source manifests retained separately"
+  },
+  {
+    "label": "x86_64_v3-unknown-linux-musl",
+    "binary": "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx",
+    "build_provenance": "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/build/icx-cli/4128e86b408630cf/run/stdout",
+    "note": "preliminary rebuilt frozen source; final fuzz pending; build+source manifests retained separately"
+  },
+  {
+    "label": "x86_64-unknown-linux-gnu",
+    "binary": "/tmp/Infinity-Context/v120/package-gnu-bookworm-baseline/x86_64-unknown-linux-gnu/release/icx",
+    "build_provenance": "/tmp/Infinity-Context/v120/package-gnu-bookworm-baseline/x86_64-unknown-linux-gnu/release/build/icx-cli/9cc1f7af0986eac1/run/stdout",
+    "note": "preliminary frozen-source build in cached offline Bookworm container with exact Rust1.100; final fuzz pending"
+  },
+  {
+    "label": "x86_64_v3-unknown-linux-gnu",
+    "binary": "/tmp/Infinity-Context/v120/package-gnu-bookworm-v3/x86_64-unknown-linux-gnu/release/icx",
+    "build_provenance": "/tmp/Infinity-Context/v120/package-gnu-bookworm-v3/x86_64-unknown-linux-gnu/release/build/icx-cli/4c760c2218067ee9/run/stdout",
+    "note": "preliminary frozen-source build in cached offline Bookworm container with exact Rust1.100; final fuzz pending"
+  }
+]

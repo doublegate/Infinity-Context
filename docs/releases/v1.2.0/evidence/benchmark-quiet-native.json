@@ -1,0 +1,807 @@
+{
+  "schema_version": 1,
+  "observed_utc": "2026-11-21T06:37:47.864231+00:00",
+  "warmups": 1,
+  "measured_runs": 10,
+  "passed_runs": 0,
+  "consistent_provenance": true,
+  "provenance_mismatch_runs": [],
+  "scope": "independent processes; component timing only; host contention uncontrolled",
+  "summary": {
+    "associative_query_us": {
+      "min": 60.199,
+      "p50": 71.756,
+      "p95": 139.495,
+      "max": 139.495
+    },
+    "bind_permute_ns": {
+      "min": 47.212,
+      "p50": 47.7285,
+      "p95": 51.234,
+      "max": 51.234
+    },
+    "bus_publish_ns": {
+      "min": 65.034,
+      "p50": 68.53399999999999,
+      "p95": 78.166,
+      "max": 78.166
+    },
+    "cas_ingest_us": {
+      "min": 88.799,
+      "p50": 90.49549999999999,
+      "p95": 93.722,
+      "max": 93.722
+    },
+    "codec_us": {
+      "min": 48.322,
+      "p50": 49.5975,
+      "p95": 52.218,
+      "max": 52.218
+    },
+    "fractal_suffix_ns": {
+      "min": 25.501,
+      "p50": 26.034999999999997,
+      "p95": 34.45,
+      "max": 34.45
+    },
+    "hdc_scan_10k_us": {
+      "min": 2509.754,
+      "p50": 2830.2715,
+      "p95": 5143.773,
+      "max": 5143.773
+    },
+    "hdc_scan_1k_us": {
+      "min": 357.06600000000003,
+      "p50": 370.33899999999994,
+      "p95": 455.79,
+      "max": 455.79
+    },
+    "in_memory_hook_us": {
+      "min": 260.472,
+      "p50": 266.9075,
+      "p95": 276.488,
+      "max": 276.488
+    },
+    "ppr_us": {
+      "min": 108.198,
+      "p50": 110.5815,
+      "p95": 118.42099999999999,
+      "max": 118.42099999999999
+    },
+    "prefix_byte_reuse_pct": {
+      "min": 95.33470435030353,
+      "p50": 95.33470435030353,
+      "p95": 95.33470435030353,
+      "max": 95.33470435030353
+    },
+    "repetitive_log_byte_ratio": {
+      "min": 213.98257839721254,
+      "p50": 213.98257839721254,
+      "p95": 213.98257839721254,
+      "max": 213.98257839721254
+    },
+    "simulation_ms": {
+      "min": 18.552165,
+      "p50": 18.7837775,
+      "p95": 19.232567999999997,
+      "max": 19.232567999999997
+    }
+  },
+  "runs": [
+    {
+      "warmup": true,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (measured 386.29 us / 1,000 nodes and 2561.92 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (measured 386.29 us / 1,000 nodes and 2561.92 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 66.435,
+          "bind_permute_ns": 50.856,
+          "bus_publish_ns": 68.373,
+          "cas_ingest_us": 90.9,
+          "codec_us": 49.886,
+          "fractal_suffix_ns": 25.18,
+          "hdc_scan_10k": {
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "us": 2561.921
+          },
+          "hdc_scan_1k": {
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "us": 386.289
+          },
+          "in_memory_hook_us": 263.23900000000003,
+          "ppr_us": 109.676,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 18.542927000000002
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (measured 372.67 us / 1,000 nodes and 2834.81 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (measured 372.67 us / 1,000 nodes and 2834.81 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 72.90400000000001,
+          "bind_permute_ns": 48.155,
+          "bus_publish_ns": 66.571,
+          "cas_ingest_us": 88.799,
+          "codec_us": 50.088,
+          "fractal_suffix_ns": 26.115,
+          "hdc_scan_10k": {
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "us": 2834.811
+          },
+          "hdc_scan_1k": {
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "us": 372.672
+          },
+          "in_memory_hook_us": 260.472,
+          "ppr_us": 108.384,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 18.552165
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (measured 371.11 us / 1,000 nodes and 2729.02 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (measured 371.11 us / 1,000 nodes and 2729.02 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 83.923,
+          "bind_permute_ns": 50.541,
+          "bus_publish_ns": 69.555,
+          "cas_ingest_us": 93.722,
+          "codec_us": 48.322,
+          "fractal_suffix_ns": 25.571,
+          "hdc_scan_10k": {
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "us": 2729.023
+          },
+          "hdc_scan_1k": {
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "us": 371.109
+          },
+          "in_memory_hook_us": 266.78900000000004,
+          "ppr_us": 111.051,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 18.673797999999998
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (measured 366.05 us / 1,000 nodes and 2725.28 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (measured 366.05 us / 1,000 nodes and 2725.28 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 65.733,
+          "bind_permute_ns": 47.668,
+          "bus_publish_ns": 65.034,
+          "cas_ingest_us": 90.485,
+          "codec_us": 51.348,
+          "fractal_suffix_ns": 25.779,
+          "hdc_scan_10k": {
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "us": 2725.284
+          },
+          "hdc_scan_1k": {
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "us": 366.04600000000005
+          },
+          "in_memory_hook_us": 276.488,
+          "ppr_us": 108.198,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 18.602389
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (measured 422.68 us / 1,000 nodes and 3287.90 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (measured 422.68 us / 1,000 nodes and 3287.90 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 74.494,
+          "bind_permute_ns": 47.695,
+          "bus_publish_ns": 65.659,
+          "cas_ingest_us": 89.308,
+          "codec_us": 48.674,
+          "fractal_suffix_ns": 25.761,
+          "hdc_scan_10k": {
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "us": 3287.9049999999997
+          },
+          "hdc_scan_1k": {
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "us": 422.68
+          },
+          "in_memory_hook_us": 265.858,
+          "ppr_us": 109.757,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 19.232567999999997
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (measured 365.07 us / 1,000 nodes and 2914.51 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (measured 365.07 us / 1,000 nodes and 2914.51 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 60.199,
+          "bind_permute_ns": 47.762,
+          "bus_publish_ns": 71.037,
+          "cas_ingest_us": 90.23599999999999,
+          "codec_us": 48.690000000000005,
+          "fractal_suffix_ns": 34.45,
+          "hdc_scan_10k": {
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "us": 2914.507
+          },
+          "hdc_scan_1k": {
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "us": 365.067
+          },
+          "in_memory_hook_us": 264.59299999999996,
+          "ppr_us": 110.466,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 18.646275
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (measured 455.79 us / 1,000 nodes and 5143.77 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (measured 455.79 us / 1,000 nodes and 5143.77 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 109.73400000000001,
+          "bind_permute_ns": 51.234,
+          "bus_publish_ns": 74.251,
+          "cas_ingest_us": 91.234,
+          "codec_us": 52.218,
+          "fractal_suffix_ns": 26.347,
+          "hdc_scan_10k": {
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "us": 5143.773
+          },
+          "hdc_scan_1k": {
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "us": 455.79
+          },
+          "in_memory_hook_us": 268.96999999999997,
+          "ppr_us": 112.69500000000001,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 18.848671
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (measured 396.30 us / 1,000 nodes and 4325.76 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (measured 396.30 us / 1,000 nodes and 4325.76 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 139.495,
+          "bind_permute_ns": 47.212,
+          "bus_publish_ns": 78.166,
+          "cas_ingest_us": 91.76899999999999,
+          "codec_us": 50.596999999999994,
+          "fractal_suffix_ns": 27.553,
+          "hdc_scan_10k": {
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "us": 4325.7570000000005
+          },
+          "hdc_scan_1k": {
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "us": 396.298
+          },
+          "in_memory_hook_us": 271.783,
+          "ppr_us": 118.42099999999999,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 18.820419
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (measured 369.57 us / 1,000 nodes and 2825.73 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (measured 369.57 us / 1,000 nodes and 2825.73 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 69.144,
+          "bind_permute_ns": 50.476,
+          "bus_publish_ns": 67.846,
+          "cas_ingest_us": 91.29,
+          "codec_us": 49.107,
+          "fractal_suffix_ns": 25.501,
+          "hdc_scan_10k": {
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "us": 2825.732
+          },
+          "hdc_scan_1k": {
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "us": 369.56899999999996
+          },
+          "in_memory_hook_us": 263.55699999999996,
+          "ppr_us": 110.697,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 18.788999
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (measured 367.52 us / 1,000 nodes and 2509.75 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (measured 367.52 us / 1,000 nodes and 2509.75 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 62.704,
+          "bind_permute_ns": 47.346,
+          "bus_publish_ns": 69.222,
+          "cas_ingest_us": 90.506,
+          "codec_us": 50.469,
+          "fractal_suffix_ns": 25.955,
+          "hdc_scan_10k": {
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "us": 2509.754
+          },
+          "hdc_scan_1k": {
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "us": 367.517
+          },
+          "in_memory_hook_us": 267.026,
+          "ppr_us": 109.902,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 18.778556
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (measured 357.07 us / 1,000 nodes and 2621.65 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (measured 357.07 us / 1,000 nodes and 2621.65 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 70.608,
+          "bind_permute_ns": 47.427,
+          "bus_publish_ns": 66.563,
+          "cas_ingest_us": 89.497,
+          "codec_us": 48.952,
+          "fractal_suffix_ns": 26.38,
+          "hdc_scan_10k": {
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "us": 2621.646
+          },
+          "hdc_scan_1k": {
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "us": 357.06600000000003
+          },
+          "in_memory_hook_us": 272.092,
+          "ppr_us": 113.70100000000001,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 18.856676
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    }
+  ]
+}

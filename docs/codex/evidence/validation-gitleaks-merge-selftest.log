@@ -1,0 +1,18 @@
+error: 1Password: Could not connect to socket. Is the agent running?
+
+fatal: failed to write commit object
+error: 1Password: Could not connect to socket. Is the agent running?
+
+fatal: failed to write commit object
+error: pathspec 'main' did not match any file(s) known to git
+error: 1Password: Could not connect to socket. Is the agent running?
+
+fatal: failed to write commit object
+merge: side - not something we can merge
+error: 1Password: Could not connect to socket. Is the agent running?
+
+fatal: failed to write commit object
+9:19PM INF 0 commits scanned.
+9:19PM INF scanned ~0 bytes (0) in 233ms
+9:19PM INF no leaks found
+ERROR: expected gitleaks detection exit code 42 for synthetic merge secret, got 0

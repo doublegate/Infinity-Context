@@ -1,0 +1,8 @@
+.PASS ci.yml run=1 attempt=2 sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+PASS reuse.yml run=2 attempt=2 sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+....PASS ci.yml run=1 attempt=2 sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+.....
+----------------------------------------------------------------------
+Ran 10 tests in 0.242s
+
+OK

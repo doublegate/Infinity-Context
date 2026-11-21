@@ -1,0 +1,45 @@
+{
+  "scope": "Read-only host observations after v2 series; these do not establish the precise workload throughout measured intervals. No user processes or CPU settings changed.",
+  "cpu": {
+    "model": "Intel Core i9-10850K",
+    "cores": 10,
+    "threads": 20,
+    "hybrid": false,
+    "features": [
+      "AVX2",
+      "POPCNT"
+    ],
+    "no_avx512": true
+  },
+  "first_inspection": {
+    "unrelated_processes": [
+      {
+        "pid": 55697,
+        "comm": "lto1-ltrans",
+        "cpu_percent": 96.5
+      },
+      {
+        "pid": 55679,
+        "comm": "lto1-ltrans",
+        "cpu_percent": 93.9
+      }
+    ],
+    "related_names": [
+      "makepkg",
+      "cmake",
+      "collect2"
+    ],
+    "relationship": "External user build; not owned release verification."
+  },
+  "later_inspection": {
+    "compiler_pids_present": false,
+    "allowed_cpus": "0-19",
+    "cpu0_siblings": "0,10",
+    "cpu0_governor": "powersave",
+    "cpu0_reported_khz": 4800774,
+    "memory_available_kib": 30748444,
+    "memory_pressure_avg10": 0.0,
+    "cpu_pressure_avg10": 1.59
+  },
+  "provenance": "All44 recorded production/Cargo/build script/toolchain files unchanged during measured v2 series. Frozen package manifest agrees on all shared production entries; package manifest omits rust-toolchain.toml."
+}

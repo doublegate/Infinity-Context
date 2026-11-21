@@ -33,6 +33,10 @@ impl AgentHookAdapter for CodexAdapter {
 }
 
 impl CodexAdapter {
+    /// Native Codex hooks capture tool output but cannot replace it. Supported session/prompt
+    /// `additionalContext` supplies recall separately; use the authenticated proxy for paging.
+    pub const SUPPORTS_TOOL_OUTPUT_REPLACEMENT: bool = false;
+
     /// Handles a Codex lifecycle hook event JSON payload and emits schema-validated output JSON.
     pub fn handle_hook(
         event_name: &str,
@@ -110,7 +114,7 @@ impl CodexAdapter {
                         .into_iter()
                         .find_map(|k| payload.get(k).and_then(Value::as_str))
                         .map(str::to_owned);
-                    let res = mmu.ingest_payload_for_subagent(
+                    let _ = mmu.ingest_payload_for_subagent(
                         AgentKind::Codex,
                         &subject,
                         &raw_output,
@@ -118,29 +122,10 @@ impl CodexAdapter {
                         false,
                         explicit_sub_id.as_deref(),
                     );
-                    let hso = if tool_name.starts_with("mcp__") && res.was_virtualized {
-                        let total_lines = mmu
-                            .cas
-                            .get_meta(res.artifact_id)
-                            .map_or(1, |m| m.total_lines.max(1));
-                        let stub = format!(
-                            "⟪ICX:STUB│{}│raw={}B→{}B│lines=1..{total_lines}⟫\n{}",
-                            res.artifact_id,
-                            res.raw_bytes,
-                            res.compressed_ahtl.len(),
-                            res.compressed_ahtl
-                        );
-                        mmu.record_emitted(&stub);
-                        json!({
-                            "hookEventName": "PostToolUse",
-                            "updatedMCPToolOutput": stub
-                        })
-                    } else {
-                        // ICX-AUD-005: Codex appends `additionalContext` next to the full native
-                        // tool output, so repeating the compressed packet only adds tokens. The
-                        // output is still ingested (recall, deref, tail slots).
-                        json!({ "hookEventName": "PostToolUse" })
-                    };
+                    // Codex 0.171.0 and its published contract reject updatedMCPToolOutput.
+                    // Capture for recall/deref, without claiming native output replacement or
+                    // adding a second copy alongside the original through additionalContext.
+                    let hso = json!({ "hookEventName": "PostToolUse" });
 
                     json!({
                         "continue": true,

@@ -1,0 +1,17 @@
+{
+  "scope": "Read-only/local preliminary package environment inspection",
+  "host_glibc": "GNU libc2.44",
+  "existing_gnu_binary_highest_glibc": "2.39",
+  "cached_bookworm_image_id": "sha256:9a1b4f2e690d8ffe0b1dae1a72750318928a9b5d94ebf7539dbb4f4c765104da",
+  "cached_bookworm_repository_digest": "rust@sha256:ade39a710ef85f3506cffcfec3e8a24ba090badef1dff2fb798f71d878833fea",
+  "container_glibc": "Debian GLIBC2.36-9+deb12u14",
+  "rust_toolchain": "rustc1.100.0 (0ef1bc386 2026-11-09)",
+  "rustc_highest_glibc_symbol": "2.17",
+  "docker_readonly_cache_inspection": "PASS with authorized sandbox escalation; initial socket denial preserved in report",
+  "podman_initial_result": "configuration failed attempting sticky bit under readonly /run/user/1000/libpod; no user configuration modified",
+  "zig_or_cargo_zigbuild": "not found in PATH; no installation attempted",
+  "ubuntu22_04_runtime": "not cached / not fetched",
+  "network": "container builds --network=none; no image pull",
+  "musl_notice_source": "/usr/share/licenses/musl/COPYRIGHT",
+  "workflow_musl_notice_source": "/usr/share/doc/musl/copyright on Ubuntu; not present on this Arch host"
+}
