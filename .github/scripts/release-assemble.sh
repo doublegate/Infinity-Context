@@ -20,11 +20,17 @@ out="${GITHUB_OUTPUT:-/dev/stdout}"
 mkdir -p final upload attached
 
 existing=""
-if gh release view "$TAG" >/dev/null 2>&1; then
-  existing="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+# `gh release view` also finds draft releases (the tag-lookup API does not). Only its
+# "release not found" answer means the release is absent; any other failure stops the run.
+if existing="$(gh release view "$TAG" --json assets --jq '.assets[].name' 2>attached/view.err)"; then
   echo "exists=true" >>"$out"
-else
+elif grep -qi 'release not found' attached/view.err; then
+  existing=""
   echo "exists=false" >>"$out"
+else
+  cat attached/view.err >&2
+  echo "ERROR: could not look up release $TAG" >&2
+  exit 1
 fi
 
 is_attached() { grep -Fxq -- "$1" <<<"$existing"; }

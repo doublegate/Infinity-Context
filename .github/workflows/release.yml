@@ -197,6 +197,10 @@ jobs:
               ldd "$bin"
               need="$(objdump -T "$bin" | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/GLIBC_//' \
                 | sort -uV | tail -1)"
+              if [ -z "$need" ]; then
+                echo "ERROR: no GLIBC_ symbol versions found in $bin" >&2
+                exit 1
+              fi
               echo "highest glibc symbol version required: $need"
               if [ "$(printf '%s\n%s\n' "$need" "$MAX_GLIBC" | sort -V | tail -1)" != "$MAX_GLIBC" ]; then
                 echo "ERROR: $bin needs glibc $need, newer than the supported $MAX_GLIBC" >&2
@@ -292,6 +296,10 @@ jobs:
             found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "ERROR: the CHANGELOG section for $VERSION is empty" >&2
+            exit 1
+          fi
           {
             echo
             echo "## Downloads"
@@ -309,10 +317,6 @@ jobs:
             echo "Third-party license notices: \`THIRD-PARTY-NOTICES.txt\` (also inside each archive)."
             echo "Corresponding source for every binary is this tag."
           } >> notes.md
-          if ! grep -q '[^[:space:]]' notes.md; then
-            echo "ERROR: empty release notes for $VERSION" >&2
-            exit 1
-          fi
       - name: Create draft release or add missing assets
         env:
           EXISTS: ${{ steps.assemble.outputs.exists }}
