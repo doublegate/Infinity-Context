@@ -105,7 +105,7 @@ the file-backed telepathy ring (`icx-fabric-v1.shm`).
 | Oversized hook input exhausts memory (v1.0.0 buffered all of stdin before applying the cap; ICX-AUD-014). | Hook and `proxy-transform` stdin is read through a bound of 64 MiB (`ICX_MAX_INGEST_BYTES`) plus a 64 KiB envelope; over-limit input fails open (the agent's original output is left unchanged). Daemon requests have the same bound. Stored payloads are capped at 64 MiB. | `crates/icx-cli/src/main.rs` (`read_bounded`, `MAX_STDIN_BYTES`); `daemon.rs` (`MAX_REQUEST_BYTES`); `crates/icx-core/src/cas.rs` (`check_ingest_size`) |
 | Oversized or deeply nested MCP input. | MCP stdio lines are bounded at 4 MiB; at most 64 nested `fold begin:` branches (`MAX_FOLD_DEPTH`). | `main.rs` (`MAX_MCP_LINE_BYTES`); `mcp.rs` (`MAX_FOLD_DEPTH`); `crates/icx-adapters/tests/mcp_bounds.rs` |
 | Quadratic SSE re-scanning on chunked responses. | Chunked SSE line splitting is linear (scan cursor, one drain per chunk); SSE lines are bounded at 16 MiB. | `wire.rs` (`MAX_SSE_LINE_BYTES`) |
-| A hostile HDC snapshot in the store exhausts memory on load or forges derived state. | The decoder reads `ICXHDC03` and `ICXHDC04`, bounds counts before allocation and validates finite/range and derived-state consistency. New snapshots use04; the MMU rebuilds legacy03 indexes from preserved events. A fuzz target covers decoding. | `crates/icx-hdc/src/snapshot.rs`; `fuzz/fuzz_targets/hdc_snapshot.rs` |
+| A hostile HDC snapshot in the store exhausts memory on load or forges derived state. | The decoder reads `ICXHDC03` and `ICXHDC04`, bounds counts before allocation and validates finite/range and derived-state consistency. New snapshots use 04; the MMU rebuilds legacy 03 indexes from preserved events. A fuzz target covers decoding. | `crates/icx-hdc/src/snapshot.rs`; `fuzz/fuzz_targets/hdc_snapshot.rs` |
 
 ### 4.7 Memory safety and supply chain
 
@@ -114,7 +114,7 @@ and chomping indicators, and same-line tag/anchor properties. Indented block con
 removed before comment, mapping or PEM detection. Indented plain scalar continuations are also
 redacted, and `=` is scalar content rather than a YAML mapping separator. Dedented public
 siblings and actual nested mappings remain intact. This follows the block indentation rules in
-[YAML1.2.2 §8.1](https://yaml.org/spec/1.2.2/#81-block-scalar-styles), rather than claiming a full
+[YAML 1.2.2 §8.1](https://yaml.org/spec/1.2.2/#81-block-scalar-styles), rather than claiming a full
 YAML parser or universal secret detection. These rules apply to new ingestion; previously
 stored artifacts are not silently scrubbed or changed. The minimized idempotence regressions
 and real MMU CAS tests are in `redact_v120.rs` and `redaction_v120.rs`.

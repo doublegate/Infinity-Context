@@ -47,7 +47,7 @@
      hostile field text render to exactly one packet and round-trip; clause parsing is total.
    - **cargo-fuzz (`fuzz/fuzz_targets/`):** `ahtl_stream`, `hdc_snapshot`, `mcp_jsonrpc`,
      `redact`. The `fuzz/` crate is excluded from the workspace and needs a nightly toolchain.
-     Three initial v1.2.0 parser campaigns completed900+seconds. Redactor campaigns found
+     Three initial v1.2.0 parser campaigns completed 900+ seconds. Redactor campaigns found
      additional idempotence and UTF8 counterexamples; failing artifacts are retained as
      regressions and renewed qualification remains open. See the dated logs in
      [the release evidence](releases/v1.2.0/evidence/). Fuzzing is not part of CI.
@@ -83,13 +83,13 @@ All CI jobs use the pinned `1.100.0` toolchain and SHA-pinned actions
 ## 2. v1.2.0 qualification additions
 
 New integration fixtures cover YAML scalar and redaction counterexamples, Profile A framing,
-independent numerical vectors, snapshot corruption and03→04 upgrades, exact lexical candidates,
+independent numerical vectors, snapshot corruption and 03→04 upgrades, exact lexical candidates,
 configured context budgets, strict MCP input, and daemon durable-ACK crash/reopen behavior.
-The separately ignored10kturn production test must be explicitly included during candidate
+The separately ignored 10k turn production test must be explicitly included during candidate
 qualification; ordinary workspace tests alone do not establish this result.
 
-Mutation samples are deliberately limited. The latest reconciled sample has135 executions:
-80caught,43missed,7unviable and5timeouts. Directed experiments and later tests are separate;
+Mutation samples are deliberately limited. The latest reconciled sample has 135 executions:
+80 caught, 43 missed, 7 unviable and 5 timeouts. Directed experiments and later tests are separate;
 they are not added as disjoint coverage. [Mutation triage](releases/v1.2.0/mutation-triage.md)
 records survivors, meaningful oracle gaps, equivalents and follow-up evidence. Passing line
 coverage or adjudication does not prove exhaustive defect detection.

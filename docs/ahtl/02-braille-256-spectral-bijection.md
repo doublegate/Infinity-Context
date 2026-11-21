@@ -7,7 +7,7 @@ SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commerci
 
 **Document ID:** `ICX-SPEC-AHTL-1.0-CH02`  
 **Target Crates:** [`crates/icx-codec/src/braille.rs`](../../crates/icx-codec/src/braille.rs), [`crates/icx-hdc/src/hv.rs`](../../crates/icx-hdc/src/hv.rs), [`crates/icx-hdc/src/lib.rs`](../../crates/icx-hdc/src/lib.rs)  
-**Primary Archival Reference:** [`ref-docs/unicode-braille-patterns/README.md`](../../ref-docs/unicode-braille-patterns/README.md) · [`Unicode_U2800_Braille_Patterns_Chart.pdf`](../../ref-docs/unicode-braille-patterns/Unicode_U2800_Braille_Patterns_Chart.pdf) · [`ISO/IEC 10646-1 FPDAM 16 (L2/98-136)`](../../ref-docs/unicode-braille-patterns/standards-and-wg2/L2_98_136_N1770_ISO_10646_FPDAM16_Braille_Patterns.pdf)
+**Primary Archival Reference:** [`ref-docs/unicode-braille-patterns/README.md`](../../ref-docs/unicode-braille-patterns/README.md) · [`Unicode_U2800_Braille_Patterns_Chart.pdf`](https://www.unicode.org/charts/PDF/U2800.pdf) · [`ISO/IEC 10646-1 FPDAM 16 (L2/98-136)`](https://www.unicode.org/L2/L1998/98136.pdf)
 
 ---
 

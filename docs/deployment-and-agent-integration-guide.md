@@ -14,7 +14,7 @@ SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commerci
 Agent hook contracts in this guide were checked against the upstream documentation on 2026-11-18 (Claude Code 2.1.328, codex-cli 0.170.0, agy 1.5.11, Hermes source `dc394c6`). Agent hook schemas change between releases; re-check them when you upgrade an agent.
 
 This guide describes the v1.2.0 candidate, not a published or fully qualified release. Current
-contracts and limits are in [ADR0006](adr/0006-v1-2-0-context-and-compatibility.md) and
+contracts and limits are in [ADR 0006](adr/0006-v1-2-0-context-and-compatibility.md) and
 [PROJECT-STATUS](../PROJECT-STATUS.md). Older numerical tables/output below are explicitly
 dated v1.1.0 examples; they are not v1.2.0 measurements. New candidate evidence is under
 [releases/v1.2.0/evidence/](releases/v1.2.0/evidence/). Architecture diagrams show component
@@ -1189,7 +1189,7 @@ systemctl --user status icx-proxy.service
   archived unversioned Q15 `fc` values retain their interpretation.
 - Legacy `ICXHDC03` is readable, but the MMU rebuilds exact token postings from the persisted CAS
   event log. Saving writes `ICXHDC04`; old binaries cannot read 04. Keep the pre-upgrade backup
-  for downgrade instead of trying to relabel a new snapshot as03.
+  for downgrade instead of trying to relabel a new snapshot as 03.
 - Managed prompt selection is now automatically bounded. Legacy state without a policy receives
   the default 32,768 / 4,096 / 4,096 budget. Review it for your model with `icx context-budget`.
 - Daemon success now follows a committed WAL transaction with `synchronous=FULL`; write-behind

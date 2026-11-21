@@ -191,7 +191,7 @@ impl CacheEpochController {
 }
 ```
 
-Default policy:32,768 total units minus 4,096 completion and 4,096 external-input reserve.
+Default policy: 32,768 total units minus 4,096 completion and 4,096 external-input reserve.
 `utf8-bytes-upper-bound-v1` charges one UTF-8 byte per token allowance; it is an estimator,
 not provider tokenization. Callers must account for external system/current-message/tool-schema
 content. Automatic selection bounds the icx-managed view and structured recall tail, not every

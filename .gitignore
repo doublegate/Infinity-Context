@@ -26,6 +26,8 @@ Thumbs.db
 *.sock
 *.profraw
 *.profdata
+*.lcov
+lcov.info
 *.tmp.*
 cas_store.lock
 cas_store.json
@@ -41,3 +43,6 @@ coverage/
 
 # Local patent drafts are never published (v1.1.0, ICX-AUD-038).
 /patents/
+
+# Playwright MCP session output (screenshots, snapshots)
+.playwright-mcp/

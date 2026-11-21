@@ -74,22 +74,22 @@ All eight manifests, root Cargo configuration/lock/toolchain, four fuzz target s
 | Gate | Outcome |
 | --- | --- |
 | Format / strict Clippy / warning-free rustdoc | PASS |
-| Workspace tests | Sandbox6 CLI socket failures; host rerun PASS |
-| 95% line coverage | Host gate PASS; LCOV18,925/19,890=95.1483% |
-| Synthetic benchmark baseline | FAIL Hamming scan291.50us vs150us local gate under concurrent work |
+| Workspace tests | Sandbox 6 CLI socket failures; host rerun PASS |
+| 95% line coverage | Host gate PASS; LCOV 18,925/19,890 = 95.1483% |
+| Synthetic benchmark baseline | FAIL Hamming scan 291.50us vs 150us local gate under concurrent work |
 | Doctor | PASS; no populated-store or actual agent registration guarantee |
-| cargo-deny | Initial invalid option, then read-only DB lock failure; corrected isolated DB PASS all4 stages; DB fetch succeeds |
-| cargo-audit | PASS locally cached1533-advisory DB; read-only index lock warning |
+| cargo-deny | Initial invalid option, then read-only DB lock failure; corrected isolated DB PASS all 4 stages; DB fetch succeeds |
+| cargo-audit | PASS locally cached 1533-advisory DB; read-only index lock warning |
 | cargo-about / cargo-machete | PASS |
-| REUSE3.3 | Initial uv tool-directory write blocked; cached read-only executable PASS608/608 |
-| Gitleaks | Installed8.24.3 reports7 historical synthetic-fixture hits; exact checksum-verified CI8.30.1 PASS506 commits25.42MB no leaks |
+| REUSE 3.3 | Initial uv tool-directory write blocked; cached read-only executable PASS 608/608 |
+| Gitleaks | Installed 8.24.3 reports 7 historical synthetic-fixture hits; exact checksum-verified CI 8.30.1 PASS 506 commits 25.42MB no leaks |
 | actionlint / Antigravity selftest / CLA selftest | PASS |
 
-Advisory database revision after isolated refresh: `f291af9b1cc0d21dfcea1709d6b037963cef262b`, committed2026-11-20T13:47:55+01:00. This is dependency advisories, not a certification of native C components.
+Advisory database revision after isolated refresh: `f291af9b1cc0d21dfcea1709d6b037963cef262b`, committed 2026-11-20T13:47:55+01:00. This is dependency advisories, not a certification of native C components.
 
 The pinned scanner result supersedes any implication that the old scanner's7 fixture detections indicate live secrets. Only rule/file/line/commit metadata is retained for those old-version hits; no secret values are published.
 
-Ten-run shared-host benchmark summary (warm-up excluded): portable0/10 complete SLO passes, native1/10. Hamming scan medians/min/max: portable460.67/315.17/681.38us; native656.535/126.67/4685.31us. Native appearing slower during intermittent multi-millisecond stalls demonstrates uncontrolled interference; these figures do **not** establish that portable compilation is faster. No optimization benefit is accepted from this series. Repeat on an idle dedicated host before drawing quantitative comparisons. All raw outputs are retained.
+Ten-run shared-host benchmark summary (warm-up excluded): portable 0/10 complete SLO passes, native 1/10. Hamming scan medians/min/max: portable 460.67/315.17/681.38us; native 656.535/126.67/4685.31us. Native appearing slower during intermittent multi-millisecond stalls demonstrates uncontrolled interference; these figures do **not** establish that portable compilation is faster. No optimization benefit is accepted from this series. Repeat on an idle dedicated host before drawing quantitative comparisons. All raw outputs are retained.
 
 ## Final fuzz and mutation outcomes
 
@@ -106,15 +106,15 @@ and [exact outer commands/exits](evidence/validation-fuzz.json).
 | `ahtl_stream` | 3,656,818 in 901 seconds | No in-run assertion found; sanitizer shutdown restricted |
 | `hdc_snapshot` | 4,687,530 in 901 seconds | No in-run assertion found; sanitizer shutdown restricted |
 | `mcp_jsonrpc` | 2,212,528 in 901 seconds | No in-run assertion found; sanitizer shutdown restricted |
-| `redact` | Stopped before budget on assertion | Fuzzer exit 77, outer command exit 1; minimized and independently reproduced as006 |
+| `redact` | Stopped before budget on assertion | Fuzzer exit 77, outer command exit 1; minimized and independently reproduced as 006 |
 
-The redactor's initial outer wall time of799.48 seconds includes compilation, so it is not
+The redactor's initial outer wall time of 799.48 seconds includes compilation, so it is not
 799.48 seconds of fuzzing. Extending the suspicious case consisted of minimization, independent
 production-library replay and valid-YAML counterexamples. Its property failure is distinguished
-from production panic and from the separate credential leak001.
+from production panic and from the separate credential leak 001.
 
-After initial round-robin1/100 samples, expanded round-robin1/20 samples selected257 mutations
-across all eight crates. All257 have per-mutant outcomes. They are overlapping samples, so the
+After initial round-robin 1/100 samples, expanded round-robin 1/20 samples selected 257 mutations
+across all eight crates. All 257 have per-mutant outcomes. They are overlapping samples, so the
 initial and expanded campaigns must not be added as unique coverage. The complete generated
 mutation space remains unexecuted. Corrected expanded results are:
 
@@ -141,6 +141,6 @@ Timeouts are not counted as caught; missed mutations still require semantic tria
 becoming separate production findings. Audit-owned scratch was cleaned without removing
 production or pre-existing source artifacts.
 
-Final REUSE3.3 recheck with audit deliverables present passes678/678 scanner-reported files,
-exit0; see [closeout log](evidence/closeout-reuse.log). This checks metadata consistency,
-not the qualified redistribution-rights questions in report07.
+Final REUSE 3.3 recheck with audit deliverables present passes 678/678 scanner-reported files,
+exit 0; see [closeout log](evidence/closeout-reuse.log). This checks metadata consistency,
+not the qualified redistribution-rights questions in report 07.

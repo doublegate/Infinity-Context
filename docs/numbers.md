@@ -3,22 +3,22 @@
 Current implementation and qualification are tracked in
 [the v1.2.0 release record](releases/v1.2.0/README.md). The tables headed v1.1.0 below are
 **historical measurements**, not current release guarantees. The independent audit found that
-their recall corpus was insufficient and their10k scan figure was an arithmetic extrapolation.
+their recall corpus was insufficient and their 10k scan figure was an arithmetic extrapolation.
 
-The frozen27-row v1.2.0 corpus rerun records recall@1/@5=100% across repetitive, varied and
-multilingual synthetic cases at100/1k/10k artifacts and three seeds. This establishes those
+The frozen 27-row v1.2.0 corpus rerun records recall@1/@5=100% across repetitive, varied and
+multilingual synthetic cases at 100/1k/10k artifacts and three seeds. This establishes those
 identifier-retrieval cases, not general semantic/model effectiveness. See the exact
 [standard corpus](releases/v1.2.0/evidence/retrieval.csv) and
 [multilingual corpus](releases/v1.2.0/evidence/retrieval-multilingual.csv).
 Query timings in that run share the host with validation work and are not isolated SLO evidence.
 
 Portable/native independent benchmark series and strict failures are retained in the release
-record. Hardware SLO failures remain failures. Current `benchmark --json` measures actual1k
-and10k scans independently and records build flags, CPU, corpus hash and gate outcomes.
+record. Hardware SLO failures remain failures. Current `benchmark --json` measures actual 1k
+and 10k scans independently and records build flags, CPU, corpus hash and gate outcomes.
 
 This file is the single place where Infinity-Context (`icx`) states its quantitative claims.
 Other documents should link here instead of restating a figure. The dated historical values
-remain for comparison; current runtime contracts come from ADR0006 and release evidence.
+remain for comparison; current runtime contracts come from ADR 0006 and release evidence.
 Cross-document contradictions recorded by
 the audit (`ICX-AUD-031`) are listed with their canonical values in
 [`ref-docs/corrections-2026-11-18.md`](../ref-docs/corrections-2026-11-18.md).
@@ -40,7 +40,7 @@ Release-build gates apply as written; CI multiplies the time ceilings by 3 and d
 | Metric | v1.1.0 value | Fixture / how measured | Release gate | Source |
 | :--- | :--- | :--- | :--- | :--- |
 | HDC bind (`^`) + permute | 46.82 ns / op | 1,000 ops on 10,240-bit vectors | at most 100 ns | `icx benchmark` |
-| HDC Hamming scan | 64.20 µs / 1,000 nodes; extrapolated642.05 µs /10k | Historical1kmeasurement multiplied by10, not a measured10kscan | at most150µs per1k | v1.1.0 `icx benchmark` |
+| HDC Hamming scan | 64.20 µs / 1,000 nodes; extrapolated 642.05 µs /10k | Historical 1k measurement multiplied by 10, not a measured 10k scan | at most 150µs per 1k | v1.1.0 `icx benchmark` |
 | Fractal IFS suffix match | 24.27 ns / pair | `shared_depth=6` | at most 50 ns and depth at least 6 | `icx benchmark` |
 | Two-stage HDC query | 49.00 µs | synthetic index | at most 200 µs | `icx benchmark` |
 | CSR Personalized PageRank | 109.78 µs | 201-node graph, 8 iterations | at most 400 µs | `icx benchmark` |

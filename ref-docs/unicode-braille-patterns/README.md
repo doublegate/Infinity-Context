@@ -5,8 +5,8 @@ SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commerci
 
 # Unicode Braille Patterns (`U+2800..U+28FF`) — Normative Reference, Bijection Mathematics, and `AHTL` Channel B Specification
 
-**Primary Archive Source:** [Wikipedia — *Braille Patterns*](https://en.wikipedia.org/wiki/Braille_Patterns) ([Local HTML Snapshot](wikipedia_braille_patterns.html) · [REST v1 HTML](wikipedia_braille_patterns_rest_v1.html) · [MediaWiki Parse Metadata JSON](wikipedia_braille_patterns_metadata.json) · [Templates JSON](wikipedia_braille_templates.json))  
-**Official Unicode Code Chart:** [Unicode Standard `U+2800..U+28FF` Code Chart PDF](Unicode_U2800_Braille_Patterns_Chart.pdf) · [UCD NamesList (`U+2800..U+28FF`)](standards-and-wg2/Unicode_UCD_NamesList_U2800_U28FF.txt)  
+**Primary Archive Source:** [Wikipedia — *Braille Patterns*](https://en.wikipedia.org/wiki/Braille_Patterns) ([HTML Snapshot](wikipedia_braille_patterns.html) · [REST v1 HTML](wikipedia_braille_patterns_rest_v1.html) · [MediaWiki Parse Metadata JSON](wikipedia_braille_patterns_metadata.json) · [Templates JSON](wikipedia_braille_templates.json))  
+**Official Unicode Code Chart:** [Unicode Standard `U+2800..U+28FF` Code Chart PDF](https://www.unicode.org/charts/PDF/U2800.pdf) · [UCD NamesList (`U+2800..U+28FF`)](standards-and-wg2/Unicode_UCD_NamesList_U2800_U28FF.txt)  
 **Target Subsystem:** `crates/icx-codec` ([docs/alien-holographic-codec.md](../../docs/alien-holographic-codec.md) §3.2, [ref-docs/novel-methods/non-human-neural-codecs-and-holographic-context.md](../novel-methods/non-human-neural-codecs-and-holographic-context.md) §1.2)
 
 ---
@@ -20,12 +20,12 @@ Unlike alphabetical scripts in Unicode, a codepoint in `U+2800..U+28FF` defines 
 | Property | Normative Value | Standard / Source |
 | :--- | :--- | :--- |
 | **Block Name** | `Braille Patterns` | [Unicode UCD `Blocks.txt`](standards-and-wg2/Unicode_UCD_Blocks.txt) |
-| **Codepoint Range** | `U+2800..U+28FF` (256 codepoints, 100% assigned) | [Unicode `U2800.pdf`](Unicode_U2800_Braille_Patterns_Chart.pdf) |
+| **Codepoint Range** | `U+2800..U+28FF` (256 codepoints, 100% assigned) | [Unicode `U2800.pdf`](https://www.unicode.org/charts/PDF/U2800.pdf) |
 | **Plane** | Plane 0 — Basic Multilingual Plane (`BMP`) | The Unicode Standard |
 | **Script Property** | `Braille` (`ISO 15924` code: `Brai`, numeric `570`) | [Unicode UCD `Scripts.txt`](standards-and-wg2/Unicode_UCD_Scripts.txt) |
-| **General Category** | `So` (*Symbol, Other*) — **not** `Lo` (*Letter, Other*) | [Unicode 5.2.0 Ch. 15 §15.10](standards-and-wg2/Unicode_5.2.0_Ch15_Symbols_Sec15.10_Braille.pdf) |
+| **General Category** | `So` (*Symbol, Other*) — **not** `Lo` (*Letter, Other*) | [Unicode 5.2.0 Ch. 15 §15.10](https://www.unicode.org/versions/Unicode5.2.0/ch15.pdf) |
 | **UTF-8 Byte Footprint** | Fixed 3 bytes per codepoint: `0xE2 0xA0..0xA3 0x80..0xBF` | RFC 3629 / UTF-8 |
-| **Introduced Version** | Unicode 3.0 (September 1999) / ISO/IEC 10646-1:1993 Cor. & FPDAM 16 | [L2/98-136 / WG2 N1770](standards-and-wg2/L2_98_136_N1770_ISO_10646_FPDAM16_Braille_Patterns.pdf) |
+| **Introduced Version** | Unicode 3.0 (September 1999) / ISO/IEC 10646-1:1993 Cor. & FPDAM 16 | [L2/98-136 / WG2 N1770](https://www.unicode.org/L2/L1998/98136.pdf) |
 | **Foundational Standards** | **ISO/TR 11548-1:2001** (*Communication aids for blind persons — Part 1: General guidelines for 8-dot Braille identifiers*) & **ISO 17049:2013** | ISO/TC 173 & JTC 1/SC 2/WG 2 |
 
 ---
@@ -110,7 +110,7 @@ Every codepoint $U = \text{0x2800} + b$ has the 16-bit binary form `0010_1000_b7
 ## 4. Naming Conventions, Font Variations & Braille ASCII Comparison
 
 ### 4.1 Normative vs. Colloquial Naming Rules
-- **Unicode Normative Names ([`U2800.pdf`](Unicode_U2800_Braille_Patterns_Chart.pdf)):** Every character from `U+2801` to `U+28FF` is named `BRAILLE PATTERN DOTS-<digits>`, where `<digits>` lists the raised dot numbers in strictly ascending order (`1` through `8`). By explicit exception, `U+2800` (zero raised dots) is named `BRAILLE PATTERN BLANK`.
+- **Unicode Normative Names ([`U2800.pdf`](https://www.unicode.org/charts/PDF/U2800.pdf)):** Every character from `U+2801` to `U+28FF` is named `BRAILLE PATTERN DOTS-<digits>`, where `<digits>` lists the raised dot numbers in strictly ascending order (`1` through `8`). By explicit exception, `U+2800` (zero raised dots) is named `BRAILLE PATTERN BLANK`.
 - **Plural `DOTS-` Invariant:** Unicode always uses the plural token `DOTS-` even when only a single dot is raised (e.g., `U+2810` is `BRAILLE PATTERN DOTS-5`, whereas English Braille readers colloquially say *"braille dot 5"* or *"dot 5"*, and say *"braille dots 4 and 5"* for `U+2818` `BRAILLE PATTERN DOTS-45`).
 
 ### 4.2 Font Rendering Variations
@@ -467,25 +467,25 @@ The table below synthesizes all 24 official standardization proposals, committee
 | **1991-03-20** | `X3L2/91-085` | — | *TC 173 Proposals for new work items for Braille Coding* | ISO/TC 173 / X3L2 |
 | **1991-10-29** | `X3L2/92-039` | — | Avery Bishop, *The long awaited draft reply on Braille symbol encoding* | ANSI X3L2 Archive |
 | **1994-12-26** | — | `N1093` | Kohji Shibano, *Braille Letters* | ISO/IEC JTC 1/SC 2/WG 2 |
-| **1995-05-03** | — | `N1203` | V. S. Umamaheswaran & Mike Ksar, *Unconfirmed minutes of SC2/WG2 Meeting 27, Geneva* (§6.1.3.3) | [Local: `WG2_N1203_Meeting27_Minutes.txt`](standards-and-wg2/WG2_N1203_Meeting27_Minutes.txt) |
-| **1995-10-27** | `X3L2/95-114` | `N1279` | *Braille letters (addition request)* | [Local: `WG2_N1279_X3L2_95_114_Braille_Letters_Addition_Request.doc`](standards-and-wg2/WG2_N1279_X3L2_95_114_Braille_Letters_Addition_Request.doc) |
-| **1996-01-26** | — | `N1303` | V. S. Umamaheswaran & Mike Ksar, *Minutes of Meeting 29, Tokyo* (§8.14 Braille) | [Local HTML](standards-and-wg2/WG2_N1303_Meeting29_Tokyo_Minutes.html) · [Local DOC](standards-and-wg2/WG2_N1303_Meeting29_Tokyo_Minutes.doc) |
-| **1996-03-05** | `UTC/1996-002` | — | Joan Aliprand, Edwin Hart, & Steve Greenfield, *UTC #67 Minutes* (§Braille) | [Local: `UTC_1996_002_UTC67_Minutes_Braille.txt`](standards-and-wg2/UTC_1996_002_UTC67_Minutes_Braille.txt) |
+| **1995-05-03** | — | `N1203` | V. S. Umamaheswaran & Mike Ksar, *Unconfirmed minutes of SC2/WG2 Meeting 27, Geneva* (§6.1.3.3) | [`WG2_N1203_Meeting27_Minutes.txt` (see SOURCES.md)](SOURCES.md#wg2-n1203-meeting27-minutes-txt) |
+| **1995-10-27** | `X3L2/95-114` | `N1279` | *Braille letters (addition request)* | [`WG2_N1279_X3L2_95_114_Braille_Letters_Addition_Request.doc` (see SOURCES.md)](SOURCES.md#wg2-n1279-x3l2-95-114-braille-letters-addition-request-doc) |
+| **1996-01-26** | — | `N1303` | V. S. Umamaheswaran & Mike Ksar, *Minutes of Meeting 29, Tokyo* (§8.14 Braille) | [HTML](SOURCES.md#wg2-n1303-meeting29-tokyo-minutes-html) · [DOC](SOURCES.md#wg2-n1303-meeting29-tokyo-minutes-doc) |
+| **1996-03-05** | `UTC/1996-002` | — | Joan Aliprand, Edwin Hart, & Steve Greenfield, *UTC #67 Minutes* (§Braille) | [`UTC_1996_002_UTC67_Minutes_Braille.txt` (see SOURCES.md)](SOURCES.md#utc-1996-002-utc67-minutes-braille-txt) |
 | **1996-03-07** | `UTC/1996-007` | — | Edwin Hart, *Contribution on Encoding Braille in ISO/IEC 10646* | Unicode Technical Committee |
 | **1996-03-19** | — | `N1342` | Takayuki K. Sato, *Braille letters (confirmation of request)* | ISO/IEC JTC 1/SC 2/WG 2 |
 | **1996-03-28** | — | `N1339` | Mike Ksar, *Liaison Letter on Braille to ISO/TC137 Secretariat* | ISO/IEC JTC 1/SC 2/WG 2 |
 | **1996-04-01** | — | `N1345` | Edwin Hart, *Initial comments on encoding Braille into ISO/IEC 10646* | ISO/IEC JTC 1/SC 2/WG 2 |
-| **1996-06-25** | — | `N1353` | V. S. Umamaheswaran & Mike Ksar, *Draft minutes of WG2 Copenhagen Meeting #30* (§8.9) | [Local: `WG2_N1353_Meeting30_Copenhagen_Minutes.doc`](standards-and-wg2/WG2_N1353_Meeting30_Copenhagen_Minutes.doc) |
-| **1996-07-01** | `UTC/1996-027.2` | — | Steve Greenfield, *UTC #69 Minutes (Part 2)* (§K. Braille Proposal) | [Local: `UTC_1996_027_2_UTC69_Minutes_Part2_Braille.txt`](standards-and-wg2/UTC_1996_027_2_UTC69_Minutes_Part2_Braille.txt) |
+| **1996-06-25** | — | `N1353` | V. S. Umamaheswaran & Mike Ksar, *Draft minutes of WG2 Copenhagen Meeting #30* (§8.9) | [`WG2_N1353_Meeting30_Copenhagen_Minutes.doc` (see SOURCES.md)](SOURCES.md#wg2-n1353-meeting30-copenhagen-minutes-doc) |
+| **1996-07-01** | `UTC/1996-027.2` | — | Steve Greenfield, *UTC #69 Minutes (Part 2)* (§K. Braille Proposal) | [`UTC_1996_027_2_UTC69_Minutes_Part2_Braille.txt` (see SOURCES.md)](SOURCES.md#utc-1996-027-2-utc69-minutes-part2-braille-txt) |
 | **1996-08-12** | — | `N1409R` | *Braille Symbols* (Ordering & 8-bit bitmask alignment with DIS 11548-1) | ISO/IEC JTC 1/SC 2/WG 2 |
-| **1996-12-06** | — | `N1453` | Mike Ksar & V. S. Umamaheswaran, *WG 2 Minutes — Quebec Meeting 31* (§8.9) | [Local: `WG2_N1453_Meeting31_Quebec_Minutes.pdf`](standards-and-wg2/WG2_N1453_Meeting31_Quebec_Minutes.pdf) |
+| **1996-12-06** | — | `N1453` | Mike Ksar & V. S. Umamaheswaran, *WG 2 Minutes — Quebec Meeting 31* (§8.9) | [`WG2_N1453_Meeting31_Quebec_Minutes.pdf` (see SOURCES.md)](SOURCES.md#wg2-n1453-meeting31-quebec-minutes-pdf) |
 | **1997-03-11** | `L2/97-047` | `N1541` | Michael Everson, *Proposed pDAM text for Braille* | ISO/IEC JTC 1/SC 2/WG 2 |
 | **1997-06-23** | — | `N1588` / `N1588.1` | *DIS 11548-1 & DIS 11548-2 — Communication aids for blind persons: Braille identifiers and shift marks* | ISO/TC 173 / SC 2/WG 2 |
 | **1997-07-01** | `L2/97-157` | `N1612` | *Report of ad-hoc group on Braille encoding* | ISO/IEC JTC 1/SC 2/WG 2 |
-| **1997-10-24** | `L2/97-288` | `N1603` | V. S. Umamaheswaran, *Unconfirmed Meeting Minutes, WG 2 Meeting #33, Heraklion, Crete* (§8.4) | [Local: `WG2_N1603_L2_97_288_Meeting33_Crete_Minutes.doc`](standards-and-wg2/WG2_N1603_L2_97_288_Meeting33_Crete_Minutes.doc) |
-| **1998-04-06** | `L2/98-136` | `N1770` | Bruce Paterson, *Revised Text of ISO/IEC 10646-1/FPDAM 16: Amendment 16: Braille Patterns* | [Local L2 PDF](standards-and-wg2/L2_98_136_N1770_ISO_10646_FPDAM16_Braille_Patterns.pdf) · [Local WG2 PDF](standards-and-wg2/WG2_N1770_FPDAM16_Braille_Patterns.pdf) |
-| **1998-07-02** | `L2/98-286` | `N1703` | V. S. Umamaheswaran & Mike Ksar, *Unconfirmed Meeting Minutes, WG 2 Meeting #34, Redmond, WA* (§6.2.2 FPDAM-16) | [Local: `WG2_N1703_L2_98_286_Meeting34_Redmond_Minutes.doc`](standards-and-wg2/WG2_N1703_L2_98_286_Meeting34_Redmond_Minutes.doc) |
-| **1999–Present** | Unicode `3.0`–`17.0+` | ISO/TR 11548-1:2001 & ISO 17049:2013 | *The Unicode Standard — Chapter 15 / Chapter 21 (Symbols: Braille Patterns `U+2800..U+28FF`)* | [Code Chart `U2800.pdf`](Unicode_U2800_Braille_Patterns_Chart.pdf) · [Ch. 15 PDF](standards-and-wg2/Unicode_5.2.0_Ch15_Symbols_Sec15.10_Braille.pdf) · [NamesList](standards-and-wg2/Unicode_UCD_NamesList_U2800_U28FF.txt) |
+| **1997-10-24** | `L2/97-288` | `N1603` | V. S. Umamaheswaran, *Unconfirmed Meeting Minutes, WG 2 Meeting #33, Heraklion, Crete* (§8.4) | [`WG2_N1603_L2_97_288_Meeting33_Crete_Minutes.doc` (see SOURCES.md)](SOURCES.md#wg2-n1603-l2-97-288-meeting33-crete-minutes-doc) |
+| **1998-04-06** | `L2/98-136` | `N1770` | Bruce Paterson, *Revised Text of ISO/IEC 10646-1/FPDAM 16: Amendment 16: Braille Patterns* | [L2 PDF](https://www.unicode.org/L2/L1998/98136.pdf) · [Local WG2 PDF](SOURCES.md#wg2-n1770-fpdam16-braille-patterns-pdf) |
+| **1998-07-02** | `L2/98-286` | `N1703` | V. S. Umamaheswaran & Mike Ksar, *Unconfirmed Meeting Minutes, WG 2 Meeting #34, Redmond, WA* (§6.2.2 FPDAM-16) | [`WG2_N1703_L2_98_286_Meeting34_Redmond_Minutes.doc` (see SOURCES.md)](SOURCES.md#wg2-n1703-l2-98-286-meeting34-redmond-minutes-doc) |
+| **1999–Present** | Unicode `3.0`–`17.0+` | ISO/TR 11548-1:2001 & ISO 17049:2013 | *The Unicode Standard — Chapter 15 / Chapter 21 (Symbols: Braille Patterns `U+2800..U+28FF`)* | [Code Chart `U2800.pdf`](https://www.unicode.org/charts/PDF/U2800.pdf) · [Ch. 15 PDF](https://www.unicode.org/versions/Unicode5.2.0/ch15.pdf) · [NamesList](standards-and-wg2/Unicode_UCD_NamesList_U2800_U28FF.txt) |
 
 ---
 
@@ -494,7 +494,7 @@ The table below synthesizes all 24 official standardization proposals, committee
 ```text
 ref-docs/unicode-braille-patterns/
 ├── README.md                                                                 # This normative specification & 256-entry lookup table
-├── Unicode_U2800_Braille_Patterns_Chart.pdf                                  # Official Unicode Consortium U+2800..U+28FF code chart
+├── Unicode_U2800_Braille_Patterns_Chart.pdf                                  # Official Unicode Consortium U+2800..U+28FF code chart [not redistributed since v1.2.0; see SOURCES.md]
 ├── wikipedia_braille_patterns.html                                           # Full raw HTML snapshot of en.wikipedia.org/wiki/Braille_Patterns
 ├── wikipedia_braille_patterns_rest_v1.html                                   # Wikimedia REST v1 Parsoid HTML snapshot
 ├── wikipedia_braille_patterns_metadata.json                                  # MediaWiki API parse JSON (wikitext, links, externallinks, images, sections)
@@ -514,20 +514,20 @@ ref-docs/unicode-braille-patterns/
 │       ├── Symbol_category_class.png                                         # 1280px PNG render of Symbol_category_class.svg
 │       └── wikimedia_image_metadata.json                                     # Wikimedia Commons API imageinfo & licensing metadata
 └── standards-and-wg2/
-    ├── Unicode_5.2.0_Ch15_Symbols_Sec15.10_Braille.pdf                       # Unicode Standard Chapter 15 (§15.10 Braille)
+    ├── Unicode_5.2.0_Ch15_Symbols_Sec15.10_Braille.pdf                       # Unicode Standard Chapter 15 (§15.10 Braille) [not redistributed since v1.2.0; see SOURCES.md]
     ├── Unicode_UCD_NamesList_U2800_U28FF.txt                                 # Extracted UCD NamesList.txt block for U+2800..U+28FF
     ├── Unicode_UCD_Blocks.txt                                                # Unicode Character Database Blocks.txt
     ├── Unicode_UCD_Scripts.txt                                               # Unicode Character Database Scripts.txt (Brai)
-    ├── L2_98_136_N1770_ISO_10646_FPDAM16_Braille_Patterns.pdf                # L2/98-136 / WG2 N1770 FPDAM 16: Braille Patterns (Bruce Paterson, 1998)
-    ├── WG2_N1770_FPDAM16_Braille_Patterns.pdf                                # ISO/IEC JTC 1/SC 2/WG 2 N1770 archival PDF
-    ├── UTC_1996_002_UTC67_Minutes_Braille.txt                                # UTC #67 Minutes (1996-03-05) — Braille encoding adoption
-    ├── UTC_1996_027_2_UTC69_Minutes_Part2_Braille.txt                        # UTC #69 Minutes Part 2 (1996-07-01) — Section K. Braille Proposal
-    ├── WG2_N1203_Meeting27_Minutes.txt                                       # SC2/WG2 Meeting 27 Geneva Minutes (§6.1.3.3 Braille)
-    ├── WG2_N1279_X3L2_95_114_Braille_Letters_Addition_Request.doc            # WG2 N1279 / X3L2/95-114 Braille letters addition request
-    ├── WG2_N1303_Meeting29_Tokyo_Minutes.html                                # SC2/WG2 Meeting 29 Tokyo Minutes (§8.14 Braille, HTML)
-    ├── WG2_N1303_Meeting29_Tokyo_Minutes.doc                                 # SC2/WG2 Meeting 29 Tokyo Minutes (§8.14 Braille, DOC)
-    ├── WG2_N1353_Meeting30_Copenhagen_Minutes.doc                            # SC2/WG2 Meeting 30 Copenhagen Minutes (§8.9 Braille)
-    ├── WG2_N1453_Meeting31_Quebec_Minutes.pdf                                # SC2/WG2 Meeting 31 Quebec Minutes (§8.9 Braille)
-    ├── WG2_N1603_L2_97_288_Meeting33_Crete_Minutes.doc                       # SC2/WG2 Meeting 33 Heraklion Crete Minutes (§8.4 Braille)
-    └── WG2_N1703_L2_98_286_Meeting34_Redmond_Minutes.doc                     # SC2/WG2 Meeting 34 Redmond Minutes (§6.2.2 FPDAM-16 Braille Patterns)
+    ├── L2_98_136_N1770_ISO_10646_FPDAM16_Braille_Patterns.pdf                # L2/98-136 / WG2 N1770 FPDAM 16: Braille Patterns (Bruce Paterson, 1998) [not redistributed since v1.2.0; see SOURCES.md]
+    ├── WG2_N1770_FPDAM16_Braille_Patterns.pdf                                # ISO/IEC JTC 1/SC 2/WG 2 N1770 archival PDF [not redistributed since v1.2.0; see SOURCES.md]
+    ├── UTC_1996_002_UTC67_Minutes_Braille.txt                                # UTC #67 Minutes (1996-03-05) — Braille encoding adoption [not redistributed since v1.2.0; see SOURCES.md]
+    ├── UTC_1996_027_2_UTC69_Minutes_Part2_Braille.txt                        # UTC #69 Minutes Part 2 (1996-07-01) — Section K. Braille Proposal [not redistributed since v1.2.0; see SOURCES.md]
+    ├── WG2_N1203_Meeting27_Minutes.txt                                       # SC2/WG2 Meeting 27 Geneva Minutes (§6.1.3.3 Braille) [not redistributed since v1.2.0; see SOURCES.md]
+    ├── WG2_N1279_X3L2_95_114_Braille_Letters_Addition_Request.doc            # WG2 N1279 / X3L2/95-114 Braille letters addition request [not redistributed since v1.2.0; see SOURCES.md]
+    ├── WG2_N1303_Meeting29_Tokyo_Minutes.html                                # SC2/WG2 Meeting 29 Tokyo Minutes (§8.14 Braille, HTML) [not redistributed since v1.2.0; see SOURCES.md]
+    ├── WG2_N1303_Meeting29_Tokyo_Minutes.doc                                 # SC2/WG2 Meeting 29 Tokyo Minutes (§8.14 Braille, DOC) [not redistributed since v1.2.0; see SOURCES.md]
+    ├── WG2_N1353_Meeting30_Copenhagen_Minutes.doc                            # SC2/WG2 Meeting 30 Copenhagen Minutes (§8.9 Braille) [not redistributed since v1.2.0; see SOURCES.md]
+    ├── WG2_N1453_Meeting31_Quebec_Minutes.pdf                                # SC2/WG2 Meeting 31 Quebec Minutes (§8.9 Braille) [not redistributed since v1.2.0; see SOURCES.md]
+    ├── WG2_N1603_L2_97_288_Meeting33_Crete_Minutes.doc                       # SC2/WG2 Meeting 33 Heraklion Crete Minutes (§8.4 Braille) [not redistributed since v1.2.0; see SOURCES.md]
+    └── WG2_N1703_L2_98_286_Meeting34_Redmond_Minutes.doc                     # SC2/WG2 Meeting 34 Redmond Minutes (§6.2.2 FPDAM-16 Braille Patterns) [not redistributed since v1.2.0; see SOURCES.md]
 ```

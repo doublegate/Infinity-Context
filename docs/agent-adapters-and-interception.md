@@ -16,7 +16,7 @@ The v1.2.0 Codex correction is also pinned by `protocol_validation_v120.rs` and 
 Codex 0.171 diagnostic: tool-output replacement is unsupported. The tests exercise adapter
 output and storage; they are not live paid-provider or complete host-integration acceptance.
 Current compatibility and evidence limits supersede older design promises in
-[ADR0006](adr/0006-v1-2-0-context-and-compatibility.md).
+[ADR 0006](adr/0006-v1-2-0-context-and-compatibility.md).
 
 Common behaviour of `icx hook --agent <agent> --event <EVENT>`:
 
@@ -31,7 +31,7 @@ Common behaviour of `icx hook --agent <agent> --event <EVENT>`:
 - Tail producers select fitting whole frames, prioritizing the header and best recall, then
   sibling and remaining recall/PPR frames. Oversized recoverable frames can use compact CAS
   handles. Unsent sibling frames remain queued; their cursor is not advanced past them.
-  The default tail cap is 1,024 conservative accounting units,also limited by remaining managed
+  The default tail cap is 1,024 conservative accounting units, also limited by remaining managed
   window space. `icx context-budget` controls the persisted model policy. It does not cap all
   external native-agent messages or an entire provider request; callers reserve that content.
 

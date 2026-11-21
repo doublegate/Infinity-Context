@@ -69,10 +69,10 @@ local-link finding is raised from it. External URLs and anchors were not exhaust
 ## ICX-CODEX-102 — Worked Braille example contains a different Unicode character
 
 - **Category / severity / confidence:** reference specification defect / Low / High.
-- **Revision / location:** audited revision above; `ref-docs/unicode-braille-patterns/README.md:90` and the glyph row at92 in §3.3.
-- **Prerequisite / impact:** a reader copies Example2's glyph as a canonical vector for U+28C7. The copied character is U+0347, COMBINING EQUALS SIGN BELOW, and cannot decode as a Braille byte. This affects the example, not the production arithmetic codec.
-- **Proof:** `python3 docs/codex/evidence/check-braille-table.py` checks all256 full table rows against independent codepoint/UTF-8/name arithmetic. Those rows pass, but the worked example's literal character has `ord=0x0347`, whereas its label says U+28C7. Correct U+28C7 encodes to `e2 a3 87`. [Result](evidence/braille-table-result.json). The [official Unicode chart](https://www.unicode.org/charts/PDF/U2800.pdf) is the primary block reference.
-- **Counterevidence:** Example2's numerical byte, bit pattern, dot list and UTF-8 bytes agree with U+28C7, as does the full lookup table and implementation. This is a copying/typesetting defect, not a broken byte bijection or a security vulnerability.
+- **Revision / location:** audited revision above; `ref-docs/unicode-braille-patterns/README.md:90` and the glyph row at 92 in §3.3.
+- **Prerequisite / impact:** a reader copies Example 2's glyph as a canonical vector for U+28C7. The copied character is U+0347, COMBINING EQUALS SIGN BELOW, and cannot decode as a Braille byte. This affects the example, not the production arithmetic codec.
+- **Proof:** `python3 docs/codex/evidence/check-braille-table.py` checks all 256 full table rows against independent codepoint/UTF-8/name arithmetic. Those rows pass, but the worked example's literal character has `ord=0x0347`, whereas its label says U+28C7. Correct U+28C7 encodes to `e2 a3 87`. [Result](evidence/braille-table-result.json). The [official Unicode chart](https://www.unicode.org/charts/PDF/U2800.pdf) is the primary block reference.
+- **Counterevidence:** Example 2's numerical byte, bit pattern, dot list and UTF-8 bytes agree with U+28C7, as does the full lookup table and implementation. This is a copying/typesetting defect, not a broken byte bijection or a security vulnerability.
 - **Recommendation:** preserve the immutable reference and add a dated correction identifying the literal scalar and corrected glyph. Generate worked glyphs and tables from a shared numeric source.
-- **Acceptance:** every literal worked glyph's scalar and UTF-8 bytes match its label; the full256-entry arithmetic test stays green.
+- **Acceptance:** every literal worked glyph's scalar and UTF-8 bytes match its label; the full 256-entry arithmetic test stays green.
 - **Compatibility / prior IDs:** no wire or API change; no directly corresponding prior finding.

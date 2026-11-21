@@ -24,15 +24,15 @@
   <a href="LICENSING.md"><img src="https://img.shields.io/badge/specs-CC--BY--NC--ND--4.0-blueviolet.svg" alt="Specs: CC-BY-NC-ND-4.0"></a>
   <a href="PATENTS.md"><img src="https://img.shields.io/badge/patents-5%20Pending%20Families-d97706.svg" alt="Patents: 5 Pending Families"></a>
   <a href="COMMERCIAL.md"><img src="https://img.shields.io/badge/commercial%20license-available-ea580c.svg" alt="Commercial License Available"></a><br/>
-  <a href="docs/numbers.md"><img src="https://img.shields.io/badge/AHTL%20ratio-214x%20repetitive%20log%20%7C%20159.8x%20varied%20log-7c3aed.svg" alt="AHTL inline ratio: 214x on a repetitive test log, 159.8x on a varied log (synthetic fixtures)"></a>
-  <a href="#alien-holographic-token-lattice-ahtl"><img src="https://img.shields.io/badge/deref-exact%20stored%20bytes%20(post--redaction)-16a34a.svg" alt="Deref returns the exact stored bytes, after secret redaction"></a>
-  <a href="docs/numbers.md"><img src="https://img.shields.io/badge/prefix%20reuse%20(byte%20proxy)-95.46%25%20synthetic-059669.svg" alt="Byte-weighted prefix reuse: 95.46% on a synthetic transcript"></a>
-  <a href="docs/numbers.md"><img src="https://img.shields.io/badge/10%2C240--bit%20HDC%20scan-61.8%20%C2%B5s%20%2F%201k%20nodes-0284c7.svg" alt="HDC Hamming scan: 61.8 us per 1,000 nodes (synthetic)"></a><br/>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v1.2.0-2563eb.svg" alt="Release: v1.2.0"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.100%2B%20(Edition%202024)-f97316.svg?logo=rust" alt="Rust: 1.100+ (Edition 2024)"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/unsafe_code-forbid-16a34a.svg" alt="unsafe_code: forbid"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v1.1.0-2563eb.svg" alt="Release: v1.1.0"></a>
-  <a href="docs/numbers.md"><img src="https://img.shields.io/badge/in--process%20seqlock-58.3%20ns%20%2F%20publish-0d9488.svg" alt="In-process seqlock publish: 58.3 ns (synthetic)"></a>
-  <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20MCP-475569.svg" alt="Supported Agents"></a>
+  <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20MCP-475569.svg" alt="Supported Agents"></a><br/>
+  <a href="docs/numbers.md"><img src="https://img.shields.io/badge/AHTL%20ratio-214x%20repetitive%20log%20%7C%20159.8x%20varied%20log-7c3aed.svg" alt="AHTL inline ratio: 214x on a repetitive test log, 159.8x on a varied log (synthetic fixtures)"></a>
+  <a href="#alien-holographic-token-lattice-ahtl"><img src="https://img.shields.io/badge/deref-exact%20stored%20bytes%20(post--redaction)-16a34a.svg" alt="Deref returns the exact stored bytes, after secret redaction"></a><br/>
+  <a href="docs/numbers.md"><img src="https://img.shields.io/badge/prefix%20reuse%20(byte%20proxy)-96.31%25%20synthetic-059669.svg" alt="Byte-weighted prefix reuse: 96.31% on a synthetic transcript"></a>
+  <a href="docs/numbers.md"><img src="https://img.shields.io/badge/10%2C240--bit%20HDC%20scan-53.7%20%C2%B5s%20%2F%201k%20nodes-0284c7.svg" alt="HDC Hamming scan: 53.7 us per 1,000 nodes (synthetic)"></a>
+  <a href="docs/numbers.md"><img src="https://img.shields.io/badge/in--process%20seqlock-61.1%20ns%20%2F%20publish-0d9488.svg" alt="In-process seqlock publish: 61.1 ns (synthetic)"></a>
 </p>
 
 </div>
@@ -62,14 +62,33 @@ The inline size reduction depends on the input. In the built-in synthetic benchm
 
 ---
 
-## v1.2.0 development candidate
+## What Changed in v1.2.0
 
-The current branch implements the [v1.2.0 remediation plan](to-dos/v1.2.0-remediation.md).
-See [qualification and upgrade notes](docs/releases/v1.2.0/README.md) for measured results,
-compatibility, unresolved gates and governance decisions. It is not yet a published release.
-Current contracts are defined by [ADR0006](docs/adr/0006-v1-2-0-context-and-compatibility.md):
-exact post-redaction CAS bytes, lossy skeletons, hybrid lexical/HDC recall, bounded icx-managed
-context and committed daemon receipts. Native Codex hooks capture output but cannot replace it.
+v1.2.0 remediates the independent audit of v1.1.0 in [`docs/codex/`](docs/codex/README.md)
+(findings `ICX-CODEX-001` .. `ICX-CODEX-102`) plus the defects found in its pre-release review.
+Measured results, compatibility and open items are in the
+[v1.2.0 release notes](docs/releases/v1.2.0/README.md); current contracts are defined by
+[ADR 0006](docs/adr/0006-v1-2-0-context-and-compatibility.md).
+
+- **Bounded context:** the icx-managed window now has a total budget (`icx context-budget`).
+  At saturation old history is evicted in large steps behind one stable
+  `ICX:HISTORY_OMITTED` frame, so the prompt prefix stays byte-stable between steps; omitted
+  history stays dereferenceable.
+- **Recall:** exact lexical postings back the HDC/fractal recall, ranked by inverse document
+  frequency, so a unique identifier is never filtered out and outranks common words.
+- **Redaction:** YAML block, multi-line and flow-sequence secrets are hidden, redaction is
+  idempotent, and public digests (checksums, commit ids) are no longer over-redacted.
+- **Durability:** the daemon replies only after the store save succeeds, survives lock
+  contention, and no longer holds the workspace lock while reading a request.
+- **Integrations:** strict MCP request validation; Codex hook replies carry no
+  unsupported output field and no JSON nulls.
+- **Releases:** binaries are built by CI from the tag for static musl and glibc 2.35+, with
+  `SHA256SUMS`, build provenance and third-party notices.
+- **Upgrade:** v1.2.0 rebuilds workspaces into the ICXHDC04 snapshot format on first use.
+  v1.1.0 cannot read an upgraded workspace (it fails closed and loses nothing), so upgrade the
+  single `icx` binary used by all agents and keep a backup if you may downgrade. See
+  [`UPGRADING.md`](docs/releases/v1.2.0/UPGRADING.md).
+
 Historical figures and diagrams below are dated evidence/design summaries, not v1.2.0 timing,
 provider-cache, tokenizer or universal model-effectiveness guarantees.
 
@@ -81,7 +100,8 @@ v1.1.0 is a remediation release that follows an internal audit of v1.0.0 (findin
 
 ## Contents
 
-- [What Changed in v1.1.0](#what-changed-in-v110)
+- [What Changed in v1.2.0](#what-changed-in-v120)
+- [What Changed in v1.1.0](#what-changed-in-v110-historical)
 - [Highlights](#highlights)
 - [Architecture & Relationship Graphs](#architecture--relationship-graphs)
   - [5-Plane Virtual Context MMU Relationship Graph](#5-plane-virtual-context-mmu-relationship-graph)
@@ -300,24 +320,25 @@ The hook contracts below were checked against each agent's upstream documentatio
 
 ## Performance & Accuracy Benchmarks
 
-Run `cargo run --release -p icx-cli -- benchmark` to execute the built-in suite. It is a synthetic, in-process suite: its figures are not end-to-end agent latencies. Output of the v1.1.0 release build on an Intel Core i9-10850K (AVX2, no AVX-512) running Linux:
+Run `cargo run --release -p icx-cli -- benchmark` to execute the built-in suite. It is a synthetic, in-process suite: its figures are not end-to-end agent latencies. Output of the v1.2.0 release-candidate build (native) on an Intel Core i9-10850K (AVX2, no AVX-512) running Linux; [`docs/performance.md`](docs/performance.md) has the 10-run series behind these figures:
 
 ```text
 === Infinity-Context (icx) SLO & Accuracy Benchmark Suite ===
-  [PASS] 10,240-bit HDC Bind (^) + Permute: 46.82 ns / op (1,000 ops)
-  [PASS] 10,240-bit HDC Hamming Scan      : 64.20 us / 1,000 nodes (642.05 us / 10k nodes, min_dist=4931)
-  [PASS] Fractal IFS Suffix Match         : 24.27 ns / pair (shared_depth=6)
-  [PASS] Two-Stage HDC + CSR PPR          : 49.00 us (two-stage query), 109.78 us (201-node CSR PPR)
-  [PASS] AHTL Compression Ratio           : 214.0x on a repetitive 1,200-line test log (61413 B -> 287 B in 44.43 us)
+  [PASS] 10,240-bit HDC Bind (^) + Permute: 47.46 ns / op (1,000 ops)
+  [PASS] 10,240-bit HDC Hamming Scan      : freshly constructed: 71.61 us / 1,000 nodes; 10,000 nodes 1416.24 us parallel (2742.30 us sequential) (min_dist=4931/4911)
+  [INFO] HDC explicit cache conditions: 1k warm=39.40 us, scrubbed=360.95 us; 10k warm=3310.41 us, scrubbed=3824.32 us (informational, not SLO-gated)
+  [PASS] Fractal IFS Suffix Match         : 31.54 ns / pair (shared_depth=6)
+  [PASS] Two-Stage HDC + CSR PPR          : 182.59 us (two-stage query), 110.67 us (201-node CSR PPR)
+  [PASS] AHTL Compression Ratio           : 214.0x on a repetitive 1,200-line test log (61413 B -> 287 B in 48.91 us)
   [INFO] AHTL ratio, varied log      : 159.8x (14700 B -> 92 B; skeleton + handle, full text via deref, not a lossless encoding)
-  [PASS] FastCDC + BLAKE3 CAS Ingest (64K): 86.72 us (64659 B across 8 chunks)
-  [PASS] Atomic Seqlock Broadcast         : 58.3 ns / slot (1,000 publishes)
-  [PASS] Full Synchronous Hook Round-Trip : 244.05 us (PostToolUse virtualization)
-  [PASS] 50-Turn NIH + Cache-Epoch        : 95.46% byte-weighted prefix reuse over all turns (95.38% excluding seal turns; synthetic transcript, byte proxy), lossless passkey recovery (18.13 ms)
+  [PASS] FastCDC + BLAKE3 CAS Ingest (64K): 87.91 us (64659 B across 8 chunks)
+  [PASS] Atomic Seqlock Broadcast         : 57.8 ns / slot (1,000 publishes)
+  [PASS] Full Synchronous Hook Round-Trip : 275.06 us (PostToolUse virtualization)
+  [PASS] 50-Turn NIH + Cache-Epoch        : 96.31% byte-weighted prefix reuse over all turns (96.55% excluding seal turns; synthetic transcript, byte proxy), lossless passkey recovery (20.43 ms)
 All Infinity-Context SLO gates PASSED.
 ```
 
-The 244.05 µs hook figure is one in-process `PostToolUse` call against a fresh in-memory MMU with no persisted workspace. Real hook cost was measured separately on the audit workspaces:
+The 275.06 µs hook figure is one in-process `PostToolUse` call against a fresh in-memory MMU with no persisted workspace. Real hook cost was measured separately on the audit workspaces:
 
 | Measurement (i9-10850K, Linux) | v1.0.0 | v1.1.0 |
 | :--- | :--- | :--- |
@@ -524,7 +545,7 @@ See [Security & Threat Model](docs/security-and-threat-model.md) and [SECURITY.m
 
 ## Roadmap
 
-Development is organized into Phases 0–5 and 15 sprints tracked in [`to-dos/ROADMAP.md`](to-dos/ROADMAP.md); all were completed in `v1.0.0`. `v1.1.0` is the audit remediation release described in [What Changed in v1.1.0](#what-changed-in-v110). The milestone summaries below describe what each phase delivered; where a figure they once quoted was corrected by the audit, the v1.1.0 value is in [`docs/numbers.md`](docs/numbers.md).
+Development is organized into Phases 0–5 and 15 sprints tracked in [`to-dos/ROADMAP.md`](to-dos/ROADMAP.md); all were completed in `v1.0.0`. `v1.1.0` is the audit remediation release described in [What Changed in v1.1.0](#what-changed-in-v110-historical). The milestone summaries below describe what each phase delivered; where a figure they once quoted was corrected by the audit, the v1.1.0 value is in [`docs/numbers.md`](docs/numbers.md).
 
 - **Phase 0 (`v0.1.0` — COMPLETED): Research, REA Forensics, Specifications & Workspace Bootstrap** — [Overview](to-dos/phase-0-precursory-setup/overview.md)
   - 38-source deep research report, 22 indexed arXiv papers (`ref-docs/papers/`; 10 of the PDFs were removed in v1.1.0 because their license does not permit redistribution), REA binary/SQLite forensics on Claude Code, Codex, Antigravity CLI (`agy`), and Hermes (`ref-docs/agent-internals/`), 13 normative specs + 4 ADRs (`docs/`), 9-chapter AHTL v1.0 specification volume (`docs/ahtl/`), multi-tier GPL-3.0/AGPL-3.0/CC-BY-NC-ND-4.0 + 5-family patent IP governance (`REUSE 3.3`), and 8-crate workspace bootstrap.

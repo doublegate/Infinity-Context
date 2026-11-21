@@ -271,7 +271,6 @@ SPDX-FileComment = "Wikimedia Commons diagram licensed under CC-BY-2.5."
 # ---------------------------------------------------------------------------
 [[annotations]]
 path = [
-  "ref-docs/unicode-braille-patterns/Unicode_U2800_Braille_Patterns_Chart.pdf",
   "ref-docs/unicode-braille-patterns/standards-and-wg2/**",
 ]
 precedence = "override"

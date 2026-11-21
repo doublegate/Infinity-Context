@@ -3,7 +3,7 @@
 ## Status
 
 Historical decision (2026-11-16); unlimited pinning and provider-cache/TTFT claims superseded by
-[ADR0006](0006-v1-2-0-context-and-compatibility.md). Preserve the original rationale below.
+[ADR 0006](0006-v1-2-0-context-and-compatibility.md). Preserve the original rationale below.
 
 ## Context
 

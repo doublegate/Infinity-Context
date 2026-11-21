@@ -23,10 +23,17 @@ This is a development candidate until its release record says qualification is c
    post-redaction bytes. Redaction fixes affect new ingestion; old stored secrets are not
    automatically rewritten, purged or rotated.
 
-Version03 HDC snapshots are read and rebuilt from preserved CAS events. Saves write04 with
+Version 03 HDC snapshots are read and rebuilt from preserved CAS events. Saves write 04 with
 exact lexical postings. Existing CAS identities and Q15 Profile A coordinate interpretation
-are preserved. An older binary cannot read04: restore the pre-upgrade backup for downgrade.
+are preserved. An older binary cannot read 04: restore the pre-upgrade backup for downgrade.
 Do not delete source artifacts or edit snapshot magic bytes to force a downgrade.
+
+If an older binary does meet an upgraded workspace it fails closed: `icx status` and the hooks
+print `failed to load workspace state ... snapshot magic/version mismatch` on stderr, hooks pass
+the agent's input through unchanged, and nothing is written, so no stored data is lost (verified
+against a copied v1.1.0 workspace of 202 artifacts). icx is simply inactive for that project
+until a v1.2.0 binary is back. All agents share one `icx` binary, so upgrade it once for every
+agent rather than mixing versions on the same workspace.
 
 Daemon success now follows a committed SQLite WAL FULL save, so real hook latency includes
 persistence. Save failures return errors. Native Codex hooks capture output and provide supported

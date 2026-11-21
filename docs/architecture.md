@@ -27,7 +27,7 @@
    older frames can be omitted from the prompt while remaining recoverable. Per-turn recall
    and cross-agent events go into the **Ephemeral Tail Slot**. Paging or changing model policy
    can change the selected prefix and invalidate provider caches; no unlimited stable prefix or
-   provider cache-hit rate is guaranteed. See [ADR0006](adr/0006-v1-2-0-context-and-compatibility.md).
+   provider cache-hit rate is guaranteed. See [ADR 0006](adr/0006-v1-2-0-context-and-compatibility.md).
 5. **No Network or Model Calls in Synchronous Hooks:** `PreToolUse`, `PostToolUse`,
    `PreInvocation` and `UserPromptSubmit` handling is local, deterministic Rust.
 
@@ -151,7 +151,7 @@ See `docs/adr/` for the Nygard-format ADRs:
 - **Rejected: Mutating Mid-History Messages Every Turn:** rewriting message $i < N - k$
   invalidates the provider's prefix cache for every later token. `icx` seals history into stable
   epochs. Bounded window selection can nevertheless remove older frames from the selected
-  provider prefix; the tradeoff is documented in ADR0006.
+  provider prefix; the tradeoff is documented in ADR 0006.
 - **Rejected (v1.1.0): Repository-local workspace by default:** a `.icx/` inside the repository can
   be shipped by a cloned repository and would be trusted. See ADR-0005.
 - **Rejected (v1.1.0): Multiple JSON state files:** they could not be saved atomically together

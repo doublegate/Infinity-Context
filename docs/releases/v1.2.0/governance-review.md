@@ -1,6 +1,6 @@
 # v1.2.0 governance decision packet
 
-This packet makes audit071/074 actionable. It is not a legal opinion or evidence that a
+This packet makes audit 071/074 actionable. It is not a legal opinion or evidence that a
 permission, filing or qualified approval exists. No license grant or existing terms are changed
 by this document. Owner/qualified decisions are still required before closing these findings.
 
@@ -10,7 +10,7 @@ The prepared [asset-level inventory](evidence/governance-assets.csv) records sou
 file hashes and proposed dispositions. Its entries identify review work; an inventory entry
 does not establish a redistribution grant.
 
-Review `REUSE.toml` block8 and `ref-docs/unicode-braille-patterns/`, particularly the Unicode
+Review `REUSE.toml` block 8 and `ref-docs/unicode-braille-patterns/`, particularly the Unicode
 Braille chart and ISO/WG2 archives. The blanket Unicode-3.0 label does not establish permission
 for every PDF/document. For every retained redistributed asset, record source URL, checksum,
 embedded notice, grant covering the actual distribution and required attribution. Data-file
@@ -53,4 +53,4 @@ review proposal, not an adopted amendment or an assumption that all clauses are 
 | Public patent status | Owner verification supporting public marking | not verified by automation |
 
 Prepare the final reviewable changes before publication approval. Until these rows are resolved,
-the release record must retain071/074 as open; metadata completeness alone cannot close them.
+the release record must retain 071/074 as open; metadata completeness alone cannot close them.

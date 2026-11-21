@@ -1,7 +1,7 @@
-# ADR0006: v1.2.0 context limits, wire compatibility and evidence
+# ADR 0006: v1.2.0 context limits, wire compatibility and evidence
 
-Status: accepted for implementation,2026-11-21UTC. Supersedes quantitative capability claims
-in ADR0001–0003, and conflicting Q1.14 labels in the AHTL grammar/PDF. Historical decisions
+Status: accepted for implementation, 2026-11-21 UTC. Supersedes quantitative capability claims
+in ADR 0001–0003, and conflicting Q1.14 labels in the AHTL grammar/PDF. Historical decisions
 remain available; this record states the current contracts.
 
 ## Context and decisions
@@ -13,21 +13,24 @@ frozen audit in `to-dos/v1.2.0-remediation.md` and `PROJECT-STATUS.md`.
 
 1. CAS guarantees exact **post-redaction** bytes. Skeletonization is lossy. Unicode glyphs are
    not certified single BPE tokens, and byte ratios are not token compression or model recall.
-2. Unversioned Profile A `fc` preserves the shipped signed Q15 scale32,767, big-endian words.
-   Q1.14 scale16,384 is an explicit arithmetic API only. Independent literal vectors pin both.
+2. Unversioned Profile A `fc` preserves the shipped signed Q15 scale 32,767, big-endian words.
+   Q1.14 scale 16,384 is an explicit arithmetic API only. Independent literal vectors pin both.
    The frozen PDF's Q1.14 wire label is an erratum, not authorization to reinterpret old packets.
 3. Profile A raw skeleton framing glyphs normalize to ASCII pairs just like ingestion;
    ordinary existing percent literals are unchanged. Raw nested framing is rejected on parse.
 4. Exact token postings augment approximate HDC candidates and receive lexical precedence.
    HDC/fractal scoring orders ties and supplies nonlexical candidates. This changes ranking,
-   not CAS identities. ICXHDC04 persists postings;03 remains readable and is rebuilt from CAS
-   events by the MMU. Old binaries cannot read04; retain a pre-upgrade backup for downgrade.
-5. Prompt selection is automatically bounded. Default accounting is32,768 total units,
-   4,096 external-input/tool-schema reserve and4,096 completion reserve, using one UTF-8 byte
+   not CAS identities. ICXHDC04 persists postings; 03 remains readable and is rebuilt from CAS
+   events by the MMU. Old binaries cannot read 04; retain a pre-upgrade backup for downgrade.
+5. Prompt selection is automatically bounded. Default accounting is 32,768 total units,
+   4,096 external-input/tool-schema reserve and 4,096 completion reserve, using one UTF-8 byte
    per token allowance (`utf8-bytes-upper-bound-v1`). It is conservative estimation, not a
    measured provider tokenizer. Callers must reserve actual external content and model limits.
-   Whole recent active frames and then recent sealed frames are selected without deleting cold
-   history. Structured tail selection preserves its header, best recall and fitting complete
+   The newest contiguous run of frames is kept (all active turns, then the newest sealed epochs)
+   without deleting cold history. At saturation the oldest epochs are evicted in one step to half
+   of the history allowance and the eviction point is persisted, so the retained prefix only
+   grows by appending between steps; one `ICX:HISTORY_OMITTED` frame, which changes only at
+   those steps, names the omitted range and its handles. Structured tail selection preserves its header, best recall and fitting complete
    bus/PPR frames; recoverable oversized events use handles and unsent bus events stay queued.
    The generic oversized raw-tail fallback is a bounded diagnostic, never a partial packet.
    A model-policy change can invalidate cache prefixes;
@@ -46,6 +49,6 @@ frozen audit in `to-dos/v1.2.0-remediation.md` and `PROJECT-STATUS.md`.
 
 Compatibility is backward **readability**, not an assurance that an older executable can read
 new derived snapshots. Keep source artifacts and upgrade backups; never change archived
-coordinate interpretation. The release must qualify all regressions, >10kturn window behavior,
+coordinate interpretation. The release must qualify all regressions, >10k turn window behavior,
 restart/migration, representative recall and real packaged binaries. Remaining unsupported
 platforms, live provider/model effectiveness and rights questions stay explicit release gaps.

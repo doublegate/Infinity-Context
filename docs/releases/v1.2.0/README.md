@@ -1,42 +1,47 @@
 # v1.2.0 implementation and qualification
 
-Branch: `codex-audit`. Manifest version:1.2.0. **Development candidate; not published or yet
-release-qualified.** Audit evidence against a996d59 remains unchanged in `docs/codex/`.
+Branch: `codex-audit`. Manifest version: 1.2.0. **Release candidate, submitted for review as the v1.2.0 pull request.** Audit evidence against a996d59 remains unchanged in `docs/codex/`.
 The [implementation tracker](../../../to-dos/v1.2.0-remediation.md) and
 [project status](../../../PROJECT-STATUS.md) distinguish completed work from open gates.
 
 ## Implemented behavior
 
 - YAML scalar coverage, stable redaction and hostile Profile A framing regressions.
-- Exact lexical postings augment approximate retrieval; snapshots04 persist postings and read03.
+- Exact lexical postings augment approximate retrieval; snapshots 04 persist postings and read 03.
 - Finite/range/cache consistency validation, checked bus sequences and overflow-safe chunk sizes.
 - Automatic bounded icx-managed prompt/window and structured recall frames; unsent bus stays queued.
 - Daemon saves before success; SQLite WAL FULL. Failed saves return errors.
 - Strict MCP envelope/argument/canonical-tool contracts. Codex capture does not promise replacement.
-- Exact-SHA CI/REUSE release gates, independent measured1k/10k scans, JSON build/fixture provenance.
-- Current compatibility decisions in [ADR0006](../../adr/0006-v1-2-0-context-and-compatibility.md).
+- Exact-SHA CI/REUSE release gates, independent measured 1k/10k scans, JSON build/fixture provenance.
+- Current compatibility decisions in [ADR 0006](../../adr/0006-v1-2-0-context-and-compatibility.md).
 
 ## Evidence and pending qualification
 
-The27frozen corpus rows produce100% recall@1/@5 for their synthetic unique identifiers.
-The actual >10kturn ingestion/budget test passes; old content still dereferences exactly.
+The 27 frozen corpus rows produce 100% recall@1/@5 for their synthetic unique identifiers.
+The actual >10k turn ingestion/budget test passes; old content still dereferences exactly.
 Neither is a live model-reasoning or whole-provider-request guarantee. Account external user
 input/tool schemas and the model's completion reserve when configuring `icx context-budget`.
 
-Three initial parser fuzz campaigns completed900+seconds with normal sanitizer shutdown.
-After the retained counterexamples were fixed, final redactor qualification passed859,078
-executions/901seconds and seeded03/04 snapshot qualification passed2,231,269/901seconds.
+Three initial parser fuzz campaigns completed 900+ seconds with normal sanitizer shutdown.
+After the retained counterexamples were fixed, final redactor qualification passed 859,078
+executions/901 seconds and seeded 03/04 snapshot qualification passed 2,231,269/901 seconds.
 Logs retain failures instead of relabeling them. Initial mutation samples covered all
 eight crates; full generated mutation space is not exhausted. Post-snapshot targeted proofs
-remain separate from sample counts. Original and optimized portable/native strict benchmark
-series fail unchanged ceilings. Host compiler contention was observed; further diagnosis and
-performance qualification remain open.
+remain separate from sample counts. Codex's portable/native strict benchmark series ran beside
+unrelated compilation and failed. The pre-release review diagnosed the one reproducible failure
+(the 10k exhaustive scan is memory-bandwidth bound and its ceiling was an unmeasured
+extrapolation), added an exact parallel scan and a measured ceiling, and the final quiet-host
+native series passed all gates in 10 of 10 runs; see [performance](../../performance.md).
 
-The [qualification ledger](evidence/qualification-summary.json) records24PASS,2FAIL and4WARN
-checks. **Release readiness remains false.** The failures are strict performance qualification;
-open warnings cover governance and the exact-commit publication process.
-The latest full workspace run passes224tests with0ignored, including long-horizon qualification;
-line coverage is19,571/20,559=95.1943%. Strict Clippy passes after test-formatting
+The [qualification ledger](evidence/qualification-summary.json) recorded 24 PASS, 2 FAIL and 4 WARN
+checks at the end of Codex's work (the 2 FAILs were the strict performance series). The
+pre-release review resolved the performance failure as above and, from v1.2.0 on, finding 071 by owner decision
+(publications replaced by a [source manifest](../../../ref-docs/unicode-braille-patterns/SOURCES.md); the v1.1.0 tag, its source archives and git history still contain them, and rewriting published history is a separate owner decision);
+finding 074 stays open by owner decision pending counsel. The release is qualified by the
+exact-commit CI run of the pull request. The review's own fixes are listed under
+"Release-review fixes" in the [CHANGELOG](../../../CHANGELOG.md).
+Codex's last full workspace run passed 224 tests with 0 ignored, including long-horizon
+qualification, at 19,571/20,559 = 95.1943% line coverage. Strict Clippy passes after test-formatting
 correction; the earlier failure remains recorded. Dependency/advisory, license, documentation,
 secret-history and workflow-policy checks pass. The final nonignored working-tree source scan
 passes with narrowly scoped exceptions for two reviewed public source hashes and one exact
@@ -47,7 +52,7 @@ A full-directory scan additionally flags ignored generated documentation/fuzzer 
 its [separate adjudication](evidence/secrets-ignored-generated-adjudication.json) explains scope.
 Initial local package checks exposed incorrect musl linkage and host GNU symbols newer than
 the advertised minimum. Corrected builds of all four variants now pass static/symbol checks,
-checksums, deterministic archives and Ubuntu22.04/glibc2.35 smoke tests. The initial negatives
+checksums, deterministic archives and Ubuntu 22.04/glibc 2.35 smoke tests. The initial negatives
 remain recorded. See [local package qualification](evidence/package-qualification.md);
 this working-tree result does not certify a committed/tagged release.
 The [governance review packet](governance-review.md) records owner/qualified-review decisions
@@ -56,10 +61,10 @@ user-memory change is part of this local implementation.
 
 ## Upgrade and downgrade
 
-Back up a workspace before upgrading.03derived snapshots are read and rebuilt from preserved
-CAS events, then saved as04. Older executables cannot read04: restore the pre-upgrade backup
+Back up a workspace before upgrading. 03 derived snapshots are read and rebuilt from preserved
+CAS events, then saved as 04. Older executables cannot read 04: restore the pre-upgrade backup
 for downgrade, rather than reinterpreting or deleting data. Unversioned Profile A fc remains
-Q15scale32,767. Existing stored secrets are not silently scrubbed or user credentials rotated.
+Q15 scale 32,767. Existing stored secrets are not silently scrubbed or user credentials rotated.
 
 `icx context-budget --dir PATH` reports the persisted policy and estimator. For example:
 
