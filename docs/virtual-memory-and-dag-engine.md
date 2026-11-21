@@ -145,7 +145,7 @@ oldest sealed epochs are evicted in one step down to half of the history allowan
 (head and the maximum tail are reserved first), and that eviction point is persisted with the
 controller. When half the allowance cannot be reached while keeping an epoch (one large epoch,
 or a large active window), a step evicts only the fewest epochs that fit, never the whole
-retained history (v1.2.1). Between eviction steps the retained prefix only grows by appending, so consecutive
+retained history (v1.2.2). Between eviction steps the retained prefix only grows by appending, so consecutive
 windows share their prefix (0.94 byte reuse at saturation in the 8,192-unit regression test).
 Omitted history is announced by a single frame,
 `⟪ICX:HISTORY_OMITTED│epochs=N│turns=M│bytes=B│first=#icx:…│last=#icx:…│recall=icx:deref|slice|grep⟫`,

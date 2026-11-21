@@ -132,7 +132,7 @@ replacement field; the original native output remains visible. See
    on first use). The daemon checks the peer uid with `SO_PEERCRED`, handles the request against
    its resident MMU, and commits to SQLite under the workspace lock **before** sending success.
    WAL uses `synchronous=FULL`. Save failure produces a failed response and discards the unsaved
-   state (the daemon exits after 5 consecutive failures, v1.2.1); a failed dispatch is never
+   state (the daemon exits after 5 consecutive failures, v1.2.2); a failed dispatch is never
    saved; there is no acknowledged write-behind queue. Each request revalidates the store `generation`,
    so writes by the MCP server or proxy are picked up. Filesystem and hardware synchronization
    behavior still bounds durability guarantees.

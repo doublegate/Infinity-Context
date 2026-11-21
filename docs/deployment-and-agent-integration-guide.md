@@ -1188,7 +1188,7 @@ systemctl --user status icx-proxy.service
 - Back up the whole workspace while writers are stopped before upgrading. CAS identities and
   archived unversioned Q15 `fc` values retain their interpretation.
 - Legacy `ICXHDC03` is readable, but the MMU rebuilds exact token postings from the persisted CAS
-  event log. v1.2.1 likewise rebuilds `ICXHDC04` postings (older tokenizer). Saving writes
+  event log. v1.2.2 likewise rebuilds `ICXHDC04` postings (older tokenizer). Saving writes
   `ICXHDC05`; older binaries cannot read it. Keep the pre-upgrade backup for downgrade instead of
   relabelling a new snapshot as an older version.
 - Managed prompt selection is now automatically bounded. Legacy state without a policy receives

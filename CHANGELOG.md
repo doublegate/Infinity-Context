@@ -5,7 +5,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [1.2.1] - 2026-11-21
+## [1.2.2] - 2026-11-21
+
+Supersedes v1.2.1, which was tagged but never published: a redactor panic was found after
+tagging. v1.2.2 contains every v1.2.1 change below plus these fixes (issue #24).
+
+### Fixed
+
+- **Redactor panic (denial of service).** A quoted literal inside a call that ended in a backslash
+  at the end of the input (`api_key = Some("abc\`) stepped past the last byte and panicked,
+  failing that hook and stopping the workspace daemon until the next hook restarted it. The escape
+  skip is now bounded to the line, and an exhaustive test runs every combination of up to five
+  risky fragments after four sensitive prefixes without a panic.
+- Literals inside nested call wrappers (`Some(String::from("..."))`, `Box::new(Secret::new('...'))`)
+  are redacted.
+- Python `Optional[str]`, `list[str]` and Rust `&'a mut T` annotations are recognised (they were
+  over-redacted); a literal default after one (`password: Optional[str] = "..."`) is still
+  redacted, while `= None` / `= True` are not secrets.
+- Every subcommand rejects a repeated `--dir` instead of silently using the last one; `icx hook`
+  still fails open (prints `{}`).
+- `ICXHDC04` tokens are now shape-validated like `ICXHDC05` ones before their postings are dropped.
+
+## [1.2.1] - 2026-11-21 (tagged, not published)
 
 Follow-up to v1.2.0: the review suggestions left open on PR #22 and two regressions found by
 re-checking the real v1.1.0 workspaces on this release's own machine after the upgrade.
