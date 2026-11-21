@@ -5,6 +5,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-21
+
+Follow-up to v1.2.0: the review suggestions left open on PR #22 and two regressions found by
+re-checking the real v1.1.0 workspaces on this release's own machine after the upgrade.
+
+### Fixed
+
+- **Recall of commands and paths.** Lookup tokens joined by `:` or `/` (`Bash:seq`,
+  `crates/icx-hdc`) are now also indexed by component, so a query for `seq 1 400` ranks the
+  command's own output first instead of documents that merely mention it. The snapshot format is
+  `ICXHDC05`; postings in `ICXHDC04` snapshots (older tokenizer) are validated and dropped, and the
+  MMU rebuilds them from the CAS event log on first load. v1.2.0 cannot read `ICXHDC05`.
+- **Token counts are no longer redacted.** `max_tokens: 4096`, `"input_tokens": 1234`,
+  `--max-tokens 2048`, `MAX_TOKENS=8192` and other `*_TOKENS` counters lost their values to the
+  v1.2.0 plural-key rule. Credentials under such keys are still caught by the value detectors;
+  `NPM_READ_TOKEN` and other non-counter keys keep the key rule.
+  A numeric value (at most 10 digits) under any plural `*_TOKENS` key (`epoch_rollover_tokens:
+  16_384`) is a counter too. Neither exemption applies to keys naming a credential (`AUTH`,
+  `ACCESS`, `SESSION`, `API`, ...).
+- **Type annotations are no longer redacted.** `let token: String = ...`,
+  `api_keys: HashMap<String, Key>,` and `password: &str` are code, not credentials (an exact
+  recognised type name ending the value; anything else keeps the key rule).
+  Code bindings to a call or path expression (`let q_tokens = Self::query_tokens(q)`) are not env
+  assignments; a literal assigned in code (`let api_key = "..."`, `token: String = "..."`) is
+  still redacted.
+- **Literals wrapped in a call are redacted.** `api_key: Some("...")`, `String::from('...')`: the
+  value span used to stop at the opening quote and leave the literal visible (also in v1.2.0).
+- **CSV digests after a closed bracket.** `logs[1].txt,...,<sha256>` keeps its public digest; only
+  an unclosed `[` before the value marks a flow sequence.
+- **Step eviction no longer empties history needlessly.** When half the history allowance cannot
+  be reached while keeping an epoch, a step evicts the fewest epochs that fit.
+- **Daemon:**
+  - a failed dispatch is never saved, so the client's in-process retry is the only ingestion;
+  - a transient save failure is reported (never acknowledged) and the unsaved state is
+    discarded, and the daemon keeps serving, exiting only after 5 consecutive save failures;
+  - bytes after the request line are rejected as a protocol error (one request per connection).
+- `icx context-budget` rejects a repeated option and names the flag in number errors.
+- The vocabulary cap admits an entry's tokens in first-occurrence order rather than
+  lexicographic order, and a stored subject cut at 64 KiB no longer indexes a token fragment.
+- The release-gate self-test uses the system temp directory instead of `/tmp/Infinity-Context`.
+
+### Checked
+
+- Re-scanning all 2,092 artifacts stored by the v1.1.0/v1.2.0 install on the release machine with
+  the v1.2.1 rules left 14 lines that would gain a marker: all are synthetic test fixtures, review
+  quotes or the `16_384` literal now exempted. No stored credential was found.
+
+### Verified, no change
+
+- `AssembledWindow::total_cached_prefix_bytes` with an empty pinned head matches the rendered
+  prefix (regression test added).
+- YAML `''` escapes inside flow sequences and block scalars under sequence entries were already
+  handled (regression tests added).
+
 ## [1.2.0] - 2026-11-21
 
 Remediation and bounded-context release candidate for the independent audit in `docs/codex/`.

@@ -74,8 +74,10 @@ pub trait AssociativeMemoryIndex: Send + Sync {
 `query_associative` returns at most `top_k` distinct artifacts. Ordering is lexical coverage,
 then combined HDC/fractal/surprise score, then artifact ID; it need not be monotone in
 `AssociativeHit::combined_score` alone. Common-token queries may refine the full corpus.
-`encode_snapshot` writes `ICXHDC04`; `decode_snapshot` accepts 04 and legacy 03. The MMU rebuilds
-03's missing postings from CAS events. An older binary cannot read 04.
+`encode_snapshot` writes `ICXHDC05`; `decode_snapshot` accepts 05 and legacy 04/03. The MMU rebuilds
+the postings of 03 (none) and 04 (older tokenizer) from CAS events. An older binary cannot read 05.
+Lookup tokens are runs of letters, digits, `_`, `:` and `/`; from 05 a run containing `:` or `/`
+is also posted by each component (`bash:seq` yields `bash:seq`, `bash`, `seq`).
 
 ---
 

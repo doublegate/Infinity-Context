@@ -143,7 +143,9 @@ provider request containing external messages.
 of frames: all active turns, then the newest sealed epochs. When history no longer fits, the
 oldest sealed epochs are evicted in one step down to half of the history allowance
 (head and the maximum tail are reserved first), and that eviction point is persisted with the
-controller. Between eviction steps the retained prefix only grows by appending, so consecutive
+controller. When half the allowance cannot be reached while keeping an epoch (one large epoch,
+or a large active window), a step evicts only the fewest epochs that fit, never the whole
+retained history (v1.2.1). Between eviction steps the retained prefix only grows by appending, so consecutive
 windows share their prefix (0.94 byte reuse at saturation in the 8,192-unit regression test).
 Omitted history is announced by a single frame,
 `⟪ICX:HISTORY_OMITTED│epochs=N│turns=M│bytes=B│first=#icx:…│last=#icx:…│recall=icx:deref|slice|grep⟫`,
@@ -191,12 +193,12 @@ When `tokens(W_active) > epoch_rollover_tokens`:
    [docs/security-and-threat-model.md](security-and-threat-model.md) §4.1.
 2. **Single SQLite store.** All state is in `icx.sqlite3` (WAL, mode `0600`): CAS chunk and
    artifact rows (append-only) plus `meta` rows for the chunk config, bi-temporal graph, MMU state
-   (DAG, epochs and versioned window policy), HDC index snapshot (`ICXHDC04`), `generation` and store seal. Schema:
+   (DAG, epochs and versioned window policy), HDC index snapshot (`ICXHDC05`), `generation` and store seal. Schema:
    [docs/data-model.md](data-model.md) §6.
 3. **Atomic saves and acknowledgment.** Every save is one WAL transaction under the workspace
    lock (`cas_store.lock`) with `synchronous=FULL`. The daemon commits before acknowledging
-   success; save failure yields an error response and daemon error exit. There is no volatile
-   acknowledged queue. Atomicity prevents mixed-generation state, while durability still relies
+   success; save failure yields an error response, the unsaved state is discarded and the daemon exits
+   only after 5 consecutive failures. There is no volatile acknowledged queue. Atomicity prevents mixed-generation state, while durability still relies
    on filesystem/hardware synchronization behavior. The `generation` counter lets long-lived
    processes skip reloading when nothing changed.
 4. **Fail-closed integrity.** On load, every chunk digest is verified and every artifact is

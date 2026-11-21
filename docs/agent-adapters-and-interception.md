@@ -26,8 +26,10 @@ Common behaviour of `icx hook --agent <agent> --event <EVENT>`:
 - Outputs of the `icx` pager tool itself (`InfinityContextMmu::is_icx_pager_tool`) are never re-stubbed.
 - Content is redacted (`SecretRedactor::redact`) before it reaches the store, index, or bus. Model-facing text is additionally Tier-0 delimiter-escaped.
 - The daemon commits with SQLite WAL `synchronous=FULL` under the workspace lock before
-  sending success. Save failure yields a failed response and daemon error exit; the CLI may
-  then fall back to in-process handling. There is no acknowledged write-behind window.
+  sending success. Save failure yields a failed response and the daemon reloads from disk
+  before the next request (exiting after 5 consecutive failures); the CLI may then fall back to
+  in-process handling, which is the only ingestion because a failed request is never saved.
+  One request per connection: bytes after the request line are rejected as a protocol error. There is no acknowledged write-behind window.
 - Tail producers select fitting whole frames, prioritizing the header and best recall, then
   sibling and remaining recall/PPR frames. Oversized recoverable frames can use compact CAS
   handles. Unsent sibling frames remain queued; their cursor is not advanced past them.

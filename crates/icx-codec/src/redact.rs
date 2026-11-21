@@ -357,6 +357,9 @@ impl SecretRedactor {
             .trim_start_matches('-')
             .trim_matches(|c: char| c == '"' || c == '\'');
         let key_upper = trimmed.to_ascii_uppercase().replace('-', "_");
+        if Self::is_token_count_key(&key_upper) {
+            return false;
+        }
         let sensitive_suffixes = [
             "SECRET",
             "CLIENT_SECRET",
@@ -401,6 +404,93 @@ impl SecretRedactor {
             || key_upper
                 .strip_suffix('S')
                 .is_some_and(|singular| !singular.ends_with("PASS") && matches(singular))
+    }
+
+    /// Upper-case `_`/`-`-separated parts of a key (`--max-tokens` -> `MAX`, `TOKENS`).
+    fn key_parts(key: &str) -> Vec<String> {
+        key.to_ascii_uppercase()
+            .split(['_', '-'])
+            .filter(|p| !p.is_empty())
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// Whether a key part names a credential kind, which no counter exemption may override.
+    fn has_credential_part(parts: &[String]) -> bool {
+        const CREDENTIAL_PARTS: &[&str] = &[
+            "AUTH",
+            "ACCESS",
+            "SESSION",
+            "REFRESH",
+            "BEARER",
+            "API",
+            "ID",
+            "CSRF",
+            "XSRF",
+            "OAUTH",
+            "SECRET",
+            "PRIVATE",
+            "CLIENT",
+            "GITHUB",
+            "GH",
+            "GITLAB",
+            "NPM",
+            "PYPI",
+            "PAT",
+            "SLACK",
+            "BOT",
+            "DEPLOY",
+            "PUSH",
+            "WRITE",
+            "SERVICE",
+            "PERSONAL",
+            "JWT",
+            "SIGNING",
+            "RESET",
+            "INVITE",
+            "WEBHOOK",
+            "HF",
+            "OPENAI",
+            "ANTHROPIC",
+        ];
+        parts.iter().any(|p| CREDENTIAL_PARTS.contains(&p.as_str()))
+    }
+
+    /// `MAX_TOKENS`, `INPUT_TOKENS`, `COMPLETION_TOKENS`, `cache_read_input_tokens`, ...:
+    /// counters in LLM configs and usage blocks, not credentials (v1.2.1; v1.2.0 hid them via
+    /// the plural-key rule). A key qualifies only when it ends in plural `TOKENS`, the part
+    /// directly before names a count, and no part names a credential (`AUTH`, `ACCESS`, ...).
+    /// Values under such keys are still checked by the vendor-prefix and entropy detectors.
+    fn is_token_count_key(key_upper: &str) -> bool {
+        const COUNT_PARTS: &[&str] = &[
+            "MAX",
+            "MIN",
+            "NUM",
+            "COUNT",
+            "TOTAL",
+            "INPUT",
+            "OUTPUT",
+            "PROMPT",
+            "COMPLETION",
+            "CACHE",
+            "CACHED",
+            "REASONING",
+            "CONTEXT",
+            "BUDGET",
+            "LIMIT",
+            "AUDIO",
+            "TEXT",
+            "IMAGE",
+            "ACCEPTED",
+            "REJECTED",
+            "PREDICTION",
+            "THINKING",
+        ];
+        let parts = Self::key_parts(key_upper);
+        parts.len() >= 2
+            && parts[parts.len() - 1] == "TOKENS"
+            && COUNT_PARTS.contains(&parts[parts.len() - 2].as_str())
+            && !Self::has_credential_part(&parts)
     }
 
     fn redact_line(line: &str) -> String {
@@ -490,12 +580,83 @@ impl SecretRedactor {
         Self::redact_high_entropy_tokens(&current)
     }
 
+    /// `String::from("...")`, `Some('...')`, `Secret::new("...")`: a value that wraps quoted
+    /// literals in a call. Replaces every quoted literal up to the closing parenthesis (v1.2.1;
+    /// the unquoted span used to stop at the opening quote and leave the literal visible).
+    /// Returns the position after the call, or `None` when the value has another shape.
+    fn redact_call_wrapped_literals(
+        out: &mut String,
+        val_start: usize,
+        replacement: &str,
+    ) -> Option<usize> {
+        let rest = out.get(val_start..)?;
+        let name_len = rest
+            .bytes()
+            .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b':')
+            .count();
+        if name_len == 0 || !rest.as_bytes()[0].is_ascii_alphabetic() {
+            return None;
+        }
+        let after = rest[name_len..].strip_prefix('(')?;
+        if !after.trim_start().starts_with(['"', '\'']) {
+            return None;
+        }
+        let open = val_start + name_len + 1;
+        let mut depth = 1usize;
+        let mut quote: Option<u8> = None;
+        let mut spans = Vec::new();
+        let mut lit_start = 0usize;
+        let mut close = None;
+        let bytes = out.as_bytes();
+        let mut i = open;
+        while i < bytes.len() && bytes[i] != b'\n' {
+            let b = bytes[i];
+            match quote {
+                Some(_) if b == b'\\' => i += 1,
+                Some(q) if b == q => {
+                    spans.push((lit_start, i));
+                    quote = None;
+                }
+                None if b == b'"' || b == b'\'' => {
+                    quote = Some(b);
+                    lit_start = i + 1;
+                }
+                None if b == b'(' => depth += 1,
+                None if b == b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        // An unterminated literal is hidden to the end of the line.
+        if quote.is_some() {
+            spans.push((lit_start, i));
+        }
+        if spans.is_empty() {
+            return None;
+        }
+        let end = close.map_or(i, |c| c + 1);
+        let removed: usize = spans.iter().map(|&(a, b)| b - a).sum();
+        for &(a, b) in spans.iter().rev() {
+            out.replace_range(a..b, replacement);
+        }
+        Some((end + spans.len() * replacement.len() - removed).min(out.len()))
+    }
+
     fn redact_value_span(
         out: &mut String,
         val_start: usize,
         replacement: &str,
         stop_at_comma: bool,
     ) -> Option<usize> {
+        if let Some(end) = Self::redact_call_wrapped_literals(out, val_start, replacement) {
+            return Some(end);
+        }
         let bytes = out.as_bytes();
         if val_start >= bytes.len() {
             return None;
@@ -671,12 +832,20 @@ impl SecretRedactor {
                 key_start -= 1;
             }
             let key_name = &out[key_start..key_end];
-            if !key_name.is_empty() && Self::is_sensitive_key_name(key_name) {
+            let rhs = out[eq_idx + 1..].trim_start_matches([' ', '\t']);
+            if !key_name.is_empty()
+                && Self::is_sensitive_key_name(key_name)
+                && !(Self::is_code_binding(&out[..key_start]) && Self::is_code_expression(rhs))
+            {
                 let mut val_start = eq_idx + 1;
                 while val_start < bytes.len()
                     && (bytes[val_start] == b' ' || bytes[val_start] == b'\t')
                 {
                     val_start += 1;
+                }
+                if Self::is_counter_value(key_name, &out[val_start..]) {
+                    search_pos = eq_idx + 1;
+                    continue;
                 }
                 let replacement = if key_name.starts_with("--") {
                     "[REDACTED:CLI_SECRET]"
@@ -764,6 +933,34 @@ impl SecretRedactor {
                 {
                     val_start += 1;
                 }
+                if Self::is_counter_value(key_name, &out[val_start..]) {
+                    search_pos = colon_idx + 1;
+                    continue;
+                }
+                if let Some(type_len) = Self::type_annotation_len(&out[val_start..]) {
+                    let after = val_start + type_len;
+                    let tail = &out[after..];
+                    let assigned = tail.starts_with('=') && !tail.starts_with("==");
+                    let rhs_start = after + 1 + tail[1.min(tail.len())..].len()
+                        - tail[1.min(tail.len())..]
+                            .trim_start_matches([' ', '\t'])
+                            .len();
+                    if assigned
+                        && !Self::is_code_expression(&out[rhs_start..])
+                        && !Self::is_counter_value(key_name, &out[rhs_start..])
+                        && let Some(next_pos) = Self::redact_value_span(
+                            &mut out,
+                            rhs_start,
+                            "[REDACTED:CONFIG_SECRET]",
+                            true,
+                        )
+                    {
+                        search_pos = next_pos;
+                        continue;
+                    }
+                    search_pos = after.max(colon_idx + 1);
+                    continue;
+                }
                 if let Some(next_pos) =
                     Self::redact_value_span(&mut out, val_start, "[REDACTED:CONFIG_SECRET]", true)
                 {
@@ -774,6 +971,157 @@ impl SecretRedactor {
             search_pos = colon_idx + 1;
         }
         out
+    }
+
+    /// `token: String`, `api_keys: HashMap<String, Key>,`, `password: &str)`: the byte length of a
+    /// source-code type annotation (v1.2.1), or `None`. Only a recognised type name qualifies,
+    /// optionally referenced and generic, and it must end the value (end of line, or `=`, `,`,
+    /// `)`, `;`, `{`, `>`, `->` after it), so a credential that merely starts with one is kept.
+    /// A literal assigned after it (`token: String = "..."`) is redacted by the caller.
+    fn type_annotation_len(rest: &str) -> Option<usize> {
+        const TYPES: &[&str] = &[
+            "String",
+            "str",
+            "Vec",
+            "Option",
+            "Result",
+            "HashMap",
+            "HashSet",
+            "BTreeMap",
+            "BTreeSet",
+            "VecDeque",
+            "Box",
+            "Arc",
+            "Rc",
+            "Cow",
+            "PathBuf",
+            "Path",
+            "Self",
+            "usize",
+            "isize",
+            "u8",
+            "u16",
+            "u32",
+            "u64",
+            "u128",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+            "i128",
+            "f32",
+            "f64",
+            "bool",
+            "char",
+            "Duration",
+            "SecretString",
+            "string",
+            "number",
+            "boolean",
+            "Optional",
+            "bytes",
+            "int",
+        ];
+        let mut s = rest.strip_prefix('&').map_or(rest, |r| {
+            let r = r.strip_prefix("mut ").unwrap_or(r);
+            match r.strip_prefix('\'') {
+                Some(lt) => lt
+                    .split_once(' ')
+                    .filter(|(name, _)| {
+                        name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                    })
+                    .map_or(r, |(_, after)| after),
+                None => r,
+            }
+        });
+        let name_len = s
+            .bytes()
+            .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+            .count();
+        if !TYPES.contains(&&s[..name_len]) {
+            return None;
+        }
+        s = &s[name_len..];
+        if let Some(inner) = s.strip_prefix('<') {
+            let mut depth = 1usize;
+            let mut end = None;
+            for (i, c) in inner.char_indices() {
+                match c {
+                    '<' => depth += 1,
+                    '>' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = Some(i + 1);
+                            break;
+                        }
+                    }
+                    '"' | '\'' | '\n' | '=' => return None,
+                    ':' if !(inner[i + 1..].starts_with(':') || inner[..i].ends_with(':')) => {
+                        return None;
+                    }
+                    _ => {}
+                }
+            }
+            let end = end?;
+            s = &inner[end..];
+        }
+        let s = s.trim_start_matches([' ', '\t']);
+        (s.is_empty()
+            || s.starts_with(['=', ',', ')', ';', '{', '>', '\n', '\r'])
+            || s.starts_with("->"))
+        .then(|| rest.len() - s.len())
+    }
+
+    /// `f(x)`, `Self::new()`, `config.token`, `&pair`: a code expression with no string literal,
+    /// which a code binding may assign without it being a secret. A bare word, number or quoted
+    /// value is treated as a literal and keeps the key rule (v1.2.1).
+    fn is_code_expression(rhs: &str) -> bool {
+        let end = rhs.find([';', '\n']).unwrap_or(rhs.len());
+        let expr = rhs[..end].trim();
+        let starts_ok = expr
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || matches!(c, '_' | '&' | '*' | '('));
+        starts_ok
+            && !expr.contains(['"', '\'', '`'])
+            && (expr.contains(['(', '.', '&', '*']) || expr.contains("::"))
+    }
+
+    /// `let q_tokens = f(...)`, `const MAX_TOKENS = 4096`: a source-code binding, not an env
+    /// assignment (v1.2.1). `before_key` is the line text before the key.
+    fn is_code_binding(before_key: &str) -> bool {
+        let lead = before_key.trim_end_matches([' ', '\t']);
+        ["let", "let mut", "const", "var", "static", "static mut"]
+            .iter()
+            .any(|kw| {
+                lead.strip_suffix(kw)
+                    .is_some_and(|pre| pre.is_empty() || pre.ends_with([' ', '\t', '(', '{', ';']))
+            })
+            && lead.len() < before_key.len()
+    }
+
+    /// A purely numeric value (at most 10 digits) under a plural `..._TOKENS` key without a
+    /// credential part is a counter (`epoch_rollover_tokens: 16_384`), never a credential
+    /// (v1.2.1). `AUTH_TOKENS=...`, `ACCESS_TOKEN=...` keep the key rule.
+    fn is_counter_value(key_name: &str, rest: &str) -> bool {
+        let parts = Self::key_parts(key_name);
+        if parts.last().map(String::as_str) != Some("TOKENS") || Self::has_credential_part(&parts) {
+            return false;
+        }
+        let rest = rest.trim_start_matches(['"', '\'']);
+        // Rust/Python digit separators (`16_384`) are allowed after the first digit.
+        let digits = rest
+            .bytes()
+            .enumerate()
+            .take_while(|&(i, b)| b.is_ascii_digit() || (i > 0 && b == b'_'))
+            .count();
+        rest.as_bytes().first().is_some_and(u8::is_ascii_digit)
+            && rest[..digits].bytes().filter(u8::is_ascii_digit).count() <= 10
+            && rest[digits..]
+                .trim_start_matches(['"', '\''])
+                .chars()
+                .next()
+                .is_none_or(|c| c.is_whitespace() || matches!(c, ',' | ';' | '}' | ']' | ')'))
     }
 
     fn redact_cli_flags(line: &str) -> String {
@@ -1126,7 +1474,8 @@ impl SecretRedactor {
         // A CSV cell is unquoted; a quoted element after a comma is a JSON/YAML flow-sequence
         // item, which keeps the strict rule.
         let quoted = lead_line.ends_with(['"', '\'']) || tail_line.starts_with(['"', '\'']);
-        let in_flow_sequence = lead_line.contains('[');
+        // Only an unclosed `[` before the token opens a flow sequence (`logs[1].txt,...` does not).
+        let in_flow_sequence = lead_line.matches('[').count() > lead_line.matches(']').count();
         let csv_cell = !quoted
             && !in_flow_sequence
             && lead.ends_with(',')

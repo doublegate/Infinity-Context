@@ -106,7 +106,7 @@ The project root is the nearest ancestor of the current directory that contains 
 
 | File Path (inside the workspace) | Owning Subsystem | Contents & Role |
 | :--- | :--- | :--- |
-| `icx.sqlite3` (+ `-wal` / `-shm` while open) | `icx_adapters::store` | Single SQLite database (WAL mode). Each save is one transaction. Chunk and artifact rows are append-only; a `generation` counter increments per save. The `meta` table holds the chunk configuration, the bi-temporal graph, the MMU state (Merkle-DAG, epoch controller, subagent branches, read cursors, redaction set, logical clock), the HDC index snapshot (`ICXHDC04` binary format, with exact token postings) and its event log, and the store seal. |
+| `icx.sqlite3` (+ `-wal` / `-shm` while open) | `icx_adapters::store` | Single SQLite database (WAL mode). Each save is one transaction. Chunk and artifact rows are append-only; a `generation` counter increments per save. The `meta` table holds the chunk configuration, the bi-temporal graph, the MMU state (Merkle-DAG, epoch controller, subagent branches, read cursors, redaction set, logical clock), the HDC index snapshot (`ICXHDC05` binary format, with exact token postings) and its event log, and the store seal. |
 | `OWNER` | `workspace` trust policy | Owner seal: a keyed BLAKE3 MAC of the canonical workspace path under the per-install key. A copied or moved workspace fails verification. |
 | `cas_store.lock` | `InfinityContextMmu::acquire_workspace_lock` | Advisory file lock serializing CLI, hook, daemon, MCP, and proxy transactions across processes. |
 | `icx-fabric-v1.shm` | `icx_bus::SeqlockTelemetryBus` | The `1,048,640`-byte bus file. It is a regular file in the workspace unless `ICX_SHM_PATH` points elsewhere (for example under `/dev/shm`). |
@@ -1188,8 +1188,9 @@ systemctl --user status icx-proxy.service
 - Back up the whole workspace while writers are stopped before upgrading. CAS identities and
   archived unversioned Q15 `fc` values retain their interpretation.
 - Legacy `ICXHDC03` is readable, but the MMU rebuilds exact token postings from the persisted CAS
-  event log. Saving writes `ICXHDC04`; old binaries cannot read 04. Keep the pre-upgrade backup
-  for downgrade instead of trying to relabel a new snapshot as 03.
+  event log. v1.2.1 likewise rebuilds `ICXHDC04` postings (older tokenizer). Saving writes
+  `ICXHDC05`; older binaries cannot read it. Keep the pre-upgrade backup for downgrade instead of
+  relabelling a new snapshot as an older version.
 - Managed prompt selection is now automatically bounded. Legacy state without a policy receives
   the default 32,768 / 4,096 / 4,096 budget. Review it for your model with `icx context-budget`.
 - Daemon success now follows a committed WAL transaction with `synchronous=FULL`; write-behind

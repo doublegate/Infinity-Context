@@ -49,11 +49,33 @@ struct EntrySummary {
 /// ICX-AUD-049: 64 bits left a single matching token below the noise floor).
 const PRESCREEN_WORDS: usize = 16;
 
-/// Splits text into the lowercase lookup tokens shared by indexing and querying.
+/// Characters a lookup token consists of.
+fn is_token_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == ':' || c == '/'
+}
+
+/// Splits text into the lowercase lookup tokens shared by indexing and querying. A run joined by
+/// `:` or `/` (`Bash:seq`, `src/main.rs`) yields the whole run and, from v1.2.1 (ICXHDC05), each
+/// of its components, so the bare command or path segment is found too.
 fn lookup_tokens(text: &str) -> impl Iterator<Item = String> + '_ {
-    text.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
+    text.split(|c: char| !is_token_char(c))
         .filter(|s| s.len() >= 2)
+        .flat_map(|run| {
+            let parts = run
+                .contains([':', '/'])
+                .then(|| run.split([':', '/']).filter(|p| p.len() >= 2))
+                .into_iter()
+                .flatten();
+            std::iter::once(run).chain(parts)
+        })
         .map(str::to_ascii_lowercase)
+}
+
+/// Whether `token` is a single well-formed lookup token as [`lookup_tokens`] emits it.
+fn is_lexical_token(token: &str) -> bool {
+    (2..=MAX_LEXICAL_TOKEN_BYTES).contains(&token.len())
+        && token.chars().all(is_token_char)
+        && token == token.to_ascii_lowercase()
 }
 
 /// Longest token (bytes) admitted to the exact lexical index. Longer runs (hex blobs, minified
@@ -289,7 +311,9 @@ impl HdcAssociativeIndex {
                     let mut postings = BTreeMap::new();
                     for _ in 0..count {
                         let token = r.str("lexical.token")?;
-                        if lookup_tokens(&token).collect::<Vec<_>>() != [token.clone()] {
+                        // ICXHDC04 postings use the pre-v1.2.1 tokenizer; they are read only to
+                        // validate the snapshot and then dropped below, forcing a rebuild.
+                        if version >= 5 && !is_lexical_token(&token) {
                             return Err(SnapshotError::Inconsistent("lexical.token"));
                         }
                         let len = r.len("lexical.postings", n as u64)?;
@@ -331,6 +355,7 @@ impl HdcAssociativeIndex {
             }
         }
         r.finish()?;
+        let lexical_postings = if version >= 5 { lexical_postings } else { None };
         Ok(Self {
             entries,
             summaries,
@@ -497,7 +522,17 @@ impl HdcAssociativeIndex {
             verdict.momentum_surprise,
         );
         // Index the same (bounded) subject that `score_entry` matches against.
-        let content_bloom = self.index_lexical_tokens(stored_subject, content, MAX_LEXICAL_TOKENS);
+        // A cut inside a token would index a fragment that never occurred; drop it.
+        let indexed_subject = if subject[stored_subject.len()..]
+            .chars()
+            .next()
+            .is_some_and(is_token_char)
+        {
+            stored_subject.trim_end_matches(is_token_char)
+        } else {
+            stored_subject
+        };
+        let content_bloom = self.index_lexical_tokens(indexed_subject, content, MAX_LEXICAL_TOKENS);
         self.summaries.push(EntrySummary {
             content_bloom,
             hv_sub64: composite_hv.sub_hypervector_64(),
@@ -524,7 +559,13 @@ impl HdcAssociativeIndex {
         content: &str,
         max_tokens: usize,
     ) -> [u64; 4] {
-        let tokens: BTreeSet<String> = index_tokens(subject).chain(index_tokens(content)).collect();
+        // Distinct tokens in first-occurrence order, so the vocabulary cap admits the entry's
+        // earliest tokens rather than its lexicographically smallest ones.
+        let mut seen = BTreeSet::new();
+        let tokens: Vec<String> = index_tokens(subject)
+            .chain(index_tokens(content))
+            .filter(|t| seen.insert(t.clone()))
+            .collect();
         let entry_idx = self.entries.len();
         let mut bloom = [0u64; 4];
         let Some(postings) = self.lexical_postings.as_mut() else {
@@ -925,9 +966,9 @@ mod tests {
         assert_eq!(postings.len(), cap);
         // Existing tokens keep accumulating postings once the cap is reached.
         assert_eq!(postings["alpha"], vec![0, 2]);
-        // Distinct tokens are admitted in sorted order: alpha, beta, then delta before gamma.
-        assert!(postings.contains_key("delta"));
-        assert!(!postings.contains_key("gamma") && !postings.contains_key("epsilon"));
+        // Distinct tokens are admitted in first-occurrence order (v1.2.1): alpha, beta, gamma.
+        assert!(postings.contains_key("gamma"));
+        assert!(!postings.contains_key("delta") && !postings.contains_key("epsilon"));
         HdcAssociativeIndex::decode_snapshot(&idx.encode_snapshot())
             .expect("capped index must round-trip");
     }

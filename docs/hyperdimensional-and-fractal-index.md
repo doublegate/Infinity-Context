@@ -76,7 +76,7 @@ pub struct Hypervector {
      appears at most once. Legacy indexes without postings refine exhaustively.
    - **Bounds:** tokens longer than 256 bytes are not posted (and are ignored in queries), the
      number of distinct posted tokens is capped at the snapshot item limit, and stored subjects
-     are truncated to 64 KiB at a character boundary, so every ICXHDC04 snapshot the encoder
+     are truncated to 64 KiB at a character boundary, so every ICXHDC05 snapshot the encoder
      writes can be decoded.
 
    The earlier v1.1.0 1,000-log figures (99.0% top-1, 99.7% top-5) were fixture-specific.
@@ -86,9 +86,9 @@ pub struct Hypervector {
    general semantic recall, model effectiveness or an isolated latency bound; timings shared
    the host with other validation work.
 
-### 2.3 Persisted Snapshot (`ICXHDC04`, legacy `03` readable)
+### 2.3 Persisted Snapshot (`ICXHDC05`, legacy `04`/`03` readable)
 
-The little-endian, length-prefixed `ICXHDC04` snapshot persists entries, summaries, trajectory,
+The little-endian, length-prefixed `ICXHDC05` snapshot persists entries, summaries, trajectory,
 surprise state and optional exact token postings. Counts are capped (16 Mi items, 64 KiB strings).
 Decoding rejects truncation, invalid UTF-8, trailing bytes, nonfinite/out-of-range coordinates or
 surprise parameters, inconsistent cached summaries/bundler readout, and invalid posting indices

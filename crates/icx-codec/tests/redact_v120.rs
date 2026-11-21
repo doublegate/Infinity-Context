@@ -440,3 +440,72 @@ fn quoted_hex_in_json_arrays_is_not_a_csv_digest_cell() {
     let csv = format!("path,bytes,sha256\nREADME.md,65220,{hex}\n");
     assert_eq!(SecretRedactor::redact(&csv), csv);
 }
+
+#[test]
+fn token_count_fields_are_not_secrets_but_token_collections_still_are() {
+    // v1.2.1: the plural-key rule must not hide counts in LLM configs and API usage blocks.
+    for public in [
+        "max_tokens: 4096\n",
+        "\"usage\": {\"input_tokens\": 1234, \"output_tokens\": 56, \"cache_read_input_tokens\": 7}\n",
+        "--max-tokens 2048\n",
+        "MAX_TOKENS=8192\n",
+        "prompt_tokens: 12\ncompletion_tokens: 34\ntotal_tokens: 46\n",
+        "max_completion_tokens=512 reasoning_tokens=64 num_tokens=3\n",
+    ] {
+        assert_eq!(
+            SecretRedactor::redact(public),
+            public,
+            "count redacted: {public:?}"
+        );
+    }
+    // Collections of credentials keep the plural rule.
+    assert_hidden(
+        "tokens:\n  - realtokenvalue\npublic: ok\n",
+        &["realtokenvalue"],
+        "public: ok",
+    );
+    assert_hidden(
+        "api_tokens: [firstkeylow]\npublic: ok\n",
+        &["firstkeylow"],
+        "public: ok",
+    );
+    // Read/write tokens are credentials, not counters.
+    assert_hidden(
+        "NPM_READ_TOKEN=lowreadsecret\npublic: ok\n",
+        &["lowreadsecret"],
+        "public: ok",
+    );
+    // A real credential under a count-like key is still caught by the value detectors.
+    assert_hidden(
+        "max_tokens: ghp_abcdefghijklmnopqrstuvwxyz0123456789\npublic: ok\n",
+        &["abcdefghijklmnopqrstuvwxyz0123456789"],
+        "public: ok",
+    );
+}
+
+#[test]
+fn doubled_single_quotes_inside_flow_sequences_do_not_end_the_element() {
+    assert_hidden(
+        "password: ['lowx''lowy]lowz', 'second']\npublic: ok\n",
+        &["lowx", "lowy", "lowz", "second"],
+        "public: ok",
+    );
+}
+
+#[test]
+fn csv_digest_cells_stay_public_after_a_closed_bracket_earlier_on_the_row() {
+    let hex = "e8ab57722d7d794fbffd585ad1499391b7707ea68f848aa9b20ad189605e26e0";
+    // The timestamp puts a `:` on the row, so the strict hex rule applies unless exempted.
+    let csv = format!("path,modified,sha256\nlogs[1].txt,2026-11-21T10:00:00,{hex}\n");
+    assert_eq!(SecretRedactor::redact(&csv), csv);
+}
+
+#[test]
+fn block_scalars_under_sequence_entries_use_the_yaml_content_indentation() {
+    for input in [
+        "items:\n  - token: |2\n      lowsecretline\n  - public: ok\n",
+        "items:\n  - token: |\n      lowsecretline\n  - public: ok\n",
+    ] {
+        assert_hidden(input, &["lowsecretline"], "- public: ok");
+    }
+}

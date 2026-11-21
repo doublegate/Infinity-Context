@@ -44,7 +44,7 @@ fn legacy03_snapshot_is_rebuilt_and_saved_as04_without_changing_cas() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(&bytes[..8], b"ICXHDC04");
+    assert_eq!(&bytes[..8], b"ICXHDC05");
     drop(connection);
     std::fs::remove_dir_all(base).unwrap();
 }

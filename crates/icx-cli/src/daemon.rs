@@ -6,10 +6,13 @@
 //!
 //! A successful reply is sent only after committing the dispatched request to SQLite. The
 //! workspace lock covers reload, dispatch and save, so proxy/MCP writes cannot interleave with
-//! an unsaved request. Save failures produce a failed response and terminate the daemon with an
-//! error; no acknowledged changes remain in a write-behind window or get replaced by a reload.
-//! The request is read in full (under one overall deadline) before the lock is taken, and a
-//! lock timeout or reload failure fails only that request: the daemon keeps serving.
+//! an unsaved request. A failed dispatch is never saved, and a failed save is never
+//! acknowledged; in both cases the in-memory state is discarded (reloaded from disk before the
+//! next request), so the client's in-process retry is the only ingestion. The daemon exits with
+//! an error only after `MAX_CONSECUTIVE_SAVE_FAILURES` saves fail in a row. The request (exactly
+//! one line per connection; trailing non-whitespace bytes are a protocol error) is read in full
+//! under one overall deadline before the lock is taken, and a lock timeout or reload failure
+//! fails only that request: the daemon keeps serving.
 //!
 //! `icx hook` falls back to in-process handling on any daemon error, so a missing or broken
 //! daemon never breaks an agent.
@@ -126,8 +129,12 @@ pub fn serve(
         socket.display()
     );
 
+    // A failed dispatch or save resets the MMU to this state, which mirrors the store it was
+    // handed with (or no store), so the next request reloads from disk.
+    let pristine = mmu.clone();
     let mut last_request = Instant::now();
     let mut served = 0usize;
+    let mut save_failures = 0usize;
 
     let result = loop {
         let timeout = opts
@@ -146,9 +153,21 @@ pub fn serve(
         if !peer_is_same_user(&stream) {
             continue; // refuse other users silently
         }
-        let handled = handle_connection(stream, ws_dir, &mut mmu, dispatch);
-        if let Err(error) = handled {
-            break Err(error);
+        match handle_connection(stream, ws_dir, &mut mmu, &pristine, dispatch) {
+            Outcome::NotSaved => {}
+            Outcome::Saved => save_failures = 0,
+            Outcome::SaveFailed(error) => {
+                save_failures += 1;
+                if save_failures >= MAX_CONSECUTIVE_SAVE_FAILURES {
+                    let error = format!("{save_failures} consecutive saves failed; last: {error}");
+                    eprintln!("icx daemon: error: {error}; exiting");
+                    break Err(error);
+                }
+                eprintln!(
+                    "icx daemon: {error} ({save_failures}/{MAX_CONSECUTIVE_SAVE_FAILURES} \
+                     consecutive); state reloads from disk, still serving"
+                );
+            }
         }
         last_request = Instant::now();
         served += 1;
@@ -174,67 +193,99 @@ fn wait_readable(listener: &UnixListener, timeout: Option<Duration>) -> bool {
 /// Reads one newline-terminated request from `stream`, bounded by `MAX_REQUEST_BYTES` and by an
 /// overall `deadline` (not only a per-`read` timeout, which a trickling client could renew
 /// indefinitely). Returns `None` on EOF, I/O error, timeout or an oversized request.
-fn read_request(stream: &UnixStream, deadline: Duration) -> Option<String> {
+fn read_request(stream: &UnixStream, deadline: Duration) -> Result<String, ReadError> {
     let started = Instant::now();
     let mut reader = stream;
     let mut line = Vec::new();
     let mut chunk = [0u8; 64 * 1024];
     loop {
-        let remaining = deadline.checked_sub(started.elapsed())?;
+        let remaining = deadline
+            .checked_sub(started.elapsed())
+            .ok_or(ReadError::Closed)?;
         if remaining.is_zero() {
-            return None;
+            return Err(ReadError::Closed);
         }
-        stream.set_read_timeout(Some(remaining)).ok()?;
+        stream
+            .set_read_timeout(Some(remaining))
+            .map_err(|_| ReadError::Closed)?;
         let n = match reader.read(&mut chunk) {
-            Ok(0) => return None,
+            Ok(0) => return Err(ReadError::Closed),
             Ok(n) => n,
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(_) => return None,
+            Err(_) => return Err(ReadError::Closed),
         };
         if let Some(pos) = chunk[..n].iter().position(|&b| b == b'\n') {
+            // One request per connection: anything but whitespace after the newline would be
+            // silently dropped, so it is a protocol error rather than ignored.
+            if !chunk[pos + 1..n].iter().all(u8::is_ascii_whitespace) {
+                return Err(ReadError::Protocol(
+                    "protocol error: unexpected bytes after the request line \
+                     (one request per connection)"
+                        .into(),
+                ));
+            }
             line.extend_from_slice(&chunk[..pos]);
             break;
         }
         line.extend_from_slice(&chunk[..n]);
         if line.len() as u64 > MAX_REQUEST_BYTES {
-            return None;
+            return Err(ReadError::Closed);
         }
     }
     if line.len() as u64 > MAX_REQUEST_BYTES {
-        return None;
+        return Err(ReadError::Closed);
     }
-    String::from_utf8(line).ok()
+    String::from_utf8(line).map_err(|_| ReadError::Closed)
 }
+
+/// Why [`read_request`] produced no request.
+#[derive(Debug)]
+enum ReadError {
+    /// EOF, I/O error, timeout or an oversized request: the connection is dropped unanswered.
+    Closed,
+    /// The bytes violate the one-request-per-connection framing; answered with a failure.
+    Protocol(String),
+}
+
+/// Consecutive failed saves after which the daemon gives up and exits with an error.
+pub const MAX_CONSECUTIVE_SAVE_FAILURES: usize = 5;
 
 /// Serves one connection. The request is read and parsed before the workspace lock is taken,
 /// so a slow or idle client never blocks in-process hooks or `mcp-serve`; the lock covers only
-/// reload, dispatch, save and the reply. A lock timeout or reload failure fails this request
-/// (the client falls back to in-process handling) and the daemon keeps serving. Only a failed
-/// save after a dispatch returns `Err`, because acknowledged state must never be lost.
+/// reload, dispatch, save and the reply. Every failure (lock timeout, reload, dispatch, save)
+/// fails only this request: the client falls back to in-process handling. Whenever the
+/// in-memory state may differ from the store without having been committed, `mmu` is reset to
+/// `pristine` so the next request reloads from disk.
 fn handle_connection(
     stream: UnixStream,
     ws_dir: &Path,
     mmu: &mut InfinityContextMmu,
+    pristine: &InfinityContextMmu,
     dispatch: fn(
         AgentKind,
         &str,
         &str,
         &mut InfinityContextMmu,
     ) -> Result<String, serde_json::Error>,
-) -> Result<(), String> {
+) -> Outcome {
     let _ = stream.set_write_timeout(Some(CLIENT_TIMEOUT));
-    let Some(line) = read_request(&stream, CLIENT_TIMEOUT) else {
-        return Ok(());
+    let line = match read_request(&stream, CLIENT_TIMEOUT) {
+        Ok(line) => line,
+        Err(ReadError::Closed) => return Outcome::NotSaved,
+        Err(ReadError::Protocol(error)) => {
+            write_response(stream, &failure(error));
+            return Outcome::NotSaved;
+        }
     };
     let req = match serde_json::from_str::<Request>(line.trim_end()) {
         Ok(req) if req.v == PROTOCOL_VERSION => req,
         Ok(_) => {
             write_response(stream, &failure("unsupported protocol version".into()));
-            return Ok(());
+            return Outcome::NotSaved;
         }
         Err(e) => {
             write_response(stream, &failure(format!("malformed request: {e}")));
-            return Ok(());
+            return Outcome::NotSaved;
         }
     };
 
@@ -244,31 +295,51 @@ fn handle_connection(
             let error = format!("workspace lock failed: {e}");
             eprintln!("icx daemon: {error}; request refused, still serving");
             write_response(stream, &failure(error));
-            return Ok(());
+            return Outcome::NotSaved;
         }
     };
     if let Err(e) = mmu.load_workspace_dir_unlocked(ws_dir) {
-        // Nothing was dispatched, so nothing is lost; the next request reloads again before
-        // dispatching, so a partially reloaded MMU is never saved.
+        // Nothing was dispatched, so nothing is lost. A partially reloaded MMU is discarded so
+        // the next request reloads from disk and never saves it.
+        *mmu = pristine.clone();
         let error = format!("workspace load failed: {e}");
         eprintln!("icx daemon: {error}; request refused, still serving");
         write_response(stream, &failure(error));
-        return Ok(());
+        return Outcome::NotSaved;
     }
     let agent = AgentKind::parse_agent(&req.agent);
-    // Even a failed dispatch may have changed state, so it is saved either way.
-    let resp = match dispatch(agent, &req.event, &req.payload, mmu) {
-        Ok(out) => Response { ok: true, out },
-        Err(e) => failure(e.to_string()),
+    let out = match dispatch(agent, &req.event, &req.payload, mmu) {
+        Ok(out) => out,
+        Err(e) => {
+            // The client falls back to in-process handling and retries this request, so the
+            // daemon must not persist whatever the failed dispatch changed: discard it and
+            // reload from disk on the next request. The retry is the only ingestion.
+            *mmu = pristine.clone();
+            write_response(stream, &failure(e.to_string()));
+            return Outcome::NotSaved;
+        }
     };
     if let Err(error) = mmu.save_workspace_dir_unlocked(ws_dir) {
+        // Never acknowledged (ICX-CODEX-030): the client falls back and retries in-process,
+        // so the unsaved state is discarded rather than committed by a later save.
+        *mmu = pristine.clone();
         let error = format!("workspace save failed; request was not acknowledged: {error}");
         write_response(stream, &failure(error.clone()));
-        return Err(error);
+        return Outcome::SaveFailed(error);
     }
-    write_response(stream, &resp);
+    write_response(stream, &Response { ok: true, out });
     drop(lock);
-    Ok(())
+    Outcome::Saved
+}
+
+/// What [`handle_connection`] did with the workspace store.
+enum Outcome {
+    /// Nothing was dispatched, or the dispatch failed and its state was discarded.
+    NotSaved,
+    /// The request was committed and acknowledged.
+    Saved,
+    /// The save failed; the client was told so and the in-memory state was discarded.
+    SaveFailed(String),
 }
 
 fn failure(out: String) -> Response {
@@ -287,28 +358,49 @@ fn write_response(mut stream: UnixStream, resp: &Response) {
 mod tests {
     use super::*;
 
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "Matches the production dispatch callback type"
-    )]
     fn durability_dispatch(
         agent: AgentKind,
         event: &str,
         payload: &str,
         mmu: &mut InfinityContextMmu,
     ) -> Result<String, serde_json::Error> {
-        let result = mmu.ingest_payload(
-            agent,
-            "durability fixture",
-            "durability fixture body\n",
-            false,
-        );
-        if event == "fail-save" {
-            let ws = Path::new(payload);
-            std::fs::rename(ws.join("icx.sqlite3"), ws.join("pre-failure.sqlite3")).unwrap();
-            std::fs::create_dir(ws.join("icx.sqlite3")).unwrap();
+        let body = format!("{event} fixture body\n");
+        let result = mmu.ingest_payload(agent, "durability fixture", &body, false);
+        let ws = Path::new(payload);
+        match event {
+            "fail-save" => {
+                std::fs::write(ws.join("last-aid"), result.artifact_id.to_string()).unwrap();
+                std::fs::rename(ws.join("icx.sqlite3"), ws.join("pre-failure.sqlite3")).unwrap();
+                std::fs::create_dir(ws.join("icx.sqlite3")).unwrap();
+            }
+            "fail-dispatch" => {
+                std::fs::write(ws.join("last-aid"), result.artifact_id.to_string()).unwrap();
+                return Err(serde_json::from_str::<u8>("not json").unwrap_err());
+            }
+            "conflict" => {
+                // Another writer commits between the daemon's reload and its save, so the save
+                // fails its optimistic-concurrency check while the store stays loadable.
+                let mut other = InfinityContextMmu::default();
+                other.load_workspace_dir_unlocked(ws).unwrap();
+                other.ingest_payload(agent, "other writer", "other writer body\n", false);
+                other.save_workspace_dir_unlocked(ws).unwrap();
+            }
+            _ => {}
         }
         Ok(result.artifact_id.to_string())
+    }
+
+    fn last_aid(ws: &Path) -> icx_core::ArtifactId {
+        std::fs::read_to_string(ws.join("last-aid"))
+            .unwrap()
+            .parse()
+            .unwrap()
+    }
+
+    fn committed_text(ws: &Path, aid: icx_core::ArtifactId) -> Option<String> {
+        let mut reopened = InfinityContextMmu::default();
+        reopened.load_workspace_dir_unlocked(ws).unwrap();
+        reopened.deref_text(aid).ok()
     }
 
     fn start_durability_fixture(
@@ -370,7 +462,7 @@ mod tests {
         let recovered = reopened.deref_text(aid);
         server.join().unwrap().unwrap();
         std::fs::remove_dir_all(ws).unwrap();
-        assert_eq!(recovered.unwrap(), "durability fixture body\n");
+        assert_eq!(recovered.unwrap(), "ingest fixture body\n");
     }
 
     /// Takes the OS `flock` on `cas_store.lock` through a separate open file description, as
@@ -472,7 +564,7 @@ mod tests {
         let elapsed = started.elapsed();
         drop(server);
         writer.join().unwrap();
-        assert!(read.is_none(), "trickled request was accepted");
+        assert!(read.is_err(), "trickled request was accepted");
         assert!(
             elapsed < Duration::from_millis(1_000),
             "request read took {elapsed:?} despite a 300 ms deadline"
@@ -480,18 +572,149 @@ mod tests {
     }
 
     #[test]
-    fn save_failure_is_not_acknowledged_and_serve_returns_error() {
-        let (ws, socket, server) = start_durability_fixture("save-error", Some(1));
-        let output = try_hook(&socket, "codex", "fail-save", ws.to_str().unwrap());
+    fn save_failure_is_not_acknowledged_and_unsaved_state_is_discarded() {
+        let (ws, socket, server) = start_durability_fixture("save-error", Some(2));
+        let ws_str = ws.to_str().unwrap();
+        let output = try_hook(&socket, "codex", "fail-save", ws_str);
+        let failed_aid = last_aid(&ws);
+        // The fault was transient: put the store back exactly as it was (same generation).
+        std::fs::remove_dir(ws.join("icx.sqlite3")).unwrap();
+        std::fs::rename(ws.join("pre-failure.sqlite3"), ws.join("icx.sqlite3")).unwrap();
+        let next = try_hook(&socket, "codex", "ingest", ws_str);
         let result = server.join().unwrap();
+        let leaked = committed_text(&ws, failed_aid);
+        let next_text = next
+            .as_deref()
+            .and_then(|s| s.parse().ok())
+            .and_then(|aid| committed_text(&ws, aid));
         std::fs::remove_dir_all(ws).unwrap();
         assert!(
             output.is_none(),
             "failed save returned a successful handle: {output:?}"
         );
+        assert_eq!(next_text.as_deref(), Some("ingest fixture body\n"));
+        assert!(
+            leaked.is_none(),
+            "the unacknowledged request was committed by a later save: {leaked:?}"
+        );
+        assert!(
+            result.is_ok(),
+            "one transient save failure ended the daemon: {result:?}"
+        );
+    }
+
+    #[test]
+    fn repeated_save_failures_end_the_daemon_with_an_error() {
+        let (ws, socket, server) = start_durability_fixture("save-repeat", None);
+        let ws_str = ws.to_str().unwrap();
+        let mut replies = Vec::new();
+        for _ in 0..MAX_CONSECUTIVE_SAVE_FAILURES {
+            replies.push(try_hook(&socket, "codex", "conflict", ws_str));
+        }
+        let result = server.join().unwrap();
+        std::fs::remove_dir_all(ws).unwrap();
+        assert!(
+            replies.iter().all(Option::is_none),
+            "a failed save was acknowledged: {replies:?}"
+        );
         assert!(
             result.is_err(),
-            "failed persistence was reported as successful daemon exit"
+            "repeated save failures were reported as a successful daemon exit"
+        );
+    }
+
+    #[test]
+    fn save_failure_streak_is_reset_by_a_successful_save() {
+        let (ws, socket, server) =
+            start_durability_fixture("save-reset", Some(2 * MAX_CONSECUTIVE_SAVE_FAILURES));
+        let ws_str = ws.to_str().unwrap();
+        let mut acked = 0;
+        for _ in 0..2 {
+            for _ in 0..MAX_CONSECUTIVE_SAVE_FAILURES - 1 {
+                assert!(try_hook(&socket, "codex", "conflict", ws_str).is_none());
+            }
+            acked += usize::from(try_hook(&socket, "codex", "ingest", ws_str).is_some());
+        }
+        let result = server.join().unwrap();
+        std::fs::remove_dir_all(ws).unwrap();
+        assert_eq!(acked, 2);
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn failed_dispatch_is_not_saved() {
+        let (ws, socket, server) = start_durability_fixture("dispatch-error", Some(2));
+        let ws_str = ws.to_str().unwrap();
+        let generation = InfinityContextMmu::workspace_generation(&ws).unwrap();
+        let output = try_hook(&socket, "codex", "fail-dispatch", ws_str);
+        let failed_aid = last_aid(&ws);
+        let after_failure = committed_text(&ws, failed_aid);
+        let generation_after = InfinityContextMmu::workspace_generation(&ws).unwrap();
+        // The client retries in-process; the daemon must not also commit the failed request
+        // when it saves the next one.
+        let next = try_hook(&socket, "codex", "ingest", ws_str);
+        let result = server.join().unwrap();
+        let after_next = committed_text(&ws, failed_aid);
+        std::fs::remove_dir_all(ws).unwrap();
+        assert!(output.is_none(), "failed dispatch was acknowledged");
+        assert_eq!(generation, generation_after, "a failed dispatch was saved");
+        assert!(after_failure.is_none(), "{after_failure:?}");
+        assert!(next.is_some());
+        assert!(
+            after_next.is_none(),
+            "failed dispatch state leaked into a later save: {after_next:?}"
+        );
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    fn raw_exchange(socket: &Path, bytes: &[u8]) -> Response {
+        let mut stream = UnixStream::connect(socket).unwrap();
+        stream.set_read_timeout(Some(CLIENT_TIMEOUT)).unwrap();
+        stream.write_all(bytes).unwrap();
+        let mut buf = String::new();
+        stream.read_to_string(&mut buf).unwrap();
+        serde_json::from_str(buf.trim_end()).unwrap()
+    }
+
+    #[test]
+    fn trailing_bytes_after_the_request_line_are_rejected() {
+        let (ws, socket, server) = start_durability_fixture("trailing", Some(2));
+        let generation = InfinityContextMmu::workspace_generation(&ws).unwrap();
+        let req = serde_json::to_string(&Request {
+            v: PROTOCOL_VERSION,
+            agent: "codex".into(),
+            event: "ingest".into(),
+            payload: String::new(),
+        })
+        .unwrap();
+        let rejected = raw_exchange(&socket, format!("{req}\n{req}\n").as_bytes());
+        let generation_after = InfinityContextMmu::workspace_generation(&ws).unwrap();
+        // Trailing whitespace is not a second request.
+        let accepted = raw_exchange(&socket, format!("{req}\n \r\n").as_bytes());
+        let result = server.join().unwrap();
+        std::fs::remove_dir_all(ws).unwrap();
+        assert!(
+            !rejected.ok,
+            "trailing bytes were ignored: {}",
+            rejected.out
+        );
+        assert!(rejected.out.contains("protocol error"), "{}", rejected.out);
+        assert_eq!(
+            generation, generation_after,
+            "rejected request was dispatched"
+        );
+        assert!(accepted.ok, "{}", accepted.out);
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn read_request_rejects_bytes_after_the_newline() {
+        let (mut client, server) = UnixStream::pair().unwrap();
+        client.write_all(b"{\"v\":1}\ntrailing").unwrap();
+        let read = read_request(&server, Duration::from_secs(2));
+        assert!(
+            matches!(read, Err(ReadError::Protocol(_))),
+            "trailing bytes accepted: {read:?}"
         );
     }
 }
