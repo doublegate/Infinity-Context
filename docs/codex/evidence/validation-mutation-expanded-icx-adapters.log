@@ -1,0 +1,24 @@
+Found 46 mutants to test
+ok       Unmutated baseline in 133s build + 12s test
+ERROR Worker thread failed: Failed to copy /home/parobek/Code/OSS_Public-Projects/Infinity-Context/fuzz/target/x86_64-unknown-linux-gnu/release/build/icx-fuzz/9c375383792e52c1/out/ahtl_stream to /tmp/Infinity-Context/validation/cargo-mutants-Infinity-Context-C590ro.tmp/fuzz/target/x86_64-unknown-linux-gnu/release/build/icx-fuzz/9c375383792e52c1/out/ahtl_stream
+
+Caused by:
+    No space left on device (os error 28)
+MISSED   crates/icx-adapters/src/antigravity.rs:53:9: replace AntigravityAdapter::extract_error_string -> Option<String> with Some(String::new()) in 4s build + 11s test
+MISSED   crates/icx-adapters/src/antigravity.rs:424:41: delete ! in AntigravityAdapter::handle_hook in 5s build + 11s test
+MISSED   crates/icx-adapters/src/codex.rs:121:65: replace && with || in CodexAdapter::handle_hook in 1s build + 9s test
+MISSED   crates/icx-adapters/src/codex.rs:288:42: replace * with / in CodexRolloutTailer::compute_anchor_digest in 2s build + 9s test
+MISSED   crates/icx-adapters/src/hermes.rs:35:21: delete match arm Value::Number(_) | Value::Bool(_) in deserialize_hermes_content in 2s build + 10s test
+MISSED   crates/icx-adapters/src/hermes.rs:642:32: replace += with -= in HermesAdapter::prune_tool_results_only_core in 1s build + 8s test
+MISSED   crates/icx-adapters/src/mcp.rs:70:17: replace && with || in McpPagerServer::requires_workspace_state in 1s build + 8s test
+TIMEOUT  crates/icx-adapters/src/mmu.rs:270:45: replace > with < in InfinityContextMmu::bound_and_sanitize_raw in 0s build + 60s test
+MISSED   crates/icx-adapters/src/mmu.rs:295:23: replace -= with += in InfinityContextMmu::bound_and_sanitize_raw in 1s build + 11s test
+MISSED   crates/icx-adapters/src/mmu.rs:467:29: replace == with != in InfinityContextMmu::get_occurrence_record_for in 1s build + 8s test
+MISSED   crates/icx-adapters/src/mmu.rs:846:73: replace != with == in InfinityContextMmu::build_ephemeral_tail_slot_inner in 1s build + 8s test
+MISSED   crates/icx-adapters/src/mmu.rs:968:16: delete ! in InfinityContextMmu::is_artifact_redacted in 1s build + 8s test
+MISSED   crates/icx-adapters/src/mmu.rs:1240:17: delete match arm (Some(bytes), Some(n)) in InfinityContextMmu::load_workspace_dir_unlocked in 1s build + 8s test
+MISSED   crates/icx-adapters/src/store.rs:199:43: replace && with || in tighten_store_file_modes in 1s build + 8s test
+Error: Failed to copy /home/parobek/Code/OSS_Public-Projects/Infinity-Context/fuzz/target/x86_64-unknown-linux-gnu/release/build/icx-fuzz/9c375383792e52c1/out/ahtl_stream to /tmp/Infinity-Context/validation/cargo-mutants-Infinity-Context-C590ro.tmp/fuzz/target/x86_64-unknown-linux-gnu/release/build/icx-fuzz/9c375383792e52c1/out/ahtl_stream
+
+Caused by:
+    No space left on device (os error 28)

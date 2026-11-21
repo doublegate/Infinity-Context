@@ -1,0 +1,6 @@
+   Compiling icx-core v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core)
+   Compiling icx-store v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-store)
+   Compiling icx-codec v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-codec)
+   Compiling icx-hdc v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-hdc)
+   Compiling icx-v120-retrieval v0.0.0 (/tmp/Infinity-Context/v120/retrieval)
+    Finished `release` profile [optimized] target(s) in 2.33s

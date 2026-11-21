@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: 2026 DoubleGate
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Release build: on a version-tag push (or a manual run against an existing tag), runs the test
-# gate, builds static musl `icx` binaries for x86-64 (baseline) and x86-64-v3 (AVX2), packages
+# Release build: on a version-tag push (or a manual run against an existing tag), requires
+# successful CI and REUSE for the exact commit, runs tests, then builds and packages binaries.
+# Builds static musl `icx` binaries for x86-64 (baseline) and x86-64-v3 (AVX2), packages
 # them with the license texts, writes SHA256SUMS, attests build provenance and attaches
 # everything to a GitHub release for the tag.
 #
@@ -36,12 +37,16 @@ env:
 
 jobs:
   gate:
-    name: Verify tag and run tests
+    name: Verify exact-commit CI, tag and tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       version: ${{ steps.tag.outputs.version }}
+      sha: ${{ steps.commit.outputs.sha }}
     steps:
       - name: Resolve tag
         id: tag
@@ -61,16 +66,33 @@ jobs:
           ref: refs/tags/${{ steps.tag.outputs.tag }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Resolve immutable source commit
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Tagged commit must be on main
-        # ci.yml (fmt, clippy, unsafe policy, cargo-deny, coverage, secret scan) runs on every
-        # push to main, so requiring the tag to point into main's history means those gates
-        # have run on the released source; this job only re-runs the tests.
+        # Ancestry is an independent source policy; it does not prove successful CI.
         run: |
           git fetch --no-tags --quiet origin +refs/heads/main:refs/remotes/origin/main
           if ! git merge-base --is-ancestor HEAD origin/main; then
             echo "ERROR: $(git rev-parse --short HEAD) is not on main; merge it before tagging" >&2
             exit 1
           fi
+      # Use this workflow's policy, including for a manual rebuild of an older tag.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: wf
+          sparse-checkout: .github
+          persist-credentials: false
+      - name: Test release CI policy
+        run: python3 wf/.github/scripts/test-release-ci-gate.py
+      - name: Require successful CI and REUSE on the exact tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REPO: ${{ github.repository }}
+          RELEASE_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          python3 wf/.github/scripts/release-ci-gate.py \
+            --repo "$RELEASE_REPO" --sha "$RELEASE_SHA" --timeout 600
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -102,7 +124,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: refs/tags/${{ needs.gate.outputs.tag }}
+          ref: ${{ needs.gate.outputs.sha }}
           persist-credentials: false
       # The cargo-about config comes from the workflow's own commit, so a manual run for an
       # older tag that predates it still gets notices for that tag's Cargo.lock.
@@ -164,7 +186,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: refs/tags/${{ needs.gate.outputs.tag }}
+          ref: ${{ needs.gate.outputs.sha }}
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
@@ -259,21 +281,32 @@ jobs:
       contents: write
       id-token: write
       attestations: write
+      actions: read
     env:
       TAG: ${{ needs.gate.outputs.tag }}
       VERSION: ${{ needs.gate.outputs.version }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
+      RELEASE_SHA: ${{ needs.gate.outputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: refs/tags/${{ needs.gate.outputs.tag }}
+          ref: ${{ needs.gate.outputs.sha }}
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           path: wf
           sparse-checkout: .github
           persist-credentials: false
+      - name: Recheck tag and CI before release writes
+        run: |
+          git fetch --no-tags origin "refs/tags/$TAG:refs/tags/release-verification"
+          if [ "$(git rev-parse 'refs/tags/release-verification^{commit}')" != "$RELEASE_SHA" ]; then
+            echo "ERROR: release tag moved after the gate" >&2
+            exit 1
+          fi
+          python3 wf/.github/scripts/release-ci-gate.py \
+            --repo "$GH_REPO" --sha "$RELEASE_SHA" --timeout 0
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist

@@ -1,0 +1,15 @@
+    Checking icx-hdc v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-hdc)
+    Checking icx-codec v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-codec)
+    Checking icx-core v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core)
+error: long literal lacking separators
+  --> crates/icx-hdc/tests/numeric_vectors_v120.rs:62:68
+   |
+62 |     assert!((third.instantaneous_surprise - 0.65 / 5120.0).abs() < 0.000001);
+   |                                                                    ^^^^^^^^ help: consider: `0.000_001`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#unreadable_literal
+   = note: `-D clippy::unreadable-literal` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::unreadable_literal)]`
+
+error: could not compile `icx-hdc` (test "numeric_vectors_v120") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

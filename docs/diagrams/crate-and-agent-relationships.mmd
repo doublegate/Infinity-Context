@@ -1,29 +1,30 @@
-%%{init: {"theme": "dark", "flowchart": {"curve": "basis"}}}%%
-flowchart LR
-  subgraph CLI_LAYER["Binary & Wire Entry Points"]
-    CLI["icx-cli<br/>(icx binary)"]
-  end
-
-  subgraph ORCH_LAYER["Adapter & Proxy Orchestration"]
-    ADAPT["icx-adapters<br/>InfinityContextMmu<br/>Claude / Codex / agy / Hermes<br/>McpPagerServer"]
-    PROXY["icx-proxy<br/>WireProxyTransformer<br/>Anthropic &amp; OpenAI Cache-Epoch"]
-  end
-
-  subgraph ENGINE_LAYER["Codec, Graph & IPC Engines"]
-    CODEC["icx-codec<br/>AhtlPacket + Braille-256<br/>StructuralSkeletonizer<br/>SecretRedactor"]
-    STORE["icx-store<br/>BiTemporalGraph<br/>PersonalizedPageRank"]
-    BUS["icx-bus<br/>SeqlockTelemetryBus<br/>/dev/shm mmap Ring"]
-  end
-
-  subgraph CORE_LAYER["Mathematical & Cryptographic Foundation"]
-    HDC["icx-hdc<br/>Hypervector ([u64; 160])<br/>HdcBundler + FractalCoord<br/>TitansSurpriseGate"]
-    CORE["icx-core<br/>IcxHandle + FastCdcChunker<br/>CasStore + MerkleContextDag<br/>CacheEpochController"]
-  end
-
-  CLI --> ADAPT & PROXY & CODEC & STORE & BUS & HDC & CORE
-  ADAPT --> CODEC & STORE & BUS & HDC & CORE
-  PROXY --> CODEC & CORE
-  CODEC --> HDC & CORE
-  STORE --> HDC & CORE
-  BUS --> HDC & CORE
-  HDC --> CORE
+%% v1.2.0 candidate; arrows point from dependent to runtime dependency.
+flowchart TD
+  icx_adapters["icx-adapters"]
+  icx_bus["icx-bus"]
+  icx_cli["icx-cli"]
+  icx_codec["icx-codec"]
+  icx_core["icx-core"]
+  icx_hdc["icx-hdc"]
+  icx_proxy["icx-proxy"]
+  icx_store["icx-store"]
+  icx_adapters --> icx_bus
+  icx_adapters --> icx_codec
+  icx_adapters --> icx_core
+  icx_adapters --> icx_hdc
+  icx_adapters --> icx_store
+  icx_bus --> icx_core
+  icx_cli --> icx_adapters
+  icx_cli --> icx_bus
+  icx_cli --> icx_codec
+  icx_cli --> icx_core
+  icx_cli --> icx_hdc
+  icx_cli --> icx_proxy
+  icx_cli --> icx_store
+  icx_codec --> icx_core
+  icx_hdc --> icx_core
+  icx_proxy --> icx_adapters
+  icx_proxy --> icx_core
+  icx_store --> icx_core
+  Agents["Claude / Codex capture-only / agy / Hermes shim / MCP clients"] --> icx_cli
+  icx_adapters -.-> Contracts["Validated canonical icx; ICXHDC04; bounded managed window"]

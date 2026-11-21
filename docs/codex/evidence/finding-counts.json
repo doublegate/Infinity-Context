@@ -1,0 +1,9 @@
+{
+  "count": 19,
+  "severity": {
+    "medium": 10,
+    "low": 8,
+    "high": 1
+  },
+  "prior_rows": 51
+}

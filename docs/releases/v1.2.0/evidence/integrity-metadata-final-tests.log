@@ -1,0 +1,12 @@
+   Compiling icx-core v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.24s
+     Running tests/integrity_v120.rs (/tmp/Infinity-Context/v120/target/debug/build/icx-core/6c59312c4e936948/out/integrity_v120-6c59312c4e936948)
+
+running 4 tests
+test cas_rejects_a_single_forged_line_offset_and_deduplicates_real_chunks ... ok
+test cas_restore_rejects_independent_metadata_forgery_and_duplicate_records ... ok
+test individual_turn_and_epoch_digest_tampering_cannot_pass_verification ... ok
+test self_consistent_map_and_node_ids_must_still_match_the_digest_prefix ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

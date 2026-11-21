@@ -1,0 +1,168 @@
+{
+  "observed_utc": "2026-11-21T16:29:52.099097+00:00",
+  "branch": "codex-audit",
+  "base_head": "a996d59f1eb468e7c386747e15f4c7e58d08410e",
+  "release_ready": false,
+  "tally": {
+    "PASS": 24,
+    "FAIL": 2,
+    "WARN": 4
+  },
+  "checks": [
+    {
+      "name": "format",
+      "state": "PASS",
+      "evidence": "gate-final-format.log"
+    },
+    {
+      "name": "clippy",
+      "state": "PASS",
+      "evidence": "clippy-qualified-corrected.log",
+      "prior_failure_retained": "gate-final-clippy.log and clippy-qualified.log",
+      "detail": "Cosmetic test assertions/literal style corrected; strict all-target lint passes"
+    },
+    {
+      "name": "rustdoc",
+      "state": "PASS",
+      "evidence": "gate-final-rustdoc.log"
+    },
+    {
+      "name": "deny",
+      "state": "PASS",
+      "evidence": "gate-final-deny.log"
+    },
+    {
+      "name": "audit",
+      "state": "PASS",
+      "evidence": "gate-final-audit.log"
+    },
+    {
+      "name": "notices",
+      "state": "PASS",
+      "evidence": "gate-final-notices.log"
+    },
+    {
+      "name": "machete",
+      "state": "PASS",
+      "evidence": "gate-final-machete.log"
+    },
+    {
+      "name": "reuse",
+      "state": "PASS",
+      "evidence": "gate-final-reuse.log"
+    },
+    {
+      "name": "secrets-history",
+      "state": "PASS",
+      "evidence": "gate-final-secrets-history.log"
+    },
+    {
+      "name": "actionlint",
+      "state": "PASS",
+      "evidence": "gate-final-actionlint.log"
+    },
+    {
+      "name": "agy-selftest",
+      "state": "PASS",
+      "evidence": "gate-final-agy-selftest.log"
+    },
+    {
+      "name": "cla-selftest",
+      "state": "PASS",
+      "evidence": "gate-final-cla-selftest.log"
+    },
+    {
+      "name": "release-policy-tests",
+      "state": "PASS",
+      "evidence": "gate-final-release-policy-tests.log"
+    },
+    {
+      "name": "benchmark-runner-tests",
+      "state": "PASS",
+      "evidence": "gate-final-benchmark-runner-tests.log"
+    },
+    {
+      "name": "workspace224includinglongtest",
+      "state": "PASS",
+      "evidence": "workspace-tests-qualified.log"
+    },
+    {
+      "name": "coverage95.1943percent",
+      "state": "PASS",
+      "evidence": "coverage-qualified-summary.json"
+    },
+    {
+      "name": "finalredactor901seconds",
+      "state": "PASS",
+      "evidence": "fuzz-redact-qualified-summary.json"
+    },
+    {
+      "name": "seededsnapshot901seconds",
+      "state": "PASS",
+      "evidence": "fuzz-hdc-final-seeded-summary.json"
+    },
+    {
+      "name": "finalparser60secondsmokes",
+      "state": "PASS",
+      "evidence": "fuzz-final-parser-smokes.json"
+    },
+    {
+      "name": "boundedmutationrechecks",
+      "state": "PASS",
+      "evidence": "mutation-critical-r5-summary.json"
+    },
+    {
+      "name": "fourLinuxpackagesandUbuntu2.35",
+      "state": "PASS",
+      "evidence": "package-local-acceptance.json"
+    },
+    {
+      "name": "nonignoredworkingtreesourcescan",
+      "state": "PASS",
+      "evidence": "secrets-qualified-source.log"
+    },
+    {
+      "name": "sixsecretpolicyboundarycontrols",
+      "state": "PASS",
+      "evidence": "secret-policy-safe-controls-summary.json"
+    },
+    {
+      "name": "offlineimmutableassetassembly",
+      "state": "PASS",
+      "evidence": "release-assembler-fixtures.json"
+    },
+    {
+      "name": "strict-performance-portable",
+      "state": "FAIL",
+      "detail": "0/10 optimized measured processes pass unchanged strict gates; host contention observed, attribution incomplete",
+      "evidence": "benchmark-quiet-v2-summary.json"
+    },
+    {
+      "name": "strict-performance-native",
+      "state": "FAIL",
+      "detail": "0/10 optimized measured processes pass unchanged strict gates; host contention observed, attribution incomplete",
+      "evidence": "benchmark-quiet-v2-summary.json"
+    },
+    {
+      "name": "071redistribution",
+      "state": "WARN",
+      "detail": "Asset-level grants or approved exclusions still require owner/qualified decision"
+    },
+    {
+      "name": "074governance",
+      "state": "WARN",
+      "detail": "Patent/CLA/commercial/license reconciliation requires owner/qualified decision"
+    },
+    {
+      "name": "exactcandidatehostedCI",
+      "state": "WARN",
+      "detail": "Uncommitted working-tree candidate; no exact new committed SHA has hosted CI"
+    },
+    {
+      "name": "publicationauthorization",
+      "state": "WARN",
+      "detail": "No commits, pushes, merge, tag or publication authorized/performed"
+    }
+  ],
+  "limits": "Bounded local evidence; no exhaustive defect or performance guarantee. Frozen original audit remains unchanged. Existing user AGENTS modification preserved."
+}

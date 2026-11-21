@@ -4,12 +4,12 @@
 //! socket in the private runtime directory (`$XDG_RUNTIME_DIR/icx`, mode `0700`). Every
 //! connection is authenticated with `SO_PEERCRED`: the peer's uid must equal ours.
 //!
-//! Persistence is write-behind: the reply is sent first, then the daemon keeps the workspace lock
-//! while it holds unsaved changes and flushes after `FLUSH_QUIET` of inactivity (at most
-//! `FLUSH_MAX` after the first unsaved change). Holding the lock across that window makes the
-//! daemon the single writer, so the proxy and MCP server (which take the same lock) never
-//! interleave with unsaved state. Each request revalidates the store generation, which picks up
-//! their writes cheaply.
+//! A successful reply is sent only after committing the dispatched request to SQLite. The
+//! workspace lock covers reload, dispatch and save, so proxy/MCP writes cannot interleave with
+//! an unsaved request. Save failures produce a failed response and terminate the daemon with an
+//! error; no acknowledged changes remain in a write-behind window or get replaced by a reload.
+//! The request is read in full (under one overall deadline) before the lock is taken, and a
+//! lock timeout or reload failure fails only that request: the daemon keeps serving.
 //!
 //! `icx hook` falls back to in-process handling on any daemon error, so a missing or broken
 //! daemon never breaks an agent.
@@ -17,7 +17,7 @@
 use icx_adapters::InfinityContextMmu;
 use icx_core::AgentKind;
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -26,11 +26,7 @@ use std::time::{Duration, Instant};
 pub const PROTOCOL_VERSION: u32 = 1;
 /// Largest accepted request line (64 MiB payload bound plus envelope).
 pub const MAX_REQUEST_BYTES: u64 = icx_core::ICX_MAX_INGEST_BYTES as u64 + 64 * 1024;
-const FLUSH_QUIET: Duration = Duration::from_millis(50);
-const FLUSH_MAX: Duration = Duration::from_secs(1);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
-/// Consecutive failed flushes after which unsaved changes are dropped with an error.
-const MAX_FLUSH_FAILURES: u32 = 5;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Request {
@@ -130,63 +126,14 @@ pub fn serve(
         socket.display()
     );
 
-    let mut held_lock = None;
-    let mut first_dirty: Option<Instant> = None;
     let mut last_request = Instant::now();
     let mut served = 0usize;
-    let mut flush_failures = 0u32;
 
     let result = loop {
-        let timeout = match first_dirty {
-            Some(first) => {
-                let quiet_deadline = last_request + FLUSH_QUIET;
-                let max_deadline = first + FLUSH_MAX;
-                Some(
-                    quiet_deadline
-                        .min(max_deadline)
-                        .saturating_duration_since(Instant::now()),
-                )
-            }
-            None => opts
-                .idle_exit
-                .map(|idle| (last_request + idle).saturating_duration_since(Instant::now())),
-        };
+        let timeout = opts
+            .idle_exit
+            .map(|idle| (last_request + idle).saturating_duration_since(Instant::now()));
         let ready = wait_readable(&listener, timeout);
-        if flush_due(first_dirty, ready, Instant::now()) {
-            let saved = flush(ws_dir, &mut mmu, &mut held_lock);
-            held_lock = None; // never hold the workspace lock across a retry wait
-            match saved {
-                Ok(()) => {
-                    first_dirty = None;
-                    flush_failures = 0;
-                }
-                Err(e) => {
-                    // Keep the unsaved state in memory and retry after `FLUSH_MAX`. Other icx
-                    // processes can use the store meanwhile; the retry reloads only if one of them
-                    // advanced it. A persistent failure (full disk, read-only store) is given up
-                    // after `MAX_FLUSH_FAILURES` so the daemon can still idle-exit (PR #20 review).
-                    flush_failures += 1;
-                    if flush_failures >= MAX_FLUSH_FAILURES {
-                        eprintln!(
-                            "icx daemon: ERROR: giving up after {flush_failures} failed flushes; \
-                             unsaved workspace changes are lost: {e}"
-                        );
-                        first_dirty = None;
-                        flush_failures = 0;
-                    } else {
-                        eprintln!(
-                            "icx daemon: flush failed ({flush_failures}/{MAX_FLUSH_FAILURES}), \
-                             retrying in {}s: {e}",
-                            FLUSH_MAX.as_secs()
-                        );
-                        let now = Instant::now();
-                        first_dirty = Some(now);
-                        last_request = now + FLUSH_MAX;
-                    }
-                }
-            }
-            continue;
-        }
         if !ready {
             if opts.idle_exit.is_some() {
                 break Ok(());
@@ -199,82 +146,18 @@ pub fn serve(
         if !peer_is_same_user(&stream) {
             continue; // refuse other users silently
         }
-        if held_lock.is_none() {
-            match InfinityContextMmu::acquire_workspace_lock(ws_dir) {
-                Ok(guard) => {
-                    held_lock = Some(guard);
-                    if first_dirty.is_some() {
-                        warn_if_unsaved_changes_are_replaced(ws_dir, &mmu);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("icx daemon: workspace lock failed: {e}");
-                    continue;
-                }
-            }
-            if let Err(e) = mmu.load_workspace_dir_unlocked(ws_dir) {
-                eprintln!("icx daemon: load failed: {e}");
-                held_lock = None;
-                continue;
-            }
+        let handled = handle_connection(stream, ws_dir, &mut mmu, dispatch);
+        if let Err(error) = handled {
+            break Err(error);
         }
-        let dispatched = handle_connection(stream, &mut mmu, dispatch);
-        last_request = last_request.max(Instant::now());
-        if dispatched {
-            first_dirty.get_or_insert(Instant::now());
-        } else if first_dirty.is_none() {
-            held_lock = None; // nothing changed: do not hold the lock for the write-behind window
-        }
+        last_request = Instant::now();
         served += 1;
         if opts.max_requests.is_some_and(|max| served >= max) {
             break Ok(());
         }
     };
-    if first_dirty.is_some()
-        && let Err(e) = flush(ws_dir, &mut mmu, &mut held_lock)
-    {
-        eprintln!("icx daemon: ERROR: final flush failed; unsaved workspace changes are lost: {e}");
-    }
-    drop(held_lock);
     let _ = std::fs::remove_file(socket);
     result
-}
-
-/// Saves `mmu`, (re)taking the workspace lock first if a failed flush released it. The load is a
-/// no-op unless another writer advanced the store since this MMU last loaded or saved it.
-fn flush(
-    ws_dir: &Path,
-    mmu: &mut InfinityContextMmu,
-    held_lock: &mut Option<(std::fs::File, std::sync::MutexGuard<'static, ()>)>,
-) -> Result<(), icx_core::IcxError> {
-    if held_lock.is_none() {
-        *held_lock = Some(InfinityContextMmu::acquire_workspace_lock(ws_dir)?);
-        warn_if_unsaved_changes_are_replaced(ws_dir, mmu);
-        mmu.load_workspace_dir_unlocked(ws_dir)?;
-    }
-    mmu.save_workspace_dir_unlocked(ws_dir)
-}
-
-/// Called with the lock held and unsaved changes in memory, just before a reload: if another
-/// writer advanced the store while a failed flush had released the lock, the reload replaces the
-/// unsaved changes, so say so (PR #20 review).
-fn warn_if_unsaved_changes_are_replaced(ws_dir: &Path, mmu: &InfinityContextMmu) {
-    let on_disk = InfinityContextMmu::workspace_generation(ws_dir).ok();
-    if on_disk.is_some() && on_disk != mmu.mirrored_generation() {
-        eprintln!(
-            "icx daemon: ERROR: another icx process updated {} while a flush was pending; \
-             unsaved daemon changes are replaced by its newer state",
-            ws_dir.display()
-        );
-    }
-}
-
-/// True when unsaved changes must be flushed now: after a quiet period (`ready == false` once a
-/// deadline passed) or, regardless of queued connections, once `FLUSH_MAX` has elapsed since the
-/// first unsaved change. Flushing releases the workspace lock, so a steady stream of hooks can
-/// never hold it past `FLUSH_MAX` (PR #20 review).
-fn flush_due(first_dirty: Option<Instant>, ready: bool, now: Instant) -> bool {
-    first_dirty.is_some_and(|first| !ready || now.saturating_duration_since(first) >= FLUSH_MAX)
 }
 
 /// Waits until `listener` has a pending connection or `timeout` elapses (`None` = forever).
@@ -288,9 +171,49 @@ fn wait_readable(listener: &UnixListener, timeout: Option<Duration>) -> bool {
     matches!(poll(&mut fds, ts.as_ref()), Ok(n) if n > 0)
 }
 
-/// Serves one request; returns `true` if it reached `dispatch` (and so may have changed state).
+/// Reads one newline-terminated request from `stream`, bounded by `MAX_REQUEST_BYTES` and by an
+/// overall `deadline` (not only a per-`read` timeout, which a trickling client could renew
+/// indefinitely). Returns `None` on EOF, I/O error, timeout or an oversized request.
+fn read_request(stream: &UnixStream, deadline: Duration) -> Option<String> {
+    let started = Instant::now();
+    let mut reader = stream;
+    let mut line = Vec::new();
+    let mut chunk = [0u8; 64 * 1024];
+    loop {
+        let remaining = deadline.checked_sub(started.elapsed())?;
+        if remaining.is_zero() {
+            return None;
+        }
+        stream.set_read_timeout(Some(remaining)).ok()?;
+        let n = match reader.read(&mut chunk) {
+            Ok(0) => return None,
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return None,
+        };
+        if let Some(pos) = chunk[..n].iter().position(|&b| b == b'\n') {
+            line.extend_from_slice(&chunk[..pos]);
+            break;
+        }
+        line.extend_from_slice(&chunk[..n]);
+        if line.len() as u64 > MAX_REQUEST_BYTES {
+            return None;
+        }
+    }
+    if line.len() as u64 > MAX_REQUEST_BYTES {
+        return None;
+    }
+    String::from_utf8(line).ok()
+}
+
+/// Serves one connection. The request is read and parsed before the workspace lock is taken,
+/// so a slow or idle client never blocks in-process hooks or `mcp-serve`; the lock covers only
+/// reload, dispatch, save and the reply. A lock timeout or reload failure fails this request
+/// (the client falls back to in-process handling) and the daemon keeps serving. Only a failed
+/// save after a dispatch returns `Err`, because acknowledged state must never be lost.
 fn handle_connection(
     stream: UnixStream,
+    ws_dir: &Path,
     mmu: &mut InfinityContextMmu,
     dispatch: fn(
         AgentKind,
@@ -298,69 +221,277 @@ fn handle_connection(
         &str,
         &mut InfinityContextMmu,
     ) -> Result<String, serde_json::Error>,
-) -> bool {
-    let _ = stream.set_read_timeout(Some(CLIENT_TIMEOUT));
+) -> Result<(), String> {
     let _ = stream.set_write_timeout(Some(CLIENT_TIMEOUT));
-    let Ok(read_half) = stream.try_clone() else {
-        return false;
+    let Some(line) = read_request(&stream, CLIENT_TIMEOUT) else {
+        return Ok(());
     };
-    let mut reader = BufReader::new(read_half.take(MAX_REQUEST_BYTES));
-    let mut line = String::new();
-    let mut dispatched = false;
-    let resp = match reader.read_line(&mut line) {
-        Ok(0) | Err(_) => return false,
-        Ok(_) => match serde_json::from_str::<Request>(line.trim_end()) {
-            Ok(req) if req.v == PROTOCOL_VERSION => {
-                let agent = AgentKind::parse_agent(&req.agent);
-                dispatched = true; // even a failed dispatch may have changed state
-                match dispatch(agent, &req.event, &req.payload, mmu) {
-                    Ok(out) => Response { ok: true, out },
-                    Err(e) => Response {
-                        ok: false,
-                        out: e.to_string(),
-                    },
-                }
-            }
-            Ok(_) => Response {
-                ok: false,
-                out: "unsupported protocol version".into(),
-            },
-            Err(e) => Response {
-                ok: false,
-                out: format!("malformed request: {e}"),
-            },
-        },
+    let req = match serde_json::from_str::<Request>(line.trim_end()) {
+        Ok(req) if req.v == PROTOCOL_VERSION => req,
+        Ok(_) => {
+            write_response(stream, &failure("unsupported protocol version".into()));
+            return Ok(());
+        }
+        Err(e) => {
+            write_response(stream, &failure(format!("malformed request: {e}")));
+            return Ok(());
+        }
     };
-    let mut w = stream;
+
+    let lock = match InfinityContextMmu::acquire_workspace_lock(ws_dir) {
+        Ok(guard) => guard,
+        Err(e) => {
+            let error = format!("workspace lock failed: {e}");
+            eprintln!("icx daemon: {error}; request refused, still serving");
+            write_response(stream, &failure(error));
+            return Ok(());
+        }
+    };
+    if let Err(e) = mmu.load_workspace_dir_unlocked(ws_dir) {
+        // Nothing was dispatched, so nothing is lost; the next request reloads again before
+        // dispatching, so a partially reloaded MMU is never saved.
+        let error = format!("workspace load failed: {e}");
+        eprintln!("icx daemon: {error}; request refused, still serving");
+        write_response(stream, &failure(error));
+        return Ok(());
+    }
+    let agent = AgentKind::parse_agent(&req.agent);
+    // Even a failed dispatch may have changed state, so it is saved either way.
+    let resp = match dispatch(agent, &req.event, &req.payload, mmu) {
+        Ok(out) => Response { ok: true, out },
+        Err(e) => failure(e.to_string()),
+    };
+    if let Err(error) = mmu.save_workspace_dir_unlocked(ws_dir) {
+        let error = format!("workspace save failed; request was not acknowledged: {error}");
+        write_response(stream, &failure(error.clone()));
+        return Err(error);
+    }
+    write_response(stream, &resp);
+    drop(lock);
+    Ok(())
+}
+
+fn failure(out: String) -> Response {
+    Response { ok: false, out }
+}
+
+fn write_response(mut stream: UnixStream, resp: &Response) {
     if let Ok(mut bytes) = serde_json::to_vec(&resp) {
         bytes.push(b'\n');
-        let _ = w.write_all(&bytes);
-        let _ = w.flush();
+        let _ = stream.write_all(&bytes);
+        let _ = stream.flush();
     }
-    dispatched
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "Matches the production dispatch callback type"
+    )]
+    fn durability_dispatch(
+        agent: AgentKind,
+        event: &str,
+        payload: &str,
+        mmu: &mut InfinityContextMmu,
+    ) -> Result<String, serde_json::Error> {
+        let result = mmu.ingest_payload(
+            agent,
+            "durability fixture",
+            "durability fixture body\n",
+            false,
+        );
+        if event == "fail-save" {
+            let ws = Path::new(payload);
+            std::fs::rename(ws.join("icx.sqlite3"), ws.join("pre-failure.sqlite3")).unwrap();
+            std::fs::create_dir(ws.join("icx.sqlite3")).unwrap();
+        }
+        Ok(result.artifact_id.to_string())
+    }
+
+    fn start_durability_fixture(
+        tag: &str,
+        max_requests: Option<usize>,
+    ) -> (
+        std::path::PathBuf,
+        std::path::PathBuf,
+        std::thread::JoinHandle<Result<(), String>>,
+    ) {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let ws = std::env::temp_dir()
+            .join(format!(
+                "icx-v120-tests-{}",
+                std::env::var("USER").unwrap_or_default()
+            ))
+            .join("daemon-tests")
+            .join(format!(
+                "{tag}-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+        std::fs::create_dir_all(&ws).unwrap();
+        let mut mmu = InfinityContextMmu::default();
+        mmu.save_workspace_dir(&ws).unwrap();
+        let socket = ws.join("d.sock");
+        let (child_ws, child_socket) = (ws.clone(), socket.clone());
+        let server = std::thread::spawn(move || {
+            serve(
+                &child_ws,
+                &child_socket,
+                DaemonOptions {
+                    idle_exit: Some(Duration::from_millis(200)),
+                    max_requests,
+                },
+                mmu,
+                durability_dispatch,
+            )
+        });
+        for _ in 0..400 {
+            if socket.exists() {
+                return (ws, socket, server);
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        panic!("daemon did not create its test socket");
+    }
+
     #[test]
-    fn flush_max_is_enforced_even_while_connections_are_queued() {
-        // PR #20 review (Antigravity): under back-to-back traffic `poll` always reports ready,
-        // so the 1 s write-behind ceiling must not depend on a quiet period.
-        let now = Instant::now();
-        let first = now
-            .checked_sub(FLUSH_MAX + Duration::from_millis(1))
+    fn successful_ack_is_already_committed_before_idle_or_exit() {
+        let (ws, socket, server) = start_durability_fixture("ack", None);
+        let output = try_hook(&socket, "codex", "ingest", "").unwrap();
+        let aid = output.parse::<icx_core::ArtifactId>().unwrap();
+        // Deliberately read without the daemon's lock: taking it would wait until the old
+        // write-behind flush and conceal the ACK-before-persistence defect.
+        let mut reopened = InfinityContextMmu::default();
+        reopened.load_workspace_dir_unlocked(&ws).unwrap();
+        let recovered = reopened.deref_text(aid);
+        server.join().unwrap().unwrap();
+        std::fs::remove_dir_all(ws).unwrap();
+        assert_eq!(recovered.unwrap(), "durability fixture body\n");
+    }
+
+    /// Takes the OS `flock` on `cas_store.lock` through a separate open file description, as
+    /// another process would, without the in-process `WORKSPACE_IO_LOCK`.
+    fn hold_foreign_flock(ws: &Path) -> std::fs::File {
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(ws.join("cas_store.lock"))
             .unwrap();
+        file.lock().unwrap();
+        file
+    }
+
+    /// The daemon spins on the foreign `flock` for ~5 s while holding the process-global
+    /// `WORKSPACE_IO_LOCK`, which would stall every other workspace test in this binary, so the
+    /// scenario runs in a child process of the test binary.
+    #[test]
+    fn lock_timeout_fails_that_request_and_daemon_keeps_serving() {
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "daemon::tests::lock_timeout_scenario",
+                "--ignored",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env("ICX_DAEMON_LOCK_TIMEOUT_CHILD", "1")
+            .status()
+            .unwrap();
+        assert!(status.success(), "lock-timeout scenario failed: {status}");
+    }
+
+    #[test]
+    #[ignore = "run in a child process by lock_timeout_fails_that_request_and_daemon_keeps_serving"]
+    fn lock_timeout_scenario() {
+        if std::env::var_os("ICX_DAEMON_LOCK_TIMEOUT_CHILD").is_none() {
+            return;
+        }
+        let (ws, socket, server) = start_durability_fixture("lock-timeout", Some(2));
+        let foreign = hold_foreign_flock(&ws);
+        // The daemon gives up on the lock after ~5 s and must answer with a failure (so the
+        // client falls back to in-process handling) instead of exiting.
+        let refused = try_hook(&socket, "codex", "ingest", "");
+        drop(foreign);
+        let served = try_hook(&socket, "codex", "ingest", "");
+        let result = server.join().unwrap();
+        std::fs::remove_dir_all(ws).unwrap();
         assert!(
-            flush_due(Some(first), true, now),
-            "backlog must not defer past FLUSH_MAX"
+            refused.is_none(),
+            "lock timeout was acknowledged: {refused:?}"
         );
-        assert!(flush_due(Some(now), false, now), "quiet period flushes");
         assert!(
-            !flush_due(Some(now), true, now),
-            "fresh changes under load wait"
+            served.is_some(),
+            "daemon stopped serving after a lock timeout"
         );
-        assert!(!flush_due(None, false, now), "nothing to flush");
+        assert!(result.is_ok(), "lock timeout ended the daemon: {result:?}");
+    }
+
+    #[test]
+    fn silent_client_does_not_hold_the_workspace_lock() {
+        let (ws, socket, server) = start_durability_fixture("silent", Some(2));
+        // Connect and send nothing: the daemon is now blocked reading this request.
+        let silent = UnixStream::connect(&socket).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        let started = Instant::now();
+        let guard = InfinityContextMmu::acquire_workspace_lock(&ws);
+        let waited = started.elapsed();
+        drop(guard);
+        drop(silent);
+        let served = try_hook(&socket, "codex", "ingest", "");
+        let result = server.join().unwrap();
+        std::fs::remove_dir_all(ws).unwrap();
+        assert!(
+            waited < Duration::from_secs(1),
+            "in-process lock waited {waited:?} behind a silent daemon client"
+        );
+        assert!(served.is_some());
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn request_read_is_bounded_by_an_overall_deadline() {
+        let (mut client, server) = UnixStream::pair().unwrap();
+        let writer = std::thread::spawn(move || {
+            // Trickle one byte every 50 ms: each read() succeeds quickly, so only an overall
+            // deadline (not the per-read timeout) can end this request.
+            for _ in 0..40 {
+                if client.write_all(b"{").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        });
+        let started = Instant::now();
+        let read = read_request(&server, Duration::from_millis(300));
+        let elapsed = started.elapsed();
+        drop(server);
+        writer.join().unwrap();
+        assert!(read.is_none(), "trickled request was accepted");
+        assert!(
+            elapsed < Duration::from_millis(1_000),
+            "request read took {elapsed:?} despite a 300 ms deadline"
+        );
+    }
+
+    #[test]
+    fn save_failure_is_not_acknowledged_and_serve_returns_error() {
+        let (ws, socket, server) = start_durability_fixture("save-error", Some(1));
+        let output = try_hook(&socket, "codex", "fail-save", ws.to_str().unwrap());
+        let result = server.join().unwrap();
+        std::fs::remove_dir_all(ws).unwrap();
+        assert!(
+            output.is_none(),
+            "failed save returned a successful handle: {output:?}"
+        );
+        assert!(
+            result.is_err(),
+            "failed persistence was reported as successful daemon exit"
+        );
     }
 }

@@ -1,6 +1,7 @@
 # Core Data Model & Storage Layout Specification
 
-**Applies to:** `icx` v1.1.0  
+**Applies to:** `icx` v1.2.0 candidate
+
 **References:** [docs/architecture.md](architecture.md), [docs/virtual-memory-and-dag-engine.md](virtual-memory-and-dag-engine.md), [docs/hyperdimensional-and-fractal-index.md](hyperdimensional-and-fractal-index.md)  
 **Target Crates:** `crates/icx-core`, `crates/icx-hdc`, `crates/icx-codec`, `crates/icx-store`, `crates/icx-adapters`
 
@@ -177,6 +178,11 @@ pub struct EpochHeader {
 }
 ```
 
+Profile A `fc` words keep the shipped signed Q15 scale 32,767; Q1.14 is a separate arithmetic
+API and must not reinterpret archived packets. Rendering normalizes raw skeleton packet/header
+glyphs to ASCII bracket pairs, and standalone parsing rejects unescaped nested framing.
+Skeletons are lossy views; exactness belongs to post-redaction CAS dereference.
+
 The 8-byte `hologram_bytes` (`ChannelBHologram`) layout is: `B[0..=3]` HDC parity fold,
 `B[4..=5]` IFS quadrant signature, `B[6]` quantized surprise, `B[7]` flags (bits 0-1 retention
 tier, bit 2 `FLAG_HAS_ERROR`, bit 3 `FLAG_HAS_PANIC`, bit 4 `FLAG_HAS_DIFF`, bit 5
@@ -238,14 +244,16 @@ CREATE TABLE emitted   (digest BLOB PRIMARY KEY) WITHOUT ROWID;    -- BLAKE3 of 
 | `generation` | Monotonic save counter; lets long-lived processes skip reloading. |
 | `chunk_config` | `ChunkerConfig` (JSON). |
 | `graph` | Bi-temporal graph (JSON). |
-| `mmu_state` | DAG, epoch controller and MMU tables (JSON). |
-| `hdc_index` | HDC associative index, binary snapshot format `ICXHDC03`. |
+| `mmu_state` | DAG, epoch controller (including versioned `window_budget`) and MMU tables (JSON). |
+| `hdc_index` | HDC associative index, binary snapshot format `ICXHDC04`, including exact token postings. |
 | `hdc_index_events` | Number of events the snapshot covers. |
 | `seal` | Store MAC (§6.2). |
 
 `chunks`, `artifacts` and `emitted` rows are append-only (inserted once). Existing store, `-wal`
 and `-shm` files are reset to `0600` on open if their mode was widened. The derived state in `meta` is
-replaced on each save. Each save is one transaction.
+replaced on each save. Each save is one WAL transaction with `synchronous=FULL`; the daemon
+sends success only after it commits. Save failure is returned to the client and terminates the
+daemon with an error rather than dropping an acknowledged queue.
 
 ### 6.2 Store Seal
 
@@ -255,3 +263,20 @@ config, graph, MMU state, HDC snapshot, HDC event count, every artifact's `(id, 
 id order, and every `emitted` digest in sorted order. Chunks are covered transitively, because loading verifies every chunk digest and
 reassembles each artifact to its full digest. A sealed load rejects a store whose MAC does not
 verify.
+
+### 6.3 Snapshot and Window-Policy Compatibility
+
+The HDC decoder reads both `ICXHDC04` and legacy `ICXHDC03`. Version 04 appends optional exact
+token-to-entry postings to the index, summary, trajectory and surprise state. It checks posting
+ordering/ranges, finite numeric domains and consistency of derived caches. The workspace MAC
+remains the provenance boundary; a self-consistent arbitrary snapshot is not authenticated by
+these checks alone. Legacy 03 lacks content tokens, so the MMU rebuilds from persisted CAS events
+instead of taking the 04 fast path. A standalone 03 index uses exhaustive refinement. Subsequent
+saves write 04; older executables cannot read it. Keep a pre-upgrade backup for downgrade.
+
+The epoch controller persists `window_budget` with version 1, `context_tokens`,
+`completion_reserve` and `external_input_reserve`. Legacy JSON without this field receives the
+default 32,768 / 4,096 / 4,096 policy. `utf8-bytes-upper-bound-v1` treats one UTF-8 byte as one token
+of allowance, leaving 24,576 bytes for icx-managed prompt content under the default policy.
+Reservations outside this view remain the caller's responsibility. Selection changes never
+delete CAS/DAG history or reinterpret archived Q15 `fc` fields.

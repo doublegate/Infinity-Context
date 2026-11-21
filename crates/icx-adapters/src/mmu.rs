@@ -786,7 +786,8 @@ impl InfinityContextMmu {
         query: &str,
         top_k: usize,
     ) -> String {
-        let slot = self.build_ephemeral_tail_slot_inner(requesting_agent, query, top_k);
+        let raw_slot = self.build_ephemeral_tail_slot_inner(requesting_agent, query, top_k);
+        let slot = self.epochs.bound_tail_slot(raw_slot);
         self.record_emitted(&slot);
         slot
     }
@@ -797,13 +798,25 @@ impl InfinityContextMmu {
         query: &str,
         top_k: usize,
     ) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!(
+        let limit = self.epochs.tail_slot_byte_limit();
+        let header = format!(
             "⟪ICX:TAIL_SLOT│agent={}│epochs={}│cas_artifacts={}⟫",
             requesting_agent.as_str(),
             self.epochs.sealed_epoch_count(),
             self.cas.artifact_count()
-        ));
+        );
+        if header.len() > limit {
+            return self.epochs.bound_tail_slot(header);
+        }
+        let mut used = header.len();
+        let mut lines = vec![header];
+
+        // Reserve useful recall before consuming space with sibling events. A large public
+        // subject can fall back to a complete handle frame instead of dropping all recall.
+        let hdc_hits: Vec<AssociativeHit> = self.hdc_index.query_associative(query, top_k);
+        if let Some(hit) = hdc_hits.first() {
+            Self::append_tail_recall(&mut lines, &mut used, limit, hit);
+        }
 
         // 1. Cross-agent telepathy updates (workspace-scoped)
         let cursor = self
@@ -818,12 +831,54 @@ impl InfinityContextMmu {
         for ev in telepathy {
             if ev.agent == requesting_agent {
                 new_cursor = new_cursor.max(ev.seq);
-            } else if sibling_taken < 4 {
+            } else {
+                if sibling_taken >= 4 {
+                    break;
+                }
+                let delivered =
+                    if ev.ahtl_packet.len().saturating_add(1) <= limit.saturating_sub(used) {
+                        Self::append_tail_line(&mut lines, &mut used, limit, ev.ahtl_packet)
+                    } else if self.cas.get_meta(ev.artifact_id).is_some() {
+                        let expected = format!("⟦Θ:{}@", ev.agent.as_str());
+                        let named = ev
+                            .ahtl_packet
+                            .split_once('⊢')
+                            .filter(|(prefix, _)| {
+                                prefix.len() <= 256
+                                    && prefix.strip_prefix(&expected).is_some_and(|label| {
+                                        !label.contains(['⟦', '⟧', '\n', '\r'])
+                                    })
+                            })
+                            .is_some_and(|(prefix, _)| {
+                                Self::append_tail_line(
+                                    &mut lines,
+                                    &mut used,
+                                    limit,
+                                    format!("{prefix}⊢paged↦{}⟧", ev.artifact_id),
+                                )
+                            });
+                        named
+                            || Self::append_tail_line(
+                                &mut lines,
+                                &mut used,
+                                limit,
+                                format!(
+                                    "⟦Θ:{}@paged⊢seq={}↦{}⟧",
+                                    ev.agent.as_str(),
+                                    ev.seq,
+                                    ev.artifact_id
+                                ),
+                            )
+                    } else {
+                        false
+                    };
+                if !delivered {
+                    // Preserve a contiguous cursor. Unsent/unrecoverable events stay queued;
+                    // later events must not advance the cursor beyond this blocked event.
+                    break;
+                }
                 new_cursor = new_cursor.max(ev.seq);
                 sibling_taken += 1;
-                lines.push(ev.ahtl_packet);
-            } else {
-                break;
             }
         }
         if new_cursor > cursor {
@@ -831,13 +886,9 @@ impl InfinityContextMmu {
                 .insert(requesting_agent as u8, new_cursor);
         }
 
-        // 2. HDC + Fractal associative hits
-        let hdc_hits: Vec<AssociativeHit> = self.hdc_index.query_associative(query, top_k);
-        for hit in &hdc_hits {
-            lines.push(format!(
-                "⟦Ψ:HDC_RECALL⊢subj={}⋮sim={:.2}⋮suffix={}↦{}⟧",
-                hit.subject, hit.hdc_similarity, hit.shared_fractal_suffix, hit.artifact_id
-            ));
+        // 2. Remaining HDC + Fractal associative hits, only as complete frames.
+        for hit in hdc_hits.iter().skip(1) {
+            Self::append_tail_recall(&mut lines, &mut used, limit, hit);
         }
 
         // 3. Bi-Temporal Personalized PageRank multi-hop walk
@@ -853,15 +904,63 @@ impl InfinityContextMmu {
                 .personalized_pagerank(&seeds, None, 0.15, 6, top_k);
             for node in ppr_nodes {
                 if let Some(&prov) = node.provenance_artifacts.first() {
-                    lines.push(format!(
-                        "⟦Ω:PPR_GRAPH⊢entity={}⋮score={:.3}↦{}⟧",
-                        node.entity, node.score, prov
-                    ));
+                    Self::append_tail_line(
+                        &mut lines,
+                        &mut used,
+                        limit,
+                        format!(
+                            "⟦Ω:PPR_GRAPH⊢entity={}⋮score={:.3}↦{}⟧",
+                            node.entity, node.score, prov
+                        ),
+                    );
                 }
             }
         }
 
         lines.join("\n")
+    }
+
+    fn append_tail_line(
+        lines: &mut Vec<String>,
+        used: &mut usize,
+        limit: usize,
+        line: String,
+    ) -> bool {
+        let cost = line.len().saturating_add(1); // separator inserted by join
+        if cost <= limit.saturating_sub(*used) {
+            *used += cost;
+            lines.push(line);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn append_tail_recall(
+        lines: &mut Vec<String>,
+        used: &mut usize,
+        limit: usize,
+        hit: &AssociativeHit,
+    ) {
+        if !Self::append_tail_line(
+            lines,
+            used,
+            limit,
+            format!(
+                "⟦Ψ:HDC_RECALL⊢subj={}⋮sim={:.2}⋮suffix={}↦{}⟧",
+                hit.subject, hit.hdc_similarity, hit.shared_fractal_suffix, hit.artifact_id
+            ),
+        ) {
+            Self::append_tail_line(
+                lines,
+                used,
+                limit,
+                format!(
+                    "⟦Ψ:HDC_RECALL⊢sim={:.2}⋮suffix={}↦{}⟧",
+                    hit.hdc_similarity, hit.shared_fractal_suffix, hit.artifact_id
+                ),
+            );
+        }
     }
 
     #[inline]
@@ -1459,7 +1558,10 @@ impl InfinityContextMmu {
                 CacheEpochController::new(ICX_AHTL_LEGEND, EpochControllerConfig::default())
             });
             match hdc_snapshot {
-                Some((index, n)) if usize::try_from(n).ok() == Some(st.hdc_events.len()) => {
+                Some((index, n))
+                    if index.has_exact_lexical_index()
+                        && usize::try_from(n).ok() == Some(st.hdc_events.len()) =>
+                {
                     // Fast path (ICX-AUD-001): restore the persisted index instead of
                     // re-encoding every stored event.
                     self.hdc_index = index;

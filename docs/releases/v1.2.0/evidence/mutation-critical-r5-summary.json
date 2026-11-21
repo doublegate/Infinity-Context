@@ -1,0 +1,39 @@
+{
+  "scope": "Directed semantic families, potentially overlapping prior samples; not an additional unique coverage count",
+  "rows": [
+    {
+      "crate": "icx-core",
+      "full_inventory": 575,
+      "selected": 2,
+      "outcomes": [
+        {
+          "name": "crates/icx-core/src/epoch.rs:444:51: replace <= with > in CacheEpochController::assemble_window",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-core/src/epoch.rs:462:21: replace <= with > in CacheEpochController::assemble_window",
+          "summary": "CaughtMutant"
+        }
+      ],
+      "exit": 0,
+      "command": [
+        "cargo",
+        "mutants",
+        "-d",
+        "/tmp/Infinity-Context/v120/mutation-critical-r5/source",
+        "-p",
+        "icx-core",
+        "--re",
+        "replace <= with > in CacheEpochController::assemble_window",
+        "--timeout",
+        "90",
+        "--build-timeout",
+        "240",
+        "-j",
+        "1",
+        "--output",
+        "/tmp/Infinity-Context/v120/mutation-critical-r5/core"
+      ]
+    }
+  ]
+}

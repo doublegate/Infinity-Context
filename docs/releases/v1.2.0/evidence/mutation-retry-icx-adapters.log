@@ -1,0 +1,10 @@
+Found 24 mutants to test
+ok       Unmutated baseline in 76s build + 19s test
+MISSED   crates/icx-adapters/src/antigravity.rs:424:41: delete ! in AntigravityAdapter::handle_hook in 3s build + 12s test
+MISSED   crates/icx-adapters/src/hermes.rs:98:42: replace <= with > in HermesAdapter::sanitize_embedded_ahtl_line in 1s build + 10s test
+MISSED   crates/icx-adapters/src/mmu.rs:200:25: replace -= with /= in InfinityContextMmu::extract_hook_subject in 1s build + 10s test
+MISSED   crates/icx-adapters/src/mmu.rs:314:40: replace != with == in InfinityContextMmu::truncate_agent_suffix in 1s build + 10s test
+MISSED   crates/icx-adapters/src/mmu.rs:377:25: replace == with != in InfinityContextMmu::ingest_or_reuse_at_index in 1s build + 10s test
+MISSED   crates/icx-adapters/src/mmu.rs:897:47: delete ! in InfinityContextMmu::build_ephemeral_tail_slot_inner in 1s build + 10s test
+MISSED   crates/icx-adapters/src/workspace.rs:172:5: replace require_absolute -> Result<(), TrustError> with Ok(()) in 1s build + 10s test
+24 mutants tested in 6m: 7 missed, 14 caught, 3 unviable

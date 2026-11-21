@@ -1,6 +1,6 @@
 # Build, Toolchain & CI Configuration
 
-**Applies to:** `icx` v1.1.0  
+**Applies to:** `icx` v1.2.0 development candidate
 **References:** [docs/architecture.md](architecture.md), [docs/testing-strategy.md](testing-strategy.md)
 
 ---
@@ -65,7 +65,7 @@ cargo +nightly fuzz run ahtl_stream    # also: hdc_snapshot, mcp_jsonrpc, redact
 | `ci.yml` secret scan | gitleaks (pinned version, SHA-256-verified download) over the git history |
 | `reuse.yml` | REUSE 3.3 licensing lint |
 | `cla.yml`, `antigravity-review.yml` | Contributor-agreement check and PR review automation |
-| `release.yml` | On a `vX.Y.Z` tag push (or a manual run naming an existing tag): requires the tagged commit to be on `main` (so every `ci.yml` gate has run on it), checks the tag matches the `icx-cli` version and has a CHANGELOG section, runs `cargo test --workspace --locked`, generates `THIRD-PARTY-NOTICES.txt` with `cargo-about` (`.github/about.toml`), builds baseline and x86-64-v3 binaries for static musl and for glibc 2.35+ (built on Ubuntu 22.04), checks linkage and smoke-tests them, packages them with the license texts and notices, attests build provenance, and attaches them with `SHA256SUMS`. A new release is created as a draft with the CHANGELOG section as notes. Files already attached are never replaced; `SHA256SUMS` is only ever extended (`.github/scripts/release-assemble.sh`) |
+| `release.yml` | On a `vX.Y.Z` tag push (or a manual run naming an existing tag): requires ancestry on `main` and successful required CI/REUSE jobs for the exact tagged SHA in trusted push runs. Missing, failed, cancelled or incomplete checks block release; ancestry alone is insufficient. It checks manifest/CHANGELOG agreement, tests the immutable SHA, generates third-party notices, builds baseline and x86-64-v3 Linux binaries for static musl and glibc 2.35+ (Ubuntu 22.04), verifies linkage and isolated smoke tests, then packages licenses/notices and provenance. The tag and checks are revalidated before publication. New releases are drafts; existing files are never replaced and checksums are only extended. Policy fixtures live in `.github/scripts/test-release-ci-gate.py`. |
 
 Supply-chain rules (ICX-AUD-040):
 

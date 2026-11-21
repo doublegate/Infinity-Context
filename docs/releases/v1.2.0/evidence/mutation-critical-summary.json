@@ -1,0 +1,345 @@
+{
+  "scope": "Directed semantic families, potentially overlapping prior samples; not an additional unique coverage count",
+  "rows": [
+    {
+      "crate": "icx-core",
+      "full_inventory": 575,
+      "selected": 30,
+      "outcomes": [
+        {
+          "name": "crates/icx-core/src/cas.rs:529:17: replace || with && in CasStore::from_parts",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/cas.rs:528:17: replace || with && in CasStore::from_parts",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/cas.rs:541:17: replace || with && in CasStore::from_parts",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/cas.rs:540:17: replace || with && in CasStore::from_parts",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/cas.rs:552:50: replace || with && in CasStore::from_parts",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/cas.rs:568:21: replace || with && in CasStore::from_parts",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/cas.rs:567:21: replace || with && in CasStore::from_parts",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/cas.rs:566:21: replace || with && in CasStore::from_parts",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-core/src/cas.rs:565:21: replace || with && in CasStore::from_parts",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-core/src/cas.rs:583:17: replace || with && in CasStore::from_parts",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:324:22: replace match guard *n_agent == agent && n_role == role && *n_raw == raw_artifact with false in MerkleContextDag::find_turn",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:976:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:975:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:987:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:986:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:1006:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:1005:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:1036:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:1035:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:1034:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:1075:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:1074:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:1073:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:1072:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:1071:29: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:1113:25: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:1112:25: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/dag.rs:1111:25: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-core/src/epoch.rs:444:51: replace <= with > in CacheEpochController::assemble_window",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-core/src/epoch.rs:462:21: replace <= with > in CacheEpochController::assemble_window",
+          "summary": "CaughtMutant"
+        }
+      ],
+      "exit": 2,
+      "command": [
+        "cargo",
+        "mutants",
+        "-d",
+        "/tmp/Infinity-Context/v120/mutation-critical/source",
+        "-p",
+        "icx-core",
+        "--re",
+        "replace <= with > in CacheEpochController::assemble_window|replace \\|\\| with && in CasStore::from_parts|replace \\|\\| with && in MerkleContextDag::verify_merkle_integrity_with_ancestors|replace match guard .* with false in MerkleContextDag::find_turn$",
+        "--timeout",
+        "90",
+        "--build-timeout",
+        "240",
+        "-j",
+        "1",
+        "--output",
+        "/tmp/Infinity-Context/v120/mutation-critical/core"
+      ]
+    },
+    {
+      "crate": "icx-hdc",
+      "full_inventory": 998,
+      "selected": 13,
+      "outcomes": [
+        {
+          "name": "crates/icx-hdc/src/fractal.rs:203:25: replace * with / in FractalCoord::morton_z64",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-hdc/src/fractal.rs:205:29: replace * with / in FractalCoord::morton_z64",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-hdc/src/fractal.rs:209:36: replace * with / in FractalCoord::morton_z64",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-hdc/src/fractal.rs:248:24: replace ^ with & in FractalCoord::digest_u32",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-hdc/src/fractal.rs:249:24: replace ^ with & in FractalCoord::digest_u32",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-hdc/src/fractal.rs:251:13: replace ^ with & in FractalCoord::digest_u32",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-hdc/src/hv.rs:154:33: replace >> with << in Hypervector::from_u64_seed",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-hdc/src/hv.rs:155:25: replace >> with << in Hypervector::from_u64_seed",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-hdc/src/hv.rs:156:31: replace >> with << in Hypervector::from_u64_seed",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-hdc/src/hv.rs:513:24: replace ^= with &= in Hypervector::sketch_256",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-hdc/src/surprise.rs:221:18: replace - with / in TitansSurpriseGate::observe_with_exit_code",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-hdc/src/surprise.rs:226:63: replace - with / in TitansSurpriseGate::observe_with_exit_code",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-hdc/src/surprise.rs:228:46: replace - with / in TitansSurpriseGate::observe_with_exit_code",
+          "summary": "CaughtMutant"
+        }
+      ],
+      "exit": 2,
+      "command": [
+        "cargo",
+        "mutants",
+        "-d",
+        "/tmp/Infinity-Context/v120/mutation-critical/source",
+        "-p",
+        "icx-hdc",
+        "--re",
+        "replace >> with << in Hypervector::from_u64_seed|replace \\^= with &= in Hypervector::sketch_256|replace \\* with / in FractalCoord::morton_z64|replace \\^ with & in FractalCoord::digest_u32|replace - with / in TitansSurpriseGate::observe_with_exit_code",
+        "--timeout",
+        "90",
+        "--build-timeout",
+        "240",
+        "-j",
+        "1",
+        "--output",
+        "/tmp/Infinity-Context/v120/mutation-critical/hdc"
+      ]
+    },
+    {
+      "crate": "icx-bus",
+      "full_inventory": 302,
+      "selected": 10,
+      "outcomes": [
+        {
+          "name": "crates/icx-bus/src/ring.rs:280:30: replace >> with << in unpack_meta",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-bus/src/ring.rs:281:31: replace >> with << in unpack_meta",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-bus/src/ring.rs:282:30: replace >> with << in unpack_meta",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-bus/src/ring.rs:862:35: replace * with + in SeqlockTelemetryBus::poll_since",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-bus/src/ring.rs:862:48: replace * with + in SeqlockTelemetryBus::poll_since",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-bus/src/ring.rs:894:64: replace * with + in SeqlockTelemetryBus::poll_since",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-bus/src/ring.rs:945:49: replace * with + in SeqlockTelemetryBus::poll_since",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-bus/src/ring.rs:945:61: replace * with + in SeqlockTelemetryBus::poll_since",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-bus/src/ring.rs:953:49: replace * with + in SeqlockTelemetryBus::poll_since",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-bus/src/ring.rs:953:61: replace * with + in SeqlockTelemetryBus::poll_since",
+          "summary": "CaughtMutant"
+        }
+      ],
+      "exit": 0,
+      "command": [
+        "cargo",
+        "mutants",
+        "-d",
+        "/tmp/Infinity-Context/v120/mutation-critical/source",
+        "-p",
+        "icx-bus",
+        "--re",
+        "replace >> with << in unpack_meta|replace \\* with \\+ in SeqlockTelemetryBus::poll_since",
+        "--timeout",
+        "90",
+        "--build-timeout",
+        "240",
+        "-j",
+        "1",
+        "--output",
+        "/tmp/Infinity-Context/v120/mutation-critical/bus"
+      ]
+    },
+    {
+      "crate": "icx-codec",
+      "full_inventory": 1200,
+      "selected": 6,
+      "outcomes": [
+        {
+          "name": "crates/icx-codec/src/ahtl.rs:623:33: replace || with && in AhtlPacket::to_profile_a",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-codec/src/ahtl.rs:630:33: replace || with && in AhtlPacket::to_profile_a",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-codec/src/ahtl.rs:726:31: replace || with && in AhtlWirePacketV1::parse",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-codec/src/ahtl.rs:734:31: replace || with && in AhtlWirePacketV1::parse",
+          "summary": "CaughtMutant"
+        },
+        {
+          "name": "crates/icx-codec/src/ahtl.rs:861:46: replace || with && in EpochHeader::parse",
+          "summary": "MissedMutant"
+        },
+        {
+          "name": "crates/icx-codec/src/ahtl.rs:872:13: replace || with && in EpochHeader::parse",
+          "summary": "CaughtMutant"
+        }
+      ],
+      "exit": 2,
+      "command": [
+        "cargo",
+        "mutants",
+        "-d",
+        "/tmp/Infinity-Context/v120/mutation-critical/source",
+        "-p",
+        "icx-codec",
+        "--re",
+        "replace \\|\\| with && in AhtlPacket::to_profile_a|replace \\|\\| with && in AhtlWirePacketV1::parse|replace \\|\\| with && in EpochHeader::parse",
+        "--timeout",
+        "90",
+        "--build-timeout",
+        "240",
+        "-j",
+        "1",
+        "--output",
+        "/tmp/Infinity-Context/v120/mutation-critical/codec"
+      ]
+    }
+  ]
+}

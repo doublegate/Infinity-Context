@@ -92,7 +92,7 @@ ProfileAPacket     = "⟦AHTL v1│",
                      "⟧";
 
 IcxHandleField     = "#icx:", ( Hex12 | Hex16 ), [ "(", SliceMap, ")" ];
-FractalCoordField  = "fc:", Hex64;        (* 16 x i16 Q1.14 (scale 16,384) big-endian = 256 bits *)
+FractalCoordField  = "fc:", Hex64;        (* 16 x i16 Q15 (scale 32,767) big-endian = 256 bits *)
 HdcDigestField     = "hv:", Hex16;        (* 64-bit rotational XOR parity fold of Q_10240 *)
 Braille64Field     = 64 * BrailleChar;    (* 64 glyphs x 8 bits = 512-bit spectral sketch *)
 SkeletonField      = SkeletonExpr | ClauseList;
@@ -322,7 +322,13 @@ pub enum CodecError {
 
 ### 6.2 Test Vector 2: Profile A Full 5-Field Extended Wire Packet
 - **Virtual Handle (`#icx:<12-hex>`):** `#icx:4f3598d97c50`
-- **Fractal Coordinate (`fc:<64-hex>`, 16 $\times$ `i16` Q1.14):** `fc:4000c0002000e0001000f0000800f8000400fc000200fe000100ff000080ff80`
+- **Fractal Coordinate (`fc:<64-hex>`, 16 $\times$ `i16` Q15, scale 32,767):** `fc:4000c0002000e0001000f0000800f8000400fc000200fe000100ff000080ff80`
+
+The first word `4000` means `16384/32767` (approximately+0.5), not Q1.14's+1.0.
+v1.2.0 preserves the shipped v1.0/v1.1 wire interpretation. Earlier Q1.14 labels in this chapter
+and the frozen PDF are superseded by [ADR 0006](../adr/0006-v1-2-0-context-and-compatibility.md).
+Q1.14 arithmetic remains a separate explicit API; it must not silently decode an unversioned
+Profile A `fc` field. No archived bytes are reinterpreted.
 - **HDC Spectral Fold (`hv:<16-hex>`):** `hv:123456789abcdef0`
 - **Braille-64 Sketch (64 glyphs repeating `[0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0]` $\times 8$):** `⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰`
 - **Canonical Rendered Profile A String:**

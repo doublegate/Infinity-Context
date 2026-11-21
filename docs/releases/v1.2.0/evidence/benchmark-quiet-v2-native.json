@@ -1,0 +1,1244 @@
+{
+  "schema_version": 1,
+  "observed_utc": "2026-11-21T16:22:55.792168+00:00",
+  "warmups": 1,
+  "measured_runs": 10,
+  "passed_runs": 0,
+  "consistent_provenance": true,
+  "provenance_mismatch_runs": [],
+  "scope": "independent processes; component timing only; host contention uncontrolled",
+  "summary": {
+    "associative_query_us": {
+      "min": 137.455,
+      "p50": 193.6085,
+      "p95": 253.21300000000002,
+      "max": 253.21300000000002
+    },
+    "bind_permute_ns": {
+      "min": 64.245,
+      "p50": 82.868,
+      "p95": 88.611,
+      "max": 88.611
+    },
+    "bus_publish_ns": {
+      "min": 80.793,
+      "p50": 101.898,
+      "p95": 136.477,
+      "max": 136.477
+    },
+    "cas_ingest_us": {
+      "min": 97.427,
+      "p50": 149.01749999999998,
+      "p95": 186.982,
+      "max": 186.982
+    },
+    "codec_us": {
+      "min": 53.489000000000004,
+      "p50": 90.67150000000001,
+      "p95": 99.784,
+      "max": 99.784
+    },
+    "fractal_suffix_ns": {
+      "min": 33.142,
+      "p50": 40.9035,
+      "p95": 55.237,
+      "max": 55.237
+    },
+    "hdc_scan_10k_us": {
+      "min": 7168.2300000000005,
+      "p50": 9099.635,
+      "p95": 11544.099,
+      "max": 11544.099
+    },
+    "hdc_scan_10k_cold_us": {
+      "min": 7930.221,
+      "p50": 9644.9665,
+      "p95": 15081.473999999998,
+      "max": 15081.473999999998
+    },
+    "hdc_scan_10k_warm_us": {
+      "min": 7513.9259999999995,
+      "p50": 9840.262499999999,
+      "p95": 13449.251,
+      "max": 13449.251
+    },
+    "hdc_scan_1k_us": {
+      "min": 323.77799999999996,
+      "p50": 530.945,
+      "p95": 991.1449999999999,
+      "max": 991.1449999999999
+    },
+    "hdc_scan_1k_cold_us": {
+      "min": 611.884,
+      "p50": 997.325,
+      "p95": 1239.914,
+      "max": 1239.914
+    },
+    "hdc_scan_1k_warm_us": {
+      "min": 327.939,
+      "p50": 643.8815,
+      "p95": 3924.209,
+      "max": 3924.209
+    },
+    "in_memory_hook_us": {
+      "min": 298.856,
+      "p50": 463.0055,
+      "p95": 522.072,
+      "max": 522.072
+    },
+    "ppr_us": {
+      "min": 117.762,
+      "p50": 190.4475,
+      "p95": 207.083,
+      "max": 207.083
+    },
+    "prefix_byte_reuse_pct": {
+      "min": 95.33470435030353,
+      "p50": 95.33470435030353,
+      "p95": 95.33470435030353,
+      "max": 95.33470435030353
+    },
+    "repetitive_log_byte_ratio": {
+      "min": 213.98257839721254,
+      "p50": 213.98257839721254,
+      "p95": 213.98257839721254,
+      "max": 213.98257839721254
+    },
+    "simulation_ms": {
+      "min": 19.349763,
+      "p50": 33.186753499999995,
+      "p95": 44.065458,
+      "max": 44.065458
+    }
+  },
+  "runs": [
+    {
+      "warmup": true,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 2 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (freshly constructed: 447.15 us / 1,000 nodes and 9555.18 us / 10,000 nodes (min_dist=4931/4911)); Two-Stage HDC + CSR PPR           (699.75 us (two-stage query), 204.57 us (201-node CSR PPR))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (freshly constructed: 447.15 us / 1,000 nodes and 9555.18 us / 10,000 nodes (min_dist=4931/4911))",
+          "Two-Stage HDC + CSR PPR           (699.75 us (two-stage query), 204.57 us (201-node CSR PPR))"
+        ],
+        "fixtures": {
+          "cache_scrub_bytes": 67108864,
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 699.7470000000001,
+          "bind_permute_ns": 81.993,
+          "bus_publish_ns": 124.773,
+          "cas_ingest_us": 146.189,
+          "codec_us": 79.323,
+          "fractal_suffix_ns": 42.32,
+          "hdc_scan_10k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": true,
+            "us": 9555.18
+          },
+          "hdc_scan_10k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 9740.528
+          },
+          "hdc_scan_10k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 8743.93
+          },
+          "hdc_scan_1k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": true,
+            "us": 447.153
+          },
+          "hdc_scan_1k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 940.8290000000001
+          },
+          "hdc_scan_1k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 765.299
+          },
+          "in_memory_hook_us": 639.652,
+          "ppr_us": 204.56799999999998,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 48.205601
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (freshly constructed: 665.31 us / 1,000 nodes and 11544.10 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (freshly constructed: 665.31 us / 1,000 nodes and 11544.10 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cache_scrub_bytes": 67108864,
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 188.708,
+          "bind_permute_ns": 84.684,
+          "bus_publish_ns": 87.066,
+          "cas_ingest_us": 139.283,
+          "codec_us": 99.17299999999999,
+          "fractal_suffix_ns": 36.897,
+          "hdc_scan_10k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": true,
+            "us": 11544.099
+          },
+          "hdc_scan_10k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 8187.083
+          },
+          "hdc_scan_10k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 7513.9259999999995
+          },
+          "hdc_scan_1k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": true,
+            "us": 665.309
+          },
+          "hdc_scan_1k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 1071.724
+          },
+          "hdc_scan_1k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 516.77
+          },
+          "in_memory_hook_us": 476.95799999999997,
+          "ppr_us": 189.279,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 35.123185
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (freshly constructed: 351.45 us / 1,000 nodes and 9575.44 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (freshly constructed: 351.45 us / 1,000 nodes and 9575.44 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cache_scrub_bytes": 67108864,
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 165.973,
+          "bind_permute_ns": 82.314,
+          "bus_publish_ns": 89.415,
+          "cas_ingest_us": 146.93099999999998,
+          "codec_us": 96.716,
+          "fractal_suffix_ns": 44.717,
+          "hdc_scan_10k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": true,
+            "us": 9575.441
+          },
+          "hdc_scan_10k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 9410.498
+          },
+          "hdc_scan_10k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 7666.349
+          },
+          "hdc_scan_1k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": true,
+            "us": 351.447
+          },
+          "hdc_scan_1k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 691.163
+          },
+          "hdc_scan_1k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 327.939
+          },
+          "in_memory_hook_us": 434.04,
+          "ppr_us": 207.083,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 28.407598
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (freshly constructed: 338.60 us / 1,000 nodes and 7168.23 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (freshly constructed: 338.60 us / 1,000 nodes and 7168.23 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cache_scrub_bytes": 67108864,
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 197.632,
+          "bind_permute_ns": 85.09,
+          "bus_publish_ns": 80.793,
+          "cas_ingest_us": 150.99499999999998,
+          "codec_us": 81.29899999999999,
+          "fractal_suffix_ns": 40.953,
+          "hdc_scan_10k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": true,
+            "us": 7168.2300000000005
+          },
+          "hdc_scan_10k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 9910.578
+          },
+          "hdc_scan_10k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 9908.518999999998
+          },
+          "hdc_scan_1k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": true,
+            "us": 338.59999999999997
+          },
+          "hdc_scan_1k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 980.7539999999999
+          },
+          "hdc_scan_1k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 600.615
+          },
+          "in_memory_hook_us": 509.157,
+          "ppr_us": 187.08200000000002,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 35.001579
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 2 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (freshly constructed: 991.14 us / 1,000 nodes and 8929.30 us / 10,000 nodes (min_dist=4931/4911)); Two-Stage HDC + CSR PPR           (246.35 us (two-stage query), 183.41 us (201-node CSR PPR))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (freshly constructed: 991.14 us / 1,000 nodes and 8929.30 us / 10,000 nodes (min_dist=4931/4911))",
+          "Two-Stage HDC + CSR PPR           (246.35 us (two-stage query), 183.41 us (201-node CSR PPR))"
+        ],
+        "fixtures": {
+          "cache_scrub_bytes": 67108864,
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 246.348,
+          "bind_permute_ns": 83.688,
+          "bus_publish_ns": 106.663,
+          "cas_ingest_us": 186.982,
+          "codec_us": 90.616,
+          "fractal_suffix_ns": 39.234,
+          "hdc_scan_10k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": true,
+            "us": 8929.296999999999
+          },
+          "hdc_scan_10k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 9172.202000000001
+          },
+          "hdc_scan_10k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 9772.006
+          },
+          "hdc_scan_1k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": true,
+            "us": 991.1449999999999
+          },
+          "hdc_scan_1k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 1152.941
+          },
+          "hdc_scan_1k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 906.7669999999999
+          },
+          "in_memory_hook_us": 501.83400000000006,
+          "ppr_us": 183.414,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 34.462714999999996
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (freshly constructed: 323.78 us / 1,000 nodes and 8960.08 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (freshly constructed: 323.78 us / 1,000 nodes and 8960.08 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cache_scrub_bytes": 67108864,
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 165.488,
+          "bind_permute_ns": 83.422,
+          "bus_publish_ns": 107.454,
+          "cas_ingest_us": 155.02800000000002,
+          "codec_us": 86.366,
+          "fractal_suffix_ns": 43.224,
+          "hdc_scan_10k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": true,
+            "us": 8960.079
+          },
+          "hdc_scan_10k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 9879.435000000001
+          },
+          "hdc_scan_10k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 10356.528
+          },
+          "hdc_scan_1k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": true,
+            "us": 323.77799999999996
+          },
+          "hdc_scan_1k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 1013.8960000000001
+          },
+          "hdc_scan_1k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 3924.209
+          },
+          "in_memory_hook_us": 421.438,
+          "ppr_us": 184.562,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 30.375147000000002
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (freshly constructed: 348.61 us / 1,000 nodes and 7220.83 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (freshly constructed: 348.61 us / 1,000 nodes and 7220.83 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cache_scrub_bytes": 67108864,
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 189.585,
+          "bind_permute_ns": 81.245,
+          "bus_publish_ns": 97.133,
+          "cas_ingest_us": 151.667,
+          "codec_us": 96.023,
+          "fractal_suffix_ns": 40.854,
+          "hdc_scan_10k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": true,
+            "us": 7220.828
+          },
+          "hdc_scan_10k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 7930.221
+          },
+          "hdc_scan_10k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 8571.125
+          },
+          "hdc_scan_1k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": true,
+            "us": 348.609
+          },
+          "hdc_scan_1k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 611.884
+          },
+          "hdc_scan_1k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 472.07
+          },
+          "in_memory_hook_us": 449.053,
+          "ppr_us": 196.305,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 44.065458
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 2 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (freshly constructed: 582.06 us / 1,000 nodes and 8678.42 us / 10,000 nodes (min_dist=4931/4911)); Two-Stage HDC + CSR PPR           (221.98 us (two-stage query), 202.97 us (201-node CSR PPR))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (freshly constructed: 582.06 us / 1,000 nodes and 8678.42 us / 10,000 nodes (min_dist=4931/4911))",
+          "Two-Stage HDC + CSR PPR           (221.98 us (two-stage query), 202.97 us (201-node CSR PPR))"
+        ],
+        "fixtures": {
+          "cache_scrub_bytes": 67108864,
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 221.983,
+          "bind_permute_ns": 64.245,
+          "bus_publish_ns": 116.967,
+          "cas_ingest_us": 146.119,
+          "codec_us": 90.727,
+          "fractal_suffix_ns": 41.383,
+          "hdc_scan_10k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": true,
+            "us": 8678.424
+          },
+          "hdc_scan_10k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 11051.175
+          },
+          "hdc_scan_10k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 10209.281
+          },
+          "hdc_scan_1k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": true,
+            "us": 582.058
+          },
+          "hdc_scan_1k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 968.765
+          },
+          "hdc_scan_1k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 710.5329999999999
+          },
+          "in_memory_hook_us": 522.072,
+          "ppr_us": 202.96699999999998,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 29.026778
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 3 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (freshly constructed: 479.83 us / 1,000 nodes and 9973.78 us / 10,000 nodes (min_dist=4931/4911)); Fractal IFS Suffix Match          (55.24 ns / pair (shared_depth=6)); Two-Stage HDC + CSR PPR           (253.21 us (two-stage query), 194.49 us (201-node CSR PPR))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (freshly constructed: 479.83 us / 1,000 nodes and 9973.78 us / 10,000 nodes (min_dist=4931/4911))",
+          "Fractal IFS Suffix Match          (55.24 ns / pair (shared_depth=6))",
+          "Two-Stage HDC + CSR PPR           (253.21 us (two-stage query), 194.49 us (201-node CSR PPR))"
+        ],
+        "fixtures": {
+          "cache_scrub_bytes": 67108864,
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 253.21300000000002,
+          "bind_permute_ns": 76.357,
+          "bus_publish_ns": 136.477,
+          "cas_ingest_us": 147.04,
+          "codec_us": 85.73599999999999,
+          "fractal_suffix_ns": 55.237,
+          "hdc_scan_10k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": true,
+            "us": 9973.777
+          },
+          "hdc_scan_10k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 15081.473999999998
+          },
+          "hdc_scan_10k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 13449.251
+          },
+          "hdc_scan_1k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": true,
+            "us": 479.83200000000005
+          },
+          "hdc_scan_1k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 1049.337
+          },
+          "hdc_scan_1k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 1063.133
+          },
+          "in_memory_hook_us": 508.68500000000006,
+          "ppr_us": 194.491,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 37.813001
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 2 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (freshly constructed: 803.66 us / 1,000 nodes and 9465.08 us / 10,000 nodes (min_dist=4931/4911)); Two-Stage HDC + CSR PPR           (237.97 us (two-stage query), 191.62 us (201-node CSR PPR))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (freshly constructed: 803.66 us / 1,000 nodes and 9465.08 us / 10,000 nodes (min_dist=4931/4911))",
+          "Two-Stage HDC + CSR PPR           (237.97 us (two-stage query), 191.62 us (201-node CSR PPR))"
+        ],
+        "fixtures": {
+          "cache_scrub_bytes": 67108864,
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 237.968,
+          "bind_permute_ns": 77.544,
+          "bus_publish_ns": 128.459,
+          "cas_ingest_us": 156.92899999999997,
+          "codec_us": 99.784,
+          "fractal_suffix_ns": 40.843,
+          "hdc_scan_10k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": true,
+            "us": 9465.077000000001
+          },
+          "hdc_scan_10k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 8759.284000000001
+          },
+          "hdc_scan_10k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 11021.262999999999
+          },
+          "hdc_scan_1k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": true,
+            "us": 803.6640000000001
+          },
+          "hdc_scan_1k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 1239.914
+          },
+          "hdc_scan_1k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 687.1479999999999
+          },
+          "in_memory_hook_us": 428.053,
+          "ppr_us": 191.616,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 31.910792
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    },
+    {
+      "warmup": false,
+      "command": [
+        "/tmp/Infinity-Context/v120/bench-native/release/icx",
+        "benchmark",
+        "--json"
+      ],
+      "exit": 1,
+      "stderr": "icx benchmark error: 1 SLO gate(s) failed: 10,240-bit HDC Hamming Scan       (freshly constructed: 658.67 us / 1,000 nodes and 9239.19 us / 10,000 nodes (min_dist=4931/4911))\n",
+      "report": {
+        "build": {
+          "profile": "release",
+          "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+          "rustflags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+          "target": "x86_64-unknown-linux-gnu"
+        },
+        "failures": [
+          "10,240-bit HDC Hamming Scan       (freshly constructed: 658.67 us / 1,000 nodes and 9239.19 us / 10,000 nodes (min_dist=4931/4911))"
+        ],
+        "fixtures": {
+          "cache_scrub_bytes": 67108864,
+          "cas_blake3": "b423946568a41a577db46cca24a613954c0edd6f0242c9ef85ff74288d3d4acd",
+          "cas_seed": "0x9E3779B97F4A7C15",
+          "hdc_blake3": "d1d1a38448c69138d8be7611043bef0066baf6060a7693ba9d34a347c9c79e3c",
+          "hdc_candidate_symbols": "cand_0..cand_9999",
+          "hdc_seed_domain": "bench",
+          "log_blake3": "05ed38fb74408135b185b4e98e945f05fa7408e8110b7043517c2a51453d8552"
+        },
+        "gates_passed": false,
+        "host": {
+          "arch": "x86_64",
+          "cpu": "Intel(R) Core(TM) i9-10850K CPU @ 3.60GHz",
+          "logical_cpus": 20,
+          "os": "linux"
+        },
+        "measurements": {
+          "associative_query_us": 137.455,
+          "bind_permute_ns": 88.611,
+          "bus_publish_ns": 88.596,
+          "cas_ingest_us": 97.427,
+          "codec_us": 53.489000000000004,
+          "fractal_suffix_ns": 33.142,
+          "hdc_scan_10k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": true,
+            "us": 9239.191
+          },
+          "hdc_scan_10k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 9961.404999999999
+          },
+          "hdc_scan_10k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 10000,
+            "kind": "measured",
+            "min_distance": 4911,
+            "slo_gated": false,
+            "us": 8275.137999999999
+          },
+          "hdc_scan_1k": {
+            "cache_condition": "after_independent_candidate_construction",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": true,
+            "us": 658.669
+          },
+          "hdc_scan_1k_cold": {
+            "cache_condition": "after_64MiB_scrub",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 959.594
+          },
+          "hdc_scan_1k_warm": {
+            "cache_condition": "immediately_prescanned",
+            "candidates": 1000,
+            "kind": "measured",
+            "min_distance": 4931,
+            "slo_gated": false,
+            "us": 471.88100000000003
+          },
+          "in_memory_hook_us": 298.856,
+          "ppr_us": 117.762,
+          "prefix_byte_reuse_pct": 95.33470435030353,
+          "repetitive_log_byte_ratio": 213.98257839721254,
+          "simulation_ms": 19.349763
+        },
+        "schema_version": 1,
+        "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+        "slo_scale": 1.0,
+        "version": "1.2.0"
+      }
+    }
+  ]
+}

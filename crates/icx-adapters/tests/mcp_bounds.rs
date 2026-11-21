@@ -89,12 +89,12 @@ fn unknown_tool_names_are_reported_as_errors() {
     let r = rpc(
         &json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"rm_rf","arguments":{}}}),
     );
-    assert_eq!(r["result"]["isError"], true);
+    assert_eq!(r["error"]["code"], -32602);
     assert!(
-        r["result"]["content"][0]["text"]
+        r["error"]["message"]
             .as_str()
             .unwrap()
-            .contains("unknown tool")
+            .contains("Unknown tool")
     );
 }
 
@@ -109,7 +109,7 @@ fn grep_results_carry_the_untrusted_data_provenance_header() {
         false,
     );
     let req = json!({"jsonrpc":"2.0","id":9,"method":"tools/call",
-        "params":{"name":"icx","arguments":{"op":"grep","pattern":"needle-7781"}}});
+        "params":{"name":"icx","arguments":{"op":"grep","q":"needle-7781"}}});
     let r = McpPagerServer::handle_jsonrpc(&req.to_string(), &mut mmu);
     let text = r["result"]["content"][0]["text"].as_str().unwrap();
     assert!(text.contains("needle-7781"), "{text}");

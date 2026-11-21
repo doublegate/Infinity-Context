@@ -1,0 +1,46 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Failure",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 90.276527831,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-adapters@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 12.080430181,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-adapters@1.2.0"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 0,
+  "missed": 0,
+  "caught": 0,
+  "timeout": 0,
+  "unviable": 0,
+  "success": 0,
+  "start_time": "2026-11-21T04:49:06.131213619Z",
+  "end_time": "2026-11-21T04:50:48.490993822Z",
+  "cargo_mutants_version": "27.1.0"
+}

@@ -1,0 +1,536 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.13583723,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.101337575,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-bus/src/ring.rs:17:62: replace / with *",
+          "package": "icx-bus",
+          "file": "crates/icx-bus/src/ring.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 17,
+              "column": 62
+            },
+            "end": {
+              "line": 17,
+              "column": 63
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__icx-bus__src__ring.rs_line_17_col_62.log",
+      "diff_path": "diff/crates__icx-bus__src__ring.rs_line_17_col_62.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.201349856,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-bus/src/ring.rs:280:30: replace >> with << in unpack_meta",
+          "package": "icx-bus",
+          "file": "crates/icx-bus/src/ring.rs",
+          "function": {
+            "function_name": "unpack_meta",
+            "return_type": "-> (u8, u8, usize, u8)",
+            "span": {
+              "start": {
+                "line": 277,
+                "column": 1
+              },
+              "end": {
+                "line": 284,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 280,
+              "column": 30
+            },
+            "end": {
+              "line": 280,
+              "column": 32
+            }
+          },
+          "replacement": "<<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-bus__src__ring.rs_line_280_col_30.log",
+      "diff_path": "diff/crates__icx-bus__src__ring.rs_line_280_col_30.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.304710622,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.10121764,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-bus/src/ring.rs:358:16: delete ! in SeqlockTelemetryBus::open_shared_file",
+          "package": "icx-bus",
+          "file": "crates/icx-bus/src/ring.rs",
+          "function": {
+            "function_name": "SeqlockTelemetryBus::open_shared_file",
+            "return_type": "-> Result<Self, BusError>",
+            "span": {
+              "start": {
+                "line": 338,
+                "column": 5
+              },
+              "end": {
+                "line": 420,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 358,
+              "column": 16
+            },
+            "end": {
+              "line": 358,
+              "column": 17
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-bus__src__ring.rs_line_358_col_16.log",
+      "diff_path": "diff/crates__icx-bus__src__ring.rs_line_358_col_16.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.352256892,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051161867,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-bus/src/ring.rs:535:36: replace * with / in SeqlockTelemetryBus::set_global_dag_root",
+          "package": "icx-bus",
+          "file": "crates/icx-bus/src/ring.rs",
+          "function": {
+            "function_name": "SeqlockTelemetryBus::set_global_dag_root",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 486,
+                "column": 5
+              },
+              "end": {
+                "line": 549,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 535,
+              "column": 36
+            },
+            "end": {
+              "line": 535,
+              "column": 37
+            }
+          },
+          "replacement": "/",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-bus__src__ring.rs_line_535_col_36.log",
+      "diff_path": "diff/crates__icx-bus__src__ring.rs_line_535_col_36.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.351962699,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051186105,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-bus/src/ring.rs:642:46: replace << with >> in SeqlockTelemetryBus::try_publish",
+          "package": "icx-bus",
+          "file": "crates/icx-bus/src/ring.rs",
+          "function": {
+            "function_name": "SeqlockTelemetryBus::try_publish",
+            "return_type": "-> Result<u64, BusError>",
+            "span": {
+              "start": {
+                "line": 614,
+                "column": 5
+              },
+              "end": {
+                "line": 767,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 642,
+              "column": 46
+            },
+            "end": {
+              "line": 642,
+              "column": 48
+            }
+          },
+          "replacement": ">>",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-bus__src__ring.rs_line_642_col_46.log",
+      "diff_path": "diff/crates__icx-bus__src__ring.rs_line_642_col_46.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.35187237,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.151322931,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-bus/src/ring.rs:746:41: replace * with / in SeqlockTelemetryBus::try_publish",
+          "package": "icx-bus",
+          "file": "crates/icx-bus/src/ring.rs",
+          "function": {
+            "function_name": "SeqlockTelemetryBus::try_publish",
+            "return_type": "-> Result<u64, BusError>",
+            "span": {
+              "start": {
+                "line": 614,
+                "column": 5
+              },
+              "end": {
+                "line": 767,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 746,
+              "column": 41
+            },
+            "end": {
+              "line": 746,
+              "column": 42
+            }
+          },
+          "replacement": "/",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-bus__src__ring.rs_line_746_col_41.log",
+      "diff_path": "diff/crates__icx-bus__src__ring.rs_line_746_col_41.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.401708283,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051145845,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-bus/src/ring.rs:835:32: replace & with | in SeqlockTelemetryBus::poll_since",
+          "package": "icx-bus",
+          "file": "crates/icx-bus/src/ring.rs",
+          "function": {
+            "function_name": "SeqlockTelemetryBus::poll_since",
+            "return_type": "-> Vec<TelepathyEvent>",
+            "span": {
+              "start": {
+                "line": 815,
+                "column": 5
+              },
+              "end": {
+                "line": 981,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 835,
+              "column": 32
+            },
+            "end": {
+              "line": 835,
+              "column": 33
+            }
+          },
+          "replacement": "|",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__icx-bus__src__ring.rs_line_835_col_32.log",
+      "diff_path": "diff/crates__icx-bus__src__ring.rs_line_835_col_32.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.351918143,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.051052747,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/icx-bus/src/ring.rs:945:49: replace * with + in SeqlockTelemetryBus::poll_since",
+          "package": "icx-bus",
+          "file": "crates/icx-bus/src/ring.rs",
+          "function": {
+            "function_name": "SeqlockTelemetryBus::poll_since",
+            "return_type": "-> Vec<TelepathyEvent>",
+            "span": {
+              "start": {
+                "line": 815,
+                "column": 5
+              },
+              "end": {
+                "line": 981,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 945,
+              "column": 49
+            },
+            "end": {
+              "line": 945,
+              "column": 50
+            }
+          },
+          "replacement": "+",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__icx-bus__src__ring.rs_line_945_col_49.log",
+      "diff_path": "diff/crates__icx-bus__src__ring.rs_line_945_col_49.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.351693937,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.101118457,
+          "process_status": "Success",
+          "argv": [
+            "/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=icx-bus@1.2.0"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 8,
+  "missed": 2,
+  "caught": 5,
+  "timeout": 0,
+  "unviable": 1,
+  "success": 0,
+  "start_time": "2026-11-21T04:50:11.282080352Z",
+  "end_time": "2026-11-21T04:50:26.77337215Z",
+  "cargo_mutants_version": "27.1.0"
+}

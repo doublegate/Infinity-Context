@@ -1,0 +1,29 @@
+{
+  "archive": "/tmp/Infinity-Context/v120/package-layout-fixture-hgolmh4_/icx-v1.2.0-fixture-layout-only-musl.tar.gz",
+  "sha256": "37de0511172b1b065c12b44a32db563d475d97bbceeb5dd8bf1f8ff7c1169aa9",
+  "binary_sha256_after_strip": "bd9bace4fb2ad0e9aa2be1f344a0e25f43562bd3313e34605783653653cf4690",
+  "repeat_identical": true,
+  "listing": {
+    "argv": [
+      "tar",
+      "tvzf",
+      "/tmp/Infinity-Context/v120/package-layout-fixture-hgolmh4_/icx-v1.2.0-fixture-layout-only-musl.tar.gz"
+    ],
+    "exit": 0,
+    "stdout": "drwxr-xr-x 0/0               0 2023-11-14 17:13 icx-v1.2.0-fixture-layout-only-musl/\n-rw-r--r-- 0/0           47472 2023-11-14 17:13 icx-v1.2.0-fixture-layout-only-musl/CHANGELOG.md\n-rw-r--r-- 0/0           34674 2023-11-14 17:13 icx-v1.2.0-fixture-layout-only-musl/COPYING\n-rw-r--r-- 0/0           34674 2023-11-14 17:13 icx-v1.2.0-fixture-layout-only-musl/LICENSE\ndrwxr-xr-x 0/0               0 2023-11-14 17:13 icx-v1.2.0-fixture-layout-only-musl/LICENSES/\n-rw-r--r-- 0/0           34020 2023-11-14 17:13 icx-v1.2.0-fixture-layout-only-musl/LICENSES/AGPL-3.0-or-later.txt\n-rw-r--r-- 0/0           34674 2023-11-14 17:13 icx-v1.2.0-fixture-layout-only-musl/LICENSES/GPL-3.0-or-later.txt\n-rw-r--r-- 0/0            6196 2023-11-14 17:13 icx-v1.2.0-fixture-layout-only-musl/MUSL-COPYRIGHT.txt\n-rw-r--r-- 0/0           54735 2023-11-14 17:13 icx-v1.2.0-fixture-layout-only-musl/README.md\n-rw-r--r-- 0/0          169574 2023-11-14 17:13 icx-v1.2.0-fixture-layout-only-musl/THIRD-PARTY-NOTICES.txt\n-rwxr-xr-x 0/0          434952 2023-11-14 17:13 icx-v1.2.0-fixture-layout-only-musl/icx\n",
+    "stderr": ""
+  },
+  "input_sha256": {
+    "CHANGELOG.md": "6972d236b5a000a1eb2eae2660f4522eefc80c8703a53734a6d550fd1f81281c",
+    "COPYING": "fb981668c18a279e285fc4d83fba1e836cc84dd4daa73c9697d3cfd2d8aca6e0",
+    "LICENSE": "fb981668c18a279e285fc4d83fba1e836cc84dd4daa73c9697d3cfd2d8aca6e0",
+    "LICENSES/AGPL-3.0-or-later.txt": "d8a6cc31abc16b6748c7a21f21611f5a1ec33f67d22ca23d7da1c19b95496bee",
+    "LICENSES/GPL-3.0-or-later.txt": "fb981668c18a279e285fc4d83fba1e836cc84dd4daa73c9697d3cfd2d8aca6e0",
+    "MUSL-COPYRIGHT.txt": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b",
+    "README.md": "6de927930d79053cf6eb3fb61ea6775785592ba688f68f1d447a7ad2b0f84dd5",
+    "THIRD-PARTY-NOTICES.txt": "477b390ca1e5134ea208eb71455fc282bc3f4081e3a61ad7960f5dcfdfab8df6",
+    "icx": "bd9bace4fb2ad0e9aa2be1f344a0e25f43562bd3313e34605783653653cf4690"
+  },
+  "scope": "Packaging mechanics test only, using the standalone linkage probe, NOT an icx release binary",
+  "final_release_certified": false
+}

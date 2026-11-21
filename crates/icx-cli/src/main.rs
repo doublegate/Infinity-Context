@@ -37,6 +37,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
     match subcmd {
         "init" => run_init(tail),
         "trust" => run_trust(tail),
+        "context-budget" => run_context_budget(tail),
         #[cfg(unix)]
         "daemon" => run_daemon(tail),
         "deref" => run_deref(tail),
@@ -76,7 +77,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
             Ok(())
         }
         "doctor" => run_doctor(tail),
-        "benchmark" => run_benchmark(),
+        "benchmark" => run_benchmark(tail),
         _ => {
             print_help();
             Ok(())
@@ -86,6 +87,19 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
 
 /// Largest hook / proxy-transform stdin accepted: the 64 MiB ingest bound plus JSON envelope.
 const MAX_STDIN_BYTES: u64 = icx_core::ICX_MAX_INGEST_BYTES as u64 + 64 * 1024;
+/// Ceiling for the exact parallel 10,000-node HDC scan in `icx benchmark`: the slowest of 10
+/// quiet-host runs of the v1.2.0 release candidate (1,354 us, median 907 us; i9-10850K) times
+/// 1.5, rounded. Measured, unlike the earlier 1,500 us figure extrapolated from the 1k gate.
+/// See docs/performance.md and docs/releases/v1.2.0/evidence/benchmark-native-final-series.json.
+const HDC_SCAN_10K_PARALLEL_CEILING_US: f64 = 2_000.0;
+
+/// Worker threads the parallel HDC scan uses on this host (reported in the JSON benchmark).
+fn icx_hdc_scan_workers() -> usize {
+    std::thread::available_parallelism()
+        .map_or(1, std::num::NonZeroUsize::get)
+        .min(8)
+}
+
 /// Largest single JSON-RPC line accepted by `mcp-serve`.
 const MAX_MCP_LINE_BYTES: u64 = 4 * 1024 * 1024;
 
@@ -152,6 +166,8 @@ Subcommands:",
       Keep the workspace resident and serve hooks over a private Unix socket (fast path)
   trust --dir <PATH>
       Adopt an existing workspace you own (e.g. a v1.0.x `.icx/`): chmod 0700 + owner seal
+  context-budget [--context-tokens <N>] [--completion-reserve <N>] [--external-reserve <N>] [--dir <PATH>]
+      Inspect or persist the conservative model-window budget (UTF-8 byte upper-bound estimator)
   deref <HANDLE> [--lines <START:END>] [--dir <PATH>] [--raw]
       Dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle; output is framed as
       untrusted data and delimiter-escaped unless --raw (byte-exact) is given
@@ -173,7 +189,7 @@ Subcommands:",
       Print Infinity-Context MMU status and schema overview
   doctor [--dir <PATH>]
       Inspect local agent installations (claude, codex, agy, hermes), /dev/shm, and workspace integrity
-  benchmark
+  benchmark [--json]
       Execute the end-to-end 9-SLO benchmark suite (HDC, Fractal, PPR, AHTL, FastCDC, Seqlock, Hook, NIH)"
     );
 }
@@ -215,6 +231,70 @@ fn workspace_mmu() -> InfinityContextMmu {
         Err(e) => eprintln!("icx: store sealing unavailable: {e}"),
     }
     mmu
+}
+
+fn run_context_budget(args: &[String]) -> Result<(), String> {
+    use icx_core::epoch::PromptWindowBudget;
+    let mut context = None;
+    let mut completion = None;
+    let mut external = None;
+    let mut i = 0;
+    while i < args.len() {
+        let flag = args[i].as_str();
+        if matches!(flag, "--help" | "-h") {
+            println!(
+                "Usage: icx context-budget [--context-tokens <N>] [--completion-reserve <N>] [--external-reserve <N>] [--dir <PATH>]\n\
+                 Inspect, or with options persist, the icx-managed prompt window budget of a trusted workspace.\n\
+                 Units are the conservative utf8-bytes-upper-bound-v1 estimate, not provider tokens."
+            );
+            return Ok(());
+        }
+        let value = args
+            .get(i + 1)
+            .ok_or_else(|| format!("context-budget: missing value for {flag}"))?;
+        match flag {
+            "--context-tokens" => {
+                context = Some(value.parse::<usize>().map_err(|e| e.to_string())?);
+            }
+            "--completion-reserve" => {
+                completion = Some(value.parse::<usize>().map_err(|e| e.to_string())?);
+            }
+            "--external-reserve" => {
+                external = Some(value.parse::<usize>().map_err(|e| e.to_string())?);
+            }
+            "--dir" => {}
+            _ => return Err(format!("context-budget: unknown option {flag}")),
+        }
+        i += 2;
+    }
+    let dir = resolve_workspace_dir(parse_dir_flag(args));
+    if !matches!(workspace_state(&dir, false), WsState::Ready) {
+        return Err("context-budget: initialize or explicitly trust the workspace first".into());
+    }
+    let _guard = acquire_workspace_lock(&dir)?;
+    let mut mmu = workspace_mmu();
+    mmu.load_workspace_dir_unlocked(&dir)
+        .map_err(|e| e.to_string())?;
+    if context.is_some() || completion.is_some() || external.is_some() {
+        let old = mmu.epochs.window_budget();
+        let budget = PromptWindowBudget::new(
+            context.unwrap_or(old.context_tokens()),
+            completion.unwrap_or(old.completion_reserve()),
+            external.unwrap_or(old.external_input_reserve()),
+        )
+        .map_err(|e| e.to_string())?;
+        mmu.epochs
+            .set_window_budget(budget)
+            .map_err(|e| e.to_string())?;
+        mmu.save_workspace_dir_unlocked(&dir)
+            .map_err(|e| e.to_string())?;
+    }
+    println!(
+        "{}",
+        serde_json::json!({"policy": mmu.epochs.window_budget(),
+        "window_bytes": mmu.epochs.window_budget().window_bytes(), "estimator": "utf8-bytes-upper-bound-v1"})
+    );
+    Ok(())
 }
 
 /// Trust state of a resolved workspace directory (ICX-AUD-010).
@@ -1315,9 +1395,15 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn check_slo(passed: bool, label: &str, measured: &str, failures: &mut Vec<String>) {
+fn benchmark_microseconds(duration: std::time::Duration) -> f64 {
+    duration.as_secs_f64() * 1_000_000.0
+}
+
+fn check_slo(passed: bool, label: &str, measured: &str, failures: &mut Vec<String>, machine: bool) {
     let status = if passed { "PASS" } else { "FAIL" };
-    println!("  [{status}] {label}: {measured}");
+    if !machine {
+        println!("  [{status}] {label}: {measured}");
+    }
     if !passed {
         failures.push(format!("{label} ({measured})"));
     }
@@ -1365,8 +1451,15 @@ fn varied_tool_log_fixture() -> String {
 /// Gate for the byte-weighted prefix-reuse proxy, all turns included (ICX-AUD-002).
 const PREFIX_REUSE_FLOOR_PCT: f64 = 90.0;
 
-fn run_benchmark() -> Result<(), String> {
-    println!("=== Infinity-Context (icx) SLO & Accuracy Benchmark Suite ===");
+fn run_benchmark(args: &[String]) -> Result<(), String> {
+    let machine = match args {
+        [] => false,
+        [flag] if flag == "--json" => true,
+        _ => return Err("Usage: icx benchmark [--json]".into()),
+    };
+    if !machine {
+        println!("=== Infinity-Context (icx) SLO & Accuracy Benchmark Suite ===");
+    }
     // Note: Under debug/coverage (`cfg!(debug_assertions)`) builds, compiler optimizations are
     // disabled (`opt-level = 0`) and LLVM coverage instrumentation is injected (`100x` allowance);
     // on shared virtualized CI runners (`CI=true` / `GITHUB_ACTIONS=true`), wall-clock ceilings
@@ -1397,28 +1490,92 @@ fn run_benchmark() -> Result<(), String> {
         "10,240-bit HDC Bind (^) + Permute",
         &format!("{bind_ns:.2} ns / op (1,000 ops)"),
         &mut failures,
+        machine,
     );
 
     // 2. 10,240-bit HDC Hamming Scan Benchmark (ceiling: <= 150 us / 1,000 nodes)
     let query_hv = Hypervector::from_seed("bench", "query_target");
-    let candidates: Vec<Hypervector> = (0..1_000)
+    let measure_scan = |candidates: &[Hypervector]| {
+        // Barriers apply to the scan inputs once, rather than spilling/reloading the query
+        // pointer at every candidate. The minimum remains externally observed.
+        let query = std::hint::black_box(&query_hv);
+        let candidates = std::hint::black_box(candidates);
+        let start = Instant::now();
+        let mut minimum = u32::MAX;
+        for candidate in candidates {
+            minimum = minimum.min(query.hamming_distance_simd(candidate));
+        }
+        (
+            benchmark_microseconds(start.elapsed()),
+            std::hint::black_box(minimum),
+        )
+    };
+    // Preserve the original 1k fixture's construction-then-scan condition. Allocating 10k
+    // first and timing its 1k prefix changes that cache condition, even at identical n.
+    let candidates_1k: Vec<Hypervector> = (0..1_000)
         .map(|i| Hypervector::from_seed("bench", &format!("cand_{i}")))
         .collect();
-    let t0 = Instant::now();
-    let mut min_dist = u32::MAX;
-    for c in &candidates {
-        min_dist = min_dist.min(query_hv.hamming_distance_simd(c));
+    let (hdc_us, min_dist) = measure_scan(&candidates_1k);
+    let candidates: Vec<Hypervector> = (0..10_000)
+        .map(|i| Hypervector::from_seed("bench", &format!("cand_{i}")))
+        .collect();
+    let (hdc_10k_us, min_dist_10k) = measure_scan(&candidates);
+    // The gated 10k figure is the library's exact parallel scan (`icx_hdc::hv::nearest`, which
+    // recall uses for large exhaustive refinements), on its own freshly constructed set so both
+    // 10k measurements see the same cache condition. A 12.8 MB set is memory-bandwidth bound on
+    // a single core; the sequential figure above stays reported, ungated.
+    let candidates_parallel: Vec<Hypervector> = (0..10_000)
+        .map(|i| Hypervector::from_seed("bench", &format!("cand_{i}")))
+        .collect();
+    let (hdc_10k_parallel_us, min_dist_10k_parallel) = {
+        let query = std::hint::black_box(&query_hv);
+        let candidates = std::hint::black_box(&candidates_parallel[..]);
+        let start = Instant::now();
+        let nearest = icx_hdc::hv::nearest(query, candidates);
+        (
+            benchmark_microseconds(start.elapsed()),
+            std::hint::black_box(nearest.map_or(u32::MAX, |(_, d)| d)),
+        )
+    };
+    drop(candidates_parallel);
+    let cache_scrub = vec![1u64; 8 * 1024 * 1024]; // 64 MiB, not included in timing
+    let scrub_cache = || {
+        let mut total = 0u64;
+        for value in std::hint::black_box(&cache_scrub).iter().step_by(8) {
+            total = total.wrapping_add(*value);
+        }
+        std::hint::black_box(total);
+    };
+    scrub_cache();
+    let (hdc_cold_us, cold_min_dist) = measure_scan(&candidates_1k);
+    std::hint::black_box(measure_scan(&candidates_1k));
+    let (hdc_warm_us, warm_min_dist) = measure_scan(&candidates_1k);
+    scrub_cache();
+    let (hdc_10k_cold_us, cold_min_dist_10k) = measure_scan(&candidates);
+    std::hint::black_box(measure_scan(&candidates));
+    let (hdc_10k_warm_us, warm_min_dist_10k) = measure_scan(&candidates);
+    let mut fixture_hash = blake3::Hasher::new();
+    for vector in std::iter::once(&query_hv).chain(candidates.iter()) {
+        for word in vector.words {
+            fixture_hash.update(&word.to_le_bytes());
+        }
     }
-    let hdc_us = t0.elapsed().as_secs_f64() * 1_000_000.0;
-    let per_10k_us = hdc_us * 10.0;
     check_slo(
-        hdc_us <= 150.0 * scale,
+        hdc_us <= 150.0 * scale
+            && hdc_10k_parallel_us <= HDC_SCAN_10K_PARALLEL_CEILING_US * scale
+            && min_dist_10k_parallel == min_dist_10k,
         "10,240-bit HDC Hamming Scan      ",
         &format!(
-            "{hdc_us:.2} us / 1,000 nodes ({per_10k_us:.2} us / 10k nodes, min_dist={min_dist})"
+            "freshly constructed: {hdc_us:.2} us / 1,000 nodes; 10,000 nodes {hdc_10k_parallel_us:.2} us parallel ({hdc_10k_us:.2} us sequential) (min_dist={min_dist}/{min_dist_10k})"
         ),
         &mut failures,
+        machine,
     );
+    if !machine {
+        println!(
+            "  [INFO] HDC explicit cache conditions: 1k warm={hdc_warm_us:.2} us, scrubbed={hdc_cold_us:.2} us; 10k warm={hdc_10k_warm_us:.2} us, scrubbed={hdc_10k_cold_us:.2} us (informational, not SLO-gated)"
+        );
+    }
 
     // 3. Fractal IFS Trajectory Suffix Match Benchmark (ceiling: <= 50 ns / pair)
     let mut traj_a = icx_hdc::fractal::FractalCoord::default();
@@ -1442,6 +1599,7 @@ fn run_benchmark() -> Result<(), String> {
         "Fractal IFS Suffix Match         ",
         &format!("{ifs_ns:.2} ns / pair (shared_depth={shared_depth})"),
         &mut failures,
+        machine,
     );
 
     // 4. Two-Stage HdcAssociativeIndex & CSR BiTemporalGraph PPR Benchmark
@@ -1463,7 +1621,7 @@ fn run_benchmark() -> Result<(), String> {
     );
     let t_idx = Instant::now();
     let stage_hits = bench_idx.query_associative("graph_ppr personalized_pagerank", 5);
-    let idx_us = t_idx.elapsed().as_secs_f64() * 1_000_000.0;
+    let idx_us = benchmark_microseconds(t_idx.elapsed());
     assert_eq!(stage_hits[0].artifact_id, ArtifactId(99_999));
 
     let mut bench_graph = icx_store::BiTemporalGraph::new();
@@ -1474,13 +1632,14 @@ fn run_benchmark() -> Result<(), String> {
     }
     let t_ppr = Instant::now();
     let ppr_hits = bench_graph.personalized_pagerank(&["mod:m_0"], None, 0.15, 8, 5);
-    let ppr_us = t_ppr.elapsed().as_secs_f64() * 1_000_000.0;
+    let ppr_us = benchmark_microseconds(t_ppr.elapsed());
     assert_ne!(ppr_hits.len(), 0);
     check_slo(
         idx_us <= 200.0 * scale && ppr_us <= 400.0 * scale,
         "Two-Stage HDC + CSR PPR          ",
         &format!("{idx_us:.2} us (two-stage query), {ppr_us:.2} us (201-node CSR PPR)"),
         &mut failures,
+        machine,
     );
 
     // 5. AHTL Log Compression Ratio & Latency Benchmark (ceiling: <= 400 us, ratio >= 10x)
@@ -1504,7 +1663,7 @@ fn run_benchmark() -> Result<(), String> {
         [0x42; 8],
     );
     let rendered = pkt.render();
-    let codec_us = t1.elapsed().as_secs_f64() * 1_000_000.0;
+    let codec_us = benchmark_microseconds(t1.elapsed());
     let ratio = (log_fixture.len() as f64) / (rendered.len() as f64);
     check_slo(
         ratio >= 10.0 && codec_us <= 400.0 * scale,
@@ -1515,17 +1674,20 @@ fn run_benchmark() -> Result<(), String> {
             rendered.len()
         ),
         &mut failures,
+        machine,
     );
     // ICX-AUD-028: also report (without gating) a varied log, closer to real tool output.
     let varied = varied_tool_log_fixture();
     let varied_pkt =
         StructuralSkeletonizer::compress_sanitized_to_packet("cargo_build", &varied, None, [0; 8]);
-    println!(
-        "  [INFO] AHTL ratio, varied log      : {:.1}x ({} B -> {} B; skeleton + handle, full text via deref, not a lossless encoding)",
-        varied.len() as f64 / varied_pkt.render().len().max(1) as f64,
-        varied.len(),
-        varied_pkt.render().len()
-    );
+    if !machine {
+        println!(
+            "  [INFO] AHTL ratio, varied log      : {:.1}x ({} B -> {} B; skeleton + handle, full text via deref, not a lossless encoding)",
+            varied.len() as f64 / varied_pkt.render().len().max(1) as f64,
+            varied.len(),
+            varied_pkt.render().len()
+        );
+    }
 
     // 6. FastCDC + BLAKE3 CAS Ingest (64 KB) Benchmark (release ceiling: <= 250 us)
     let mut cas_bench = icx_core::cas::CasStore::new();
@@ -1547,7 +1709,7 @@ fn run_benchmark() -> Result<(), String> {
     let (cas_aid, _) = cas_bench
         .put_bytes_checked(cas_payload_64k.as_bytes())
         .expect("64 KB CAS ingest succeeds");
-    let cas_us = t_cas.elapsed().as_secs_f64() * 1_000_000.0;
+    let cas_us = benchmark_microseconds(t_cas.elapsed());
     assert_eq!(
         cas_bench.deref_bytes(cas_aid).unwrap().len(),
         cas_payload_64k.len()
@@ -1561,6 +1723,7 @@ fn run_benchmark() -> Result<(), String> {
             cas_bench.unique_chunk_count()
         ),
         &mut failures,
+        machine,
     );
 
     // 7. In-Process Atomic Seqlock Broadcast Latency Benchmark (release ceiling: <= 5,000 ns)
@@ -1584,6 +1747,7 @@ fn run_benchmark() -> Result<(), String> {
         "Atomic Seqlock Broadcast         ",
         &format!("{bus_ns_per_op:.1} ns / slot (1,000 publishes)"),
         &mut failures,
+        machine,
     );
 
     // 8. Full Synchronous Hook Round-Trip (`ClaudeCodeAdapter::handle_hook`) Benchmark (release ceiling: <= 1,000 us)
@@ -1604,13 +1768,14 @@ fn run_benchmark() -> Result<(), String> {
     let t_hook = Instant::now();
     let hook_out =
         ClaudeCodeAdapter::handle_hook("PostToolUse", &hook_stdin, &mut hook_mmu).unwrap();
-    let hook_us = t_hook.elapsed().as_secs_f64() * 1_000_000.0;
+    let hook_us = benchmark_microseconds(t_hook.elapsed());
     assert!(hook_out.contains("updatedToolOutput"));
     check_slo(
         hook_us <= 1_000.0 * scale,
         "Full Synchronous Hook Round-Trip ",
         &format!("{hook_us:.2} us (PostToolUse virtualization)"),
         &mut failures,
+        machine,
     );
 
     // 9. Multi-Turn Prefix-Cache Hit Ratio & Lossless Needle-in-a-Haystack Benchmark
@@ -1681,8 +1846,52 @@ fn run_benchmark() -> Result<(), String> {
             sim_elapsed.as_secs_f64() * 1_000.0
         ),
         &mut failures,
+        machine,
     );
 
+    if machine {
+        let cpu = fs::read_to_string("/proc/cpuinfo")
+            .ok()
+            .and_then(|info| {
+                info.lines().find_map(|line| {
+                    line.strip_prefix("model name")
+                        .and_then(|s| s.split_once(':'))
+                        .map(|(_, value)| value.trim().to_owned())
+                })
+            })
+            .unwrap_or_else(|| env::consts::ARCH.into());
+        println!(
+            "{}",
+            serde_json::json!({
+                "schema_version": 1,
+                "version": env!("CARGO_PKG_VERSION"),
+                "scope": "synthetic in-process component benchmark; byte reuse is not provider cache hits",
+                "gates_passed": failures.is_empty(), "failures": &failures, "slo_scale": scale,
+                "build": {"target":env!("ICX_BUILD_TARGET"), "profile":env!("ICX_BUILD_PROFILE"),
+                    "rustflags":env!("ICX_BUILD_RUSTFLAGS"), "rustc":env!("ICX_BUILD_RUSTC")},
+                "host": {"cpu":cpu, "os":env::consts::OS, "arch":env::consts::ARCH,
+                    "logical_cpus":std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)},
+                "fixtures": {"hdc_seed_domain":"bench", "hdc_candidate_symbols":"cand_0..cand_9999",
+                    "hdc_blake3":fixture_hash.finalize().to_hex().to_string(), "cache_scrub_bytes":cache_scrub.len()*8,
+                    "cas_seed":"0x9E3779B97F4A7C15", "cas_blake3":blake3::hash(cas_payload_64k.as_bytes()).to_hex().to_string(),
+                    "log_blake3":blake3::hash(log_fixture.as_bytes()).to_hex().to_string()},
+                "measurements": {
+                    "bind_permute_ns":bind_ns,
+                    "hdc_scan_1k":{"kind":"measured", "candidates":1000, "us":hdc_us, "min_distance":min_dist, "cache_condition":"after_independent_candidate_construction", "slo_gated":true},
+                    "hdc_scan_10k":{"kind":"measured", "candidates":10000, "us":hdc_10k_us, "min_distance":min_dist_10k, "cache_condition":"after_independent_candidate_construction", "slo_gated":false},
+                    "hdc_scan_10k_parallel":{"kind":"measured", "candidates":10000, "us":hdc_10k_parallel_us, "min_distance":min_dist_10k_parallel, "workers":icx_hdc_scan_workers(), "cache_condition":"after_independent_candidate_construction", "ceiling_us":HDC_SCAN_10K_PARALLEL_CEILING_US, "slo_gated":true},
+                    "hdc_scan_1k_warm":{"kind":"measured", "candidates":1000, "us":hdc_warm_us, "min_distance":warm_min_dist, "cache_condition":"immediately_prescanned", "slo_gated":false},
+                    "hdc_scan_10k_warm":{"kind":"measured", "candidates":10000, "us":hdc_10k_warm_us, "min_distance":warm_min_dist_10k, "cache_condition":"immediately_prescanned", "slo_gated":false},
+                    "hdc_scan_1k_cold":{"kind":"measured", "candidates":1000, "us":hdc_cold_us, "min_distance":cold_min_dist, "cache_condition":"after_64MiB_scrub", "slo_gated":false},
+                    "hdc_scan_10k_cold":{"kind":"measured", "candidates":10000, "us":hdc_10k_cold_us, "min_distance":cold_min_dist_10k, "cache_condition":"after_64MiB_scrub", "slo_gated":false},
+                    "fractal_suffix_ns":ifs_ns, "associative_query_us":idx_us, "ppr_us":ppr_us,
+                    "codec_us":codec_us, "repetitive_log_byte_ratio":ratio,
+                    "cas_ingest_us":cas_us, "bus_publish_ns":bus_ns_per_op, "in_memory_hook_us":hook_us,
+                    "prefix_byte_reuse_pct":all_turns, "simulation_ms":sim_elapsed.as_secs_f64()*1000.0
+                }
+            })
+        );
+    }
     if !failures.is_empty() {
         return Err(format!(
             "icx benchmark error: {} SLO gate(s) failed: {}",
@@ -1690,12 +1899,25 @@ fn run_benchmark() -> Result<(), String> {
             failures.join("; ")
         ));
     }
-    println!("All Infinity-Context SLO gates PASSED.");
+    if !machine {
+        println!("All Infinity-Context SLO gates PASSED.");
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn benchmark_duration_units_are_microseconds() {
+        assert_eq!(
+            super::benchmark_microseconds(std::time::Duration::from_secs(2)),
+            2_000_000.0
+        );
+        assert_eq!(
+            super::benchmark_microseconds(std::time::Duration::from_nanos(500)),
+            0.5
+        );
+    }
     use super::*;
 
     /// Opens a workspace's SQLite store directly (test-only tampering helper).
@@ -1836,8 +2058,8 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn daemon_keeps_unsaved_state_and_retries_when_a_flush_fails() {
-        // PR #20 review (Antigravity): a failed flush must not drop the dirty window.
+    fn daemon_refuses_an_uncommitted_response_and_releases_the_lock_for_retry() {
+        // v1.2.0: failed persistence is never acknowledged; the caller can retry from disk.
         use std::os::unix::fs::PermissionsExt;
         let (ws, sock, server) = start_daemon("flushfail");
         let gen_before = workspace_mmu_generation(&ws);
@@ -1848,10 +2070,10 @@ mod tests {
             "tool_response": {"stdout": "retry me\n".repeat(400)}
         })
         .to_string();
-        assert!(daemon::try_hook(&sock, "claude-code", "PostToolUse", &post).is_some());
-        std::thread::sleep(std::time::Duration::from_millis(300)); // first flush fails
+        assert!(daemon::try_hook(&sock, "claude-code", "PostToolUse", &post).is_none());
+        assert!(server.join().unwrap().is_err());
         assert_eq!(workspace_mmu_generation(&ws), gen_before);
-        // While it waits to retry, the daemon does not hold the workspace lock.
+        // A failed commit must release its lock before fallback or another writer runs.
         let (tx, rx) = std::sync::mpsc::channel();
         let ws_lock = ws.clone();
         std::thread::spawn(move || {
@@ -1860,7 +2082,7 @@ mod tests {
         assert_eq!(
             rx.recv_timeout(std::time::Duration::from_millis(600)),
             Ok(true),
-            "daemon held the workspace lock across a failed flush"
+            "daemon kept the workspace lock after a failed commit"
         );
         // SQLite gives `-wal`/`-shm` the database file's mode, so restore all three.
         for f in ["icx.sqlite3", "icx.sqlite3-wal", "icx.sqlite3-shm"] {
@@ -1869,18 +2091,32 @@ mod tests {
                 fs::set_permissions(&p, fs::Permissions::from_mode(0o600)).unwrap();
             }
         }
-        server.join().unwrap().unwrap();
+        let mut fallback = workspace_mmu();
+        let retry: Result<String, icx_adapters::AdapterError> =
+            fallback.with_locked_workspace(&ws, |mmu| {
+                Ok(dispatch_agent_hook(
+                    AgentKind::ClaudeCode,
+                    "PostToolUse",
+                    &post,
+                    mmu,
+                )?)
+            });
+        assert!(retry.unwrap().contains("ICX:STUB"));
         assert!(
             workspace_mmu_generation(&ws) > gen_before,
-            "unsaved state was dropped after a failed flush"
+            "caller retry did not commit"
         );
+        let mut reopened = workspace_mmu();
+        reopened.load_workspace_dir(&ws).unwrap();
+        let (aid, _) = ArtifactId::hash_bytes("retry me\n".repeat(400).as_bytes());
+        assert_eq!(reopened.deref_text(aid).unwrap(), "retry me\n".repeat(400));
         let _ = fs::remove_dir_all(&ws);
     }
 
     #[cfg(unix)]
     #[test]
-    fn daemon_gives_up_on_a_persistent_flush_failure_and_still_exits() {
-        // A store that stays unwritable must not keep the daemon (or the lock) alive forever.
+    fn daemon_reports_persistent_commit_failure_and_exits_unsuccessfully() {
+        // No successful response or successful exit may hide a failed store write.
         use std::os::unix::fs::PermissionsExt;
         let (ws, sock, server) = start_daemon("flushgiveup");
         let gen_before = workspace_mmu_generation(&ws);
@@ -1890,8 +2126,8 @@ mod tests {
             "tool_response": {"stdout": "never saved\n".repeat(400)}
         })
         .to_string();
-        assert!(daemon::try_hook(&sock, "claude-code", "PostToolUse", &post).is_some());
-        server.join().unwrap().unwrap(); // returns after MAX_FLUSH_FAILURES retries + idle exit
+        assert!(daemon::try_hook(&sock, "claude-code", "PostToolUse", &post).is_none());
+        assert!(server.join().unwrap().is_err());
         assert!(!sock.exists());
         for f in ["icx.sqlite3", "icx.sqlite3-wal", "icx.sqlite3-shm"] {
             let p = ws.join(f);
@@ -2343,7 +2579,7 @@ mod tests {
             .is_err()
         );
         let mut fail_vec = Vec::new();
-        check_slo(false, "synthetic_gate", "9999 us", &mut fail_vec);
+        check_slo(false, "synthetic_gate", "9999 us", &mut fail_vec, false);
         assert_eq!(fail_vec.len(), 1);
         dispatch_cli_args(
             &["icx".into(), "decode-ahtl".into(), pkt_str.clone()],

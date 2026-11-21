@@ -294,6 +294,11 @@ impl FractalCoord {
         let mut coords = [0.0f64; 16];
         for c in &mut coords {
             *c = r.f64()?;
+            if !c.is_finite() || !(-1.0..=1.0).contains(c) {
+                return Err(crate::snapshot::SnapshotError::Inconsistent(
+                    "fractal.coordinate",
+                ));
+            }
         }
         Ok(Self {
             coords,

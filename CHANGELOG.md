@@ -5,7 +5,119 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-21
+
+Remediation and bounded-context release candidate for the independent audit in `docs/codex/`.
+Qualification results and remaining release decisions are tracked in
+[`docs/releases/v1.2.0/`](docs/releases/v1.2.0/README.md).
+
+### Migration
+
+- HDC derived snapshots now use `ICXHDC04` with exact token postings. Version 03 remains readable
+  and the MMU rebuilds it from preserved CAS events. Older binaries cannot read 04: retain a
+  pre-upgrade workspace backup for downgrade. CAS identities and unversioned Q15 `fc` words do
+  not change; incorrect Q1.14 wire labels are superseded by ADR 0006.
+- icx-managed context now defaults to a bounded 32,768-unit policy, reserving 4,096 units each for
+  external input/tool schemas and completion. `icx context-budget` inspects/sets the persisted
+  policy. The estimator is a conservative one-UTF8-byte allowance, not a provider tokenizer;
+  callers must account for their actual external prompt. Model changes can invalidate prefixes.
+- MCP requires valid JSON-RPC envelopes, typed arguments, an explicit operation and the canonical
+  advertised tool name `icx`. Invalid aliases/arguments now return errors rather than status or
+  accidental mutations. Native-hook alias recognition is unchanged.
+
+### Fixed
+
+- YAML sensitive scalars are redacted across literal/folded blocks and indented plain-value
+  continuations, including `=`-containing values, tagged/anchored headers and list mappings.
+  Public fields after dedent remain intact. Redaction uses normalized continuation classification
+  so the audit's vendor-token/idempotence counterexamples stabilize on the first pass
+  (ICX-CODEX-001, ICX-CODEX-006). Existing stored artifacts are not rewritten.
+- Public Profile A skeleton rendering neutralizes raw packet/header delimiters as ASCII bracket
+  pairs; standalone parsing rejects unescaped nested markers (ICX-CODEX-002). Existing ordinary
+  skeletons and percent literals retain their interpretation. Exact CAS content is unchanged.
+- Exact token postings prevent approximate candidate rejection of stored unique identifiers,
+  including multilingual identifiers. Lexical match coverage ranks ahead of HDC/fractal ties;
+  common-token queries can require exhaustive refinement (ICX-CODEX-004).
+- Snapshot loads reject nonfinite/out-of-range numerical state and inconsistent cached summaries,
+  bundler readouts and 04 posting/Bloom metadata (ICX-CODEX-003).
+- Bus readers reject coherent slots whose sequence differs from the expected ring position;
+  extreme public chunker sizes no longer overflow arithmetic (ICX-CODEX-032/033).
+- Daemon success replies follow persistence under the workspace lock; save failure returns an
+  error and nonzero daemon result. SQLite WAL uses FULL commit synchronization (ICX-CODEX-030).
+- Codex PostToolUse captures eligible output without emitting the unsupported replacement field.
+  Supported prompt/start recall remains; replacement capability is explicitly false (035).
+- Window assembly selects fitting whole recent frames without deleting cold history. Structured
+  recall preserves useful handles and leaves unsent sibling-bus events queued (101).
+- Release packaging requires successful trusted CI and REUSE evidence for the exact tagged
+  commit, and rechecks before external writes. Missing, partial, failed or expired evidence
+  blocks release; a partial failed-job rerun may require a complete workflow rerun (070).
+- Benchmarks measure 1k and 10k scans independently and preserve strict timing-gate failures;
+  numerical, corruption, protocol and mutation regressions strengthen assertion coverage
+  (072/073). Current specifications supersede historical capability guarantees, and the worked
+  U+28C7 example now displays the matching Braille glyph (005/100/102).
+
+Release-review fixes (independent review of the candidate before submission):
+
+- Redaction: a line ending in a sensitive YAML block header (`password: |`) no longer exempts
+  earlier assignments on the same line (`{api_key: x, password: |` leaked `x`). Multi-line plain
+  scalars whose continuation lines are less indented than the first, multi-line single- and
+  double-quoted scalars, and flow-sequence values (`password: [x]`) are now hidden. Plural
+  collection keys (`api_keys`, `tokens`, `DB_PASSWORDS`) are sensitive; `max_passes`, `bypass`
+  and `addresses` are not.
+- Context window: once the budget is reached, history is evicted in large steps (down to half
+  the history allowance) behind one stable `ICX:HISTORY_OMITTED` marker frame, instead of one
+  epoch per turn. Consecutive windows now share their prefix between eviction steps (0.94 byte
+  reuse at saturation in the 8,192-unit test, previously 0.01); omitted epochs stay
+  dereferenceable through the handles in the marker. The eviction point persists with the
+  controller state.
+- Lexical index: tokens longer than 256 bytes are not posted, so a long hex/minified run can no
+  longer make the persisted ICXHDC04 snapshot undecodable; stored subjects are capped at 64 KiB.
+  Ranking weights matched query tokens by inverse document frequency, so a rare exact
+  identifier outranks stop-word matches, and very common tokens no longer pull the whole corpus
+  into exact scoring (the candidate set is bounded). Snapshot format and version are unchanged.
+- Bus: `poll_since_with_loss` derives loss from the same head observation as the delivered
+  events, so concurrent publishers can no longer make it under-report overwritten events.
+- Redaction no longer hides public digests. The v1.1.0 rule is unchanged (a high-entropy hex
+  run of 32+ characters on a line containing `=` or `:` is redacted) except for 40-, 64- and
+  128-character digests in recognised contexts: `sha1:`/`sha256:`/`sha384:`/`sha512:`/`blake3:`
+  labels, `sha256sum` lines, `commit <hex>` lines, CSV fields and Markdown table cells. Stored
+  output can therefore still be checked against `SHA256SUMS`. Sensitive key names are
+  unaffected.
+- YAML/JSON comment and key-separator detection ignores `#` and `:` inside quoted values, so a
+  colon inside an open quoted secret no longer leaves its continuation lines unredacted and a
+  ` #` inside a closed quoted value no longer redacts the following public lines; single-quoted
+  values honour the `''` escape.
+- A `]` inside a quoted element of a sensitive flow sequence (`password: ["a]b", "c"]`) no
+  longer ends redaction early.
+- Text after the closing quote of a multi-line quoted secret is classified like any other line,
+  so a key block or a new block/quoted secret opened there is still hidden.
+- The CSV-cell digest exemption no longer applies to quoted elements or flow sequences
+  (`keys: ["a", "<hex>", "b"]` keeps the strict hex rule).
+- `icx context-budget --help` / `-h` print usage instead of a missing-value error.
+- The `ICX:HISTORY_OMITTED` frame uses the same `⟪…⟫` delimiters as the other icx markers.
+- Tests write to a per-user directory under the system temp dir instead of the fixed
+  `/tmp/Infinity-Context/v120`, which could collide between users.
+- Daemon: a workspace-lock timeout or reload failure now fails only that request (the client
+  falls back to in-process handling) instead of stopping the daemon. The request is read and
+  parsed before the lock is taken, under one 10 s deadline for the whole read, so a slow or
+  silent client can no longer hold the workspace lock and starve hooks and `mcp-serve`.
+- Codex hook replies omit null members (`"reason": null`, `"systemMessage": null`); Codex CLI
+  0.171 marked hooks returning them as failed.
+- The CLI integration test now runs `icx status`/`deref` against a private temporary state
+  directory instead of the invoking user's default workspace.
+- Exact parallel HDC scan: `icx_hdc::hv::hamming_distances`, `nearest` and `par_map_ordered`
+  split inputs of at least 2,048 vectors across up to 8 scoped threads (no `unsafe`; results
+  identical to a sequential pass, ties to the lowest index). Recall scores large candidate sets
+  with it. The `icx benchmark` 10k gate now measures this scan against a measured 2,000 µs
+  ceiling (slowest of 10 quiet-host runs, 1,354 µs, times 1.5); the single-threaded 10k figure
+  is still reported, ungated. The previous 1,500 µs ceiling was an unmeasured extrapolation of
+  the cache-resident 1k gate, and the 12.8 MB single-threaded scan is memory-bandwidth bound.
+
 ### Added
+
+- `icx benchmark --json` emits measured component values, build flags, target, CPU, fixture hash
+  and gate outcomes. `scripts/benchmark_series.py` records independent processes, warm-up
+  exclusion and dispersion; measurements are not end-to-end hook/model guarantees.
 
 - Release workflow (`.github/workflows/release.yml`): a version-tag push builds Linux x86-64
   binaries (baseline and x86-64-v3) as static musl and as glibc 2.35+ builds, writes
@@ -14,6 +126,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Release archives include `THIRD-PARTY-NOTICES.txt` (generated by `cargo-about`) with the
   license texts of the statically linked crates, plus musl's notice in the musl builds; the file
   is also attached to each release on its own.
+
+### Removed
+
+- The Unicode and ISO/IEC JTC 1/SC 2/WG 2 publications in
+  `ref-docs/unicode-braille-patterns/` (the U+2800 code chart, the Unicode 5.2.0 chapter 15
+  extract, WG2 N1203/N1279/N1303/N1353/N1453/N1603/N1703/N1770 and UTC 1996-002/027.2) are no
+  longer redistributed: their Unicode-3.0 annotation covers Unicode data files, not these
+  documents (ICX-CODEX-071). `SOURCES.md` there lists each document with its official source
+  (byte-identical copies verified for three) and the SHA-256 of the copy previously
+  distributed; the Unicode Character Database files remain. Git history is unchanged.
+- Raw audit/qualification logs and mutation inventories (42 files, 42.4 MB) moved out of the
+  repository into the `icx-v1.2.0-raw-evidence.tar.gz` release asset, indexed with checksums in
+  `docs/releases/v1.2.0/RAW-EVIDENCE.md`. Summaries, triage and all referenced evidence remain.
 
 ## [1.1.0] - 2026-11-20
 

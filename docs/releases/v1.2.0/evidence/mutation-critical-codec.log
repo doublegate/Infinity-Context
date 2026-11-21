@@ -1,0 +1,6 @@
+Found 6 mutants to test
+ok       Unmutated baseline in 11s build + 0s test
+MISSED   crates/icx-codec/src/ahtl.rs:623:33: replace || with && in AhtlPacket::to_profile_a in 1s build + 0s test
+MISSED   crates/icx-codec/src/ahtl.rs:630:33: replace || with && in AhtlPacket::to_profile_a in 1s build + 0s test
+MISSED   crates/icx-codec/src/ahtl.rs:861:46: replace || with && in EpochHeader::parse in 0s build + 0s test
+6 mutants tested in 19s: 3 missed, 3 caught

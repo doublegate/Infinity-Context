@@ -1,0 +1,40 @@
+{
+  "commands": [
+    {
+      "args": [
+        "init",
+        "--dir",
+        "/tmp/Infinity-Context/yaml-cli-9yi2lqm9/workspace"
+      ],
+      "exit": 0,
+      "stdout": "\u27eaICX:INIT\u2502dir=/tmp/Infinity-Context/yaml-cli-9yi2lqm9/workspace\u2502status=READY\u27eb\n",
+      "stderr": ""
+    },
+    {
+      "args": [
+        "encode-ahtl",
+        "/tmp/Infinity-Context/yaml-cli-9yi2lqm9/fixture.yaml",
+        "--dir",
+        "/tmp/Infinity-Context/yaml-cli-9yi2lqm9/workspace"
+      ],
+      "exit": 0,
+      "stdout": "\u27e6\u0394:/tmp/Infinity-Context/yaml-cli-9yi2lqm9/fixture.yaml#L1-4\u22a2head:password:_|\u22eeraw_B:60\u21a6#icx:c7be2b3ea501ba3a\u22ee\u03a8:\u2837\u2843\u2831\u2838\u2847\u2882\u288e\u2800\u27e7\n",
+      "stderr": ""
+    },
+    {
+      "args": [
+        "deref",
+        "#icx:c7be2b3ea501ba3a",
+        "--raw",
+        "--dir",
+        "/tmp/Infinity-Context/yaml-cli-9yi2lqm9/workspace"
+      ],
+      "exit": 0,
+      "stdout": "password: |\n  lowentropyfirst\n  lowentropysecond\npublic: ok\n",
+      "stderr": ""
+    }
+  ],
+  "synthetic_secret_survives_cas": true,
+  "public_field_preserved": true,
+  "binary": "/tmp/Infinity-Context/validation/bench-portable/release/icx"
+}

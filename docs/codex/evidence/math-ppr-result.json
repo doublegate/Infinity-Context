@@ -1,0 +1,18 @@
+{
+  "revision":"a996d59f1eb468e7c386747e15f4c7e58d08410e",
+  "production_command":"isolated icx-codec-audit release executable, default probe mode",
+  "status":0,
+  "oracle_command":"python3 docs/codex/evidence/math-ppr-oracle.py",
+  "production":[
+    {"iterations":1,"A":0.15,"B":0.2125,"C":0.63750005},
+    {"iterations":2,"A":0.51125,"B":0.24862503,"C":0.24012502},
+    {"iterations":6,"A":0.40770334,"B":0.22475176,"C":0.36754513}
+  ],
+  "oracle":[
+    {"iterations":1,"A":0.15,"B":0.2125,"C":0.6375},
+    {"iterations":2,"A":0.51125,"B":0.248625,"C":0.240125},
+    {"iterations":6,"A":0.4077032281718749,"B":0.22475169359343744,"C":0.36754507823468746}
+  ],
+  "max_abs_difference":1.118281251e-7,
+  "scope":"Three-node fixed vector with six power iterations and nonuniform forward/reverse weights; no real-corpus graph ablation."
+}

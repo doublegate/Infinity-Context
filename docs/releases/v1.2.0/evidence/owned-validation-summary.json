@@ -1,0 +1,64 @@
+{
+  "scope": "Intermediate worker verification; final combined revision needs root full-suite rerun. Audit evidence unchanged.",
+  "findings": [
+    "ICX-CODEX-030",
+    "ICX-CODEX-031",
+    "ICX-CODEX-035",
+    "ICX-CODEX-070",
+    "ICX-CODEX-072"
+  ],
+  "tdd": [
+    {
+      "area": "release gate",
+      "red": "Unimplemented policy:16 assertion failures in9testmethods",
+      "green": "10testmethods including CLI mock transport pass"
+    },
+    {
+      "area": "MCP/Codex",
+      "red": "5initial tests:4semantic failures and1pass",
+      "green": "7current protocol integration tests pass; includes strict canonical tool-name regression"
+    },
+    {
+      "area": "daemon",
+      "red": "2host tests fail: acknowledged artifact absent before flush, failed final save returns successful handle",
+      "green": "2unit regressions,8daemon-focused tests, realCLI3-ACK SIGKILL/reopen pass"
+    },
+    {
+      "area": "benchmark JSON",
+      "red": "--json emits prose instead of JSON",
+      "green": "Machine report integration passes; both1k/10k scans measured"
+    },
+    {
+      "area": "benchmark units",
+      "red": "2second duration returns2instead2000000microseconds",
+      "green": "2second and500nanosecond literal oracle vectors pass"
+    },
+    {
+      "area": "series provenance",
+      "red": "Changed build identity still returns successful mixed series",
+      "green": "2offline series tests pass; warm-up exclusion and mixed-build refusal"
+    }
+  ],
+  "other_checks": [
+    "ruff check/format: release-ci-gate.py,test-release-ci-gate.py,benchmark_series.py,test_benchmark_series.py,run-mutations.py pass",
+    "actionlint ci.yml/release.yml passes",
+    "strict Clippy icx-adapters/icx-cli all-targets passes at worker closeout",
+    "full adapter suite passed before new tail-budget helper; later independent mutation baselines expose3tail regressions recorded separately",
+    "full CLI suite18tests passed before later context-budget/benchmark additions; final combined rerun required"
+  ],
+  "known_pending": [
+    "Fresh adapter/proxy1/40 samples running;4owned targetedmutants now allcaught (see mutation-owned-retry-summary.json)",
+    "Portable/native1.2binariesrefreshed; quietwarmup+10runserieswaitforvalidationworkersfinish",
+    "Pinned Codex runtime fake-backend hook invocation not run; installed0.171.0 diagnostic, official contract and hook-output/capture tests checked"
+  ],
+  "structured_tail": {
+    "red": "3new tests fail on complete-tail omission and cursor consumption; short-header paging test also fails before header-preserving fallback",
+    "green": "83adapter/proxy host tests pass;1ignored10k qualification;4new whole-frame/cursor tests included",
+    "logs": [
+      "tail-combined-tests.log",
+      "tail-combined-tests-host.log"
+    ],
+    "policy": "Default1024byteconservative tail ceiling unchanged; preserveheader,bestrecall,eligiblebus; pageoversizedstoredCASviahandle; unknownunsenteventsdo notadvancecursor",
+    "fixture_note": "Historical500turncachefixture explicitlyconfigures128KiBmodelwindowtohold33KiBpinnedheadand~80KiBretargethistory;94percentcacheassertionunchanged"
+  }
+}

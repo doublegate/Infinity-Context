@@ -1,0 +1,14 @@
+{
+  "command": [
+    "cargo",
+    "run",
+    "--release",
+    "--offline",
+    "--manifest-path",
+    "/tmp/Infinity-Context/retrieval-recheck/Cargo.toml",
+    "--",
+    "recall"
+  ],
+  "exit": 0,
+  "output": "     Locking 26 packages to highest Rust 1.100.0 compatible versions\n   Compiling proc-macro2 v1.0.107\n   Compiling unicode-ident v1.0.27\n   Compiling quote v1.0.47\n   Compiling serde_core v1.0.229\n   Compiling find-msvc-tools v0.1.15\n   Compiling shlex v2.0.1\n   Compiling zmij v1.0.23\n   Compiling serde v1.0.229\n   Compiling thiserror v2.0.21\n   Compiling serde_json v1.0.154\n   Compiling arrayvec v0.7.8\n   Compiling memchr v2.8.3\n   Compiling cfg-if v1.0.5\n   Compiling constant_time_eq v0.4.2\n   Compiling itoa v1.0.19\n   Compiling cpufeatures v0.3.1\n   Compiling cc v1.11.2\n   Compiling syn v3.0.10\n   Compiling blake3 v1.8.7\n   Compiling thiserror-impl v2.0.21\n   Compiling serde_derive v1.0.229\n   Compiling icx-core v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core)\n   Compiling icx-store v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-store)\n   Compiling icx-codec v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-codec)\n   Compiling icx-hdc v1.1.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-hdc)\n   Compiling icx-retrieval-recheck v0.0.0 (/tmp/Infinity-Context/retrieval-recheck)\nwarning: unused dependency `icx-store`\n  --> Cargo.toml:10:1\n   |\n10 | icx-store={path=\"/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-store\"}\n   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: `cargo::unused_dependencies` is set to `warn` by default\nhelp: consider removing the dependency on `icx-store`\nwarning: `icx-retrieval-recheck` (manifest) generated 1 warning\n    Finished `release` profile [optimized] target(s) in 13.13s\n     Running `/tmp/Infinity-Context/codec-audit/target/release/icx-retrieval-recheck recall`\nkind,seed,n,queries,recall1,recall5,lexical1,exhaustive5,p50_us,p95_us,build_ms,snapshot_bytes\nvaried,1,10000,100,0.160,0.330,1.000,0.970,2837.0,3847.6,51425,16681322\n"
+}

@@ -1,0 +1,8 @@
+{
+  "table_rows_checked": 256,
+  "table_errors": [],
+  "python_unicode_version": "16.0.0",
+  "worked_example_actual": "U+0347",
+  "worked_example_claimed": "U+28C7",
+  "correct_braille_utf8": "e2 a3 87"
+}

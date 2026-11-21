@@ -1,0 +1,236 @@
+[
+  {
+    "path": "ref-docs/blake3-cryptographic-hash/BLAKE3_Official_Specification.pdf",
+    "pages": 31,
+    "sha256": "ce179e62f29a6e43ec1ac2fe62b5e063a18632cf936c430d1373bfa0b81fb349",
+    "pdf_metadata_title": "BLAKE3",
+    "first_page_title_lead": [
+      "BLAKE3",
+      "one function, fast everywhere",
+      "Jack O\u2019Connor (@oconnor663)",
+      "Jean-Philippe Aumasson (@veorq)"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/papers/2310.08560-MemGPT-LLMs-as-Operating-Systems.pdf",
+    "pages": 13,
+    "sha256": "9f674bcff69c86f11c813dcfad613d8841f5f8ed17979e3c4df06a91df7762e0",
+    "pdf_metadata_title": "MemGPT: Towards LLMs as Operating Systems",
+    "first_page_title_lead": [
+      "MemGPT: Towards LLMs as Operating Systems",
+      "Charles Packer 1 Sarah Wooders 1 Kevin Lin 1",
+      "Vivian Fang 1 Shishir G. Patil 1 Ion Stoica 1 Joseph E. Gonzalez 1",
+      "Abstract"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/papers/2401.03462-Activation-Beacon.pdf",
+    "pages": 17,
+    "sha256": "22b123483f23ff87f94bacd75e548e16125b108f8dbc6e46954ccffe967a8098",
+    "pdf_metadata_title": "",
+    "first_page_title_lead": [
+      "Long Context Compression with Activation Beacon",
+      "Peitian Zhang2\u2217Zheng Liu1\u2020 Shitao Xiao1 Ninglu Shao2 Qiwei Ye1 Zhicheng Dou2",
+      "1: Beijing Academy of Artificial Intelligence,",
+      "2: Gaoling School of Artificial Intelligence, Renmin University of China"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/papers/2404.14469-SnapKV.pdf",
+    "pages": 17,
+    "sha256": "d17ce59a5a3342c9b0560c3503b0136f794fae92910421aa07dbca32e4279bf4",
+    "pdf_metadata_title": "",
+    "first_page_title_lead": [
+      "SnapKV: LLM Knows What You are Looking for",
+      "Before Generation",
+      "Yuhong Li1\u2217",
+      "Yingbing Huang1\u2217"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/papers/2405.13792-xRAG-One-Token-Compression.pdf",
+    "pages": 30,
+    "sha256": "d188c68c67c91e52f481865b9fe08f968ceab6f3635568cb9e1245c7430c8214",
+    "pdf_metadata_title": "",
+    "first_page_title_lead": [
+      "xRAG: Extreme Context Compression for",
+      "Retrieval-augmented Generation with One Token",
+      "Xin Cheng1\u2217",
+      "Xun Wang2"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/papers/2410.15704-RVQ-KV-Cache-Compression.pdf",
+    "pages": 6,
+    "sha256": "64bf59e1b278c498f099b73f011ebc45db5dbaaec82f0744e347ce0655e428f7",
+    "pdf_metadata_title": "",
+    "first_page_title_lead": [
+      "arXiv:2410.15704v1  [cs.LG]  21 Oct 2024",
+      "Residual vector quantization for KV cache",
+      "compression in large language model",
+      "Ankur Kumar"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/papers/2501.00663-Titans-Learning-to-Memorize-at-Test-Time.pdf",
+    "pages": 27,
+    "sha256": "a65e4a7d02784df1a040b487127e6dd09fff4474e5caf94d93263af3d50cfbc2",
+    "pdf_metadata_title": "",
+    "first_page_title_lead": [
+      "Titans: Learning to Memorize at Test Time",
+      "Ali Behrouz",
+      "\u2020, Peilin Zhong",
+      "\u2020, and Vahab Mirrokni"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/papers/2501.13956-Zep-Temporal-Knowledge-Graph.pdf",
+    "pages": 12,
+    "sha256": "d26f7eb599540e8b14d75e7efda58a07661abbb1b864e58323b5768475a15d42",
+    "pdf_metadata_title": "",
+    "first_page_title_lead": [
+      "arXiv:2501.13956v1  [cs.CL]  20 Jan 2025",
+      "ZEP: A TEMPORAL KNOWLEDGE GRAPH ARCHITECTURE FOR",
+      "AGENT MEMORY",
+      "Preston Rasmussen"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/papers/2510.04618-Agentic-Context-Engineering-ACE.pdf",
+    "pages": 32,
+    "sha256": "51050ced82df75c143b151262d5af8763916968ca50374bd8ff778f40552b0ad",
+    "pdf_metadata_title": "Agentic Context Engineering: Evolving Contexts for Self-Improving Language Models",
+    "first_page_title_lead": [
+      "Published as a conference paper at ICLR 2026",
+      "AGENTIC CONTEXT ENGINEERING: EVOLVING CON-",
+      "TEXTS FOR SELF-IMPROVING LANGUAGE MODELS",
+      "Qizheng Zhang1\u2217, Changran Hu2\u2217, Shubhangi Upasani2, Boyuan Ma2, Fenglu Hong2,"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/papers/2512.24601-Recursive-Language-Models.pdf",
+    "pages": 43,
+    "sha256": "8567362c22768d9b50d4a4a8d63bb28dda2c2b2051be30d67f70f645170429ca",
+    "pdf_metadata_title": "Recursive Language Models",
+    "first_page_title_lead": [
+      "Recursive Language Models",
+      "Alex L. Zhang",
+      "MIT CSAIL",
+      "altzhang@mit.edu"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/papers/2605.04050-LCM-Lossless-Context-Management.pdf",
+    "pages": 11,
+    "sha256": "342b84f1abe236d2d7a81a767ecbe3f3fe1a142a1d7b92a1e3441d5b8781f2c3",
+    "pdf_metadata_title": "LCM: Lossless Context Management",
+    "first_page_title_lead": [
+      "LCM: Lossless Context Management",
+      "Clint Ehrlich",
+      "Voltropy PBC",
+      "clint@voltropy.com"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/papers/2607.07144-Fractal-KV-Cache-Archives.pdf",
+    "pages": 10,
+    "sha256": "99165e3daeedf8406ef90b1e4c9b235a3c115ea9d9701aa28ac92d12d190343d",
+    "pdf_metadata_title": "Fractal KV-Cache Archives: Lossless Symbolic Storage with In-Place Retrieval for Long-Context LLM Inference",
+    "first_page_title_lead": [
+      "Fractal KV-Cache Archives:",
+      "Lossless Symbolic Storage with In-Place Retrieval",
+      "for Long-Context LLM Inference",
+      "Vladimir Gusev"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/papers/2607.23809-ACM-Agentic-Cache-Management.pdf",
+    "pages": 24,
+    "sha256": "cdaae59dd74023c24fe4662bdc1a9277d8927ddc76f5026b953370b7e46f809c",
+    "pdf_metadata_title": "ACM: Agentic Context Management for Long Horizon Tasks",
+    "first_page_title_lead": [
+      "ACM: Agentic Context Management for Long Horizon Tasks",
+      "Xiaochuan Li1\u2217",
+      "Ryan Ming1\u2217",
+      "Meng Chu1"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/unicode-braille-patterns/Unicode_U2800_Braille_Patterns_Chart.pdf",
+    "pages": 5,
+    "sha256": "1f10f173ff3a1f401ea03a2a8a948c2709cd34f325bc87ad5c0ff178bc890dd3",
+    "pdf_metadata_title": "The Unicode Standard, Version 18.0",
+    "first_page_title_lead": [
+      "Braille Patterns",
+      "Range: 2800\u201328FF",
+      " ",
+      "This chart contains an excerpt from the character code tables and list of character names for"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/unicode-braille-patterns/standards-and-wg2/L2_98_136_N1770_ISO_10646_FPDAM16_Braille_Patterns.pdf",
+    "pages": 8,
+    "sha256": "076155041adeac526b3ff5554899b538ecbc8498b222d047e8e02a9bb2a19999",
+    "pdf_metadata_title": "Letters1",
+    "first_page_title_lead": [
+      "ISO/IEC JTC 1/SC 2 N 3079",
+      "Date: 1998-04-06",
+      "Replaces SC 2 N 2969",
+      "ISO/IEC JTC 1/SC 2"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/unicode-braille-patterns/standards-and-wg2/Unicode_5.2.0_Ch15_Symbols_Sec15.10_Braille.pdf",
+    "pages": 41,
+    "sha256": "a698a22a25da527db6d2258508e56587b92457255f7e660c28d6cdb02fdf0ad0",
+    "pdf_metadata_title": "The Unicode Standard, Version 5.2--electronic edition",
+    "first_page_title_lead": [
+      "This PDF file is an excerpt from The Unicode Standard, Version 5.2, issued and published by the Uni-",
+      "code Consortium. The PDF files have not been modified to reflect the corrections found on the",
+      "Updates and Errata page (http://www.unicode.org/errata/). For information about more recent ver-",
+      "sions of the Unicode Standard see http://www.unicode.org/versions/enumeratedversions.html."
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/unicode-braille-patterns/standards-and-wg2/WG2_N1453_Meeting31_Quebec_Minutes.pdf",
+    "pages": 57,
+    "sha256": "2f3ce26de8c33948b8f3a9b98ff6b447bc12d3eb53993775ab101a288446854f",
+    "pdf_metadata_title": "Microsoft Word - N1453MK.DOC",
+    "first_page_title_lead": [
+      "ISO/IEC JTC1/SC2/WG 2 N1453",
+      "Unconfirmed Minutes",
+      "1996-12-06",
+      "Meeting 31, Quebec City, Canada; 1996-08-12--16"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  },
+  {
+    "path": "ref-docs/unicode-braille-patterns/standards-and-wg2/WG2_N1770_FPDAM16_Braille_Patterns.pdf",
+    "pages": 7,
+    "sha256": "2220689cd0c0622161255a3ecbd0f0fab7d735e0131ca938ca07c2a4643bbc28",
+    "pdf_metadata_title": "Braille DAM-16.qxp",
+    "first_page_title_lead": [
+      "Information technology \u2014 Universal Multiple-Octet Coded",
+      "Character Set (UCS) \u2014",
+      "Part 1:",
+      "Architecture and Basic Multilingual Plane"
+    ],
+    "review": "identity and metadata; not full semantic review"
+  }
+]

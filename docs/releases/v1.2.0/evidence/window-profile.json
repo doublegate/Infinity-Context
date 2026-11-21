@@ -1,0 +1,56 @@
+[
+  {
+    "after": {
+      "p50_ns": 2594,
+      "p95_ns": 2951,
+      "prefix_bytes": 8576,
+      "selected_epochs": 96,
+      "stored_epochs": 96
+    },
+    "before_a996d59": {
+      "p50_ns": 2489,
+      "p95_ns": 3015,
+      "prefix_bytes": 8576,
+      "selected_epochs": 96,
+      "stored_epochs": 96
+    },
+    "retained_frames_byte_identical": true,
+    "turns": 100
+  },
+  {
+    "after": {
+      "p50_ns": 8435,
+      "p95_ns": 8922,
+      "prefix_bytes": 24501,
+      "selected_epochs": 279,
+      "stored_epochs": 996
+    },
+    "before_a996d59": {
+      "p50_ns": 23193,
+      "p95_ns": 38725,
+      "prefix_bytes": 86880,
+      "selected_epochs": 996,
+      "stored_epochs": 996
+    },
+    "retained_frames_byte_identical": true,
+    "turns": 1000
+  },
+  {
+    "after": {
+      "p50_ns": 31301,
+      "p95_ns": 39356,
+      "prefix_bytes": 24505,
+      "selected_epochs": 279,
+      "stored_epochs": 9996
+    },
+    "before_a996d59": {
+      "p50_ns": 435386,
+      "p95_ns": 882163,
+      "prefix_bytes": 869884,
+      "selected_epochs": 9996,
+      "stored_epochs": 9996
+    },
+    "retained_frames_byte_identical": true,
+    "turns": 10000
+  }
+]

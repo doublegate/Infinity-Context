@@ -1,0 +1,11 @@
+Found 25 mutants to test
+ok       Unmutated baseline in 11s build + 31s test
+MISSED   crates/icx-hdc/src/lib.rs:406:76: replace && with || in HdcAssociativeIndex::compute_subject_bloom32 in 1s build + 45s test
+MISSED   crates/icx-hdc/src/lib.rs:638:13: replace || with && in HdcAssociativeIndex::query_associative in 2s build + 44s test
+MISSED   crates/icx-hdc/src/fractal.rs:203:25: replace * with / in FractalCoord::morton_z64 in 0s build + 31s test
+MISSED   crates/icx-hdc/src/fractal.rs:248:24: replace ^ with & in FractalCoord::digest_u32 in 0s build + 35s test
+MISSED   crates/icx-hdc/src/fractal.rs:388:23: replace || with && in FractalTrajectoryArchive::query_shared_suffix in 0s build + 30s test
+MISSED   crates/icx-hdc/src/hv.rs:155:25: replace >> with << in Hypervector::from_u64_seed in 0s build + 34s test
+MISSED   crates/icx-hdc/src/hv.rs:513:24: replace ^= with &= in Hypervector::sketch_256 in 0s build + 31s test
+MISSED   crates/icx-hdc/src/surprise.rs:221:18: replace - with / in TitansSurpriseGate::observe_with_exit_code in 0s build + 31s test
+25 mutants tested in 7m: 8 missed, 17 caught

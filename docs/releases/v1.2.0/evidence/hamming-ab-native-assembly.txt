@@ -1,0 +1,380 @@
+000000000001d980 <icx_hamming_probe::scan_four_u32>:
+   1d980:	48 85 d2             	test   %rdx,%rdx
+   1d983:	0f 84 bc 01 00 00    	je     1db45 <icx_hamming_probe::scan_four_u32+0x1c5>
+   1d989:	48 8d 0c 92          	lea    (%rdx,%rdx,4),%rcx
+   1d98d:	48 c1 e1 08          	shl    $0x8,%rcx
+   1d991:	48 01 f1             	add    %rsi,%rcx
+   1d994:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1d999:	c4 e2 7d 58 05 2e be 	vpbroadcastd -0x41d2(%rip),%ymm0        # 197d0 <anon.94f8fb30d00d06c8eebf28fdc7527719.0.llvm.15497312785662867533+0x80>
+   1d9a0:	ff ff 
+   1d9a2:	c4 e2 7d 5a 0d e5 bb 	vbroadcasti128 -0x441b(%rip),%ymm1        # 19590 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x4bc>
+   1d9a9:	ff ff 
+   1d9ab:	c5 e9 ef d2          	vpxor  %xmm2,%xmm2,%xmm2
+   1d9af:	90                   	nop
+   1d9b0:	c5 e1 ef db          	vpxor  %xmm3,%xmm3,%xmm3
+   1d9b4:	31 d2                	xor    %edx,%edx
+   1d9b6:	c5 d9 ef e4          	vpxor  %xmm4,%xmm4,%xmm4
+   1d9ba:	c5 d1 ef ed          	vpxor  %xmm5,%xmm5,%xmm5
+   1d9be:	c5 c9 ef f6          	vpxor  %xmm6,%xmm6,%xmm6
+   1d9c2:	66 66 66 66 66 2e 0f 	data16 data16 data16 data16 cs nopw 0x0(%rax,%rax,1)
+   1d9c9:	1f 84 00 00 00 00 00 
+   1d9d0:	c5 fe 6f 3c 16       	vmovdqu (%rsi,%rdx,1),%ymm7
+   1d9d5:	c5 7e 6f 44 16 20    	vmovdqu 0x20(%rsi,%rdx,1),%ymm8
+   1d9db:	c5 7e 6f 4c 16 40    	vmovdqu 0x40(%rsi,%rdx,1),%ymm9
+   1d9e1:	c5 7e 6f 54 16 60    	vmovdqu 0x60(%rsi,%rdx,1),%ymm10
+   1d9e7:	c5 3d ef 5c 17 20    	vpxor  0x20(%rdi,%rdx,1),%ymm8,%ymm11
+   1d9ed:	c5 45 ef 24 17       	vpxor  (%rdi,%rdx,1),%ymm7,%ymm12
+   1d9f2:	c5 2d ef 44 17 60    	vpxor  0x60(%rdi,%rdx,1),%ymm10,%ymm8
+   1d9f8:	c5 b5 ef 7c 17 40    	vpxor  0x40(%rdi,%rdx,1),%ymm9,%ymm7
+   1d9fe:	c5 45 db c8          	vpand  %ymm0,%ymm7,%ymm9
+   1da02:	c4 42 75 00 c9       	vpshufb %ymm9,%ymm1,%ymm9
+   1da07:	c5 c5 71 d7 04       	vpsrlw $0x4,%ymm7,%ymm7
+   1da0c:	c5 c5 db f8          	vpand  %ymm0,%ymm7,%ymm7
+   1da10:	c4 e2 75 00 ff       	vpshufb %ymm7,%ymm1,%ymm7
+   1da15:	c5 b5 fc ff          	vpaddb %ymm7,%ymm9,%ymm7
+   1da19:	c5 c5 f6 fa          	vpsadbw %ymm2,%ymm7,%ymm7
+   1da1d:	c5 3d db c8          	vpand  %ymm0,%ymm8,%ymm9
+   1da21:	c4 42 75 00 c9       	vpshufb %ymm9,%ymm1,%ymm9
+   1da26:	c4 c1 3d 71 d0 04    	vpsrlw $0x4,%ymm8,%ymm8
+   1da2c:	c5 3d db c0          	vpand  %ymm0,%ymm8,%ymm8
+   1da30:	c4 42 75 00 c0       	vpshufb %ymm8,%ymm1,%ymm8
+   1da35:	c4 41 3d fc c1       	vpaddb %ymm9,%ymm8,%ymm8
+   1da3a:	c5 3d f6 c2          	vpsadbw %ymm2,%ymm8,%ymm8
+   1da3e:	c5 1d db c8          	vpand  %ymm0,%ymm12,%ymm9
+   1da42:	c4 42 75 00 c9       	vpshufb %ymm9,%ymm1,%ymm9
+   1da47:	c4 c1 2d 71 d4 04    	vpsrlw $0x4,%ymm12,%ymm10
+   1da4d:	c5 2d db d0          	vpand  %ymm0,%ymm10,%ymm10
+   1da51:	c4 42 75 00 d2       	vpshufb %ymm10,%ymm1,%ymm10
+   1da56:	c4 41 2d fc c9       	vpaddb %ymm9,%ymm10,%ymm9
+   1da5b:	c5 35 f6 ca          	vpsadbw %ymm2,%ymm9,%ymm9
+   1da5f:	c5 25 db d0          	vpand  %ymm0,%ymm11,%ymm10
+   1da63:	c4 42 75 00 d2       	vpshufb %ymm10,%ymm1,%ymm10
+   1da68:	c4 c1 25 71 d3 04    	vpsrlw $0x4,%ymm11,%ymm11
+   1da6e:	c5 25 db d8          	vpand  %ymm0,%ymm11,%ymm11
+   1da72:	c4 42 75 00 db       	vpshufb %ymm11,%ymm1,%ymm11
+   1da77:	c4 41 25 fc d2       	vpaddb %ymm10,%ymm11,%ymm10
+   1da7c:	c5 2d f6 d2          	vpsadbw %ymm2,%ymm10,%ymm10
+   1da80:	c4 41 31 62 da       	vpunpckldq %xmm10,%xmm9,%xmm11
+   1da85:	c4 42 79 58 e0       	vpbroadcastd %xmm8,%xmm12
+   1da8a:	c4 62 79 58 ef       	vpbroadcastd %xmm7,%xmm13
+   1da8f:	c4 41 11 62 e4       	vpunpckldq %xmm12,%xmm13,%xmm12
+   1da94:	c4 43 21 02 dc 0c    	vpblendd $0xc,%xmm12,%xmm11,%xmm11
+   1da9a:	c5 a1 fe db          	vpaddd %xmm3,%xmm11,%xmm3
+   1da9e:	c4 41 31 6a da       	vpunpckhdq %xmm10,%xmm9,%xmm11
+   1daa3:	c4 41 79 70 e0 aa    	vpshufd $0xaa,%xmm8,%xmm12
+   1daa9:	c4 43 41 02 e4 08    	vpblendd $0x8,%xmm12,%xmm7,%xmm12
+   1daaf:	c4 43 21 02 dc 0c    	vpblendd $0xc,%xmm12,%xmm11,%xmm11
+   1dab5:	c5 a1 fe e4          	vpaddd %xmm4,%xmm11,%xmm4
+   1dab9:	c4 41 35 62 da       	vpunpckldq %ymm10,%ymm9,%ymm11
+   1dabe:	c4 43 7d 39 db 01    	vextracti128 $0x1,%ymm11,%xmm11
+   1dac4:	c4 41 45 62 e0       	vpunpckldq %ymm8,%ymm7,%ymm12
+   1dac9:	c4 43 fd 00 e4 aa    	vpermq $0xaa,%ymm12,%ymm12
+   1dacf:	c4 43 21 02 dc 0c    	vpblendd $0xc,%xmm12,%xmm11,%xmm11
+   1dad5:	c5 a1 fe ed          	vpaddd %xmm5,%xmm11,%xmm5
+   1dad9:	c4 41 35 6a ca       	vpunpckhdq %ymm10,%ymm9,%ymm9
+   1dade:	c4 43 7d 39 c9 01    	vextracti128 $0x1,%ymm9,%xmm9
+   1dae4:	c4 c1 45 6a f8       	vpunpckhdq %ymm8,%ymm7,%ymm7
+   1dae9:	c4 e3 fd 00 ff aa    	vpermq $0xaa,%ymm7,%ymm7
+   1daef:	c4 e3 31 02 ff 0c    	vpblendd $0xc,%xmm7,%xmm9,%xmm7
+   1daf5:	c5 c9 fe f7          	vpaddd %xmm7,%xmm6,%xmm6
+   1daf9:	48 83 ea 80          	sub    $0xffffffffffffff80,%rdx
+   1dafd:	48 81 fa 00 05 00 00 	cmp    $0x500,%rdx
+   1db04:	0f 85 c6 fe ff ff    	jne    1d9d0 <icx_hamming_probe::scan_four_u32+0x50>
+   1db0a:	48 81 c6 00 05 00 00 	add    $0x500,%rsi
+   1db11:	c5 d9 fe db          	vpaddd %xmm3,%xmm4,%xmm3
+   1db15:	c5 e1 fe dd          	vpaddd %xmm5,%xmm3,%xmm3
+   1db19:	c5 e1 fe de          	vpaddd %xmm6,%xmm3,%xmm3
+   1db1d:	c5 f9 70 e3 ee       	vpshufd $0xee,%xmm3,%xmm4
+   1db22:	c5 e1 fe dc          	vpaddd %xmm4,%xmm3,%xmm3
+   1db26:	c5 f9 70 e3 55       	vpshufd $0x55,%xmm3,%xmm4
+   1db2b:	c5 e1 fe dc          	vpaddd %xmm4,%xmm3,%xmm3
+   1db2f:	c5 f9 7e da          	vmovd  %xmm3,%edx
+   1db33:	39 d0                	cmp    %edx,%eax
+   1db35:	0f 43 c2             	cmovae %edx,%eax
+   1db38:	48 39 ce             	cmp    %rcx,%rsi
+   1db3b:	0f 85 6f fe ff ff    	jne    1d9b0 <icx_hamming_probe::scan_four_u32+0x30>
+   1db41:	c5 f8 77             	vzeroupper
+   1db44:	c3                   	ret
+   1db45:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1db4a:	c3                   	ret
+   1db4b:	cc                   	int3
+   1db4c:	cc                   	int3
+   1db4d:	cc                   	int3
+   1db4e:	cc                   	int3
+   1db4f:	cc                   	int3
+
+000000000001db50 <icx_hamming_probe::scan_four_u64>:
+   1db50:	48 85 d2             	test   %rdx,%rdx
+   1db53:	0f 84 8a 01 00 00    	je     1dce3 <icx_hamming_probe::scan_four_u64+0x193>
+   1db59:	48 8d 0c 92          	lea    (%rdx,%rdx,4),%rcx
+   1db5d:	48 c1 e1 08          	shl    $0x8,%rcx
+   1db61:	48 01 f1             	add    %rsi,%rcx
+   1db64:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1db69:	c4 e2 7d 58 05 5e bc 	vpbroadcastd -0x43a2(%rip),%ymm0        # 197d0 <anon.94f8fb30d00d06c8eebf28fdc7527719.0.llvm.15497312785662867533+0x80>
+   1db70:	ff ff 
+   1db72:	c4 e2 7d 5a 0d 15 ba 	vbroadcasti128 -0x45eb(%rip),%ymm1        # 19590 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x4bc>
+   1db79:	ff ff 
+   1db7b:	c5 e9 ef d2          	vpxor  %xmm2,%xmm2,%xmm2
+   1db7f:	90                   	nop
+   1db80:	31 d2                	xor    %edx,%edx
+   1db82:	c5 e1 ef db          	vpxor  %xmm3,%xmm3,%xmm3
+   1db86:	c5 d9 ef e4          	vpxor  %xmm4,%xmm4,%xmm4
+   1db8a:	c5 d1 ef ed          	vpxor  %xmm5,%xmm5,%xmm5
+   1db8e:	c5 c9 ef f6          	vpxor  %xmm6,%xmm6,%xmm6
+   1db92:	66 66 66 66 66 2e 0f 	data16 data16 data16 data16 cs nopw 0x0(%rax,%rax,1)
+   1db99:	1f 84 00 00 00 00 00 
+   1dba0:	c5 fe 6f 3c 16       	vmovdqu (%rsi,%rdx,1),%ymm7
+   1dba5:	c5 7e 6f 44 16 20    	vmovdqu 0x20(%rsi,%rdx,1),%ymm8
+   1dbab:	c5 7e 6f 4c 16 40    	vmovdqu 0x40(%rsi,%rdx,1),%ymm9
+   1dbb1:	c5 7e 6f 54 16 60    	vmovdqu 0x60(%rsi,%rdx,1),%ymm10
+   1dbb7:	c5 2d ef 54 17 60    	vpxor  0x60(%rdi,%rdx,1),%ymm10,%ymm10
+   1dbbd:	c5 3d ef 44 17 20    	vpxor  0x20(%rdi,%rdx,1),%ymm8,%ymm8
+   1dbc3:	c5 35 ef 4c 17 40    	vpxor  0x40(%rdi,%rdx,1),%ymm9,%ymm9
+   1dbc9:	c5 c5 ef 3c 17       	vpxor  (%rdi,%rdx,1),%ymm7,%ymm7
+   1dbce:	c5 45 db d8          	vpand  %ymm0,%ymm7,%ymm11
+   1dbd2:	c4 42 75 00 db       	vpshufb %ymm11,%ymm1,%ymm11
+   1dbd7:	c5 c5 71 d7 04       	vpsrlw $0x4,%ymm7,%ymm7
+   1dbdc:	c5 c5 db f8          	vpand  %ymm0,%ymm7,%ymm7
+   1dbe0:	c4 e2 75 00 ff       	vpshufb %ymm7,%ymm1,%ymm7
+   1dbe5:	c5 a5 fc ff          	vpaddb %ymm7,%ymm11,%ymm7
+   1dbe9:	c5 c5 f6 fa          	vpsadbw %ymm2,%ymm7,%ymm7
+   1dbed:	c5 35 db d8          	vpand  %ymm0,%ymm9,%ymm11
+   1dbf1:	c4 42 75 00 db       	vpshufb %ymm11,%ymm1,%ymm11
+   1dbf6:	c4 c1 35 71 d1 04    	vpsrlw $0x4,%ymm9,%ymm9
+   1dbfc:	c5 35 db c8          	vpand  %ymm0,%ymm9,%ymm9
+   1dc00:	c4 42 75 00 c9       	vpshufb %ymm9,%ymm1,%ymm9
+   1dc05:	c4 41 35 fc cb       	vpaddb %ymm11,%ymm9,%ymm9
+   1dc0a:	c5 35 f6 ca          	vpsadbw %ymm2,%ymm9,%ymm9
+   1dc0e:	c5 3d db d8          	vpand  %ymm0,%ymm8,%ymm11
+   1dc12:	c4 42 75 00 db       	vpshufb %ymm11,%ymm1,%ymm11
+   1dc17:	c4 c1 3d 71 d0 04    	vpsrlw $0x4,%ymm8,%ymm8
+   1dc1d:	c5 3d db c0          	vpand  %ymm0,%ymm8,%ymm8
+   1dc21:	c4 42 75 00 c0       	vpshufb %ymm8,%ymm1,%ymm8
+   1dc26:	c4 41 3d fc c3       	vpaddb %ymm11,%ymm8,%ymm8
+   1dc2b:	c5 3d f6 c2          	vpsadbw %ymm2,%ymm8,%ymm8
+   1dc2f:	c5 2d db d8          	vpand  %ymm0,%ymm10,%ymm11
+   1dc33:	c4 42 75 00 db       	vpshufb %ymm11,%ymm1,%ymm11
+   1dc38:	c4 c1 2d 71 d2 04    	vpsrlw $0x4,%ymm10,%ymm10
+   1dc3e:	c5 2d db d0          	vpand  %ymm0,%ymm10,%ymm10
+   1dc42:	c4 42 75 00 d2       	vpshufb %ymm10,%ymm1,%ymm10
+   1dc47:	c4 41 2d fc d3       	vpaddb %ymm11,%ymm10,%ymm10
+   1dc4c:	c5 2d f6 d2          	vpsadbw %ymm2,%ymm10,%ymm10
+   1dc50:	c4 43 3d 38 da 01    	vinserti128 $0x1,%xmm10,%ymm8,%ymm11
+   1dc56:	c4 43 45 38 e1 01    	vinserti128 $0x1,%xmm9,%ymm7,%ymm12
+   1dc5c:	c4 41 1d 6c eb       	vpunpcklqdq %ymm11,%ymm12,%ymm13
+   1dc61:	c5 95 d4 db          	vpaddq %ymm3,%ymm13,%ymm3
+   1dc65:	c4 41 1d 6d db       	vpunpckhqdq %ymm11,%ymm12,%ymm11
+   1dc6a:	c5 a5 d4 e4          	vpaddq %ymm4,%ymm11,%ymm4
+   1dc6e:	c4 41 35 6c da       	vpunpcklqdq %ymm10,%ymm9,%ymm11
+   1dc73:	c4 41 45 6c e0       	vpunpcklqdq %ymm8,%ymm7,%ymm12
+   1dc78:	c4 43 1d 46 db 31    	vperm2i128 $0x31,%ymm11,%ymm12,%ymm11
+   1dc7e:	c5 a5 d4 ed          	vpaddq %ymm5,%ymm11,%ymm5
+   1dc82:	c4 41 35 6d ca       	vpunpckhqdq %ymm10,%ymm9,%ymm9
+   1dc87:	c4 c1 45 6d f8       	vpunpckhqdq %ymm8,%ymm7,%ymm7
+   1dc8c:	c4 c3 45 46 f9 31    	vperm2i128 $0x31,%ymm9,%ymm7,%ymm7
+   1dc92:	c5 c5 d4 f6          	vpaddq %ymm6,%ymm7,%ymm6
+   1dc96:	48 83 ea 80          	sub    $0xffffffffffffff80,%rdx
+   1dc9a:	48 81 fa 00 05 00 00 	cmp    $0x500,%rdx
+   1dca1:	0f 85 f9 fe ff ff    	jne    1dba0 <icx_hamming_probe::scan_four_u64+0x50>
+   1dca7:	48 81 c6 00 05 00 00 	add    $0x500,%rsi
+   1dcae:	c5 dd d4 db          	vpaddq %ymm3,%ymm4,%ymm3
+   1dcb2:	c5 d5 d4 e6          	vpaddq %ymm6,%ymm5,%ymm4
+   1dcb6:	c5 e5 d4 dc          	vpaddq %ymm4,%ymm3,%ymm3
+   1dcba:	c4 e3 7d 39 dc 01    	vextracti128 $0x1,%ymm3,%xmm4
+   1dcc0:	c5 e1 d4 dc          	vpaddq %xmm4,%xmm3,%xmm3
+   1dcc4:	c5 f9 70 e3 ee       	vpshufd $0xee,%xmm3,%xmm4
+   1dcc9:	c5 e1 d4 dc          	vpaddq %xmm4,%xmm3,%xmm3
+   1dccd:	c5 f9 7e da          	vmovd  %xmm3,%edx
+   1dcd1:	39 d0                	cmp    %edx,%eax
+   1dcd3:	0f 43 c2             	cmovae %edx,%eax
+   1dcd6:	48 39 ce             	cmp    %rcx,%rsi
+   1dcd9:	0f 85 a1 fe ff ff    	jne    1db80 <icx_hamming_probe::scan_four_u64+0x30>
+   1dcdf:	c5 f8 77             	vzeroupper
+   1dce2:	c3                   	ret
+   1dce3:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1dce8:	c3                   	ret
+   1dce9:	cc                   	int3
+   1dcea:	cc                   	int3
+   1dceb:	cc                   	int3
+   1dcec:	cc                   	int3
+   1dced:	cc                   	int3
+   1dcee:	cc                   	int3
+   1dcef:	cc                   	int3
+
+000000000001dcf0 <icx_hamming_probe::scan_single_u32>:
+   1dcf0:	48 85 d2             	test   %rdx,%rdx
+   1dcf3:	0f 84 79 01 00 00    	je     1de72 <icx_hamming_probe::scan_single_u32+0x182>
+   1dcf9:	48 8d 0c 92          	lea    (%rdx,%rdx,4),%rcx
+   1dcfd:	48 c1 e1 08          	shl    $0x8,%rcx
+   1dd01:	48 01 f1             	add    %rsi,%rcx
+   1dd04:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1dd09:	c4 e2 7d 58 05 be ba 	vpbroadcastd -0x4542(%rip),%ymm0        # 197d0 <anon.94f8fb30d00d06c8eebf28fdc7527719.0.llvm.15497312785662867533+0x80>
+   1dd10:	ff ff 
+   1dd12:	c4 e2 7d 5a 0d 75 b8 	vbroadcasti128 -0x478b(%rip),%ymm1        # 19590 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x4bc>
+   1dd19:	ff ff 
+   1dd1b:	c5 e9 ef d2          	vpxor  %xmm2,%xmm2,%xmm2
+   1dd1f:	c5 fd 6f 1d d9 b9 ff 	vmovdqa -0x4627(%rip),%ymm3        # 19700 <anon.387415d882df4855da89d5d21ae3b5b0.14.llvm.18042825118776227689+0x20>
+   1dd26:	ff 
+   1dd27:	66 0f 1f 84 00 00 00 	nopw   0x0(%rax,%rax,1)
+   1dd2e:	00 00 
+   1dd30:	c5 d9 ef e4          	vpxor  %xmm4,%xmm4,%xmm4
+   1dd34:	ba 0c 00 00 00       	mov    $0xc,%edx
+   1dd39:	c5 d1 ef ed          	vpxor  %xmm5,%xmm5,%xmm5
+   1dd3d:	c5 c9 ef f6          	vpxor  %xmm6,%xmm6,%xmm6
+   1dd41:	c5 c1 ef ff          	vpxor  %xmm7,%xmm7,%xmm7
+   1dd45:	66 66 2e 0f 1f 84 00 	data16 cs nopw 0x0(%rax,%rax,1)
+   1dd4c:	00 00 00 00 
+   1dd50:	c5 7e 6f 44 d6 a0    	vmovdqu -0x60(%rsi,%rdx,8),%ymm8
+   1dd56:	c5 7e 6f 4c d6 c0    	vmovdqu -0x40(%rsi,%rdx,8),%ymm9
+   1dd5c:	c5 7e 6f 54 d6 e0    	vmovdqu -0x20(%rsi,%rdx,8),%ymm10
+   1dd62:	c5 7e 6f 1c d6       	vmovdqu (%rsi,%rdx,8),%ymm11
+   1dd67:	c5 3d ef 44 d7 a0    	vpxor  -0x60(%rdi,%rdx,8),%ymm8,%ymm8
+   1dd6d:	c5 35 ef 4c d7 c0    	vpxor  -0x40(%rdi,%rdx,8),%ymm9,%ymm9
+   1dd73:	c5 2d ef 54 d7 e0    	vpxor  -0x20(%rdi,%rdx,8),%ymm10,%ymm10
+   1dd79:	c5 25 ef 1c d7       	vpxor  (%rdi,%rdx,8),%ymm11,%ymm11
+   1dd7e:	c5 3d db e0          	vpand  %ymm0,%ymm8,%ymm12
+   1dd82:	c4 42 75 00 e4       	vpshufb %ymm12,%ymm1,%ymm12
+   1dd87:	c4 c1 3d 71 d0 04    	vpsrlw $0x4,%ymm8,%ymm8
+   1dd8d:	c5 3d db c0          	vpand  %ymm0,%ymm8,%ymm8
+   1dd91:	c4 42 75 00 c0       	vpshufb %ymm8,%ymm1,%ymm8
+   1dd96:	c4 41 3d fc c4       	vpaddb %ymm12,%ymm8,%ymm8
+   1dd9b:	c5 3d f6 c2          	vpsadbw %ymm2,%ymm8,%ymm8
+   1dd9f:	c5 35 db e0          	vpand  %ymm0,%ymm9,%ymm12
+   1dda3:	c4 42 75 00 e4       	vpshufb %ymm12,%ymm1,%ymm12
+   1dda8:	c4 c1 35 71 d1 04    	vpsrlw $0x4,%ymm9,%ymm9
+   1ddae:	c5 35 db c8          	vpand  %ymm0,%ymm9,%ymm9
+   1ddb2:	c4 42 75 00 c9       	vpshufb %ymm9,%ymm1,%ymm9
+   1ddb7:	c4 41 35 fc cc       	vpaddb %ymm12,%ymm9,%ymm9
+   1ddbc:	c5 35 f6 ca          	vpsadbw %ymm2,%ymm9,%ymm9
+   1ddc0:	c5 2d db e0          	vpand  %ymm0,%ymm10,%ymm12
+   1ddc4:	c4 42 75 00 e4       	vpshufb %ymm12,%ymm1,%ymm12
+   1ddc9:	c4 c1 2d 71 d2 04    	vpsrlw $0x4,%ymm10,%ymm10
+   1ddcf:	c5 2d db d0          	vpand  %ymm0,%ymm10,%ymm10
+   1ddd3:	c4 42 75 00 d2       	vpshufb %ymm10,%ymm1,%ymm10
+   1ddd8:	c4 41 2d fc d4       	vpaddb %ymm12,%ymm10,%ymm10
+   1dddd:	c5 2d f6 d2          	vpsadbw %ymm2,%ymm10,%ymm10
+   1dde1:	c5 25 db e0          	vpand  %ymm0,%ymm11,%ymm12
+   1dde5:	c4 42 75 00 e4       	vpshufb %ymm12,%ymm1,%ymm12
+   1ddea:	c4 c1 25 71 d3 04    	vpsrlw $0x4,%ymm11,%ymm11
+   1ddf0:	c5 25 db d8          	vpand  %ymm0,%ymm11,%ymm11
+   1ddf4:	c4 42 75 00 db       	vpshufb %ymm11,%ymm1,%ymm11
+   1ddf9:	c4 41 25 fc dc       	vpaddb %ymm12,%ymm11,%ymm11
+   1ddfe:	c5 25 f6 da          	vpsadbw %ymm2,%ymm11,%ymm11
+   1de02:	c4 42 65 36 c0       	vpermd %ymm8,%ymm3,%ymm8
+   1de07:	c4 42 65 36 c9       	vpermd %ymm9,%ymm3,%ymm9
+   1de0c:	c4 42 65 36 d2       	vpermd %ymm10,%ymm3,%ymm10
+   1de11:	c4 42 65 36 db       	vpermd %ymm11,%ymm3,%ymm11
+   1de16:	c5 b9 fe e4          	vpaddd %xmm4,%xmm8,%xmm4
+   1de1a:	c5 b1 fe ed          	vpaddd %xmm5,%xmm9,%xmm5
+   1de1e:	c5 a9 fe f6          	vpaddd %xmm6,%xmm10,%xmm6
+   1de22:	c5 a1 fe ff          	vpaddd %xmm7,%xmm11,%xmm7
+   1de26:	48 83 c2 10          	add    $0x10,%rdx
+   1de2a:	48 81 fa ac 00 00 00 	cmp    $0xac,%rdx
+   1de31:	0f 85 19 ff ff ff    	jne    1dd50 <icx_hamming_probe::scan_single_u32+0x60>
+   1de37:	c5 d1 fe e4          	vpaddd %xmm4,%xmm5,%xmm4
+   1de3b:	c5 c9 fe e4          	vpaddd %xmm4,%xmm6,%xmm4
+   1de3f:	c5 c1 fe e4          	vpaddd %xmm4,%xmm7,%xmm4
+   1de43:	c5 f9 70 ec ee       	vpshufd $0xee,%xmm4,%xmm5
+   1de48:	c5 d9 fe e5          	vpaddd %xmm5,%xmm4,%xmm4
+   1de4c:	c5 f9 70 ec 55       	vpshufd $0x55,%xmm4,%xmm5
+   1de51:	c5 d9 fe e5          	vpaddd %xmm5,%xmm4,%xmm4
+   1de55:	c5 f9 7e e2          	vmovd  %xmm4,%edx
+   1de59:	48 81 c6 00 05 00 00 	add    $0x500,%rsi
+   1de60:	39 d0                	cmp    %edx,%eax
+   1de62:	0f 43 c2             	cmovae %edx,%eax
+   1de65:	48 39 ce             	cmp    %rcx,%rsi
+   1de68:	0f 85 c2 fe ff ff    	jne    1dd30 <icx_hamming_probe::scan_single_u32+0x40>
+   1de6e:	c5 f8 77             	vzeroupper
+   1de71:	c3                   	ret
+   1de72:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1de77:	c3                   	ret
+   1de78:	cc                   	int3
+   1de79:	cc                   	int3
+   1de7a:	cc                   	int3
+   1de7b:	cc                   	int3
+   1de7c:	cc                   	int3
+   1de7d:	cc                   	int3
+   1de7e:	cc                   	int3
+   1de7f:	cc                   	int3
+
+000000000001de80 <icx_hamming_probe::scan_single_u64>:
+   1de80:	48 85 d2             	test   %rdx,%rdx
+   1de83:	0f 84 51 01 00 00    	je     1dfda <icx_hamming_probe::scan_single_u64+0x15a>
+   1de89:	48 8d 0c 92          	lea    (%rdx,%rdx,4),%rcx
+   1de8d:	48 c1 e1 08          	shl    $0x8,%rcx
+   1de91:	48 01 f1             	add    %rsi,%rcx
+   1de94:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1de99:	c4 e2 7d 58 05 2e b9 	vpbroadcastd -0x46d2(%rip),%ymm0        # 197d0 <anon.94f8fb30d00d06c8eebf28fdc7527719.0.llvm.15497312785662867533+0x80>
+   1dea0:	ff ff 
+   1dea2:	c4 e2 7d 5a 0d e5 b6 	vbroadcasti128 -0x491b(%rip),%ymm1        # 19590 <core::unicode::unicode_data::cf::SHORT_OFFSET_RUNS+0x4bc>
+   1dea9:	ff ff 
+   1deab:	c5 e9 ef d2          	vpxor  %xmm2,%xmm2,%xmm2
+   1deaf:	90                   	nop
+   1deb0:	ba 0c 00 00 00       	mov    $0xc,%edx
+   1deb5:	c5 e1 ef db          	vpxor  %xmm3,%xmm3,%xmm3
+   1deb9:	c5 d9 ef e4          	vpxor  %xmm4,%xmm4,%xmm4
+   1debd:	c5 d1 ef ed          	vpxor  %xmm5,%xmm5,%xmm5
+   1dec1:	c5 c9 ef f6          	vpxor  %xmm6,%xmm6,%xmm6
+   1dec5:	66 66 2e 0f 1f 84 00 	data16 cs nopw 0x0(%rax,%rax,1)
+   1decc:	00 00 00 00 
+   1ded0:	c5 fe 6f 7c d6 a0    	vmovdqu -0x60(%rsi,%rdx,8),%ymm7
+   1ded6:	c5 7e 6f 44 d6 c0    	vmovdqu -0x40(%rsi,%rdx,8),%ymm8
+   1dedc:	c5 7e 6f 4c d6 e0    	vmovdqu -0x20(%rsi,%rdx,8),%ymm9
+   1dee2:	c5 7e 6f 14 d6       	vmovdqu (%rsi,%rdx,8),%ymm10
+   1dee7:	c5 c5 ef 7c d7 a0    	vpxor  -0x60(%rdi,%rdx,8),%ymm7,%ymm7
+   1deed:	c5 3d ef 44 d7 c0    	vpxor  -0x40(%rdi,%rdx,8),%ymm8,%ymm8
+   1def3:	c5 35 ef 4c d7 e0    	vpxor  -0x20(%rdi,%rdx,8),%ymm9,%ymm9
+   1def9:	c5 2d ef 14 d7       	vpxor  (%rdi,%rdx,8),%ymm10,%ymm10
+   1defe:	c5 45 db d8          	vpand  %ymm0,%ymm7,%ymm11
+   1df02:	c4 42 75 00 db       	vpshufb %ymm11,%ymm1,%ymm11
+   1df07:	c5 c5 71 d7 04       	vpsrlw $0x4,%ymm7,%ymm7
+   1df0c:	c5 c5 db f8          	vpand  %ymm0,%ymm7,%ymm7
+   1df10:	c4 e2 75 00 ff       	vpshufb %ymm7,%ymm1,%ymm7
+   1df15:	c5 a5 fc ff          	vpaddb %ymm7,%ymm11,%ymm7
+   1df19:	c5 c5 f6 fa          	vpsadbw %ymm2,%ymm7,%ymm7
+   1df1d:	c5 c5 d4 db          	vpaddq %ymm3,%ymm7,%ymm3
+   1df21:	c5 bd db f8          	vpand  %ymm0,%ymm8,%ymm7
+   1df25:	c4 e2 75 00 ff       	vpshufb %ymm7,%ymm1,%ymm7
+   1df2a:	c4 c1 3d 71 d0 04    	vpsrlw $0x4,%ymm8,%ymm8
+   1df30:	c5 3d db c0          	vpand  %ymm0,%ymm8,%ymm8
+   1df34:	c4 42 75 00 c0       	vpshufb %ymm8,%ymm1,%ymm8
+   1df39:	c5 bd fc ff          	vpaddb %ymm7,%ymm8,%ymm7
+   1df3d:	c5 c5 f6 fa          	vpsadbw %ymm2,%ymm7,%ymm7
+   1df41:	c5 c5 d4 e4          	vpaddq %ymm4,%ymm7,%ymm4
+   1df45:	c5 b5 db f8          	vpand  %ymm0,%ymm9,%ymm7
+   1df49:	c4 e2 75 00 ff       	vpshufb %ymm7,%ymm1,%ymm7
+   1df4e:	c4 c1 3d 71 d1 04    	vpsrlw $0x4,%ymm9,%ymm8
+   1df54:	c5 3d db c0          	vpand  %ymm0,%ymm8,%ymm8
+   1df58:	c4 42 75 00 c0       	vpshufb %ymm8,%ymm1,%ymm8
+   1df5d:	c5 bd fc ff          	vpaddb %ymm7,%ymm8,%ymm7
+   1df61:	c5 c5 f6 fa          	vpsadbw %ymm2,%ymm7,%ymm7
+   1df65:	c5 c5 d4 ed          	vpaddq %ymm5,%ymm7,%ymm5
+   1df69:	c5 ad db f8          	vpand  %ymm0,%ymm10,%ymm7
+   1df6d:	c4 e2 75 00 ff       	vpshufb %ymm7,%ymm1,%ymm7
+   1df72:	c4 c1 3d 71 d2 04    	vpsrlw $0x4,%ymm10,%ymm8
+   1df78:	c5 3d db c0          	vpand  %ymm0,%ymm8,%ymm8
+   1df7c:	c4 42 75 00 c0       	vpshufb %ymm8,%ymm1,%ymm8
+   1df81:	c5 bd fc ff          	vpaddb %ymm7,%ymm8,%ymm7
+   1df85:	c5 c5 f6 fa          	vpsadbw %ymm2,%ymm7,%ymm7
+   1df89:	c5 c5 d4 f6          	vpaddq %ymm6,%ymm7,%ymm6
+   1df8d:	48 83 c2 10          	add    $0x10,%rdx
+   1df91:	48 81 fa ac 00 00 00 	cmp    $0xac,%rdx
+   1df98:	0f 85 32 ff ff ff    	jne    1ded0 <icx_hamming_probe::scan_single_u64+0x50>
+   1df9e:	c5 dd d4 db          	vpaddq %ymm3,%ymm4,%ymm3
+   1dfa2:	c5 d5 d4 db          	vpaddq %ymm3,%ymm5,%ymm3
+   1dfa6:	c5 cd d4 db          	vpaddq %ymm3,%ymm6,%ymm3
+   1dfaa:	c4 e3 7d 39 dc 01    	vextracti128 $0x1,%ymm3,%xmm4
+   1dfb0:	c5 e1 d4 dc          	vpaddq %xmm4,%xmm3,%xmm3
+   1dfb4:	c5 f9 70 e3 ee       	vpshufd $0xee,%xmm3,%xmm4
+   1dfb9:	48 81 c6 00 05 00 00 	add    $0x500,%rsi
+   1dfc0:	c5 e1 d4 dc          	vpaddq %xmm4,%xmm3,%xmm3
+   1dfc4:	c5 f9 7e da          	vmovd  %xmm3,%edx
+   1dfc8:	39 d0                	cmp    %edx,%eax
+   1dfca:	0f 43 c2             	cmovae %edx,%eax
+   1dfcd:	48 39 ce             	cmp    %rcx,%rsi
+   1dfd0:	0f 85 da fe ff ff    	jne    1deb0 <icx_hamming_probe::scan_single_u64+0x30>
+   1dfd6:	c5 f8 77             	vzeroupper
+   1dfd9:	c3                   	ret
+   1dfda:	b8 ff ff ff ff       	mov    $0xffffffff,%eax
+   1dfdf:	c3                   	ret
+

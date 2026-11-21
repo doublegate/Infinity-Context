@@ -2,7 +2,7 @@
 
 **References:** [ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md](../ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md), [ref-docs/agent-internals/cross-agent-hook-and-wire-matrix.md](../ref-docs/agent-internals/cross-agent-hook-and-wire-matrix.md), [docs/deployment-and-agent-integration-guide.md](deployment-and-agent-integration-guide.md)  
 **Target Crates:** `crates/icx-adapters`, `crates/icx-proxy`  
-**Release:** `v1.1.0`
+**Release:** `v1.2.0` candidate
 
 ---
 
@@ -12,6 +12,12 @@
 
 Hook contracts below were checked against upstream documentation on 2026-11-18 (Claude Code 2.1.328, codex-cli 0.170.0, agy 1.5.11, Hermes source `dc394c6`). `crates/icx-adapters/tests/claude_contract.rs` pins the Claude Code output shapes; the other adapters are covered by unit tests, not by fixtures captured from live agent runs.
 
+The v1.2.0 Codex correction is also pinned by `protocol_validation_v120.rs` and the local
+Codex 0.171 diagnostic: tool-output replacement is unsupported. The tests exercise adapter
+output and storage; they are not live paid-provider or complete host-integration acceptance.
+Current compatibility and evidence limits supersede older design promises in
+[ADR 0006](adr/0006-v1-2-0-context-and-compatibility.md).
+
 Common behaviour of `icx hook --agent <agent> --event <EVENT>`:
 
 - The workspace is resolved as `--dir` > `ICX_DIR` > the per-project default under `$XDG_STATE_HOME/icx/workspaces/`. A repository-local `.icx/` is never loaded implicitly.
@@ -19,6 +25,15 @@ Common behaviour of `icx hook --agent <agent> --event <EVENT>`:
 - stdin is bounded. The process always exits 0. On malformed input or internal errors it prints `{}` (or a non-replacing response), so the agent keeps its original behaviour.
 - Outputs of the `icx` pager tool itself (`InfinityContextMmu::is_icx_pager_tool`) are never re-stubbed.
 - Content is redacted (`SecretRedactor::redact`) before it reaches the store, index, or bus. Model-facing text is additionally Tier-0 delimiter-escaped.
+- The daemon commits with SQLite WAL `synchronous=FULL` under the workspace lock before
+  sending success. Save failure yields a failed response and daemon error exit; the CLI may
+  then fall back to in-process handling. There is no acknowledged write-behind window.
+- Tail producers select fitting whole frames, prioritizing the header and best recall, then
+  sibling and remaining recall/PPR frames. Oversized recoverable frames can use compact CAS
+  handles. Unsent sibling frames remain queued; their cursor is not advanced past them.
+  The default tail cap is 1,024 conservative accounting units, also limited by remaining managed
+  window space. `icx context-budget` controls the persisted model policy. It does not cap all
+  external native-agent messages or an entire provider request; callers reserve that content.
 
 ---
 
@@ -88,14 +103,16 @@ Upstream reference: the Codex hooks documentation (developers.openai.com/codex/h
    - Return `{"continue": true, "hookSpecificOutput": {"hookEventName": ..., "additionalContext": ...}, ...}` with the legend and/or tail slot.
 2. **`PostToolUse`:**
    - Ingests the tool output (store, index, bus) in every case.
-   - For MCP tools at or above the threshold, returns `hookSpecificOutput.updatedMCPToolOutput` with the stub. Upstream documents this field as "parsed but not supported yet", so it currently has no effect.
-   - For built-in tools, returns only `{"hookEventName": "PostToolUse"}`. v1.0.x appended `additionalContext`, which Codex adds next to the full native output and which therefore only increased tokens; that was removed.
+   - Returns a non-replacing response (`continue:true` and `hookSpecificOutput.hookEventName`
+     for ingested outputs), with neither `updatedMCPToolOutput` nor `additionalContext`.
+     `CodexAdapter::SUPPORTS_TOOL_OUTPUT_REPLACEMENT` is `false`. v1.1.0 emitted the unsupported
+     MCP replacement field; v1.2.0 removes it rather than claiming replacement succeeded.
    - **Net effect:** through hooks alone, icx does not shrink tool output in Codex; the model still sees the full native output. Use the wire proxy (§6) to reduce what Codex resends.
 3. **`PreToolUse`:** returns `continue: true` with no decision and no input change.
 4. **`SubagentStop`:** reads `last_assistant_message` and folds the subagent branch; the fold frame is returned in `systemMessage`.
 5. **`PreCompact`, `PostCompact` & `SessionEnd`:** seal the epoch and return `{"continue": true, "systemMessage": "<deterministic prefix>"}`.
 6. **`PreModelRequest` / `PostModelRequest`:** not used. Upstream defines them as diagnostic only; they cannot change the request.
-7. **Rollout tailer (`CodexRolloutTailer`):** a bounded JSONL reader for `~/.codex/sessions/**/rollout-*.jsonl`. **Known limitations:** it is not wired into the `icx` CLI in `v1.1.0` (only the library and tests use it), and it does not read zstd-compressed `.jsonl.zst` rollouts, which current Codex versions write.
+7. **Rollout tailer (`CodexRolloutTailer`):** a bounded JSONL reader for `~/.codex/sessions/**/rollout-*.jsonl`. **Known limitations:** it is not wired into the `icx` CLI in this candidate (only the library and tests use it), and it does not read zstd-compressed `.jsonl.zst` rollouts, which current Codex versions write.
 
 ---
 

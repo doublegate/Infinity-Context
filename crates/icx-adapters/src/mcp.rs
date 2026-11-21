@@ -21,6 +21,66 @@ pub const MAX_FOLD_DEPTH: usize = 64;
 pub struct McpPagerServer;
 
 impl McpPagerServer {
+    fn valid_envelope(req: &Value) -> bool {
+        req.is_object()
+            && req.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
+            && req
+                .get("method")
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.is_empty())
+            && req
+                .get("id")
+                .is_none_or(|id| id.is_string() || id.is_i64() || id.is_u64())
+    }
+
+    fn validate_arguments(args: &Value) -> Result<(), &'static str> {
+        if !args.is_object() {
+            return Err("arguments must be an object");
+        }
+        let Some(op) = args.get("op").and_then(Value::as_str) else {
+            return Err("missing string `op`; use `status` explicitly");
+        };
+        if !matches!(
+            op,
+            "deref" | "slice" | "grep" | "recall" | "fold" | "expand" | "xagent" | "status"
+        ) {
+            return Err(
+                "unknown `op`; expected deref, slice, grep, recall, fold, expand, xagent or status",
+            );
+        }
+        for field in ["id", "q"] {
+            if args.get(field).is_some_and(|v| !v.is_string()) {
+                return Err("`id` and `q` must be strings when supplied");
+            }
+        }
+        if args.get("k").is_some_and(|v| v.as_u64().is_none()) {
+            return Err("`k` must be a nonnegative integer");
+        }
+        if args.get("provenance").is_some_and(|v| !v.is_boolean()) {
+            return Err("`provenance` must be a boolean");
+        }
+        if args.get("range").is_some_and(|v| {
+            v.as_array()
+                .is_none_or(|items| items.iter().any(|n| n.as_u64().is_none()))
+        }) {
+            return Err("`range` must be an array of nonnegative integers");
+        }
+        Ok(())
+    }
+
+    fn stateful_arguments(req: &Value) -> Option<&Value> {
+        if !Self::valid_envelope(req)
+            || req.get("id").is_none()
+            || req.get("method").and_then(Value::as_str) != Some("tools/call")
+        {
+            return None;
+        }
+        let params = req.get("params")?;
+        let name = params.get("name")?.as_str()?;
+        let args = params.get("arguments")?;
+        (name == "icx" && Self::validate_arguments(args).is_ok()).then_some(args)
+    }
+
     /// Returns the compact single-tool `tools/list` schema payload.
     pub fn tool_schema() -> Value {
         json!({
@@ -64,15 +124,8 @@ impl McpPagerServer {
     /// workspace state (`id` is present and non-null, and `method == "tools/call"`).
     #[must_use]
     pub fn requires_workspace_state(request_json: &str) -> bool {
-        serde_json::from_str::<Value>(request_json).is_ok_and(|req| {
-            !req.get("id").is_none_or(Value::is_null)
-                && req.get("method").and_then(Value::as_str) == Some("tools/call")
-                && req
-                    .get("params")
-                    .and_then(|p| p.get("name"))
-                    .and_then(Value::as_str)
-                    .is_none_or(InfinityContextMmu::is_icx_pager_tool)
-        })
+        serde_json::from_str::<Value>(request_json)
+            .is_ok_and(|req| Self::stateful_arguments(&req).is_some())
     }
 
     /// Returns `true` if a JSON-RPC 2.0 request line mutates persistent MMU state (`fold`,
@@ -82,12 +135,7 @@ impl McpPagerServer {
         let Ok(req) = serde_json::from_str::<Value>(request_json) else {
             return false;
         };
-        if req.get("id").is_none_or(Value::is_null)
-            || req.get("method").and_then(Value::as_str) != Some("tools/call")
-        {
-            return false;
-        }
-        let Some(args) = req.get("params").and_then(|p| p.get("arguments")) else {
+        let Some(args) = Self::stateful_arguments(&req) else {
             return false;
         };
         match args.get("op").and_then(Value::as_str).unwrap_or("status") {
@@ -143,12 +191,20 @@ impl McpPagerServer {
             }
         };
 
-        let has_id = !req.get("id").is_none_or(Value::is_null);
+        if !Self::valid_envelope(&req) {
+            return json!({"jsonrpc":"2.0", "id":null,
+                "error":{"code":-32600, "message":"Invalid Request"}});
+        }
+        let has_id = req.get("id").is_some();
         let id = req.get("id").cloned().unwrap_or(Value::Null);
         let method = req.get("method").and_then(Value::as_str).unwrap_or("");
 
-        if !has_id || method.starts_with("notifications/") {
+        if !has_id {
             return Value::Null;
+        }
+        if req.get("params").is_some_and(|params| !params.is_object()) {
+            return json!({"jsonrpc":"2.0", "id":id,
+                "error":{"code":-32602, "message":"params must be an object"}});
         }
 
         // ICX-AUD-008: dual-era server. Modern (2026-07-28+) requests carry their version in
@@ -256,22 +312,23 @@ impl McpPagerServer {
                 "result": Self::tool_schema()
             }),
             "tools/call" => {
-                let tool_name = req
+                let Some(tool_name) = req
                     .get("params")
                     .and_then(|p| p.get("name"))
-                    .and_then(Value::as_str);
-                let (result_text, is_err) = if let Some(name) = tool_name
-                    && !InfinityContextMmu::is_icx_pager_tool(name)
-                {
-                    (format!("ERR: unknown tool `{name}` (expected `icx`)"), true)
-                } else {
-                    let args = req
-                        .get("params")
-                        .and_then(|p| p.get("arguments"))
-                        .cloned()
-                        .unwrap_or_else(|| json!({}));
-                    Self::execute_icx_op_checked(&args, mmu)
+                    .and_then(Value::as_str)
+                else {
+                    return json!({"jsonrpc":"2.0", "id":id,
+                        "error":{"code":-32602, "message":"tools/call requires a string name"}});
                 };
+                if tool_name != "icx" {
+                    return json!({"jsonrpc":"2.0", "id":id,
+                        "error":{"code":-32602, "message":format!("Unknown tool: {tool_name}")}});
+                }
+                let Some(args) = req.get("params").and_then(|p| p.get("arguments")) else {
+                    return json!({"jsonrpc":"2.0", "id":id,
+                        "error":{"code":-32602, "message":"tools/call requires arguments"}});
+                };
+                let (result_text, is_err) = Self::execute_icx_op_checked(args, mmu);
                 json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -304,6 +361,9 @@ impl McpPagerServer {
     /// Result count `k` is clamped per operation (`1..=250` for `grep`, `1..=50` for `recall`,
     /// and `1..=256` for `xagent`).
     pub fn execute_icx_op_checked(args: &Value, mmu: &mut InfinityContextMmu) -> (String, bool) {
+        if let Err(message) = Self::validate_arguments(args) {
+            return (format!("ERR: {message}"), true);
+        }
         let op = args.get("op").and_then(Value::as_str).unwrap_or("status");
 
         match op {

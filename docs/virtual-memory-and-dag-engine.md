@@ -1,6 +1,7 @@
 # Virtual Memory & Lossless Merkle-DAG Engine (`LCM`) Specification
 
-**Applies to:** `icx` v1.1.0  
+**Applies to:** `icx` v1.2.0 candidate
+
 **References:** [ref-docs/papers/INDEX.md](../ref-docs/papers/INDEX.md) §§1.1–1.5 & 2.1, [ref-docs/research-report.md](../ref-docs/research-report.md) §4.3  
 **Target Crates:** `crates/icx-core`, `crates/icx-adapters` (persistence)
 
@@ -12,14 +13,16 @@
 **Lossless Context Management (`LCM`) BLAKE3 Merkle-DAG**. It provides:
 
 1. **Lossless storage after redaction:** every tool output and turn is redacted for secrets
-   (`SecretRedactor::redact`) and then stored byte for byte as `L0` chunks. Redaction removes
-   secrets only; all other bytes, line endings, trailing newlines and literal delimiters are
-   preserved, so for secret-free input `deref(ingest(x)) == x` (ICX-AUD-021). Payloads are capped
+   (`SecretRedactor::redact`) and then stored byte for byte as `L0` chunks. Redaction is a
+   pattern-based gate with false-positive/false-negative limits; exactness applies to its output.
+   When the gate leaves input unchanged, line endings, trailing newlines and literal delimiters
+   are preserved and `deref(ingest(x)) == x` (ICX-AUD-021). Payloads are capped
    at 64 MiB (`ICX_MAX_INGEST_BYTES`).
 2. A tiered view of context: active verbatim turns and stubs, sealed cache epochs, the telepathy
    ring, and the content-addressed store (CAS) in the workspace's SQLite file.
 3. Compaction as a deterministic Merkle-DAG fold rather than a destructive overwrite.
-4. Prefix-cache epoch pinning, so sealed history is not rewritten on later turns.
+4. Immutable cold epochs with bounded prompt selection. Selected history can change as the
+   budget is exhausted or the model policy changes, invalidating the corresponding cache prefix.
 
 ---
 
@@ -112,7 +115,7 @@ The controller partitions the logical context into four zones:
 | Zone | Mutability | Provider cache status (intended) |
 | :--- | :--- | :--- |
 | **Zone 0: Pinned system head** | Fixed per session | Stable prefix |
-| **Zone 1: Sealed cache epochs (`E_0..E_{k-1}`)** | Append-only | Stable prefix |
+| **Zone 1: Sealed cache epochs (`E_0..E_{k-1}`)** | Cold history append-only; selected subset budgeted | Stable only while selected frames remain unchanged |
 | **Zone 2: Active window (`W_active`)** | Append-only until rollover | Prefix-stable between rollovers |
 | **Zone 3: Ephemeral tail slot** | Recomputed every turn | Not cached |
 
@@ -126,7 +129,45 @@ Whether a provider actually serves the stable prefix from cache depends on the p
 breakpoints the proxy or client places, and TTLs. `icx` measures only a byte-weighted
 prefix-reuse proxy ([docs/performance.md](performance.md) §1).
 
-### 4.2 Epoch Rollover Algorithm
+### 4.2 Total Managed-Window Budget
+
+`PromptWindowBudget` is persisted with the epoch controller. Its default is 32,768 total
+accounting units, 4,096 completion reserve and 4,096 external-input reserve, leaving 24,576 bytes
+for icx-managed head/history/tail. The identified estimator `utf8-bytes-upper-bound-v1` charges
+one UTF-8 byte per token allowance; these are not counts from a provider tokenizer. The caller
+must reserve actual system/current-message/tool-schema content outside the managed view and
+choose the model's real limit. This does not automatically cap an entire native-agent or proxy
+provider request containing external messages.
+
+`assemble_window` includes separators in accounting and always keeps the newest contiguous run
+of frames: all active turns, then the newest sealed epochs. When history no longer fits, the
+oldest sealed epochs are evicted in one step down to half of the history allowance
+(head and the maximum tail are reserved first), and that eviction point is persisted with the
+controller. Between eviction steps the retained prefix only grows by appending, so consecutive
+windows share their prefix (0.94 byte reuse at saturation in the 8,192-unit regression test).
+Omitted history is announced by a single frame,
+`⟪ICX:HISTORY_OMITTED│epochs=N│turns=M│bytes=B│first=#icx:…│last=#icx:…│recall=icx:deref|slice|grep⟫`,
+whose text changes only at eviction steps; the omitted epochs remain in DAG/CAS and stay
+dereferenceable through those handles. No frame is skipped while an older one is kept.
+An oversized pinned head fails closed to a bounded diagnostic rather than silently exceeding
+the policy. `set_window_budget` refuses a policy that cannot hold the current pinned head.
+The direct hook/proxy tail producer uses the same remaining allowance and the configured
+tail-slot cap. It preserves the header, best recall and fitting complete bus/PPR frames; compact
+CAS handles can replace oversized recoverable frames. Unsent sibling events remain queued and
+do not advance the cursor. No partial packet or UTF-8 truncation is emitted.
+
+Inspect or persist policy for an initialized/trusted workspace:
+
+```bash
+icx context-budget
+icx context-budget --context-tokens 8192 --completion-reserve 1024 --external-reserve 2048
+```
+
+The latter leaves 5,120 bytes of managed allowance. It changes prompt selection, not CAS handles
+or stored source bytes. Model switching can invalidate prefixes; a fixed provider cache-hit
+rate is not promised. See [ADR 0006](adr/0006-v1-2-0-context-and-compatibility.md).
+
+### 4.3 Epoch Rollover Algorithm
 
 When `tokens(W_active) > epoch_rollover_tokens`:
 
@@ -150,18 +191,23 @@ When `tokens(W_active) > epoch_rollover_tokens`:
    [docs/security-and-threat-model.md](security-and-threat-model.md) §4.1.
 2. **Single SQLite store.** All state is in `icx.sqlite3` (WAL, mode `0600`): CAS chunk and
    artifact rows (append-only) plus `meta` rows for the chunk config, bi-temporal graph, MMU state
-   (DAG, epochs), HDC index snapshot (`ICXHDC03`), `generation` and store seal. Schema:
+   (DAG, epochs and versioned window policy), HDC index snapshot (`ICXHDC04`), `generation` and store seal. Schema:
    [docs/data-model.md](data-model.md) §6.
-3. **Atomic saves.** Every save is one transaction under the workspace lock (`cas_store.lock`), so
-   a crash cannot leave a mixed-generation store. The `generation` counter lets the daemon and
-   other long-lived processes skip reloading when nothing changed.
+3. **Atomic saves and acknowledgment.** Every save is one WAL transaction under the workspace
+   lock (`cas_store.lock`) with `synchronous=FULL`. The daemon commits before acknowledging
+   success; save failure yields an error response and daemon error exit. There is no volatile
+   acknowledged queue. Atomicity prevents mixed-generation state, while durability still relies
+   on filesystem/hardware synchronization behavior. The `generation` counter lets long-lived
+   processes skip reloading when nothing changed.
 4. **Fail-closed integrity.** On load, every chunk digest is verified and every artifact is
    reassembled to its full digest (`CasStore::from_parts`); the store seal (keyed BLAKE3 MAC over
    path, generation and a digest of all persisted state) must verify for sealed workspaces. Any
    failure stops the operation with an error instead of overwriting the store.
 5. **Migration.** v1.0.x JSON workspaces (`cas_store.json`, `mmu_state.json`,
    `bitemporal_graph.json`) are migrated into the SQLite store on first load once the directory is
-   trusted; the JSON files are left in place.
+   trusted; the JSON files are left in place. Legacy HDC03 snapshots are readable, but the MMU
+   rebuilds their absent exact postings from the CAS event log; subsequent saves write 04.
+   Older binaries cannot read 04, so retain a pre-upgrade backup if downgrade is required.
 6. **Backup.** Back up the whole workspace directory while no `icx` process is writing (stop
    `icx daemon` first). A copied workspace is refused at its new path until `icx trust --dir
    <path>` re-seals it, because the seal binds the canonical path.
@@ -172,8 +218,9 @@ When `tokens(W_active) > epoch_rollover_tokens`:
 
 ## 6. Edge Cases and Invariants
 
-- **Model switch.** `CacheEpochController::retarget_budget` hierarchically folds existing epochs
-  when the token budget shrinks, without removing any `L0` content from the CAS.
+- **Model switch.** `set_window_budget` changes automatic selection without deleting `L0`
+  content; `retarget_budget` remains an explicit API for hierarchical epoch folding. Budgeting
+  does not require a test-only/manual retarget call to keep the managed view bounded.
 - **Deterministic replay.** With the default logical clock, the same sequence of turns and tool
   outputs produces identical DAG digests and epoch frames. The CLI enables wall-clock timestamps
   (`use_wall_clock(true)`), and timestamps are part of node digests, so CLI workspaces are not

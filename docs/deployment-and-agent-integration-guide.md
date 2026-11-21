@@ -4,13 +4,23 @@ SPDX-FileCopyrightText: 2026 DoubleGate
 SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commercial
 -->
 
-# Deployment & Multi-Agent Integration Guide (`v1.1.0`)
+# Deployment & Multi-Agent Integration Guide (`v1.2.0` candidate)
 
 **References:** [docs/architecture.md](architecture.md), [docs/agent-adapters-and-interception.md](agent-adapters-and-interception.md), [docs/wire-protocol-and-shm-bus.md](wire-protocol-and-shm-bus.md), [docs/virtual-memory-and-dag-engine.md](virtual-memory-and-dag-engine.md), [ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md](../ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md), [ref-docs/agent-internals/cross-agent-hook-and-wire-matrix.md](../ref-docs/agent-internals/cross-agent-hook-and-wire-matrix.md)  
-**Target Release:** `v1.1.0`  
+**Target Release:** `v1.2.0` candidate
+
 **Target Crates:** `icx-cli`, `icx-adapters`, `icx-proxy`, `icx-bus`, `icx-store`, `icx-codec`, `icx-hdc`, `icx-core`
 
 Agent hook contracts in this guide were checked against the upstream documentation on 2026-11-18 (Claude Code 2.1.328, codex-cli 0.170.0, agy 1.5.11, Hermes source `dc394c6`). Agent hook schemas change between releases; re-check them when you upgrade an agent.
+
+This guide describes the v1.2.0 candidate, not a published or fully qualified release. Current
+contracts and limits are in [ADR 0006](adr/0006-v1-2-0-context-and-compatibility.md) and
+[PROJECT-STATUS](../PROJECT-STATUS.md). Older numerical tables/output below are explicitly
+dated v1.1.0 examples; they are not v1.2.0 measurements. New candidate evidence is under
+[releases/v1.2.0/evidence/](releases/v1.2.0/evidence/). Architecture diagrams show component
+relationships and intended flows, not measured latency, universal agent coverage or model
+effectiveness. Local Codex 0.171 and protocol regressions underpin the updated capture-only
+contract; no live paid-provider acceptance is claimed.
 
 ---
 
@@ -47,7 +57,7 @@ flowchart TB
         GEN["Generic MCP Clients"]
     end
 
-    subgraph ICX["Plane A: Infinity-Context (icx v1.1.0)"]
+    subgraph ICX["Plane A: Infinity-Context (icx v1.2.0 candidate)"]
         HOOKS["Native Hook Adapters (crates/icx-adapters)\nPostToolUse stubbing + tail-slot context"]
         DAEMON["icx daemon (optional)\nresident workspace over a private Unix socket"]
         MCP_ICX["Single-Tool Polymorphic MCP Pager (icx)\nderef | slice | grep | recall | fold | expand | xagent | status"]
@@ -73,12 +83,12 @@ flowchart TB
 
 ### 1.1 Memory Tier & Responsibility Matrix (`icx` vs. `ai-memory`)
 
-| Dimension | Infinity-Context (`icx` `v1.1.0`) | `ai-memory` Daemon & Skills (Mode B Only) | Standalone Coverage in Mode A (`icx` Without `ai-memory`) |
+| Dimension | Infinity-Context (`icx` `v1.2.0` candidate) | `ai-memory` Daemon & Skills (Mode B Only) | Standalone Coverage in Mode A (`icx` Without `ai-memory`) |
 | :--- | :--- | :--- | :--- |
 | **Primary Role** | Machine-native Virtual Context MMU, in-flight tool output virtualizer, content-addressed store, and same-host cross-agent bus. | Human-readable Markdown wiki, operator-curated rules/decisions, single-use session handoffs, and cross-project agent mail queue. | `icx` persists workspace state transactionally in a per-project SQLite store and exposes associative + graph recall across sessions. |
 | **Wire Representation** | Non-human **Alien Holographic Token Lattice (`AHTL`)** (`Profile A` 6-section wire and `Profile B` dual-channel clauses + Braille-256 sketch). | Human-authored/compiled Markdown wiki pages. | `AHTL` Epoch Frames and `BiTemporalGraph` functional edges (`status`, `exit_code`, `pass`, `fail`, `return_type`) carry structured state across turns. |
 | **Raw Byte Provenance** | **Lossless after redaction:** FastCDC (`2 KiB` min, `8 KiB` target, `64 KiB` max) + 256-bit `BLAKE3` CAS (`#icx:<16-hex>` / `#icx:<12-hex>`). `SecretRedactor::redact` removes secrets only; all other bytes, line endings and delimiters are stored unchanged. | Summarized: raw hook observations are body-capped and compiled into prose. | `icx deref` and MCP `icx` (`op: "deref"` / `"slice"` / `"grep"`) return the exact stored (post-redaction) bytes. |
-| **In-Flight Tool Virtualization** | **Claude Code:** replaces bulky `PostToolUse` output (`>= tool_virtualize_threshold`, default 512 bytes) with a `⟪ICX:STUB│#icx:...⟫` packet in the tool's own output shape. **Codex:** ingest only through hooks (Codex does not yet apply `updatedMCPToolOutput`); reduction requires the proxy (§4.2). **agy:** ingest only. **Hermes:** through a user-supplied `ContextEngine` shim. | No: observes tool calls passively. | Native adapters plus the wire proxy (`WireProxyTransformer`) reduce what re-enters the context window. |
+| **In-Flight Tool Virtualization** | **Claude Code:** replaces bulky `PostToolUse` output (`>= tool_virtualize_threshold`, default 512 bytes) with a `⟪ICX:STUB│#icx:...⟫` packet in the tool's own output shape. **Codex:** capture only through hooks; no unsupported replacement field is emitted. Reduction requires the proxy (§4.2). **agy:** ingest only. **Hermes:** through a user-supplied `ContextEngine` shim. | No: observes tool calls passively. | Native adapters plus the wire proxy (`WireProxyTransformer`) reduce what re-enters the context window. |
 | **Associative & Graph Indexing** | 10,240-bit `Hypervector` (`[u64; 160]`), 16-D Contractive IFS `FractalCoord` (`FCGA`), a Titans-inspired surprise heuristic (`TitansSurpriseGate`), and CSR `BiTemporalGraph` (`PersonalizedPageRank`). | SQLite FTS5 + lexical entity + RRF ranking over wiki pages. | `InfinityContextMmu::build_ephemeral_tail_slot` runs 2-stage HDC + fractal suffix + HippoRAG-style PPR recall when a tail slot is built. |
 | **Cross-Agent Same-Host IPC** | `SeqlockTelemetryBus`: a `1,048,640`-byte file (`64 B` header + `256 x 4,096 B` slots) written with `pread`/`pwrite` under a writer mutex and file lock; readers are optimistic (seqlock version check). Drops and reader loss are reported, not hidden. | SQLite-backed session tables and explicit `memory_handoff_*` / `memory_message_*` calls. | Sibling agents on the same workspace receive `⟦Θ:<agent>@<subject>⊢...⟧` frames in their next tail slot. |
 | **Prompt Prefix-Cache Protection** | 4-Zone `CacheEpochController` (`Zone 0` pinned head, `Zone 1` sealed epochs, `Zone 2` active window, `Zone 3` tail slot) + wire proxy that preserves client `cache_control` breakpoints and adds at most one. | No: does not proxy provider traffic. | The synthetic 50-turn benchmark reports a 95.46% byte-weighted prefix-reuse proxy (§6.1); this is not a measured provider cache hit rate. |
@@ -96,7 +106,7 @@ The project root is the nearest ancestor of the current directory that contains 
 
 | File Path (inside the workspace) | Owning Subsystem | Contents & Role |
 | :--- | :--- | :--- |
-| `icx.sqlite3` (+ `-wal` / `-shm` while open) | `icx_adapters::store` | Single SQLite database (WAL mode). Each save is one transaction. Chunk and artifact rows are append-only; a `generation` counter increments per save. The `meta` table holds the chunk configuration, the bi-temporal graph, the MMU state (Merkle-DAG, epoch controller, subagent branches, read cursors, redaction set, logical clock), the HDC index snapshot (`ICXHDC03` binary format) and its event log, and the store seal. |
+| `icx.sqlite3` (+ `-wal` / `-shm` while open) | `icx_adapters::store` | Single SQLite database (WAL mode). Each save is one transaction. Chunk and artifact rows are append-only; a `generation` counter increments per save. The `meta` table holds the chunk configuration, the bi-temporal graph, the MMU state (Merkle-DAG, epoch controller, subagent branches, read cursors, redaction set, logical clock), the HDC index snapshot (`ICXHDC04` binary format, with exact token postings) and its event log, and the store seal. |
 | `OWNER` | `workspace` trust policy | Owner seal: a keyed BLAKE3 MAC of the canonical workspace path under the per-install key. A copied or moved workspace fails verification. |
 | `cas_store.lock` | `InfinityContextMmu::acquire_workspace_lock` | Advisory file lock serializing CLI, hook, daemon, MCP, and proxy transactions across processes. |
 | `icx-fabric-v1.shm` | `icx_bus::SeqlockTelemetryBus` | The `1,048,640`-byte bus file. It is a regular file in the workspace unless `ICX_SHM_PATH` points elsewhere (for example under `/dev/shm`). |
@@ -146,13 +156,15 @@ Hooks, `icx mcp-serve`, and `icx proxy` also create the default workspace on fir
 
 #### Step 3: (Optional) Start the Resident Daemon
 
-`icx hook` loads and saves the workspace on every call. On large workspaces the resident daemon removes most of that cost (§6.1):
+The in-process hook loads and saves workspace state on each call. The daemon keeps the MMU
+resident, but still commits each dispatched request before success. Measure this durability
+cost on your workspace; the historical write-behind timings in §6.1 do not apply:
 
 ```bash
 icx daemon --idle-exit 900 &
 ```
 
-- `icx daemon [--dir <PATH>] [--idle-exit <SECS>]` keeps the workspace in memory and serves hooks on a private Unix socket `ws-<hash>.sock` in `$XDG_RUNTIME_DIR/icx` (directory mode `0700`). Connections from other uids are rejected (`SO_PEERCRED`). State is written back under the workspace lock 50 ms after the last request, or at most 1 s after the first unsaved change.
+- `icx daemon [--dir <PATH>] [--idle-exit <SECS>]` keeps the workspace in memory and serves hooks on a private Unix socket `ws-<hash>.sock` in `$XDG_RUNTIME_DIR/icx` (directory mode `0700`). Connections from other uids are rejected (`SO_PEERCRED`). Each dispatched request is saved under the workspace lock before a success response is sent. SQLite WAL uses `synchronous=FULL`; save failure produces a failed response and daemon error exit, rather than losing an acknowledged write-behind queue.
 - `icx hook` uses a running daemon automatically and falls back to in-process handling otherwise.
 - `ICX_NO_DAEMON=1` disables the daemon fast path. `ICX_DAEMON_AUTOSTART=1` makes the first hook spawn a daemon in the background (`--idle-exit 900`).
 - Socket paths longer than the 103-byte `sun_path` limit are rejected with an error; set `XDG_RUNTIME_DIR` to a shorter directory if that happens.
@@ -355,7 +367,7 @@ Codex uses PascalCase event names, a single `command` string, and `timeout` in s
 }
 ```
 
-Codex response semantics: `SessionStart`, `UserPromptSubmit`, and `SubagentStart` return `additionalContext`. `PostToolUse` ingests the output and returns `updatedMCPToolOutput` only for MCP tools; it no longer appends `additionalContext`, because Codex adds that text next to the full native output and it would only increase tokens. Codex currently does not apply `updatedMCPToolOutput`, so the model still sees the full tool output; use the proxy (§4.2) to reduce what Codex resends. `SubagentStop` reads `last_assistant_message`. `PreToolUse` is not registered above: icx makes no decision there.
+Codex response semantics: `SessionStart`, `UserPromptSubmit`, and `SubagentStart` return `additionalContext`. `PostToolUse` captures output for store/index/bus and returns a non-replacing envelope with `continue:true` and `hookSpecificOutput.hookEventName`; it emits neither `updatedMCPToolOutput` nor duplicate `additionalContext`. `CodexAdapter::SUPPORTS_TOOL_OUTPUT_REPLACEMENT` is `false`. The model still sees the original native output; use the proxy (§4.2) to reduce supported middle-history content that Codex resends. `SubagentStop` reads `last_assistant_message`. `PreToolUse` is not registered above: icx makes no decision there.
 
 ---
 
@@ -458,6 +470,12 @@ Any MCP client can connect to the single-tool `icx` stdio server (`icx mcp-serve
 - **Legacy handshake:** `initialize` negotiates `2025-11-25`, `2025-06-18`, `2025-03-26`, or `2024-11-05`. It echoes the client's requested version if supported, else answers `2025-11-25`.
 - **Modern (`2026-07-28`):** `server/discover`, a per-request `_meta["io.modelcontextprotocol/protocolVersion"]`, results carrying `resultType` and `_meta.serverInfo`. An unsupported version returns error `-32022`.
 - Request lines are bounded at 4 MiB. Fold nesting depth is limited to 64.
+- JSON-RPC envelopes require `jsonrpc:"2.0"`, a nonempty method and a string/integer request ID.
+  `tools/call` requires the exact case-sensitive name `icx` and object `arguments` with an
+  explicit supported `op`; missing/unknown operations no longer silently mean status.
+  Invalid envelopes return `-32600`, malformed call parameters return `-32602`, and invalid
+  operation arguments yield `isError:true`, without acquiring or mutating workspace state.
+  Hook-specific pager aliases remain separate and are not valid MCP tool names.
 - `deref` output always starts with a provenance header and an escaped body: `⟪ICX:PROVENANCE│id=…│redacted=…│exactness=post_redaction_cas│trust=untrusted_data⟫`. Treat the body as data, not instructions.
 
 ---
@@ -638,7 +656,7 @@ Place `icx` operational rules outside `ai-memory`'s managed marker block (`<!-- 
 
 ### 3.4 Port, Socket, and Storage Isolation Table
 
-| Resource Type | Infinity-Context (`icx` `v1.1.0`) | `ai-memory` Daemon & Bridge | Conflict Status |
+| Resource Type | Infinity-Context (`icx` `v1.2.0` candidate) | `ai-memory` Daemon & Bridge | Conflict Status |
 | :--- | :--- | :--- | :--- |
 | **Loopback HTTP Port** | `127.0.0.1:49380` (`icx proxy`, token-authenticated) | `127.0.0.1:49375` | Distinct ports. |
 | **Unix Socket** | `$XDG_RUNTIME_DIR/icx/ws-<hash>.sock` (`icx daemon`) | None | No conflict. |
@@ -678,13 +696,13 @@ Place `icx` operational rules outside `ai-memory`'s managed marker block (`<!-- 
 
 1. **What `PostToolUse` can and cannot do in Codex:**
    - Codex has no supported field that replaces a built-in tool's output. `CodexAdapter` therefore only ingests built-in tool output (store, index, bus) and returns no model-facing text for it.
-   - For MCP tools (`mcp__*`) that cross the threshold, `CodexAdapter` returns `updatedMCPToolOutput`. As of 2026-11-18 the Codex hooks documentation describes `updatedMCPToolOutput` as "parsed but not supported yet".
+   - MCP tool output is also capture-only. v1.1.0 emitted the unsupported `updatedMCPToolOutput` field; v1.2.0 omits it. The non-replacing response preserves normal hook continuation and declares the capability unavailable through `CodexAdapter::SUPPORTS_TOOL_OUTPUT_REPLACEMENT=false`.
    - **Net effect: through hooks alone, icx does not shrink tool output in Codex.** It ingests the output (recall, `deref`, tail slots, cross-agent bus), and the model still sees the full native output.
    - Codex's `PreModelRequest` / `PostModelRequest` hooks are diagnostic only and cannot change the request, so icx does not use them.
 2. **Wire-level middle-history virtualization (`WireProxyTransformer::transform_openai_request`):**
    - To reduce what Codex resends, route it through `icx proxy` (§2.3). The proxy replaces middle-history items outside the last 2 items (`protect_tail = 2`) that are at or above the threshold (`function_call_output` items and `input_text` parts) with their AHTL packets, and leaves `system`/`developer` items unchanged.
 3. **Rollout tailing (`CodexRolloutTailer`):**
-   - The library includes a bounded JSONL tailer for `~/.codex/sessions/**/rollout-*.jsonl`. It is not wired into the `icx` CLI in `v1.1.0`, and it does not read the zstd-compressed (`.jsonl.zst`) rollout files that current Codex versions write.
+   - The library includes a bounded JSONL tailer for `~/.codex/sessions/**/rollout-*.jsonl`. It is not wired into the `icx` CLI in this candidate, and it does not read the zstd-compressed (`.jsonl.zst`) rollout files that current Codex versions write.
 
 ---
 
@@ -725,7 +743,7 @@ This section describes `HermesAdapter`, which a user-supplied shim reaches throu
 
 ### 5.1 Tuning by Provider & Model
 
-`tool_virtualize_threshold` (default `DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES = 512`) and the `CacheEpochController` configuration (`EpochControllerConfig`) are fields of the Rust API. In `v1.1.0` the `icx` CLI uses the defaults and exposes no flag, environment variable, or config file to change them. The values below are starting points for embedders that construct `InfinityContextMmu` themselves; they have not been benchmarked per provider.
+`tool_virtualize_threshold` (default `DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES = 512`) and epoch rollover/protected-turn settings remain Rust API fields without corresponding CLI tuning flags. The separate persisted model-window policy is configurable through `icx context-budget` (§5.1.1). The provider presets below are starting points for embedders, not per-provider benchmark results; rollover thresholds do not replace the total managed-window cap.
 
 | Target | `tool_virtualize_threshold` | Epoch token threshold | Rationale |
 | :--- | ---: | ---: | :--- |
@@ -735,21 +753,48 @@ This section describes `HermesAdapter`, which a user-supplied shim reaches throu
 
 Provider cache rules (breakpoint limits, minimum lengths, TTLs) change; consult the provider's current documentation rather than a fixed model table.
 
+#### 5.1.1 Configure the Managed Context Budget
+
+For an initialized/trusted workspace, inspect or persist the policy:
+
+```bash
+icx context-budget
+icx context-budget --context-tokens 8192 --completion-reserve 1024 --external-reserve 2048
+```
+
+The JSON response identifies `utf8-bytes-upper-bound-v1`, a conservative estimator charging
+one UTF-8 byte per token of allowance. Default policy is 32,768 total units minus 4,096 completion
+and 4,096 external-input/tool-schema reserve, leaving 24,576 bytes for the icx-managed view.
+The example leaves 5,120 bytes. It is not a count from a named model tokenizer. Choose the model's
+actual limit and reserve all external system/current-message/tool-schema content yourself.
+This policy does not automatically bound an enclosing native-agent or full proxy/provider request.
+
+Assembly selects complete recent active frames then recent sealed frames, without deleting
+cold history. Direct hook/proxy tails also select whole fitting frames under their configured
+cap (default 1,024 conservative units), retaining useful recall and queued unsent bus events.
+Model-policy changes or paging may change the provider prefix and invalidate cache entries.
+An oversized pinned head yields a bounded diagnostic; the checked setter refuses a policy
+that cannot hold it. The persisted policy survives restart and smaller-model switching.
+
 ### 5.2 Single-Agent vs. Multi-Agent Swarm Best Practices
 
 - **Single-Agent Workflows:**
   - Enable the native hooks (`PostToolUse`, `UserPromptSubmit` / `PreInvocation`, `PreCompact`) and the `icx` MCP server.
   - Use the default per-project workspace (no `--dir`). It lives outside the repository, so it cannot be replaced by a pull or shipped in a clone.
   - Use `icx(op="fold", q="begin:<subtask>")` and `icx(op="fold", q="<summary>")` around iterative compile-fix-test loops to collapse them into one `L2` `SubTrajectoryBranch` node.
-  - Run `icx daemon` (or set `ICX_DAEMON_AUTOSTART=1`) once the workspace grows; hook latency then no longer scales with workspace size (§6.1).
+  - Run `icx daemon` (or set `ICX_DAEMON_AUTOSTART=1`) to keep the MMU resident. Each successful request still commits a transaction; benchmark latency against your workspace rather than assuming constant cost (§6.1).
 - **Multi-Agent Workflows (e.g., Claude Code + Codex + Antigravity CLI):**
   - Launch all agents from inside the same repository. They resolve the same per-project workspace automatically; if one agent runs elsewhere, give every agent the same absolute `ICX_DIR`.
   - `InfinityContextMmu::acquire_workspace_lock` serializes store updates through `cas_store.lock`, and the bus file carries `⟦Θ:<agent>@<subject>⊢...⟧` frames between agents.
-  - When one agent runs a test suite or modifies a file, the others receive the `#icx:<16-hex>` handle in their next tail slot and can inspect it with `icx(op="slice", id="#icx:...", range=[...])` instead of re-running the command.
+  - Eligible sibling events are selected for a subsequent budgeted tail slot. Unsent frames
+    remain queued, while ring overrun can still cause reported loss. A received `#icx:<16-hex>`
+    handle can be inspected with `icx(op="slice", id="#icx:...", range=[...])`.
 
 ### 5.3 Short Sessions vs. Long Sessions
 
-- **Short sessions:** hook-based `PostToolUse` virtualization plus the `icx` MCP pager (`deref`, `slice`, `grep`) is sufficient; the proxy is optional.
+- **Short sessions:** the MCP pager (`deref`, `slice`, `grep`) works without the proxy.
+  Tool-output virtualization depends on the harness: Claude supports native replacement,
+  Codex/agy hooks capture only, and Hermes requires the user-supplied context-engine shim.
 - **Long sessions:** enable the hooks, the daemon, and (for Codex in particular) the wire proxy. Fold completed milestones with `icx(op="fold")` so sealed epochs stay compact. icx does not extend an agent's step or token budget; when agy stops, the next session resumes from the sealed epoch.
 
 ### 5.4 Decision Guide: Mode A (Standalone `icx`) vs. Mode B (Dual-Stack `icx` + `ai-memory`)
@@ -764,7 +809,12 @@ Provider cache rules (breakpoint limits, minimum lengths, TTLs) change; consult 
 
 ## 6. Realized Benefits, Pros/Cons, and Trade-Off Matrix
 
-### 6.1 Measured Numbers (`v1.1.0`)
+### 6.1 Historical Measured Numbers (`v1.1.0`)
+
+These historical fixtures do not characterize v1.2.0's durable daemon, hybrid retrieval or
+bounded selection. Current candidate measurements and unresolved SLO failures are recorded in
+[release evidence](releases/v1.2.0/evidence/) and [performance](performance.md); do not infer a
+current latency guarantee from the older table.
 
 Measured on a development workstation (Intel i9-10850K, Linux). `icx benchmark` is a **synthetic, in-process** suite; its numbers are not end-to-end agent latencies or provider-side measurements.
 
@@ -863,7 +913,7 @@ sequenceDiagram
 ```
 
 1. **Bus publish:** `SeqlockTelemetryBus::publish` writes the slot under the writer mutex and file lock, bracketing the write with an odd/even seqlock version; readers retry if the version changed. A publish that cannot be completed is counted (`dropped_publishes()`), and `poll_since_with_loss()` reports sequence numbers a slow reader missed.
-2. **Per-agent cursors:** `InfinityContextMmu` keeps a read cursor per `AgentKind`, so Codex (on `UserPromptSubmit`) and `agy` (on `PreInvocation`) each receive up to 4 unseen sibling frames in their tail slot.
+2. **Per-agent cursors:** `InfinityContextMmu` keeps a read cursor per `AgentKind`. Codex (on `UserPromptSubmit`) and agy (on `PreInvocation`) receive up to 4 fitting unseen sibling frames. Whole-frame selection preserves the slot header and best recall; an oversized recoverable event can become a compact CAS handle. Unsent foreign events stay queued, and the cursor never advances past them.
 3. **Subagent isolation:** when an agent spawns subagents, `SubagentStart` registers isolated buffers. Tool calls tagged with a subagent id stay out of the parent's `Zone 2` window until `SubagentStop` folds them into a single `⟪ICX:SUBAGENT_FOLDED│#icx:<16-hex>│<subagent>│<summary>⟫` commit.
 
 ---
@@ -874,7 +924,7 @@ sequenceDiagram
 
 1. **Day 1 — Implementation:**
    - `icx` virtualizes bulky tool outputs into `#icx:<16-hex>` stubs and seals `L3` cache epochs as the session grows.
-   - Sealed epochs are not rewritten later, and dynamic recall stays in the tail slot, which keeps the request prefix stable for provider caching.
+   - Sealed cold epochs are not rewritten, and dynamic recall stays in the tail slot. Bounded selection may omit older frames from the selected prefix; paging or changing the model budget can invalidate provider cache entries.
 2. **Day 1 Wrap-Up — Promoting Evidence from `icx` to `ai-memory`:**
    - The agent uses `ai-memory-durable-pages` to write `decisions/seqlock-positional-io.md`, referencing the benchmark artifact `#icx:e40912a8bc34ef01`.
    - The agent calls `ai-memory-handoff` (`memory_handoff_begin`) with a short summary and the active epoch handle.
@@ -1061,10 +1111,11 @@ Every command that takes `--dir` resolves the workspace as `--dir` > `ICX_DIR` >
 | :--- | :--- |
 | `icx init [--dir <PATH>]` | Creates and seals the workspace (an existing empty directory is adopted), creates `icx.sqlite3` and the bus file, and prints `⟪ICX:INIT│dir=<PATH>│status=READY⟫`. |
 | `icx trust --dir <PATH>` | Adopts an existing workspace you own, such as a v1.0.x `.icx/`: sets mode `0700`, writes `.gitignore` (`*`), writes the `OWNER` seal, and reseals the store (migrating JSON files if present). Warns if the directory is inside a git work tree. Prints `⟪ICX:TRUST│dir=<PATH>│status=SEALED⟫`. |
+| `icx context-budget [--context-tokens <N>] [--completion-reserve <N>] [--external-reserve <N>] [--dir <PATH>]` | Inspects or persists the initialized/trusted workspace's conservative managed-window policy (§5.1.1). Invalid or overflowing reservations and insufficient pinned-head allowance are refused. |
 | `icx daemon [--dir <PATH>] [--idle-exit <SECS>]` | Keeps the workspace resident and serves hooks over a private Unix socket (§2.1, Step 3). |
 | `icx doctor [--dir <PATH>]` | Probes local agent binaries and configs (Claude Code, Codex, agy, Hermes, `curl`, `/dev/shm` writability) and verifies the workspace store and Merkle-DAG. |
 | `icx status [--dir <PATH>]` | Prints `⟪ICX:STATUS│cas_artifacts=<N>│redacted_artifacts=<N>│unique_chunks=<N>│dag_nodes=<N>│sealed_epochs=<N>│hdc_entries=<N>│graph_edges=<N>│shm_seq=<N>⟫`. |
-| `icx benchmark` | Runs the synthetic in-process benchmark suite (§8.1, Test 5). |
+| `icx benchmark [--json]` | Runs the synthetic in-process benchmark suite with strict SLO exits; JSON includes actual 1k/10k scan measurements and compiled build/fixture provenance. |
 | `icx deref <HANDLE> [--lines <START:END>] [--dir <PATH>] [--raw]` | Returns the stored bytes, or an inclusive 1-based line slice, for a 64-bit (`#icx:<16-hex>`) or 48-bit (`#icx:<12-hex>`) handle. By default the output starts with `⟪ICX:PROVENANCE│id=<HANDLE>│trust=untrusted_data⟫` and the body is delimiter-escaped; `--raw` prints the exact stored bytes. |
 | `icx encode-ahtl <FILE> [--dir <PATH>] [--profile <a\|b>]` | Redacts secrets, ingests `<FILE>` into the workspace, updates the indices, and prints a Profile B packet (default) or a Profile A 6-section packet (`--profile a`). |
 | `icx decode-ahtl '<AHTL_PACKET>'` | Parses a Profile A or Profile B packet and prints its fields and clauses. |
@@ -1081,7 +1132,7 @@ Install `~/.config/systemd/user/icx-proxy.service` to keep the proxy running acr
 
 ```ini
 [Unit]
-Description=Infinity-Context (icx v1.1.0) Cache-Epoch Wire Proxy
+Description=Infinity-Context (icx v1.2.0) Cache-Epoch Wire Proxy
 Documentation=https://github.com/doublegate/Infinity-Context/blob/main/docs/deployment-and-agent-integration-guide.md
 
 [Service]
@@ -1115,7 +1166,7 @@ systemctl --user status icx-proxy.service
 
 | Symptom / Error Message | Root Cause | Resolution |
 | :--- | :--- | :--- |
-| **`icx: ignoring repository-local workspace <repo>/.icx (v1.0.x layout ...)`** | A v1.0.x `.icx/` exists in the repository. v1.1.0 never loads it implicitly, because a cloned repository could ship a crafted one. | If it is yours, adopt it (§9). Otherwise ignore or delete it; the per-project default workspace is used instead. |
+| **`icx: ignoring repository-local workspace <repo>/.icx (v1.0.x layout ...)`** | A v1.0.x `.icx/` exists in the repository. Current icx never loads it implicitly, because a cloned repository could ship a crafted one. | If it is yours, adopt it (§9). Otherwise ignore or delete it; the per-project default workspace is used instead. |
 | **`icx: refusing untrusted workspace ...: workspace has no owner seal`** | The directory was not created by this install of `icx` (or was created by v1.0.x). | Run `icx trust --dir <PATH>` if you own it and trust its contents. |
 | **`... owner seal is invalid (copied, moved, or from another install)`** | The workspace was copied, moved, or created with a different `install.key`. | Re-adopt it with `icx trust --dir <PATH>` if you trust it. |
 | **`... mode <NNN> grants group/other access (expected 0700)` or `not owned by the current user`** | Permissions or ownership were changed. | `chmod 700 <PATH>` (and `chmod 600` its files) if it is yours; never adopt a directory owned by another user. |
@@ -1132,7 +1183,25 @@ systemctl --user status icx-proxy.service
 
 ## 9. Upgrading from v1.0.x
 
-- **Repository-local `.icx/` is ignored.** v1.1.0 never loads a repository-local `.icx/` implicitly and prints a one-time warning when it finds one. New state goes to the per-project default workspace under `~/.local/state/icx/workspaces/`.
+### v1.1.0 to v1.2.0 Candidate
+
+- Back up the whole workspace while writers are stopped before upgrading. CAS identities and
+  archived unversioned Q15 `fc` values retain their interpretation.
+- Legacy `ICXHDC03` is readable, but the MMU rebuilds exact token postings from the persisted CAS
+  event log. Saving writes `ICXHDC04`; old binaries cannot read 04. Keep the pre-upgrade backup
+  for downgrade instead of trying to relabel a new snapshot as 03.
+- Managed prompt selection is now automatically bounded. Legacy state without a policy receives
+  the default 32,768 / 4,096 / 4,096 budget. Review it for your model with `icx context-budget`.
+- Daemon success now follows a committed WAL transaction with `synchronous=FULL`; write-behind
+  latency figures below are historical and do not describe this durability contract.
+- Codex hooks no longer emit unsupported `updatedMCPToolOutput`. They still capture output for
+  recall, but original native output remains visible and billed according to the host/provider.
+- MCP callers must send canonical `name:"icx"`, a valid envelope and explicit `arguments.op`.
+  Nonconforming aliases and implicit-status calls now fail rather than mutating/loading state.
+
+### v1.0.x Workspace Migration
+
+- **Repository-local `.icx/` is ignored.** Current icx never loads a repository-local `.icx/` implicitly and prints a one-time warning when it finds one. New state goes to the per-project default workspace under `~/.local/state/icx/workspaces/`.
 - **Adopting an existing `.icx/`.** If the directory is yours and you want to keep its contents, run `icx trust --dir <absolute path to .icx>` and then pass that same `--dir` (or set `ICX_DIR`) for every surface. `icx trust` sets mode `0700`, writes `.gitignore` (`*`), writes the owner seal, and reseals the store. It warns when the directory is inside a git work tree, because a pull can replace it; the default out-of-repo location is safer. Adopting is not required: you can also start fresh with the default workspace.
 - **JSON stores migrate to SQLite.** v1.0.x JSON workspace files (`cas_store.json`, `bitemporal_graph.json`, `mmu_state.json`) are migrated into `icx.sqlite3` on first load. The migration is non-destructive; the JSON files are left in place.
 - **Remove `--dir .icx` from configurations.** Drop `--dir .icx` and `ICX_DIR=.icx` from hook commands, MCP server entries, and service units; the default workspace is resolved from the working directory.

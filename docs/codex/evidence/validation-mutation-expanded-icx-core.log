@@ -1,0 +1,16 @@
+Found 28 mutants to test
+ok       Unmutated baseline in 47s build + 0s test
+MISSED   crates/icx-core/src/cas.rs:77:9: replace CasStore::unique_chunk_count -> usize with 0 in 2s build + 1s test
+MISSED   crates/icx-core/src/cas.rs:565:21: replace || with && in CasStore::from_parts in 4s build + 1s test
+MISSED   crates/icx-core/src/dag.rs:260:9: replace MerkleContextDag::find_turn_any_role -> Option<(&str, &str, f32)> with Some(("xyzzy", "", 0.0)) in 2s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:1006:49: replace < with <= in MerkleContextDag::verify_merkle_integrity_with_ancestors in 3s build + 1s test
+MISSED   crates/icx-core/src/epoch.rs:70:9: replace AssembledWindow::prefix_reuse_bytes -> (usize, usize) with (0, 0) in 3s build + 0s test
+MISSED   crates/icx-core/src/epoch.rs:349:13: replace + with * in CacheEpochController::assemble_window in 1s build + 0s test
+ERROR Worker thread failed: Failed to copy /home/parobek/Code/OSS_Public-Projects/Infinity-Context/fuzz/target/x86_64-unknown-linux-gnu/release/build/icx-fuzz/eab98ae3bbf94af4/out/mcp_jsonrpc to /tmp/Infinity-Context/validation/cargo-mutants-Infinity-Context-epfQR3.tmp/fuzz/target/x86_64-unknown-linux-gnu/release/build/icx-fuzz/eab98ae3bbf94af4/out/mcp_jsonrpc
+
+Caused by:
+    No space left on device (os error 28)
+Error: Failed to copy /home/parobek/Code/OSS_Public-Projects/Infinity-Context/fuzz/target/x86_64-unknown-linux-gnu/release/build/icx-fuzz/eab98ae3bbf94af4/out/mcp_jsonrpc to /tmp/Infinity-Context/validation/cargo-mutants-Infinity-Context-epfQR3.tmp/fuzz/target/x86_64-unknown-linux-gnu/release/build/icx-fuzz/eab98ae3bbf94af4/out/mcp_jsonrpc
+
+Caused by:
+    No space left on device (os error 28)

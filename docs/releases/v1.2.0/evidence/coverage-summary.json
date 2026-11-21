@@ -1,0 +1,9 @@
+{
+  "lines_found": 20539,
+  "lines_hit": 19518,
+  "line_percent": 95.028969277959,
+  "floor": 95,
+  "passed": true,
+  "lcov_sha256": "cbd8c86700ea5ec2759d9ed554435818ecafae66c1ef1ebfe1948e5632d65c91",
+  "raw_lcov_path": "/tmp/Infinity-Context/v120/coverage.lcov"
+}

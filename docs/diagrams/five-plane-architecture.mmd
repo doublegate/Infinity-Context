@@ -1,58 +1,23 @@
-%%{init: {
-  "theme": "dark",
-  "themeVariables": {
-    "fontFamily": "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-    "fontSize": "13px",
-    "primaryColor": "#0f172a",
-    "primaryTextColor": "#f8fafc",
-    "primaryBorderColor": "#38bdf8",
-    "lineColor": "#64748b",
-    "secondaryColor": "#1e1b4b",
-    "tertiaryColor": "#064e3b"
-  },
-  "flowchart": { "curve": "basis", "nodeSpacing": 45, "rankSpacing": 60 }
-}}%%
-
+%% Infinity-Context v1.2.0 candidate; measurements: docs/numbers.md
 flowchart TB
-  subgraph AGENTS["Host AI Coding & Research Agents"]
-    direction LR
-    CC["Claude Code CLI<br/>PostToolUse / UserPromptSubmit<br/>PreCompact / SessionStart / Stop"]
-    CX["OpenAI Codex CLI<br/>~/.codex/hooks.json<br/>state_5.sqlite + Wire Proxy"]
-    AG["Google Antigravity (agy)<br/>~/.gemini/config/hooks.json (exit 0)<br/>injectSteps Envelope"]
-    HM["Hermes Agent + MCP<br/>MemoryProvider Bridge<br/>state.db + mind.db"]
+  subgraph AGENTS["Agent surfaces"]
+    CC["Claude Code: native output replacement"]
+    CX["Codex: PostToolUse capture only; replacement capability false"]
+    AG["Antigravity: capture and supported context hooks"]
+    HM["Hermes: user-installed ContextEngine shim"]
   end
-
-  subgraph P1["Plane 1: Alien Holographic Token Lattice (icx-codec)"]
-    direction LR
-    RED["SecretRedactor<br/>Sanitizes API Keys &amp;<br/>Prompt-Injection Guards"]
-    SKEL["StructuralSkeletonizer<br/>Extracts §fn / §ty / §mod<br/>Preserves !err / !panic"]
-    AHTL["AhtlPacket Codec<br/>«AHTLv1 #icx:hash !surp @fcga<br/>⟦Braille-256⟧ §...» (214x synthetic)"]
-  end
-
-  subgraph P2["Plane 2: Virtual Context Memory & Merkle-DAG (icx-core)"]
-    direction LR
-    CDC["FastCdcChunker + CasStore<br/>Gear-Hash Rolling CDC<br/>BLAKE3 64-Bit #icx:handle"]
-    DAG["MerkleContextDag (LCM)<br/>L0 Raw -> L1 Episode -> L2 Folded -> L3 Epoch<br/>100% Lossless O(1) Page-In"]
-  end
-
-  subgraph P3["Plane 3: Associative Recall & Temporal Graph (icx-hdc + icx-store)"]
-    direction LR
-    HDC["10,240-Bit Hypervector VSA<br/>Infini-Attention Delta Bundler<br/>POPCNT Scan (~62 us / 1K nodes)"]
-    FCGA["Contractive IFS FractalCoord<br/>+ TitansSurpriseGate<br/>Momentum S_t = eta*S_{t-1} + (1-eta)*surp"]
-    PPR["Bi-Temporal Graph + HippoRAG PPR<br/>Valid [t_valid, t_invalid)<br/>Tx [t_created, t_expired)"]
-  end
-
-  subgraph P45["Plane 4 & Plane 5: Cache-Epoch Wire Proxy & /dev/shm Seqlock Fabric"]
-    direction LR
-    EPOCH["CacheEpochController + WireProxyTransformer<br/>Byte-Frozen Prefix Epochs (95.5% byte reuse, proxy)<br/>Anthropic 4-Slot &amp; OpenAI 1024-Tok Prefix"]
-    SHM["SeqlockTelemetryBus (icx-bus)<br/>icx-fabric-v1.shm (256-slot seqlock ring file)<br/>~38 us file-backed Cross-Agent Telepathy"]
-  end
-
-  CC & CX & AG & HM --> RED
-  RED --> SKEL --> AHTL
-  RED --> CDC --> DAG
-  DAG --> AHTL
-  AHTL --> HDC --> FCGA --> PPR
-  AHTL & PPR & DAG --> EPOCH
-  HDC <--> SHM
-  SHM -.-> CC & CX & AG & HM
+  CC & CX & AG & HM --> MMU["icx-adapters: validate input and redact before persistence"]
+  MMU --> CODEC["Plane 1 / icx-codec: symbolic skeleton + Braille projection; lossy model view"]
+  MMU --> CAS["Plane 2 / icx-core: FastCDC + BLAKE3 CAS + Merkle-DAG; exact post-redaction bytes"]
+  CAS --> INDEX["Plane 3 / icx-hdc + icx-store: exact-token postings + HDC/fractal candidates + temporal PPR"]
+  INDEX --> RANK["Rank: lexical coverage, combined score, artifact ID; common postings may span corpus"]
+  INDEX --> SNAP["ICXHDC04 writes; 03 reads; MMU rebuilds missing postings from CAS event log"]
+  MMU --> EPOCH["Plane 4 / epoch controller + HTTP/1 JSON proxy: immutable cold history, budgeted selection"]
+  RANK --> WINDOW["Bounded managed window: head + selected sealed frames + recent frames + structured tail"]
+  EPOCH --> WINDOW
+  MMU --> BUS["Plane 5 / icx-bus: in-process atomics; file-backed positioned I/O and writer lock"]
+  BUS --> WINDOW
+  WINDOW --> TAIL["Whole useful tail frames; compact CAS handles; unsent bus events stay queued"]
+  MMU --> STORE["Daemon: SQLite WAL synchronous=FULL; commit before successful ACK; no write-behind"]
+  TAIL --> MCP["Canonical tool icx: validated JSON-RPC envelope and typed operation arguments"]
+  MCP --> AGENTS

@@ -1,0 +1,7 @@
+Found 12 mutants to test
+ok       Unmutated baseline in 19s build + 0s test
+MISSED   crates/icx-codec/src/redact.rs:376:38: replace < with == in SecretRedactor::redact_value_span in 3s build + 0s test
+MISSED   crates/icx-codec/src/redact.rs:460:33: replace < with <= in SecretRedactor::redact_env_assignments in 3s build + 0s test
+MISSED   crates/icx-codec/src/skeleton.rs:177:23: replace > with >= in StructuralSkeletonizer::skeletonize_log in 1s build + 0s test
+TIMEOUT  crates/icx-codec/src/redact.rs:546:36: replace + with - in SecretRedactor::redact_colon_assignments in 3s build + 60s test
+12 mutants tested in 2m: 3 missed, 8 caught, 1 timeouts

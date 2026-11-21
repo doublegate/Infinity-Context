@@ -1,0 +1,253 @@
+{
+  "scope": "Matched literal old/new kernels in isolated probe; measurements occurred while root verification could contend; no whole-system SLO claimed from this experiment",
+  "source": "hamming-ab-probe.rs",
+  "unsafe": "forbid in probe manifest; no unsafe intrinsics",
+  "conditions": "64MiB read scrub versus immediate same-array pre-scan; rotated kernel order;10repetitions each",
+  "production_choice": "single_u64 contiguous const reduction; query barrier once per scan; independent1k construction restored",
+  "rows": {
+    "portable": {
+      "medians": [
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 1000,
+          "kernel": "four_u32",
+          "us": 377.77200000000005
+        },
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 1000,
+          "kernel": "single_u32",
+          "us": 375.90549999999996
+        },
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 1000,
+          "kernel": "single_u64",
+          "us": 379.36400000000003
+        },
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 1000,
+          "kernel": "four_u64",
+          "us": 381.45050000000003
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 1000,
+          "kernel": "four_u32",
+          "us": 117.94200000000001
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 1000,
+          "kernel": "single_u32",
+          "us": 101.1165
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 1000,
+          "kernel": "single_u64",
+          "us": 95.6015
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 1000,
+          "kernel": "four_u64",
+          "us": 109.35849999999999
+        },
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 10000,
+          "kernel": "four_u32",
+          "us": 3839.68
+        },
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 10000,
+          "kernel": "single_u32",
+          "us": 3858.826
+        },
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 10000,
+          "kernel": "single_u64",
+          "us": 3798.2695000000003
+        },
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 10000,
+          "kernel": "four_u64",
+          "us": 3903.5955
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 10000,
+          "kernel": "four_u32",
+          "us": 2284.3985000000002
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 10000,
+          "kernel": "single_u32",
+          "us": 2139.5285000000003
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 10000,
+          "kernel": "single_u64",
+          "us": 1736.962
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 10000,
+          "kernel": "four_u64",
+          "us": 2223.05
+        }
+      ],
+      "assembly": {
+        "scan_four_u32": {
+          "instruction_lines": 230,
+          "shuffle_unpack_blend_permute": 25,
+          "popcnt_instructions": 0
+        },
+        "scan_four_u64": {
+          "instruction_lines": 222,
+          "shuffle_unpack_blend_permute": 17,
+          "popcnt_instructions": 0
+        },
+        "scan_single_u32": {
+          "instruction_lines": 77,
+          "shuffle_unpack_blend_permute": 3,
+          "popcnt_instructions": 0
+        },
+        "scan_single_u64": {
+          "instruction_lines": 69,
+          "shuffle_unpack_blend_permute": 1,
+          "popcnt_instructions": 0
+        }
+      }
+    },
+    "native": {
+      "medians": [
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 1000,
+          "kernel": "four_u32",
+          "us": 363.95050000000003
+        },
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 1000,
+          "kernel": "single_u32",
+          "us": 362.702
+        },
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 1000,
+          "kernel": "single_u64",
+          "us": 360.7825
+        },
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 1000,
+          "kernel": "four_u64",
+          "us": 362.1325
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 1000,
+          "kernel": "four_u32",
+          "us": 57.539
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 1000,
+          "kernel": "single_u32",
+          "us": 39.448
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 1000,
+          "kernel": "single_u64",
+          "us": 36.4255
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 1000,
+          "kernel": "four_u64",
+          "us": 49.6505
+        },
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 10000,
+          "kernel": "four_u32",
+          "us": 3723.2974999999997
+        },
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 10000,
+          "kernel": "single_u32",
+          "us": 3643.2394999999997
+        },
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 10000,
+          "kernel": "single_u64",
+          "us": 3639.4035000000003
+        },
+        {
+          "condition": "scrubbed_64MiB",
+          "candidates": 10000,
+          "kernel": "four_u64",
+          "us": 3654.3815000000004
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 10000,
+          "kernel": "four_u32",
+          "us": 1399.2995
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 10000,
+          "kernel": "single_u32",
+          "us": 1831.382
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 10000,
+          "kernel": "single_u64",
+          "us": 1461.8629999999998
+        },
+        {
+          "condition": "immediately_prescanned",
+          "candidates": 10000,
+          "kernel": "four_u64",
+          "us": 1376.8229999999999
+        }
+      ],
+      "assembly": {
+        "scan_four_u32": {
+          "instruction_lines": 103,
+          "shuffle_unpack_blend_permute": 25,
+          "popcnt_instructions": 0
+        },
+        "scan_four_u64": {
+          "instruction_lines": 96,
+          "shuffle_unpack_blend_permute": 17,
+          "popcnt_instructions": 0
+        },
+        "scan_single_u32": {
+          "instruction_lines": 94,
+          "shuffle_unpack_blend_permute": 14,
+          "popcnt_instructions": 0
+        },
+        "scan_single_u64": {
+          "instruction_lines": 79,
+          "shuffle_unpack_blend_permute": 9,
+          "popcnt_instructions": 0
+        }
+      }
+    }
+  }
+}

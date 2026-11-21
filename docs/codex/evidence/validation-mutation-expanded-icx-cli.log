@@ -1,0 +1,16 @@
+Found 27 mutants to test
+ok       Unmutated baseline in 97s build + 4s test
+MISSED   crates/icx-cli/src/main.rs:138:5: replace print_help with () in 3s build + 4s test
+MISSED   crates/icx-cli/src/main.rs:317:33: replace match guard i + 1 < args.len() with true in run_daemon in 4s build + 4s test
+MISSED   crates/icx-cli/src/main.rs:325:20: replace += with -= in run_daemon in 1s build + 4s test
+MISSED   crates/icx-cli/src/main.rs:413:36: replace + with * in parse_dir_flag in 1s build + 4s test
+MISSED   crates/icx-cli/src/main.rs:493:32: replace < with > in run_deref in 0s build + 4s test
+MISSED   crates/icx-cli/src/main.rs:767:29: replace match guard i + 1 < args.len() with true in run_proxy_server in 0s build + 4s test
+MISSED   crates/icx-cli/src/main.rs:90:42: replace * with / in 82s build + 4s test
+MISSED   crates/icx-cli/src/main.rs:771:26: replace + with - in run_proxy_server in 0s build + 4s test
+MISSED   crates/icx-cli/src/main.rs:853:47: replace < with > in execute_proxy_transform in 2s build + 4s test
+TIMEOUT  crates/icx-cli/src/main.rs:758:35: replace < with > in run_proxy_server in 0s build + 60s test
+MISSED   crates/icx-cli/src/main.rs:1539:15: replace ^= with |= in run_benchmark in 0s build + 4s test
+MISSED   crates/icx-cli/src/daemon.rs:28:79: replace * with / in 0s build + 4s test
+TIMEOUT  crates/icx-cli/src/main.rs:1105:19: replace += with *= in parse_doctor_dir_flag in 0s build + 60s test
+27 mutants tested in 5m: 11 missed, 14 caught, 2 timeouts

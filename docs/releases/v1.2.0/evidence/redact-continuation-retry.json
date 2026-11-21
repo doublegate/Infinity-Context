@@ -1,0 +1,9 @@
+{
+  "original_sha256": "2316d10beca80ab250ddf34fa89cf17d35639d18c033fdc924733747e223d53f",
+  "original_hex": "223a5b52454441635445443a735f232d735f523d5300000000003a5f2200465245532a6b2d736b2d7368454f454d464e52455f544f4b454e3a5c274552457368454f452020733a2f2f50502a414f4b454e3a5c2750502d485f544f4b454e3a0a223a735f544f4b454e3a5c2750544f4b6b45532a6b2d736b454e502d7368454f454d464e52452154",
+  "minimal_sha256": "8f49cfab541da59ec08c2cb94f7ff07f77265e8033a73b8e9c3b6d7d37879e7f",
+  "minimal_hex": "544f4b454e3a2720275f544f4b454e3a0a3a",
+  "minimal_utf8": "TOKEN:' '_TOKEN:\n:",
+  "replay": "same=false\ninput=\"TOKEN:' '_TOKEN:\\n:\"\nonce=\"TOKEN:'[REDACTED:CONFIG_SECRET]'_TOKEN:\\n:\"\ntwice=\"TOKEN:'[REDACTED:CONFIG_SECRET]'_TOKEN:\\n[REDACTED:SECRET]\"\n",
+  "scope": "single-byte-deletion minimal; property failure, not production panic"
+}

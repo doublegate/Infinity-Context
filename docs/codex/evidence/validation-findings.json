@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ICX-CODEX-070",
+    "title": "Release ancestry gate does not require successful CI",
+    "severity": "Medium",
+    "category": "release control defect",
+    "confidence": "high",
+    "location": ".github/workflows/release.yml:65-95; docs/build-and-tooling.md:77",
+    "report": "07-supply-chain-governance.md",
+    "prior_ids": [
+      "ICX-AUD-040"
+    ]
+  },
+  {
+    "id": "ICX-CODEX-071",
+    "title": "Unicode PDF and ISO archive licensing remain unsupported by Unicode-3.0 annotation",
+    "severity": "Medium",
+    "category": "governance evidence defect",
+    "confidence": "high for mismatch; legal outcome unadjudicated",
+    "location": "REUSE.toml:295-307; ref-docs/unicode-braille-patterns/",
+    "report": "07-supply-chain-governance.md",
+    "prior_ids": [
+      "ICX-AUD-036"
+    ]
+  },
+  {
+    "id": "ICX-CODEX-072",
+    "title": "Benchmark presents extrapolated 10k-node time beside measured 1k-node time",
+    "severity": "Low",
+    "category": "measurement limitation",
+    "confidence": "high",
+    "location": "crates/icx-cli/src/main.rs:1412; docs/performance.md:23",
+    "report": "06-validation-performance.md",
+    "prior_ids": [
+      "ICX-AUD-028"
+    ]
+  },
+  {
+    "id": "ICX-CODEX-073",
+    "title": "Independent mutation samples still expose unpinned production behaviors",
+    "severity": "Medium",
+    "category": "test assurance gap",
+    "confidence": "high",
+    "location": "crates/icx-core/src/dag.rs:260; crates/icx-hdc/src/lib.rs:356,534; crates/icx-codec/src/redact.rs:376,460",
+    "report": "06-validation-performance.md",
+    "prior_ids": [
+      "ICX-AUD-039"
+    ]
+  },
+  {
+    "id": "ICX-CODEX-074",
+    "title": "Patent and commercial text still requires counsel reconciliation with distributed GPL terms",
+    "severity": "Medium",
+    "category": "governance question",
+    "confidence": "high that conflicting text persists; legal conclusion deferred",
+    "location": "PATENTS.md:23-32; CLA.md:31-33; COMMERCIAL.md:15-24",
+    "report": "07-supply-chain-governance.md",
+    "prior_ids": [
+      "ICX-AUD-035"
+    ]
+  }
+]

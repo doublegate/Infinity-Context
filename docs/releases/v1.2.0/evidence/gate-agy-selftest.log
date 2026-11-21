@@ -1,0 +1,134 @@
+agy-review comment-selection self-test
+  ok    selects the oldest of OUR OWN marked comments
+  ok    never selects another user or another bot
+  ok    ignores bot comments without the marker
+  ok    yields empty when we have no comment yet
+  ok    yields empty for an empty comment list
+  ok    the head split drops the marker and stops at the archive
+  ok    the archive split returns only the archived rounds
+  ok    a body with no archive still yields its head
+  ok    a body with no archive yields an empty archive
+  ok    the head never carries the marker into the archive
+  ok    a clean archive quoting a standalone </details> keeps its closing tag
+  ok    a clean archive with a <details open> block keeps its closing tag
+  ok    the prior dropped-round count is read back
+  ok    a body without a dropped note reads as 0
+  ok    a dropped note quoted inside a ROUND is not counted
+  ok    the assembled comment carries the cumulative dropped total
+  ok    a pre-migration wrapper and its stray close are still removed
+  ok    dropping from an empty archive fails rather than spinning
+  ok    an unmarked (legacy) archive drops nothing
+  ok    dropping removes the OLDEST round, keeping the newest
+  ok    a <details> INSIDE a round is not mistaken for a round boundary
+  ok    agy-review.sh emits the round sentinel
+  ok    agy-review.sh never deletes a comment
+  ok    --arg/--argjson are not passed to `gh api`
+  ok    a bare backend 503 is caught
+  ok    RESOURCE_EXHAUSTED is caught
+  ok    a bare truncated-output tool notice is caught
+  ok    a review DISCUSSING a 503 is not caught
+  ok    an error on line 3 is not caught (only line 1 counts)
+  ok    an empty capture is not caught
+  ok    a heading MENTIONING an error mid-line is not caught
+  ok    a leading-whitespace error is still caught
+  ok    a TIMEOUT error is caught (was not, before the guard stopped enumerating)
+  ok    an unfamiliar error signature is caught
+  ok    the diff cap cuts an oversized diff
+  ok    the diff cap leaves a small diff alone
+  ok    a truncated diff is disclosed in the prompt
+  ok    the prompt cap stays within its budget
+  ok    the prompt cap's own notice survives the cut
+  ok    an oversized review round is capped
+  ok    a capped review round says it was truncated
+  ok    a prompt that fits the cap is not cut
+  ok    a non-positive cut size is refused and the file is untouched
+  ok    a cap smaller than its own notice never cuts with a negative size
+  ok    a split UTF-8 sequence is scrubbed
+  ok    the python3 fallback scrubs when iconv is absent
+  ok    iconv alone scrubs a split sequence (python3 absent, iconv -c exits 1)
+  ok    a sanitizer's empty result never replaces the file
+  ok    both byte-cap paths call the shared scrub
+  ok    script records around an empty run leave nothing
+  ok    script records around a review leave only the review
+  ok    a backend error is back on the first line
+  ok    text that merely mentions a record mid-review is kept
+  ok    the script fallback pipes its capture through the filter
+  ok    localized script records are stripped too
+  ok    every mktemp'd variable is in the cleanup trap
+  ok    the EXIT trap and pre-declarations precede the first mktemp
+  ok    the trap and each pre-declaration block appear exactly once
+  ok    archive jq failures are logged
+  ok    MAX_DIFF_BYTES is normalized before its first arithmetic use
+  ok    MAX_PROMPT_BYTES is normalized before its first arithmetic use
+  ok    MAX_BODY_BYTES is normalized before its first arithmetic use
+  ok    normalize_numeric_env turns a leading-zero 080000 into 80000
+  ok    the archive <details> wrapper is guarded on a non-empty archive
+  ok    AGY_ERROR_MAX_BYTES='0' validates to 2000
+  ok    AGY_ERROR_MAX_BYTES='abc' validates to 2000
+  ok    AGY_ERROR_MAX_BYTES='5MB' validates to 2000
+  ok    AGY_ERROR_MAX_BYTES='' validates to 2000
+  ok    AGY_ERROR_MAX_BYTES='080' validates to 80
+  ok    AGY_ERROR_MAX_BYTES='4096' validates to 4096
+  ok    the script calls the error cap validation
+  ok    a lowercase error (agy under unbuffer) is caught
+  ok    an all-caps ERROR: is caught
+  ok    a long capture opening with an error is not caught
+  ok    outage + no review  -> fail the job
+  ok    outage + a review   -> do not fail
+  ok    no outage + no review -> not THIS guard's job
+  ok    duration: bare seconds
+  ok    duration: explicit seconds
+  ok    duration: minutes
+  ok    duration: hours
+  ok    duration: leading zero minutes
+  ok    duration: leading zero seconds
+  ok    duration: leading zero bare
+  ok    duration: rejects 'm'
+  ok    duration: rejects 's'
+  ok    duration: rejects ''
+  ok    duration: rejects '1m2s'
+  ok    duration: rejects '5x'
+  ok    duration: rejects '-3'
+  ok    duration: rejects ' 5m'
+  ok    duration: rejects '5M'
+  ok    numeric env: plain integer passes through
+  ok    numeric env: zero is a legal setting
+  ok    numeric env: leading zero canonicalizes
+  ok    numeric env: many leading zeros
+  ok    numeric env: empty falls back
+  ok    numeric env: non-numeric falls back
+  ok    numeric env: negative falls back
+  ok    numeric env: a variable name falls back
+  ok    numeric env: a non-numeric value never reaches arithmetic
+  ok    numeric env: a caller variable named 'name' is not shadowed
+  ok    numeric env: a caller variable named 'val' is not shadowed
+  ok    numeric env: a caller variable named 'default' is not shadowed
+  ok    scaling: 1.6 MB gets a real raise
+  ok    scaling: a padded count still scales
+  ok    scaling: a huge diff hits the ceiling
+  ok    scaling: no argument leaves the base
+  ok    scaling: the default gives a 426 KB diff 665 s
+  ok    scaling: junk leaves the base
+  ok    scaling: an explicit timeout is not touched
+  ok    numeric env: canonical value is arithmetic-safe
+  ok    numeric env: the RAW value would have crashed
+  ok    406, lines variant: falls back, named 20,000-line
+  ok    406, files variant: falls back, named 300-file
+  ok    an unrelated gh error does not fall back
+  ok    a bare timeout notice is caught
+  ok    a partial review ending in the notice is caught
+  ok    a review quoting the notice mid-line is not caught
+  ok    an empty capture is not a timeout
+  ok    a legacy archive becomes one droppable round behind the new one
+  ok    an archived round keeps its reviewed-at time
+  ok    a head without the line is labeled archived-at
+  ok    the posted head records its reviewed-at time
+  ok    worst case 3675s 80m (job timeout) fits with 2 minutes to spare
+  ok    AGY_LOCK_WAIT 1860s outlasts one other review's whole hold of the agy lock (1815s)
+  ok    a 300 s AGY_LOCK_WAIT is reported shorter than one review's hold
+  ok    a pinned AGY_PRINT_TIMEOUT counts in the timeout budget
+  ok    the MAX_PROMPT_BYTES default is within ARG_SIZE_CEILING
+  ok    a huge head still yields its reviewed-at time under pipefail
+  ok    a huge marked archive is not wrapped again under pipefail
+  ok    no `exec` redirects to /dev/null
+all checks passed

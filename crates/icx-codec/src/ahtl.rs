@@ -662,6 +662,9 @@ impl AhtlWirePacketV1 {
 
     /// Renders the canonical 6-section Profile A wire packet:
     /// `⟦AHTL v1│#icx:<12|16-hex>((<slice_hint>))?│fc:<64-hex>│hv:<16-hex>│<Braille-64>│<Skeleton>⟧`
+    /// Raw framing glyphs in a public skeleton are normalized to ASCII bracket pairs, matching
+    /// ingestion sanitization. Percent literals retain their existing interpretation. CAS bytes
+    /// are unaffected; a skeleton is a lossy view, not the original source.
     pub fn render(&self) -> String {
         let mut handle_field = self.cas_handle_string();
         if let Some(hint) = &self.slice_hint {
@@ -677,7 +680,7 @@ impl AhtlWirePacketV1 {
             self.fractal_coord_hex,
             self.hdc_digest_hex,
             encode_braille_64(&self.braille_spectrum),
-            self.skeleton_body
+            crate::SecretRedactor::escape_ahtl_delimiters(&self.skeleton_body)
         )
     }
 
@@ -737,6 +740,9 @@ impl AhtlWirePacketV1 {
             decode_braille_64(braille_raw).ok_or(CodecError::MalformedBrailleSketch)?;
 
         let skeleton_body = parts.next().ok_or(CodecError::MalformedSubject)?.to_owned();
+        if skeleton_body.contains(['⟦', '⟧', '⟪', '⟫']) {
+            return Err(CodecError::MalformedSubject);
+        }
 
         Ok(Self {
             cas_handle,

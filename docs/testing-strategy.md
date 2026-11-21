@@ -1,6 +1,6 @@
 # Testing & Verification Strategy
 
-**Applies to:** `icx` v1.1.0  
+**Applies to:** `icx` v1.2.0 development candidate
 **References:** Master-Core Module 20 (Test-Driven Accuracy), [docs/performance.md](performance.md), [docs/build-and-tooling.md](build-and-tooling.md)
 
 ---
@@ -47,17 +47,22 @@
      hostile field text render to exactly one packet and round-trip; clause parsing is total.
    - **cargo-fuzz (`fuzz/fuzz_targets/`):** `ahtl_stream`, `hdc_snapshot`, `mcp_jsonrpc`,
      `redact`. The `fuzz/` crate is excluded from the workspace and needs a nightly toolchain.
-     Local 30 to 60 s runs for v1.1.0 found no crash; fuzzing is not part of CI.
+     Three initial v1.2.0 parser campaigns completed 900+ seconds. Redactor campaigns found
+     additional idempotence and UTF8 counterexamples; failing artifacts are retained as
+     regressions and renewed qualification remains open. See the dated logs in
+     [the release evidence](releases/v1.2.0/evidence/). Fuzzing is not part of CI.
 
 4. **Layer 4: Long-horizon simulations (synthetic)**
    - A 500-turn simulation (`sprint_5_1_500_turn_two_million_token_nih_oolong_and_prefix_cache_simulation`
      in `crates/icx-adapters/src/lib.rs`, more than 8 MB of generated tool output with heavy
      shared filler) plants passkeys at four turns and asserts that the active window stays under
-     32,768 estimated tokens, that the mean per-turn byte-prefix ratio over turns that do not seal
+     32,768 estimated tokens. This historical cache fixture explicitly configures a131,072-token
+     total window to retain its large pinned head; it also asserts the mean byte-prefix ratio over turns that do not seal
      an epoch is `>= 94%`, and that every passkey is found by associative recall and dereferenced
      exactly.
    - `icx benchmark` runs a 50-turn synthetic transcript and gates on byte-weighted prefix reuse
-     over **all** turns (`>= 90%`; 95.46% measured).
+     over **all** turns (`>= 90%`). Current JSON reports and repeated-process measurements
+     identify build flags, fixtures and dispersion rather than treating historical timings as current.
    - Both figures are byte-level proxies on generated input. They are not measurements of a
      provider's prompt-cache hit rate.
 
@@ -74,3 +79,17 @@
 
 All CI jobs use the pinned `1.100.0` toolchain and SHA-pinned actions
 ([docs/build-and-tooling.md](build-and-tooling.md) §3).
+
+## 2. v1.2.0 qualification additions
+
+New integration fixtures cover YAML scalar and redaction counterexamples, Profile A framing,
+independent numerical vectors, snapshot corruption and 03→04 upgrades, exact lexical candidates,
+configured context budgets, strict MCP input, and daemon durable-ACK crash/reopen behavior.
+The separately ignored 10k turn production test must be explicitly included during candidate
+qualification; ordinary workspace tests alone do not establish this result.
+
+Mutation samples are deliberately limited. The latest reconciled sample has 135 executions:
+80 caught, 43 missed, 7 unviable and 5 timeouts. Directed experiments and later tests are separate;
+they are not added as disjoint coverage. [Mutation triage](releases/v1.2.0/mutation-triage.md)
+records survivors, meaningful oracle gaps, equivalents and follow-up evidence. Passing line
+coverage or adjudication does not prove exhaustive defect detection.

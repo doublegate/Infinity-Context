@@ -1,0 +1,26 @@
+{
+  "qualification": "FAIL / unresolved performance qualification",
+  "quiet_series": "benchmark-quiet-v2-summary.json",
+  "host_observations": "benchmark-v2-host-observations.json",
+  "affinity_diagnostic": "benchmark-pinned-v2-diagnostic.json",
+  "assembly": [
+    "benchmark-v2-native-assembly.txt",
+    "benchmark-v2-portable-assembly.txt"
+  ],
+  "verified": [
+    "Exact embedded native/portable flags, fresh production rebuilds, unchanged source manifest",
+    "Independent1k candidates scanned before10k allocation; query barrier outside candidate loop",
+    "Homogeneous ten-core CPU, no hybrid-core placement explanation",
+    "No CPU settings changed, no user workloads stopped",
+    "Native one pinned execution reached95.61us/1k while later sameCPU samebinary executions took718.16 and1084.15us; a fixed500us kernel cost does not explain all variation",
+    "Native assembly uses compiler-generated AVX2 nibble popcounts, not AVX512 instructions"
+  ],
+  "limitations": [
+    "Coordinated quiet window excluded our heavy jobs; unrelated host LTO processes were subsequently observed, so fully idle host cannot be claimed",
+    "Post-run host observations cannot reconstruct precise workload, frequency or scheduler state at every timed scan",
+    "No causal proof that external contention alone explains scan regressions",
+    "Portable bind still above unchanged100ns ceiling; all10 native and portable measured processes failed at least one strict gate",
+    "A/B kernel improvement, exact-distance tests and compilation success are not a performance gate pass"
+  ],
+  "next_step": "Repeat qualification on a host with declared stable workload and recorded affinity/frequency observations, retaining existing thresholds and fresh/warm/scrubbed labels. Profile further only against a reproducible matched fixture; do not silently relax ceilings."
+}

@@ -1,21 +1,32 @@
+%% Infinity-Context v1.2.0 candidate; behavior differs by native adapter.
 sequenceDiagram
   autonumber
-  participant Agent as Host Agent (Claude / Codex / agy / Hermes)
-  participant Hook as icx-adapters (Hook / MCP)
-  participant Codec as icx-codec (Redactor + AHTL)
-  participant DAG as icx-core (BLAKE3 CAS + Merkle-DAG)
-  participant HDC as icx-hdc + icx-store (10,240-Bit VSA + PPR)
-  participant SHM as icx-bus (/dev/shm Seqlock Ring)
-
-  Agent->>Hook: PostToolUse / MCP Tool Output (e.g., 50 KB cargo test log)
-  Hook->>Codec: SecretRedactor::sanitize(raw_payload)
-  Codec-->>Hook: Sanitized text + redaction count
-  Hook->>DAG: CasStore::put_bytes() + MerkleContextDag::insert_raw_chunk()
-  DAG-->>Hook: IcxHandle (#icx:7bf8239fb7c504f1)
-  Hook->>HDC: Hypervector::from_text() + FractalCoord::project() + TitansSurpriseGate::observe()
-  HDC->>HDC: BiTemporalGraph::upsert_node() + PersonalizedPageRank
-  Hook->>Codec: AhtlPacket::encode() (Braille-256 + §fn/§ty + !err)
-  Codec-->>Hook: Compact AHTL Packet (214x synthetic)
-  Hook->>SHM: SeqlockTelemetryBus::publish(SeqlockSlot [4096 B])
-  SHM-->>Agent: Cross-Agent Telepathy Broadcast (~38 us file-backed)
-  Hook-->>Agent: Return JSON Envelope (updatedMCPToolOutput / AdditionalContext, exit 0)
+  participant Agent as Host agent
+  participant Adapter as icx-adapters / MMU
+  participant CAS as Redactor + BLAKE3 CAS / DAG
+  participant Index as Exact postings + HDC / fractal / PPR
+  participant Bus as File-backed bus
+  participant Store as SQLite store
+  Agent->>Adapter: Supported hook payload or canonical icx request
+  Adapter->>Adapter: Validate envelope, capability and arguments
+  Adapter->>CAS: Redact before hashing and persistence
+  CAS-->>Adapter: Recoverable artifact handle (exact post-redaction bytes)
+  Adapter->>Index: Index artifact; lexical coverage precedes similarity score
+  Adapter->>Bus: Publish bounded event (positioned I/O + writer lock)
+  Adapter->>Store: Persist successful daemon request state
+  Store-->>Adapter: Commit result (WAL synchronous=FULL)
+  alt Persistence fails
+    Adapter-->>Agent: Error response; daemon exits with error
+  else Persistence succeeds
+    alt Claude supported replacement
+      Adapter-->>Agent: Native replacement envelope
+    else Codex PostToolUse
+      Adapter-->>Agent: Non-replacing envelope; original output remains visible
+    else Other supported adapter operation
+      Adapter-->>Agent: Adapter-specific response
+    end
+  end
+  Agent->>Adapter: Next supported context assembly
+  Adapter->>Bus: Read pending events with expected sequence checks
+  Adapter->>Adapter: Select whole frames within conservative UTF-8 byte budget
+  Adapter-->>Agent: Managed window / structured tail; unsent events remain pending

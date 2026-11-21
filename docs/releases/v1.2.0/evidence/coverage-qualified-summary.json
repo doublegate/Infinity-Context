@@ -1,0 +1,11 @@
+{
+  "line_hit": 19571,
+  "line_total": 20559,
+  "line_percent": 95.19431878982441,
+  "lcov_sha256": "5e8692364b69599a7b0baafae7faecac0391e411d18c6534d88c07b08edf7c75",
+  "workspace_test_passed_sum": 224,
+  "workspace_test_ignored_sum": 0,
+  "test_binary_results": 47,
+  "include_ignored": true,
+  "scope": "Final production source plus independent chunk/ToolArtifact/L2/L4 corruption and oversized-head diagnostic regressions"
+}

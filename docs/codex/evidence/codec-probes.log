@@ -1,0 +1,16 @@
+Command: isolated release icx-codec-audit (exit0)
+Revision: a996d59f1eb468e7c386747e15f4c7e58d08410e
+profile_a_forged_packet_count=2
+subject_raw_newline=true
+redact "password: |\n  lowentropyfirst\n  lowentropysecond\npublic: ok\n" -> "password: |\n  lowentropyfirst\n  lowentropysecond\npublic: ok\n"
+redact "password: >\n  secretword\n  nextsecret\n" -> "password: [REDACTED:CONFIG_SECRET]\n  secretword\n  nextsecret\n"
+permute_zero_identity=false
+fc_half_encoded_word=4000, q14_expected=2000, decoded_2000=0.250007629627369
+suffix_false_positive=1, verified=0
+snapshot_accepts_nan=true
+Additional graph probe, exit0 (same harness with PPR extension):
+ppr_rounds=1 [("C", 0.63750005), ("B", 0.2125), ("A", 0.15)]
+ppr_rounds=2 [("A", 0.51125), ("B", 0.24862503), ("C", 0.24012502)]
+ppr_rounds=6 [("A", 0.40770334), ("C", 0.36754513), ("B", 0.22475176)]
+Independent Python blake3 digest of b'raw_payload_bytes':
+4f3598d97c50c48442732f33aa356e4a8cdad9daa25bbc12516154d13501a633

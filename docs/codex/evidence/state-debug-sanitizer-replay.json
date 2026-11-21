@@ -1,0 +1,38 @@
+[
+  {
+    "target": "ahtl_stream",
+    "command": [
+      "/tmp/Infinity-Context/validation/fuzz/ahtl_stream/target/x86_64-unknown-linux-gnu/release/ahtl_stream",
+      "-runs=1",
+      "/tmp/Infinity-Context/validation/fuzz/ahtl_stream/artifacts/crash-da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    ],
+    "exit": 0,
+    "child_override": "ASAN_OPTIONS appended :detect_leaks=0",
+    "artifact_bytes": 0,
+    "scope": "single-input replay only; original 901s campaign unchanged"
+  },
+  {
+    "target": "hdc_snapshot",
+    "command": [
+      "/tmp/Infinity-Context/validation/fuzz/hdc_snapshot/target/x86_64-unknown-linux-gnu/release/hdc_snapshot",
+      "-runs=1",
+      "/tmp/Infinity-Context/validation/fuzz/hdc_snapshot/artifacts/crash-da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    ],
+    "exit": 0,
+    "child_override": "ASAN_OPTIONS appended :detect_leaks=0",
+    "artifact_bytes": 0,
+    "scope": "single-input replay only; original 901s campaign unchanged"
+  },
+  {
+    "target": "mcp_jsonrpc",
+    "command": [
+      "/tmp/Infinity-Context/validation/fuzz/mcp_jsonrpc/target/x86_64-unknown-linux-gnu/release/mcp_jsonrpc",
+      "-runs=1",
+      "/tmp/Infinity-Context/validation/fuzz/mcp_jsonrpc/artifacts/crash-da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    ],
+    "exit": 0,
+    "child_override": "ASAN_OPTIONS appended :detect_leaks=0",
+    "artifact_bytes": 0,
+    "scope": "single-input replay only; original 901s campaign unchanged"
+  }
+]

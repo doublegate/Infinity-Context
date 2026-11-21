@@ -4,6 +4,11 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 
 ## Status
 
+**Active release work:** [v1.2.0 remediation](v1.2.0-remediation.md) on `codex-audit`, with
+[durable implementation status](../PROJECT-STATUS.md). The phase history and its original
+quantitative exit criteria below describe the original v1.0.0 plan; checked boxes are historical
+records, not current independent validation. Current published-manifest baseline is v1.1.0.
+
 - **Current Version:** `v1.0.0` (`Phase 0` `v0.1.0`, `Phase 1` `v0.2.0`, `Phase 2` `v0.3.0`, `Phase 3` `v0.4.0`, `Phase 4` `v0.5.0`, and `Phase 5` `v1.0.0` All Complete)
 - **Current Phase:** Phase 5 Complete (`v1.0.0` Production Release — All 5 Phases, 15 Sprints, and Tickets `T-11-001` through `T-52-002` Completed & Verified)
 - **Active Workspace:** 8 Rust crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`) — `std`-based, permanently `unsafe_code = "forbid"` (`0` `unsafe` blocks), Rust Edition `2024` / MSRV `1.100`, `>= 95%` Codecov line coverage (`97.5%+` measured)

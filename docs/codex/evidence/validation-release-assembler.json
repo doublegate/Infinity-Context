@@ -1,0 +1,52 @@
+[
+  {
+    "case": "new",
+    "exit": 0,
+    "assertions": {
+      "exit_expected": true
+    },
+    "stdout": "253577fbf59062f9f381936840fb9fc5a455f110c4a8d5238cf487799bf839bd  THIRD-PARTY-NOTICES.txt\ne5a85e8cb90801d5f716dad4e71637be8826515be7bafccbe284d380853b2802  icx-old.tar.gz\ntotal 12\n-rw-r--r-- 1 parobek parobek 171 Nov 20 21:21 SHA256SUMS\n-rw-r--r-- 1 parobek parobek  15 Nov 20 21:21 THIRD-PARTY-NOTICES.txt\n-rw-r--r-- 1 parobek parobek  13 Nov 20 21:21 icx-old.tar.gz\n",
+    "stderr": ""
+  },
+  {
+    "case": "preserve",
+    "exit": 0,
+    "assertions": {
+      "exit_expected": true,
+      "attached_bytes_preserved": true,
+      "no_reupload_attached": true
+    },
+    "stdout": "already attached, kept as is: icx-old.tar.gz\n253577fbf59062f9f381936840fb9fc5a455f110c4a8d5238cf487799bf839bd  THIRD-PARTY-NOTICES.txt\n9b4879cc905bdbc51e506665962541ff8e17246d93dfcd6777a60a6730a5a3ec  icx-old.tar.gz\nattached SHA256SUMS is extended with the new files\ntotal 8\n-rw-r--r-- 1 parobek parobek 171 Nov 20 21:21 SHA256SUMS\n-rw-r--r-- 1 parobek parobek  15 Nov 20 21:21 THIRD-PARTY-NOTICES.txt\n",
+    "stderr": ""
+  },
+  {
+    "case": "extend",
+    "exit": 0,
+    "assertions": {
+      "exit_expected": true,
+      "attached_bytes_preserved": true,
+      "no_reupload_attached": true,
+      "new_asset_uploaded": true
+    },
+    "stdout": "already attached, kept as is: icx-old.tar.gz\n253577fbf59062f9f381936840fb9fc5a455f110c4a8d5238cf487799bf839bd  THIRD-PARTY-NOTICES.txt\n3626b1aa287a2c70f39465b5ebba2f9beb3221d7341ac9933c449dc761f7090c  icx-new.tar.gz\n9b4879cc905bdbc51e506665962541ff8e17246d93dfcd6777a60a6730a5a3ec  icx-old.tar.gz\nattached SHA256SUMS is extended with the new files\ntotal 12\n-rw-r--r-- 1 parobek parobek 252 Nov 20 21:21 SHA256SUMS\n-rw-r--r-- 1 parobek parobek  15 Nov 20 21:21 THIRD-PARTY-NOTICES.txt\n-rw-r--r-- 1 parobek parobek  17 Nov 20 21:21 icx-new.tar.gz\n",
+    "stderr": ""
+  },
+  {
+    "case": "incompatible",
+    "exit": 1,
+    "assertions": {
+      "exit_expected": true
+    },
+    "stdout": "already attached, kept as is: icx-old.tar.gz\n253577fbf59062f9f381936840fb9fc5a455f110c4a8d5238cf487799bf839bd  THIRD-PARTY-NOTICES.txt\n9b4879cc905bdbc51e506665962541ff8e17246d93dfcd6777a60a6730a5a3ec  icx-old.tar.gz\n",
+    "stderr": "ERROR: attached SHA256SUMS line would change or disappear: 0000000000000000000000000000000000000000000000000000000000000000  icx-old.tar.gz\n"
+  },
+  {
+    "case": "outage",
+    "exit": 1,
+    "assertions": {
+      "exit_expected": true
+    },
+    "stdout": "",
+    "stderr": "HTTP 503\nERROR: could not look up release v1.1.0\n"
+  }
+]

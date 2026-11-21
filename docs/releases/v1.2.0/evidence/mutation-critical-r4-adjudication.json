@@ -1,0 +1,30 @@
+{
+  "scope": "Core semantic-family recheck overlaps prior campaigns; not new unique mutation coverage. No production changes.",
+  "inventory": 575,
+  "selected": 30,
+  "caught": 29,
+  "missed": 1,
+  "timeouts": 0,
+  "unviable": 0,
+  "test_file": "crates/icx-core/tests/integrity_v120.rs",
+  "oracles": [
+    "Independent chunk ID and full digest mismatches with no artifact records; same short prefix and corrupted digest suffix",
+    "Valid ToolArtifact, L2 branch, L4 folded epoch positive fixtures before corruption",
+    "Independent digest suffix, map key, self-consistent internal/map IDs, content and token metadata corruption",
+    "L2 framing prefix/suffix and folded epoch index/compressed-token corruption"
+  ],
+  "remaining_survivor": {
+    "name": "replace <= with > in CacheEpochController::assemble_window diagnostic-length guard",
+    "classification": "Fallback diagnostic guard, not omitted corruption oracle",
+    "reason": "Reached after pinned head already exceeds window allowance. Public budget setter rejects budgets smaller than pinned head; oversized constructor head uses default cap and mutated condition omits diagnostic. Persisted invalid policy path remains defensive. No blanket equivalence claim."
+  },
+  "validation": "Six integrity tests and targeted strict Clippy pass. Frozen r4 captured tests before two semicolon-only Clippy fixes; behavior unchanged.",
+  "later_evidence": {
+    "run": "mutation-critical-r5-summary.json",
+    "selected": 2,
+    "caught": 2,
+    "missed": 0,
+    "oracle": "Public infallible constructor with oversized pinned head must yield an actionable bounded ICX_CONTEXT_BUDGET_EXCEEDED diagnostic, rather than silently empty context.",
+    "scope": "Separate later frozen source; includes diagnostic-fit and frame-allowance comparisons. Historical r4 outcome remains 29 caught / 1 missed; overlaps are not new unique coverage."
+  }
+}

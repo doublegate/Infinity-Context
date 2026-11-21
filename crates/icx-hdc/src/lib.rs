@@ -13,6 +13,7 @@ pub use crate::snapshot::SnapshotError;
 pub use crate::surprise::{RetentionTier, SurpriseVerdict, TitansSurpriseGate};
 use icx_core::ArtifactId;
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// Normative trait contract for the Hyperdimensional & Fractal Associative Memory Index (`docs/interfaces.md` §3).
 pub trait AssociativeMemoryIndex: Send + Sync {
@@ -53,6 +54,28 @@ fn lookup_tokens(text: &str) -> impl Iterator<Item = String> + '_ {
     text.split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '/')
         .filter(|s| s.len() >= 2)
         .map(str::to_ascii_lowercase)
+}
+
+/// Longest token (bytes) admitted to the exact lexical index. Longer runs (hex blobs, minified
+/// lines) are not identifiers, and a run beyond the snapshot string bound would make the whole
+/// snapshot undecodable. Indexing and querying apply the same rule.
+const MAX_LEXICAL_TOKEN_BYTES: usize = 256;
+
+/// Maximum number of distinct tokens in the exact lexical index, equal to the decoder's bound, so
+/// `encode_snapshot` never writes a token table `decode_snapshot` rejects.
+const MAX_LEXICAL_TOKENS: usize = snapshot::MAX_SNAPSHOT_ITEMS as usize;
+
+/// Longest stored subject (bytes), equal to the decoder's string bound.
+const MAX_STORED_SUBJECT_BYTES: usize = snapshot::MAX_SNAPSHOT_STRING as usize;
+
+/// [`lookup_tokens`] restricted to tokens eligible for the exact lexical index.
+fn index_tokens(text: &str) -> impl Iterator<Item = String> + '_ {
+    lookup_tokens(text).filter(|t| t.len() <= MAX_LEXICAL_TOKEN_BYTES)
+}
+
+/// Inverse document frequency weight of a token present in `df` of `n` entries.
+fn idf(n: usize, df: usize) -> f64 {
+    (1.0 + n as f64 / df.max(1) as f64).ln()
 }
 
 /// Three bit positions (k = 3) in a 256-bit Bloom filter for `token` (FNV-1a 64).
@@ -145,12 +168,26 @@ pub struct ObservationReceipt {
 }
 
 /// Unified 10,240-Bit HDC + Fractal Chaos-Game + Titans Surprise Associative Index.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct HdcAssociativeIndex {
     entries: Vec<IndexedEntry>,
     summaries: Vec<EntrySummary>,
     trajectory_archive: FractalTrajectoryArchive,
     surprise_gate: TitansSurpriseGate,
+    /// Exact token -> entry postings. `None` denotes a legacy snapshot without content tokens.
+    lexical_postings: Option<BTreeMap<String, Vec<usize>>>,
+}
+
+impl Default for HdcAssociativeIndex {
+    fn default() -> Self {
+        Self {
+            entries: Vec::new(),
+            summaries: Vec::new(),
+            trajectory_archive: FractalTrajectoryArchive::default(),
+            surprise_gate: TitansSurpriseGate::default(),
+            lexical_postings: Some(BTreeMap::new()),
+        }
+    }
 }
 
 impl HdcAssociativeIndex {
@@ -184,6 +221,17 @@ impl HdcAssociativeIndex {
         }
         self.trajectory_archive.write_snapshot(&mut w);
         self.surprise_gate.write_snapshot(&mut w);
+        w.u8(u8::from(self.lexical_postings.is_some()));
+        if let Some(postings) = &self.lexical_postings {
+            w.len(postings.len());
+            for (token, indices) in postings {
+                w.str(token);
+                w.len(indices.len());
+                for &idx in indices {
+                    w.len(idx);
+                }
+            }
+        }
         w.buf
     }
 
@@ -191,7 +239,7 @@ impl HdcAssociativeIndex {
     /// bound violation, bad magic, or trailing data.
     pub fn decode_snapshot(bytes: &[u8]) -> Result<Self, SnapshotError> {
         let mut r = snapshot::Reader::new(bytes);
-        r.expect_magic()?;
+        let version = r.expect_magic()?;
         let n = r.len("index.entries", snapshot::MAX_SNAPSHOT_ITEMS)?;
         let mut entries = Vec::with_capacity(n.min(4096));
         let mut summaries = Vec::with_capacity(n.min(4096));
@@ -201,6 +249,9 @@ impl HdcAssociativeIndex {
             let hv = Hypervector::read_snapshot(&mut r)?;
             let fractal_coord = FractalCoord::read_snapshot(&mut r)?;
             let surprise = r.f32()?;
+            if !surprise.is_finite() || !(0.0..=1.0).contains(&surprise) {
+                return Err(SnapshotError::Inconsistent("entry.surprise"));
+            }
             entries.push(IndexedEntry::new(
                 artifact_id,
                 subject,
@@ -208,24 +259,91 @@ impl HdcAssociativeIndex {
                 fractal_coord,
                 surprise,
             ));
-            summaries.push(EntrySummary {
+            let summary = EntrySummary {
                 hv_sub64: r.u64()?,
                 subj_bloom32: r.u32()?,
                 quadrant_u16: r.u16()?,
                 surprise_q8: r.u8()?,
                 flags: r.u8()?,
                 content_bloom: [r.u64()?, r.u64()?, r.u64()?, r.u64()?],
-            });
+            };
+            let entry = entries.last().expect("entry was just appended");
+            if summary.hv_sub64 != entry.hv.sub_hypervector_64()
+                || summary.subj_bloom32 != Self::compute_subject_bloom32(entry.subject_lower())
+                || summary.quadrant_u16 != entry.fractal_coord.quadrant_signature_u16()
+                || summary.surprise_q8 != (surprise * 255.0) as u8
+                || summary.flags & !0x07 != 0
+                || summary.flags & 0x03 == 3
+            {
+                return Err(SnapshotError::Inconsistent("entry.summary"));
+            }
+            summaries.push(summary);
         }
         let trajectory_archive = FractalTrajectoryArchive::read_snapshot(&mut r)?;
         let surprise_gate = TitansSurpriseGate::read_snapshot(&mut r)?;
+        let lexical_postings = if version >= 4 {
+            match r.u8()? {
+                0 => None,
+                1 => {
+                    let count = r.len("lexical.tokens", snapshot::MAX_SNAPSHOT_ITEMS)?;
+                    let mut postings = BTreeMap::new();
+                    for _ in 0..count {
+                        let token = r.str("lexical.token")?;
+                        if lookup_tokens(&token).collect::<Vec<_>>() != [token.clone()] {
+                            return Err(SnapshotError::Inconsistent("lexical.token"));
+                        }
+                        let len = r.len("lexical.postings", n as u64)?;
+                        if len == 0 {
+                            return Err(SnapshotError::Inconsistent("lexical.empty"));
+                        }
+                        let mut indices = Vec::with_capacity(len.min(4096));
+                        for _ in 0..len {
+                            let idx = r.len("lexical.entry", n.saturating_sub(1) as u64)?;
+                            if idx >= n || indices.last().is_some_and(|last| *last >= idx) {
+                                return Err(SnapshotError::Inconsistent("lexical.entry"));
+                            }
+                            indices.push(idx);
+                        }
+                        if postings.insert(token, indices).is_some() {
+                            return Err(SnapshotError::Inconsistent("lexical.duplicate"));
+                        }
+                    }
+                    Some(postings)
+                }
+                _ => return Err(SnapshotError::Inconsistent("lexical.present")),
+            }
+        } else {
+            None
+        };
+        if let Some(postings) = &lexical_postings {
+            let mut expected_blooms = vec![[0u64; 4]; n];
+            for (token, indices) in postings {
+                for &idx in indices {
+                    bloom_insert(&mut expected_blooms[idx], token);
+                }
+            }
+            if summaries
+                .iter()
+                .zip(expected_blooms)
+                .any(|(summary, expected)| summary.content_bloom != expected)
+            {
+                return Err(SnapshotError::Inconsistent("lexical.content_bloom"));
+            }
+        }
         r.finish()?;
         Ok(Self {
             entries,
             summaries,
             trajectory_archive,
             surprise_gate,
+            lexical_postings,
         })
+    }
+
+    /// Whether exact content candidates are persisted. Legacy03 snapshots should be rebuilt
+    /// from CAS by the coordinator; standalone legacy indexes use exhaustive refinement.
+    pub const fn has_exact_lexical_index(&self) -> bool {
+        self.lexical_postings.is_some()
     }
 
     pub fn len(&self) -> usize {
@@ -368,17 +486,18 @@ impl HdcAssociativeIndex {
             sketch[0], sketch[1], sketch[2], sketch[3], quad[0], quad[1], surp_byte, flags_byte,
         ];
 
+        // The stored subject is bounded like every snapshot string; the hypervector above still
+        // encodes the full text.
+        let stored_subject = &subject[..subject.floor_char_boundary(MAX_STORED_SUBJECT_BYTES)];
         let entry = IndexedEntry::new(
             artifact_id,
-            subject,
+            stored_subject,
             composite_hv,
             current_trajectory,
             verdict.momentum_surprise,
         );
-        let mut content_bloom = [0u64; 4];
-        for tok in lookup_tokens(subject).chain(lookup_tokens(content)) {
-            bloom_insert(&mut content_bloom, &tok);
-        }
+        // Index the same (bounded) subject that `score_entry` matches against.
+        let content_bloom = self.index_lexical_tokens(stored_subject, content, MAX_LEXICAL_TOKENS);
         self.summaries.push(EntrySummary {
             content_bloom,
             hv_sub64: composite_hv.sub_hypervector_64(),
@@ -394,6 +513,37 @@ impl HdcAssociativeIndex {
             fractal_coord: current_trajectory,
             hologram_bytes,
         }
+    }
+
+    /// Adds the next entry's eligible tokens to the postings (admitting a new distinct token only
+    /// while fewer than `max_tokens` exist) and returns its content Bloom filter. The Bloom covers
+    /// exactly the tokens posted for the entry, which `decode_snapshot` verifies.
+    fn index_lexical_tokens(
+        &mut self,
+        subject: &str,
+        content: &str,
+        max_tokens: usize,
+    ) -> [u64; 4] {
+        let tokens: BTreeSet<String> = index_tokens(subject).chain(index_tokens(content)).collect();
+        let entry_idx = self.entries.len();
+        let mut bloom = [0u64; 4];
+        let Some(postings) = self.lexical_postings.as_mut() else {
+            for token in &tokens {
+                bloom_insert(&mut bloom, token);
+            }
+            return bloom;
+        };
+        for token in tokens {
+            if let Some(list) = postings.get_mut(&token) {
+                list.push(entry_idx);
+            } else if postings.len() < max_tokens {
+                postings.insert(token.clone(), vec![entry_idx]);
+            } else {
+                continue;
+            }
+            bloom_insert(&mut bloom, &token);
+        }
+        bloom
     }
 
     #[inline]
@@ -450,7 +600,13 @@ impl HdcAssociativeIndex {
             .count()
     }
 
-    fn score_entry(&self, idx: usize, q_hv: &Hypervector, q_tokens: &[String]) -> AssociativeHit {
+    fn score_entry(
+        &self,
+        idx: usize,
+        q_hv: &Hypervector,
+        q_tokens: &[String],
+        exact_hits: Option<usize>,
+    ) -> AssociativeHit {
         let e = &self.entries[idx];
         let text_sim = q_hv.similarity(&e.hv);
         let lexical_overlap = q_tokens
@@ -460,7 +616,8 @@ impl HdcAssociativeIndex {
         let content_frac = if q_tokens.is_empty() {
             0.0
         } else {
-            Self::content_hits(&self.summaries[idx], q_tokens) as f32 / q_tokens.len() as f32
+            exact_hits.unwrap_or_else(|| Self::content_hits(&self.summaries[idx], q_tokens)) as f32
+                / q_tokens.len() as f32
         };
         let hdc_sim = (text_sim + 0.25 * lexical_overlap + 0.5 * content_frac).clamp(0.0, 1.0);
         let suffix = self
@@ -478,6 +635,123 @@ impl HdcAssociativeIndex {
         }
     }
 
+    /// Distinct, sorted lookup tokens of a query, filtered by the same rule as indexing.
+    fn query_tokens(query_text: &str) -> Vec<String> {
+        index_tokens(query_text)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    /// Posting lists of the query tokens present in the exact index, rarest (lowest df) first.
+    fn query_postings(&self, q_tokens: &[String]) -> Vec<&[usize]> {
+        let Some(postings) = &self.lexical_postings else {
+            return Vec::new();
+        };
+        let mut lists: Vec<&[usize]> = q_tokens
+            .iter()
+            .filter_map(|t| postings.get(t).map(Vec::as_slice))
+            .collect();
+        lists.sort_by_key(|list| list.len());
+        lists
+    }
+
+    /// Entry indices to refine exactly: the Stage-1 pre-screen survivors plus the postings of the
+    /// rarest query tokens. Tokens are expanded in ascending df order and expansion stops at the
+    /// first token whose df exceeds the candidate cap (or once the cap's worth of postings has been
+    /// admitted), so a common token ("pub", "fn") cannot pull the whole corpus into 10,240-bit
+    /// scoring. Such tokens still count toward the lexical score of the selected candidates.
+    /// Every entry holding a query token with df <= cap stays a candidate (ICX-CODEX-004), so a
+    /// unique identifier is never dropped by approximate filtering. Result: sorted, distinct,
+    /// at most `3 * candidate_cap` long unless the full corpus is scanned.
+    fn candidate_set(
+        &self,
+        q_hv: &Hypervector,
+        q_tokens: &[String],
+        q_postings: &[&[usize]],
+        top_k: usize,
+    ) -> Vec<usize> {
+        let n = self.entries.len();
+        let adaptive_floor = (n / 64).clamp(16, 512);
+        // Grows with the corpus (>= 4 * sqrt(n)) so recall does not collapse as n increases.
+        let sqrt_floor = ((n as f64).sqrt() * 4.0).ceil() as usize;
+        let candidate_cap = top_k
+            .saturating_mul(4)
+            .clamp(16, 64)
+            .max(adaptive_floor)
+            .max(sqrt_floor)
+            .max(top_k)
+            .min(n);
+        if self.lexical_postings.is_none() || n <= 64 || candidate_cap == n {
+            return (0..n).collect();
+        }
+
+        let mut q_bloom32 = 0u32;
+        for tok in q_tokens {
+            q_bloom32 |= Self::composite_token_bloom32(tok);
+        }
+        let q_bloom_bits = q_bloom32.count_ones().max(1);
+        let cur_quad = self.current_trajectory().quadrant_signature_u16();
+        let mut candidates: Vec<(u32, usize)> = Vec::with_capacity(candidate_cap);
+        let mut min_score = 0u32;
+        let mut min_pos = 0usize;
+
+        for (idx, s) in self.summaries.iter().enumerate() {
+            let ham1024: u32 = q_hv.words[..PRESCREEN_WORDS]
+                .iter()
+                .zip(&self.entries[idx].hv.words[..PRESCREEN_WORDS])
+                .map(|(a, b)| (a ^ b).count_ones())
+                .sum();
+            let sim1024 = (PRESCREEN_WORDS as u32 * 64).saturating_sub(ham1024);
+            let content = Self::content_hits(s, q_tokens) as u32;
+            let raw_bloom_hits = (q_bloom32 & s.subj_bloom32).count_ones();
+            let subj_density = s.subj_bloom32.count_ones().max(2);
+            let norm_bloom = (raw_bloom_hits * 64) / subj_density.max(q_bloom_bits);
+            let quad_sim = 16u32.saturating_sub((cur_quad ^ s.quadrant_u16).count_ones());
+            let coarse = sim1024 / 2
+                + content * 1200
+                + norm_bloom * 4
+                + (u32::from(s.surprise_q8) >> 1)
+                + quad_sim * 4
+                + u32::from(s.flags & 0x04) * 4;
+
+            if candidates.len() < candidate_cap {
+                candidates.push((coarse, idx));
+                if candidates.len() == candidate_cap {
+                    let (pos, &(sc, _)) = candidates
+                        .iter()
+                        .enumerate()
+                        .min_by_key(|&(_, &(sc, _))| sc)
+                        .unwrap();
+                    min_pos = pos;
+                    min_score = sc;
+                }
+            } else if coarse > min_score {
+                candidates[min_pos] = (coarse, idx);
+                let (pos, &(sc, _)) = candidates
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|&(_, &(sc, _))| sc)
+                    .unwrap();
+                min_pos = pos;
+                min_score = sc;
+            }
+        }
+
+        let mut selected: Vec<usize> = candidates.into_iter().map(|(_, idx)| idx).collect();
+        let mut expanded = 0usize;
+        for list in q_postings {
+            if list.len() > candidate_cap || expanded >= candidate_cap {
+                break;
+            }
+            selected.extend_from_slice(list);
+            expanded += list.len();
+        }
+        selected.sort_unstable();
+        selected.dedup();
+        selected
+    }
+
     /// Queries the associative index using a two-stage pipeline:
     /// 1. Stage 1 L2-cache spectral/Bloom pre-screening over 16-byte `EntrySummary` records.
     /// 2. Stage 2 exact 10,240-bit `hamming_distance_simd` and boundary-aware inverse-IFS `verified_suffix_depth` refinement.
@@ -486,88 +760,46 @@ impl HdcAssociativeIndex {
             return Vec::new();
         }
         let q_hv = Hypervector::encode_text(query_text);
-        let q_tokens: Vec<String> = lookup_tokens(query_text).collect();
+        let q_tokens = Self::query_tokens(query_text);
+        let q_postings = self.query_postings(&q_tokens);
+        let candidates = self.candidate_set(&q_hv, &q_tokens, &q_postings, top_k);
+        let n = self.entries.len();
 
-        let adaptive_floor = (self.entries.len() / 64).clamp(16, 512);
-        // Grows with the corpus (>= 4 * sqrt(n)) so recall does not collapse as n increases.
-        let sqrt_floor = ((self.entries.len() as f64).sqrt() * 4.0).ceil() as usize;
-        let candidate_cap = top_k
-            .saturating_mul(4)
-            .clamp(16, 64)
-            .max(adaptive_floor)
-            .max(sqrt_floor)
-            .max(top_k)
-            .min(self.entries.len());
+        // Exact lexical evidence per candidate: matched-token count (for `content_frac`) and the
+        // IDF-weighted score that ranks a rare exact identifier above common-word matches.
+        // Exact 10,240-bit scoring dominates large candidate sets (legacy indexes without
+        // postings score every entry); `par_map_ordered` splits those across threads and
+        // returns results in candidate order, so ranking is identical to a sequential pass.
+        let mut hits: Vec<(f64, AssociativeHit)> =
+            crate::hv::par_map_ordered(&candidates, |&idx| {
+                let (count, weight) = q_postings
+                    .iter()
+                    .filter(|list| list.binary_search(&idx).is_ok())
+                    .fold((0usize, 0.0f64), |(c, w), list| {
+                        (c + 1, w + idf(n, list.len()))
+                    });
+                let exact = self.lexical_postings.as_ref().map(|_| count);
+                (weight, self.score_entry(idx, &q_hv, &q_tokens, exact))
+            });
 
-        let mut hits: Vec<AssociativeHit> =
-            if self.entries.len() <= 64 || candidate_cap == self.entries.len() {
-                (0..self.entries.len())
-                    .map(|idx| self.score_entry(idx, &q_hv, &q_tokens))
-                    .collect()
-            } else {
-                let mut q_bloom32 = 0u32;
-                for tok in &q_tokens {
-                    q_bloom32 |= Self::composite_token_bloom32(tok);
-                }
-                let q_bloom_bits = q_bloom32.count_ones().max(1);
-                let cur_quad = self.current_trajectory().quadrant_signature_u16();
-                let mut candidates: Vec<(u32, usize)> = Vec::with_capacity(candidate_cap);
-                let mut min_score = 0u32;
-                let mut min_pos = 0usize;
-
-                for (idx, s) in self.summaries.iter().enumerate() {
-                    let ham1024: u32 = q_hv.words[..PRESCREEN_WORDS]
-                        .iter()
-                        .zip(&self.entries[idx].hv.words[..PRESCREEN_WORDS])
-                        .map(|(a, b)| (a ^ b).count_ones())
-                        .sum();
-                    let sim1024 = (PRESCREEN_WORDS as u32 * 64).saturating_sub(ham1024);
-                    let content = Self::content_hits(s, &q_tokens) as u32;
-                    let raw_bloom_hits = (q_bloom32 & s.subj_bloom32).count_ones();
-                    let subj_density = s.subj_bloom32.count_ones().max(2);
-                    let norm_bloom = (raw_bloom_hits * 64) / subj_density.max(q_bloom_bits);
-                    let quad_sim = 16u32.saturating_sub((cur_quad ^ s.quadrant_u16).count_ones());
-                    let coarse = sim1024 / 2
-                        + content * 1200
-                        + norm_bloom * 4
-                        + (u32::from(s.surprise_q8) >> 1)
-                        + quad_sim * 4
-                        + u32::from(s.flags & 0x04) * 4;
-
-                    if candidates.len() < candidate_cap {
-                        candidates.push((coarse, idx));
-                        if candidates.len() == candidate_cap {
-                            let (pos, &(sc, _)) = candidates
-                                .iter()
-                                .enumerate()
-                                .min_by_key(|&(_, &(sc, _))| sc)
-                                .unwrap();
-                            min_pos = pos;
-                            min_score = sc;
-                        }
-                    } else if coarse > min_score {
-                        candidates[min_pos] = (coarse, idx);
-                        let (pos, &(sc, _)) = candidates
-                            .iter()
-                            .enumerate()
-                            .min_by_key(|&(_, &(sc, _))| sc)
-                            .unwrap();
-                        min_pos = pos;
-                        min_score = sc;
-                    }
-                }
-
-                candidates
-                    .into_iter()
-                    .map(|(_, idx)| self.score_entry(idx, &q_hv, &q_tokens))
-                    .collect()
-            };
-
-        hits.sort_by(|a, b| {
-            b.combined_score
-                .partial_cmp(&a.combined_score)
-                .unwrap_or(core::cmp::Ordering::Equal)
+        let mut weight_by_artifact = HashMap::<ArtifactId, f64>::with_capacity(hits.len());
+        for (weight, hit) in &hits {
+            let best = weight_by_artifact.entry(hit.artifact_id).or_insert(0.0);
+            if *weight > *best {
+                *best = *weight;
+            }
+        }
+        hits.sort_by(|(_, a), (_, b)| {
+            weight_by_artifact[&b.artifact_id]
+                .total_cmp(&weight_by_artifact[&a.artifact_id])
+                .then_with(|| {
+                    b.combined_score
+                        .partial_cmp(&a.combined_score)
+                        .unwrap_or(core::cmp::Ordering::Equal)
+                })
+                .then_with(|| a.artifact_id.cmp(&b.artifact_id))
         });
+        let mut hits: Vec<AssociativeHit> = hits.into_iter().map(|(_, hit)| hit).collect();
         // One hit per artifact (best score wins): repeated ingests of identical content must not
         // crowd out distinct recalls (ICX-AUD-042).
         let mut seen = std::collections::BTreeSet::new();
@@ -630,6 +862,74 @@ mod tests {
         assert_eq!(a.hologram_bytes, b.hologram_bytes);
         assert_eq!(a.verdict, b.verdict);
         assert_eq!(restored.encode_snapshot(), original.encode_snapshot());
+    }
+
+    fn candidate_count(idx: &HdcAssociativeIndex, query: &str, top_k: usize) -> usize {
+        let q_hv = Hypervector::encode_text(query);
+        let q_tokens = HdcAssociativeIndex::query_tokens(query);
+        let q_postings = idx.query_postings(&q_tokens);
+        idx.candidate_set(&q_hv, &q_tokens, &q_postings, top_k)
+            .len()
+    }
+
+    #[test]
+    fn common_query_tokens_do_not_pull_the_whole_corpus_into_exact_scoring() {
+        let mut idx = HdcAssociativeIndex::new();
+        let n = 3_000u64;
+        for i in 0..n {
+            idx.observe_event(
+                ArtifactId(i + 1),
+                &format!("src/m{i}.rs"),
+                &format!("pub fn helper_{i}() -> usize {{ {i} }}"),
+                false,
+            );
+        }
+        // candidate_cap for n = 3,000 and top_k = 5 is ceil(4 * sqrt(3000)) = 220.
+        let bound = 3 * 220;
+        for query in ["pub fn helper_17", "helper_17 zzzqqq", "pub fn usize"] {
+            let count = candidate_count(&idx, query, 5);
+            assert!(count <= bound, "{query}: {count} candidates > {bound}");
+        }
+        assert_eq!(
+            idx.query_associative("pub fn helper_17", 3)[0].artifact_id,
+            ArtifactId(18)
+        );
+    }
+
+    #[test]
+    fn distinct_token_cap_is_enforced_at_insert_and_snapshot_stays_consistent() {
+        let mut idx = HdcAssociativeIndex::new();
+        let cap = 3;
+        for (i, body) in ["alpha beta", "gamma delta", "alpha epsilon"]
+            .iter()
+            .enumerate()
+        {
+            let bloom = idx.index_lexical_tokens("", body, cap);
+            idx.summaries.push(EntrySummary {
+                content_bloom: bloom,
+                hv_sub64: Hypervector::zero().sub_hypervector_64(),
+                subj_bloom32: HdcAssociativeIndex::compute_subject_bloom32(""),
+                quadrant_u16: FractalCoord::default().quadrant_signature_u16(),
+                surprise_q8: 0,
+                flags: 0,
+            });
+            idx.entries.push(IndexedEntry::new(
+                ArtifactId(i as u64 + 1),
+                "",
+                Hypervector::zero(),
+                FractalCoord::default(),
+                0.0,
+            ));
+        }
+        let postings = idx.lexical_postings.as_ref().unwrap();
+        assert_eq!(postings.len(), cap);
+        // Existing tokens keep accumulating postings once the cap is reached.
+        assert_eq!(postings["alpha"], vec![0, 2]);
+        // Distinct tokens are admitted in sorted order: alpha, beta, then delta before gamma.
+        assert!(postings.contains_key("delta"));
+        assert!(!postings.contains_key("gamma") && !postings.contains_key("epsilon"));
+        HdcAssociativeIndex::decode_snapshot(&idx.encode_snapshot())
+            .expect("capped index must round-trip");
     }
 
     #[test]

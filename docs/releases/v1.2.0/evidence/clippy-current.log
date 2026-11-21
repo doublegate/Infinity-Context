@@ -1,0 +1,9 @@
+   Compiling icx-cli v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-cli)
+    Checking icx-core v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core)
+    Checking icx-codec v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-codec)
+    Checking icx-hdc v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-hdc)
+    Checking icx-bus v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-bus)
+    Checking icx-store v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-store)
+    Checking icx-adapters v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-adapters)
+    Checking icx-proxy v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-proxy)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.34s

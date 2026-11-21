@@ -124,7 +124,7 @@ def build_wide_banner_3x1(banner_img: Image.Image, target_w: int = 1500, target_
     """Construct a true 3:1 wide banner without clipping the torus or typography.
 
     Places the complete uncropped torus + 4-agent ring (CLAUDE CODE, CODEX, ANTIGRAVITY, HERMES)
-    on the left and the glowing title, subtitle, AHTL wire frame, and architectural metrics on the right.
+    on the left and the glowing title, subtitle, AHTL wire frame, and current contract labels on the right.
     """
     base_w, base_h = 1500, 500
     bg_color = (13, 19, 31, 255)
@@ -199,22 +199,22 @@ def build_wide_banner_3x1(banner_img: Image.Image, target_w: int = 1500, target_
     )
     draw.text(
         (rx + 18, 262),
-        "<<AHTLv1 #icx:7bf8239fb7c504f1 !0.84 @0123:0210 [Braille-256:64b]",
+        "⟦Δ:src/auth.rs#L1-8⊢⊕fn:verify_token⋮¬unwrap()",
         fill=(192, 132, 252, 255),
         font=f_code,
     )
     draw.text(
         (rx + 18, 294),
-        "  $fn:verify_ed25519_token(tok:&[u8])->Result<Claims,AuthErr> !err:401>>",
+        "↦#icx:7bf8239fb7c504f1⋮Ψ:⠒⠴⡖⡸⢚⢼⣞⣰⟧",
         fill=(52, 211, 153, 255),
         font=f_code,
     )
 
-    # 3 Metric Pills
+    # Contract labels (no performance guarantees)
     pills = [
-        ("214x synthetic Compression", (168, 85, 247)),
-        ("100% Lossless BLAKE3 CAS", (16, 185, 129)),
-        ("95.5% byte reuse (proxy)", (245, 158, 11)),
+        ("Lossy AHTL sketches", (168, 85, 247)),
+        ("Post-redaction CAS", (16, 185, 129)),
+        ("Bounded managed text", (245, 158, 11)),
     ]
     px = rx
     py = 362
@@ -315,23 +315,23 @@ def build_social_preview_png(logo_img: Image.Image, banner_img: Image.Image) -> 
     )
     draw.text(
         (368, 326),
-        "<<AHTLv1 #icx:7bf8239fb7c504f1 !0.84 @0123:0210 [Braille-256:64b]",
+        "⟦Δ:src/auth.rs#L1-8⊢⊕fn:verify_token⋮¬unwrap()",
         fill=(192, 132, 252, 255),
         font=f_code,
     )
     draw.text(
         (368, 356),
-        "  $fn:verify_ed25519_token(tok:&[u8])->Result<Claims,AuthErr> !err:401>>",
+        "↦#icx:7bf8239fb7c504f1⋮Ψ:⠒⠴⡖⡸⢚⢼⣞⣰⟧",
         fill=(52, 211, 153, 255),
         font=f_code,
     )
 
-    # Metric pill badges along the bottom
+    # Contract labels along the bottom
     badges = [
-        ("214x AHTL (synthetic)", (168, 85, 247)),
-        ("100% Lossless BLAKE3 CAS", (16, 185, 129)),
-        ("95.5% byte reuse (proxy)", (245, 158, 11)),
-        ("HDC Scan ~62 us / 1K nodes", (56, 189, 248)),
+        ("Lossy AHTL sketches", (168, 85, 247)),
+        ("Post-redaction CAS", (16, 185, 129)),
+        ("Bounded managed text", (245, 158, 11)),
+        ("Lexical-first recall", (56, 189, 248)),
     ]
     bx = 72
     by = 448
@@ -367,8 +367,14 @@ def build_social_preview_png(logo_img: Image.Image, banner_img: Image.Image) -> 
     out_png = ROOT / "assets" / "branding" / "icx-social-preview-1280x640.png"
     canvas.convert("RGB").save(out_png, format="PNG", optimize=True)
 
-    # Also write SVG version
+    generate_social_preview_svg()
+
+
+def generate_social_preview_svg() -> None:
+    """Refresh the existing vector card labels without private raster artwork."""
     svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+  <title>Infinity-Context v1.2.0 candidate: symbolic codec, verified CAS and bounded managed text</title>
+  <metadata>generator=scripts/generate_assets_and_graphs.py; runtime=v1.2.0-candidate; source-free SVG; contracts=docs/adr/0006-v1-2-0-context-and-compatibility.md</metadata>
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#070a12"/>
@@ -383,17 +389,18 @@ def build_social_preview_png(logo_img: Image.Image, banner_img: Image.Image) -> 
   <text x="72" y="196" fill="#f8fafc" font-family="Inter, system-ui, sans-serif" font-size="56" font-weight="800">Infinity-Context (icx)</text>
   <text x="72" y="246" fill="#cbd5e1" font-family="Inter, system-ui, sans-serif" font-size="22">Alien Holographic Token Lattice (AHTL)  |  BLAKE3 Merkle-DAG  |  10,240-Bit HDC + Fractal IFS</text>
   <rect x="72" y="286" width="1136" height="96" rx="12" fill="#0f172a" stroke="#334155" stroke-width="2"/>
-  <text x="96" y="326" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="19" font-weight="600">«AHTLv1 #icx:7bf8239fb7c504f1 !0.84 @0123:0210 ⟦⣿⣷⣯⣟⡿⢿⣻⣽⟧</text>
-  <text x="96" y="360" fill="#34d399" font-family="JetBrains Mono, monospace" font-size="19" font-weight="600">  §fn:verify_ed25519_token(tok:&amp;[u8])-&gt;Result&lt;Claims,AuthErr&gt; !err:401»</text>
+  <text x="96" y="326" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="19" font-weight="600">⟦Δ:src/auth.rs#L1-8⊢⊕fn:verify_token⋮¬unwrap()</text>
+  <text x="96" y="360" fill="#34d399" font-family="JetBrains Mono, monospace" font-size="19" font-weight="600">↦#icx:7bf8239fb7c504f1⋮Ψ:⠒⠴⡖⡸⢚⢼⣞⣰⟧</text>
   <rect x="72" y="424" width="268" height="64" rx="12" fill="#0f172a" stroke="#a855f7" stroke-width="2"/>
-  <text x="206" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">214x AHTL (synthetic)</text>
+  <text x="206" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">Lossy AHTL sketches</text>
   <rect x="360" y="424" width="268" height="64" rx="12" fill="#0f172a" stroke="#10b981" stroke-width="2"/>
-  <text x="494" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">100% Lossless BLAKE3</text>
+  <text x="494" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">Post-redaction CAS</text>
   <rect x="648" y="424" width="268" height="64" rx="12" fill="#0f172a" stroke="#f59e0b" stroke-width="2"/>
-  <text x="782" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">95.5% byte reuse (proxy)</text>
+  <text x="782" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">Bounded managed text</text>
   <rect x="936" y="424" width="272" height="64" rx="12" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
-  <text x="1072" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">HDC Scan ~62 us / 1K nodes</text>
+  <text x="1072" y="463" text-anchor="middle" fill="#f8fafc" font-family="JetBrains Mono, monospace" font-size="17" font-weight="700">Lexical-first recall</text>
   <text x="72" y="556" fill="#94a3b8" font-family="JetBrains Mono, monospace" font-size="17">Claude Code  *  OpenAI Codex CLI  *  Google Antigravity (agy)  *  Hermes Agent  *  MCP / ACP</text>
+  <text x="72" y="590" fill="#94a3b8" font-family="DejaVu Sans, sans-serif" font-size="13">v1.2.0 candidate | Managed text bound only; caller budgets external content | Contracts: docs/adr/0006</text>
 </svg>
 """
     (ROOT / "assets" / "branding" / "icx-social-preview-1280x640.svg").write_text(
@@ -542,587 +549,131 @@ Keywords=llm;context;claude;codex;antigravity;hermes;mcp;hdc;
 
 
 def generate_graphviz_relationship_graphs() -> None:
-    """Write and compile VeridianOS-style Graphviz (.dot -> .png & .svg) relationship graphs."""
-    arch_dot = r"""digraph InfinityContextArchitecture {
-    // =================================================================
-    // Infinity-Context (icx) — Virtual Context MMU & 5-Plane Architecture
-    // Style: Dark theme matching VeridianOS Stratum ecosystem diagram
-    // Note: Every multi-line cell uses separate <TR><TD ALIGN="LEFT"> rows
-    //       to avoid Graphviz's <BR/> center-alignment quirk.
-    // =================================================================
+    """Render current runtime summaries without touching branding artwork."""
+    import tomllib
 
-    bgcolor="#0d1117"
-    rankdir=TB
-    splines=true
-    nodesep=0.70
-    ranksep=1.00
-    pad="0.6,0.4"
-    compound=true
-    labelloc="t"
-    label=<
-        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#f0f6fc" POINT-SIZE="18" FACE="JetBrains Mono,Consolas,monospace"><B>Infinity-Context (icx) &#8212; 5-Plane Virtual Context MMU Architecture</B></FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="11" FACE="JetBrains Mono,Consolas,monospace">(214x synthetic AHTL compression &#183; lossless (post-redaction) BLAKE3 CAS &#183; 10,240-bit HDC &#183; 95.5% byte reuse (proxy) &#183; ~60 ns in-process publish /dev/shm seqlock)</FONT></TD></TR>
-        </TABLE>>
-
-    node [shape=none fontname="JetBrains Mono,Consolas,Courier New,monospace" fontsize=10 margin="0"]
-    edge [arrowsize=0.75 penwidth=1.6 fontname="JetBrains Mono,Consolas,monospace" fontsize=8.5]
-
-    // =================================================================
-    // LEGEND
-    // =================================================================
-    legend [label=<
-        <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#30363d" BGCOLOR="#161b22">
-        <TR><TD COLSPAN="2" ALIGN="CENTER"><FONT COLOR="#f0f6fc" POINT-SIZE="10"><B>Architectural Planes</B></FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff">&#9679;</FONT></TD><TD ALIGN="LEFT"><FONT COLOR="#8b949e" POINT-SIZE="9">Blue: Host AI Agents &amp; CLI Surfaces</FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#a371f7">&#9679;</FONT></TD><TD ALIGN="LEFT"><FONT COLOR="#8b949e" POINT-SIZE="9">Purple: Plane 1 &#8212; AHTL Neural Codec</FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#39d2c0">&#9679;</FONT></TD><TD ALIGN="LEFT"><FONT COLOR="#8b949e" POINT-SIZE="9">Teal: Plane 2 &#8212; BLAKE3 CAS &amp; Merkle-DAG</FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#2ea043">&#9679;</FONT></TD><TD ALIGN="LEFT"><FONT COLOR="#8b949e" POINT-SIZE="9">Green: Plane 3 &#8212; 10,240-Bit HDC + Fractal + PPR</FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#d29922">&#9679;</FONT></TD><TD ALIGN="LEFT"><FONT COLOR="#8b949e" POINT-SIZE="9">Amber: Plane 4 &#8212; Prefix-Cache-Locked Wire Proxy</FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#f85149">&#9679;</FONT></TD><TD ALIGN="LEFT"><FONT COLOR="#8b949e" POINT-SIZE="9">Red: Plane 5 &#8212; /dev/shm Seqlock Telepathy Bus</FONT></TD></TR>
-        </TABLE>>]
-
-    // =================================================================
-    // HOST AGENTS (Blue #58a6ff)
-    // =================================================================
-    claude [label=<
-        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#58a6ff" BGCOLOR="#0d1117">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff" POINT-SIZE="11"><B>Claude Code CLI</B></FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; PostToolUse (updatedMCPToolOutput)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; UserPromptSubmit &amp; PreCompact</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SessionStart &amp; Stop Lifecycle</FONT></TD></TR>
-        </TABLE>>]
-
-    codex [label=<
-        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#58a6ff" BGCOLOR="#0d1117">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff" POINT-SIZE="11"><B>OpenAI Codex CLI</B></FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; ~/.codex/hooks.json Interception</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; state_5.sqlite + memories_1.sqlite</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; OPENAI_BASE_URL Cache Wire Proxy</FONT></TD></TR>
-        </TABLE>>]
-
-    agy [label=<
-        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#58a6ff" BGCOLOR="#0d1117">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff" POINT-SIZE="11"><B>Google Antigravity (agy)</B></FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; ~/.gemini/config/hooks.json (exit code 0)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; injectSteps JSON Envelope</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Protobuf Jetski State Sync</FONT></TD></TR>
-        </TABLE>>]
-
-    hermes [label=<
-        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#58a6ff" BGCOLOR="#0d1117">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff" POINT-SIZE="11"><B>Hermes Agent + MCP</B></FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; MemoryProvider Python Bridge</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; state.db + mind.db FTS5 Store</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Single-Tool icx(op,ref,q,k)</FONT></TD></TR>
-        </TABLE>>]
-
-    // =================================================================
-    // PLANE 1: AHTL NEURAL CODEC (Purple #a371f7)
-    // =================================================================
-    redactor [label=<
-        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#a371f7" BGCOLOR="#0d1117">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#a371f7" POINT-SIZE="11"><B>SecretRedactor + Sanitizer</B></FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Strips sk-ant-*, sk-proj-*, ghp_*</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Blocks Prompt-Injection Delimiters</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Pre-Hash Boundary Enforcement</FONT></TD></TR>
-        </TABLE>>]
-
-    skeletonizer [label=<
-        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#a371f7" BGCOLOR="#0d1117">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#a371f7" POINT-SIZE="11"><B>StructuralSkeletonizer</B></FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Extracts $fn / $ty / $mod / $use</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Preserves !err / !panic / !assert</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Key-Value &amp; Numeric Extraction</FONT></TD></TR>
-        </TABLE>>]
-
-    ahtl_codec [label=<
-        <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#a371f7" BGCOLOR="#161b22">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#a371f7" POINT-SIZE="12"><B>Plane 1: AHTL Packet Codec (icx-codec)</B></FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; &lt;&lt;AHTLv1 #icx:hash !surp @fcga [Braille-256] $...&gt;&gt;</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; U+2800..U+28FF Bijection (8 bits/glyph, 64-bit sketch)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 214&#215; packet ratio on a synthetic test log</FONT></TD></TR>
-        </TABLE>>]
-
-    // =================================================================
-    // PLANE 2: VIRTUAL MEMORY & MERKLE-DAG (Teal #39d2c0)
-    // =================================================================
-    fastcdc [label=<
-        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#39d2c0" BGCOLOR="#0d1117">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#39d2c0" POINT-SIZE="11"><B>FastCDC + BLAKE3 CAS</B></FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Gear-Hash Content-Defined Chunking</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 64-Bit #icx:&lt;16-hex&gt; Handle</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SQLite store (icx.sqlite3, WAL)</FONT></TD></TR>
-        </TABLE>>]
-
-    merkle_dag [label=<
-        <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#39d2c0" BGCOLOR="#161b22">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#39d2c0" POINT-SIZE="12"><B>Plane 2: MerkleContextDag (icx-core)</B></FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; L0 RawChunk &#8594; L1 EpisodeNode &#8594; L2 FoldedSubtask &#8594; L3 EpochRoot</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Context-Folding Subtask Rollback (90% Token Savings)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 100% Lossless O(1) Page-In Dereferencing</FONT></TD></TR>
-        </TABLE>>]
-
-    // =================================================================
-    // PLANE 3: HDC + FRACTAL + PPR INDEX (Green #2ea043)
-    // =================================================================
-    hdc_engine [label=<
-        <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#2ea043" BGCOLOR="#161b22">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#2ea043" POINT-SIZE="12"><B>Plane 3: 10,240-Bit HDC + Fractal IFS (icx-hdc)</B></FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Hypervector([u64; 160]) &#183; XOR Bind &#183; POPCNT Scan (~64 ns/node)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Infini-Attention Delta Bundler (sim &lt; 0.85 orthogonality)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Contractive IFS FractalCoord + TitansSurpriseGate</FONT></TD></TR>
-        </TABLE>>]
-
-    ppr_graph [label=<
-        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#2ea043" BGCOLOR="#0d1117">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#2ea043" POINT-SIZE="11"><B>Bi-Temporal PPR Graph (icx-store)</B></FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Valid Window [t_valid, t_invalid)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Tx Window [t_created, t_expired)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; HippoRAG Personalized PageRank (&#945;=0.15)</FONT></TD></TR>
-        </TABLE>>]
-
-    // =================================================================
-    // PLANE 4 & PLANE 5: CACHE EPOCH + SHM BUS (Amber #d29922 / Red #f85149)
-    // =================================================================
-    epoch_proxy [label=<
-        <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#d29922" BGCOLOR="#161b22">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#d29922" POINT-SIZE="12"><B>Plane 4: Cache-Epoch Wire Proxy (icx-proxy)</B></FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Byte-Frozen Prefix Epochs (0 Mid-Session Edits)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Anthropic 4-Slot cache_control: ephemeral</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; OpenAI 1,024-Token Aligned Prefix (95.5% byte reuse, proxy)</FONT></TD></TR>
-        </TABLE>>]
-
-    shm_bus [label=<
-        <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#f85149" BGCOLOR="#161b22">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#f85149" POINT-SIZE="12"><B>Plane 5: /dev/shm Seqlock Telepathy Bus (icx-bus)</B></FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; icx-fabric-v1.shm (256-slot seqlock ring file)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; 256 &#215; 4,096-Byte Cache-Aligned Atomic Slots</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; ~38 us file-backed Cross-Agent HDC &amp; Handle Broadcast</FONT></TD></TR>
-        </TABLE>>]
-
-    // =================================================================
-    // EDGES
-    // =================================================================
-    claude -> redactor [color="#58a6ff" style=bold]
-    codex -> redactor [color="#58a6ff" style=bold]
-    agy -> redactor [color="#58a6ff" style=bold]
-    hermes -> redactor [color="#58a6ff" style=bold]
-
-    redactor -> skeletonizer [color="#a371f7" style=bold]
-    skeletonizer -> ahtl_codec [color="#a371f7" style=bold]
-    redactor -> fastcdc [color="#39d2c0" style=bold]
-
-    fastcdc -> merkle_dag [color="#39d2c0" style=bold]
-    merkle_dag -> ahtl_codec [color="#39d2c0" style=bold]
-
-    ahtl_codec -> hdc_engine [color="#2ea043" style=bold]
-    merkle_dag -> hdc_engine [color="#2ea043" style=dashed]
-    hdc_engine -> ppr_graph [color="#2ea043" style=bold]
-
-    ahtl_codec -> epoch_proxy [color="#d29922" style=bold]
-    ppr_graph -> epoch_proxy [color="#d29922" style=bold]
-    merkle_dag -> epoch_proxy [color="#d29922" style=dashed]
-
-    hdc_engine -> shm_bus [color="#f85149" style=bold]
-    shm_bus -> claude [color="#f85149" style=dashed]
-    shm_bus -> codex [color="#f85149" style=dashed]
-    shm_bus -> agy [color="#f85149" style=dashed]
-    shm_bus -> hermes [color="#f85149" style=dashed]
-
-    { rank=same; claude; codex; agy; hermes; legend }
-    { rank=same; redactor; skeletonizer; fastcdc }
-    { rank=same; ahtl_codec; merkle_dag }
-    { rank=same; hdc_engine; ppr_graph }
-    { rank=same; epoch_proxy; shm_bus }
-}
-"""
-
-    crate_dot = r"""digraph InfinityContextCrateGraph {
-    // =================================================================
-    // Infinity-Context (icx) — 8-Crate Workspace & Cross-Agent Dependency DAG
-    // Style: Dark theme matching VeridianOS relationship diagrams
-    // Note: Every bullet uses its own <TR><TD ALIGN="LEFT"> row for exact left alignment.
-    // =================================================================
-
-    bgcolor="#0d1117"
-    rankdir=LR
-    splines=true
-    nodesep=0.55
-    ranksep=1.10
-    pad="0.6,0.4"
-    labelloc="t"
-    label=<
-        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#f0f6fc" POINT-SIZE="17" FACE="JetBrains Mono,Consolas,monospace"><B>Infinity-Context (icx) &#8212; 8-Crate Workspace &amp; Subsystem Dependency DAG</B></FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="10" FACE="JetBrains Mono,Consolas,monospace">(Strict acyclic crate hierarchy &#183; unsafe_code = forbid in all 8 crates)</FONT></TD></TR>
-        </TABLE>>
-
-    node [shape=none fontname="JetBrains Mono,Consolas,Courier New,monospace" fontsize=10 margin="0"]
-    edge [arrowsize=0.75 penwidth=1.6]
-
-    icx_cli [label=<
-        <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#f0f6fc" BGCOLOR="#161b22">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#f0f6fc" POINT-SIZE="12"><B>icx-cli</B></FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[Binary Entry Point]</FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; icx hook &lt;agent&gt; &lt;event&gt;</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; icx mcp-serve (JSON-RPC)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; icx proxy-transform</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; icx encode-ahtl / decode-ahtl</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; icx doctor / benchmark / status</FONT></TD></TR>
-        </TABLE>>]
-
-    icx_adapters [label=<
-        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#58a6ff" BGCOLOR="#0d1117">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff" POINT-SIZE="11"><B>icx-adapters</B></FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[Agent &amp; MCP Orchestration]</FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; InfinityContextMmu</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; ClaudeCodeAdapter</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; CodexAdapter</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; AntigravityAdapter (exit 0)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; HermesAdapter + McpPagerServer</FONT></TD></TR>
-        </TABLE>>]
-
-    icx_proxy [label=<
-        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#d29922" BGCOLOR="#0d1117">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#d29922" POINT-SIZE="11"><B>icx-proxy</B></FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[Cache-Epoch Wire Proxy]</FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; WireProxyTransformer</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Anthropic 4-Breakpoint Cache</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; OpenAI 1024-Tok Prefix Align</FONT></TD></TR>
-        </TABLE>>]
-
-    icx_codec [label=<
-        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#a371f7" BGCOLOR="#0d1117">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#a371f7" POINT-SIZE="11"><B>icx-codec</B></FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[AHTL Symbolic Codec]</FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; AhtlPacket (encode/parse)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Braille-256 Bijection</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; StructuralSkeletonizer</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SecretRedactor</FONT></TD></TR>
-        </TABLE>>]
-
-    icx_store [label=<
-        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#2ea043" BGCOLOR="#0d1117">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#2ea043" POINT-SIZE="11"><B>icx-store</B></FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[Bi-Temporal Graph &amp; PPR]</FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; BiTemporalGraph</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; TemporalEdge (Valid/Tx)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; PersonalizedPageRank</FONT></TD></TR>
-        </TABLE>>]
-
-    icx_bus [label=<
-        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#f85149" BGCOLOR="#0d1117">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#f85149" POINT-SIZE="11"><B>icx-bus</B></FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[Seqlock Ring Bus]</FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SeqlockTelemetryBus</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; SeqlockSlot (4,096 B)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Safe Rust (pread/pwrite + flock)</FONT></TD></TR>
-        </TABLE>>]
-
-    icx_hdc [label=<
-        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#39d2c0" BGCOLOR="#0d1117">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#39d2c0" POINT-SIZE="11"><B>icx-hdc</B></FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[10,240-Bit VSA &amp; Fractal IFS]</FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; Hypervector ([u64; 160])</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; HdcBundler (Delta Rule)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; FractalCoord (16-D IFS)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; TitansSurpriseGate</FONT></TD></TR>
-        </TABLE>>]
-
-    icx_core [label=<
-        <TABLE BORDER="3" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#58a6ff" BGCOLOR="#161b22">
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#58a6ff" POINT-SIZE="12"><B>icx-core</B></FONT></TD></TR>
-        <TR><TD ALIGN="CENTER"><FONT COLOR="#8b949e" POINT-SIZE="8.5">[Foundational Types &amp; CAS DAG]</FONT></TD></TR>
-        <HR/>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; IcxHandle (#icx:&lt;16-hex&gt;)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; FastCdcChunker + CasStore</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; MerkleContextDag (L0..L3)</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT COLOR="#c9d1d9" POINT-SIZE="9">&#8226; CacheEpochController</FONT></TD></TR>
-        </TABLE>>]
-
-    // Strict Acyclic Crate Dependency Edges
-    icx_cli -> icx_adapters [color="#f0f6fc" style=bold]
-    icx_cli -> icx_proxy [color="#d29922" style=bold]
-    icx_cli -> icx_codec [color="#a371f7"]
-    icx_cli -> icx_bus [color="#f85149"]
-    icx_cli -> icx_store [color="#2ea043"]
-    icx_cli -> icx_hdc [color="#39d2c0"]
-    icx_cli -> icx_core [color="#58a6ff"]
-
-    icx_adapters -> icx_codec [color="#a371f7" style=bold]
-    icx_adapters -> icx_store [color="#2ea043" style=bold]
-    icx_adapters -> icx_bus [color="#f85149" style=bold]
-    icx_adapters -> icx_hdc [color="#39d2c0" style=bold]
-    icx_adapters -> icx_core [color="#58a6ff" style=bold]
-
-    icx_proxy -> icx_core [color="#d29922" style=bold]
-
-    icx_codec -> icx_hdc [color="#a371f7" style=bold]
-    icx_codec -> icx_core [color="#a371f7" style=bold]
-
-    icx_store -> icx_hdc [color="#2ea043" style=bold]
-    icx_store -> icx_core [color="#2ea043" style=bold]
-
-    icx_bus -> icx_hdc [color="#f85149" style=bold]
-    icx_bus -> icx_core [color="#f85149" style=bold]
-
-    icx_hdc -> icx_core [color="#39d2c0" style=bold penwidth=2.2]
-}
-"""
-
-    arch_dot_path = ROOT / "images" / "infinity-context-architecture.dot"
-    crate_dot_path = ROOT / "images" / "infinity-context-crate-graph.dot"
-    # Add non-breaking right-padding inside every left-aligned table cell so SVG/PNG renderers have generous right margin
-    arch_dot_padded = arch_dot.replace("</FONT></TD></TR>", "&#160;&#160;&#160;</FONT></TD></TR>")
-    crate_dot_padded = crate_dot.replace("</FONT></TD></TR>", "&#160;&#160;&#160;</FONT></TD></TR>")
-    arch_dot_path.write_text(arch_dot_padded, encoding="utf-8")
-    crate_dot_path.write_text(crate_dot_padded, encoding="utf-8")
-
-    for dot_file in [arch_dot_path, crate_dot_path]:
-        png_out = dot_file.with_suffix(".png")
-        svg_out = dot_file.with_suffix(".svg")
-        subprocess.run(
-            ["dot", "-Tpng", "-Gdpi=180", str(dot_file), "-o", str(png_out)],
-            check=True,
-        )
-        subprocess.run(
-            ["dot", "-Tsvg", str(dot_file), "-o", str(svg_out)],
-            check=True,
-        )
+    header = '\n'.join([
+        'digraph InfinityContext {',
+        'graph [bgcolor="#0d1117", rankdir=TB, pad="0.4", nodesep="0.4", ranksep="0.6", fontcolor="#f0f6fc", fontname="DejaVu Sans", labelloc=t, label="Infinity-Context v1.2.0 candidate\\nCurrent runtime summary; dated measurements and limits: docs/numbers.md"];',
+        'node [shape=box, style="rounded,filled", color="#58a6ff", fillcolor="#161b22", fontcolor="#f0f6fc", fontname="DejaVu Sans", margin="0.2,0.15"];',
+        'edge [color="#8b949e", fontcolor="#8b949e", fontname="DejaVu Sans"];',
+    ])
+    architecture = [
+        'agents [label="Claude replacement | Codex capture-only\\nagy context hooks | Hermes ContextEngine shim | MCP"];',
+        'mmu [label="Validated adapter / MMU\\nCanonical icx tool; strict envelope and typed arguments"];',
+        'codec [label="Plane 1: AHTL symbolic codec\\nLossy skeleton + Braille projection; exact bytes via CAS"];',
+        'cas [label="Plane 2: FastCDC + BLAKE3 CAS / Merkle-DAG\\nRedact before hashing; exact post-redaction recovery"];',
+        'index [label="Plane 3: Exact-token postings + HDC / fractal / PPR\\nRank lexical coverage, combined score, artifact ID\\nICXHDC04 writes; 03 reads + MMU postings rebuild"];',
+        'epoch [label="Plane 4: Epoch controller + HTTP/1 JSON proxy\\nImmutable cold history; budgeted selection may change prefix"];',
+        'bus [label="Plane 5: Cross-agent bus\\nIn-process atomics; file-backed positioned I/O + writer lock\\nSequence validation and explicit loss signalling"];',
+        'window [label="Bounded managed window / whole-frame structured tail\\nDefault: 32768 context - 4096 completion - 4096 external\\n24576 UTF-8 bytes; unsent bus events stay queued\\nCaller budgets external content; no whole-provider-request guarantee"];',
+        'store [label="Daemon SQLite WAL synchronous=FULL\\nCommit before successful ACK; errors propagate; no write-behind"];',
+        'agents -> mmu; mmu -> codec; mmu -> cas; cas -> index;',
+        'mmu -> epoch; mmu -> bus; index -> window; epoch -> window; bus -> window;',
+        'mmu -> store; window -> agents;',
+    ]
+    manifests = {p.parent.name: p for p in (ROOT / "crates").glob("*/Cargo.toml")}
+    crates = []
+    for name in sorted(manifests):
+        crates.append(f'"{name}" [label="{name}"];')
+    for name, manifest in sorted(manifests.items()):
+        for dep in sorted(tomllib.loads(manifest.read_text()).get("dependencies", {})):
+            if dep in manifests:
+                crates.append(f'"{name}" -> "{dep}";')
+    crates += ['agents [label="Claude | Codex capture-only | agy | Hermes shim | MCP"];', 'agents -> "icx-cli";']
+    for filename, body in [("infinity-context-architecture", architecture), ("infinity-context-crate-graph", crates)]:
+        dot_file = ROOT / "images" / f"{filename}.dot"
+        dot_file.write_text(header + "\n" + "\n".join(body) + "\n}\n", encoding="utf-8")
+        for fmt in ("png", "svg"):
+            subprocess.run(["dot", f"-T{fmt}", "-Gdpi=180", str(dot_file), "-o", str(dot_file.with_suffix(f".{fmt}"))], check=True)
+            if fmt == "svg":
+                import hashlib
+                svg_file = dot_file.with_suffix(".svg")
+                svg = svg_file.read_text(encoding="utf-8")
+                start = svg.index(">", svg.index("<svg")) + 1
+                digest = hashlib.sha256(dot_file.read_bytes()).hexdigest()
+                metadata = f"\n<metadata>runtime=v1.2.0-candidate; source=images/{dot_file.name}; sha256={digest}; generator=scripts/generate_assets_and_graphs.py</metadata>"
+                svg_file.write_text(svg[:start] + metadata + svg[start:], encoding="utf-8")
 
 
-def generate_mermaid_files_and_readmes() -> None:
-    """Create standalone .mmd files in docs/diagrams/ and READMEs in docs/diagrams/ and assets/."""
+def generate_mermaid_files_and_readmes(include_asset_readme: bool = True) -> None:
+    """Write reviewed runtime Mermaid templates; branding README is optional."""
     d_dir = ROOT / "docs" / "diagrams"
+    (d_dir / 'five-plane-architecture.mmd').write_text('%% Infinity-Context v1.2.0 candidate; measurements: docs/numbers.md\nflowchart TB\n  subgraph AGENTS["Agent surfaces"]\n    CC["Claude Code: native output replacement"]\n    CX["Codex: PostToolUse capture only; replacement capability false"]\n    AG["Antigravity: capture and supported context hooks"]\n    HM["Hermes: user-installed ContextEngine shim"]\n  end\n  CC & CX & AG & HM --> MMU["icx-adapters: validate input and redact before persistence"]\n  MMU --> CODEC["Plane 1 / icx-codec: symbolic skeleton + Braille projection; lossy model view"]\n  MMU --> CAS["Plane 2 / icx-core: FastCDC + BLAKE3 CAS + Merkle-DAG; exact post-redaction bytes"]\n  CAS --> INDEX["Plane 3 / icx-hdc + icx-store: exact-token postings + HDC/fractal candidates + temporal PPR"]\n  INDEX --> RANK["Rank: lexical coverage, combined score, artifact ID; common postings may span corpus"]\n  INDEX --> SNAP["ICXHDC04 writes; 03 reads; MMU rebuilds missing postings from CAS event log"]\n  MMU --> EPOCH["Plane 4 / epoch controller + HTTP/1 JSON proxy: immutable cold history, budgeted selection"]\n  RANK --> WINDOW["Bounded managed window: head + selected sealed frames + recent frames + structured tail"]\n  EPOCH --> WINDOW\n  MMU --> BUS["Plane 5 / icx-bus: in-process atomics; file-backed positioned I/O and writer lock"]\n  BUS --> WINDOW\n  WINDOW --> TAIL["Whole useful tail frames; compact CAS handles; unsent bus events stay queued"]\n  MMU --> STORE["Daemon: SQLite WAL synchronous=FULL; commit before successful ACK; no write-behind"]\n  TAIL --> MCP["Canonical tool icx: validated JSON-RPC envelope and typed operation arguments"]\n  MCP --> AGENTS\n', encoding="utf-8")
+    (d_dir / 'synchronous-hook-and-shm-flow.mmd').write_text('%% Infinity-Context v1.2.0 candidate; behavior differs by native adapter.\nsequenceDiagram\n  autonumber\n  participant Agent as Host agent\n  participant Adapter as icx-adapters / MMU\n  participant CAS as Redactor + BLAKE3 CAS / DAG\n  participant Index as Exact postings + HDC / fractal / PPR\n  participant Bus as File-backed bus\n  participant Store as SQLite store\n  Agent->>Adapter: Supported hook payload or canonical icx request\n  Adapter->>Adapter: Validate envelope, capability and arguments\n  Adapter->>CAS: Redact before hashing and persistence\n  CAS-->>Adapter: Recoverable artifact handle (exact post-redaction bytes)\n  Adapter->>Index: Index artifact; lexical coverage precedes similarity score\n  Adapter->>Bus: Publish bounded event (positioned I/O + writer lock)\n  Adapter->>Store: Persist successful daemon request state\n  Store-->>Adapter: Commit result (WAL synchronous=FULL)\n  alt Persistence fails\n    Adapter-->>Agent: Error response; daemon exits with error\n  else Persistence succeeds\n    alt Claude supported replacement\n      Adapter-->>Agent: Native replacement envelope\n    else Codex PostToolUse\n      Adapter-->>Agent: Non-replacing envelope; original output remains visible\n    else Other supported adapter operation\n      Adapter-->>Agent: Adapter-specific response\n    end\n  end\n  Agent->>Adapter: Next supported context assembly\n  Adapter->>Bus: Read pending events with expected sequence checks\n  Adapter->>Adapter: Select whole frames within conservative UTF-8 byte budget\n  Adapter-->>Agent: Managed window / structured tail; unsent events remain pending\n', encoding="utf-8")
+    (d_dir / 'cache-epoch-lifecycle.mmd').write_text('%% Infinity-Context v1.2.0 candidate; no provider cache-hit guarantee.\nstateDiagram-v2\n  [*] --> Active: Initialize head and policy\n  Active --> Active: Accumulate pending frames below configured threshold\n  Active --> Seal: Threshold reached (default 4096) or explicit fold\n  Seal --> ColdHistory: Seal immutable epoch; retain recoverable CAS history\n  ColdHistory --> Active: Start next active epoch\n  Active --> Select: Assemble managed window\n  ColdHistory --> Select: Select sealed frames that fit policy\n  Select --> Tail: Reserve head and whole recent frames; fit useful whole tail frames\n  Tail --> Emit: Compact handles when needed; queue unsent bus events\n  Emit --> Active: Return bounded managed text\n  note right of Select\n    Default context 32768, completion 4096, external 4096.\n    Managed allowance 24576 UTF-8 bytes.\n    One byte per conservative token allowance.\n    Caller budgets external instructions, current message and tools.\n  end note\n  note right of ColdHistory\n    Cold bytes remain immutable.\n    Budgeted selection or policy changes may invalidate provider prefixes.\n    Provider requests and native host transcripts are not fully bounded here.\n  end note\n', encoding="utf-8")
+    (d_dir / 'crate-and-agent-relationships.mmd').write_text('%% v1.2.0 candidate; arrows point from dependent to runtime dependency.\nflowchart TD\n  icx_adapters["icx-adapters"]\n  icx_bus["icx-bus"]\n  icx_cli["icx-cli"]\n  icx_codec["icx-codec"]\n  icx_core["icx-core"]\n  icx_hdc["icx-hdc"]\n  icx_proxy["icx-proxy"]\n  icx_store["icx-store"]\n  icx_adapters --> icx_bus\n  icx_adapters --> icx_codec\n  icx_adapters --> icx_core\n  icx_adapters --> icx_hdc\n  icx_adapters --> icx_store\n  icx_bus --> icx_core\n  icx_cli --> icx_adapters\n  icx_cli --> icx_bus\n  icx_cli --> icx_codec\n  icx_cli --> icx_core\n  icx_cli --> icx_hdc\n  icx_cli --> icx_proxy\n  icx_cli --> icx_store\n  icx_codec --> icx_core\n  icx_hdc --> icx_core\n  icx_proxy --> icx_adapters\n  icx_proxy --> icx_core\n  icx_store --> icx_core\n  Agents["Claude / Codex capture-only / agy / Hermes shim / MCP clients"] --> icx_cli\n  icx_adapters -.-> Contracts["Validated canonical icx; ICXHDC04; bounded managed window"]\n', encoding="utf-8")
+    (d_dir / 'README.md').write_text('# Current runtime diagrams (v1.2.0 candidate)\n\nThese Mermaid sources describe current contracts:\n\n- [Five planes](five-plane-architecture.mmd): capture, storage, hybrid recall, bounded context and bus.\n- [Runtime crate dependencies](crate-and-agent-relationships.mmd): arrows point from dependent to dependency; excludes dev dependencies.\n- [Hook and daemon flow](synchronous-hook-and-shm-flow.mmd): adapter-specific responses and commit before successful daemon ACK.\n- [Epoch lifecycle](cache-epoch-lifecycle.mmd): immutable cold history with budgeted selection and whole-frame tails.\n\n[Graphviz relationship graphs](../../images/) are generated by `python3 scripts/generate_assets_and_graphs.py --graphs-only`. This mode does not require private branding source artwork and does not modify branding assets. The Graphviz labels and Mermaid templates are maintained in that script; the crate edges come from current Cargo manifests.\n\n[SVG illustrations](../images/) have a separate source, `scripts/render_diagrams.py`; run it to regenerate SVGs, PNGs and their mirrors under `images/`. SVG metadata records the generator source digest and candidate label. These illustrations are summaries; the subsystem prose and [ADR 0006](../adr/0006-v1-2-0-context-and-compatibility.md) define the detailed contracts.\n\nNo diagram promises a provider cache-hit rate, fixed retrieval latency, native output replacement for Codex, or a bound on an entire provider request. See [dated measurement evidence and limits](../numbers.md); synthetic byte reuse is not measured provider billing/cache behavior or model-quality assurance.\n', encoding="utf-8")
+    if include_asset_readme:
+        (ROOT / "assets" / "README.md").write_text(
+            """# Infinity-Context (`icx`) Branding & Platform Assets (`assets/`)
 
-    (d_dir / "five-plane-architecture.mmd").write_text(
-        """%%{init: {
-  "theme": "dark",
-  "themeVariables": {
-    "fontFamily": "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-    "fontSize": "13px",
-    "primaryColor": "#0f172a",
-    "primaryTextColor": "#f8fafc",
-    "primaryBorderColor": "#38bdf8",
-    "lineColor": "#64748b",
-    "secondaryColor": "#1e1b4b",
-    "tertiaryColor": "#064e3b"
-  },
-  "flowchart": { "curve": "basis", "nodeSpacing": 45, "rankSpacing": 60 }
-}}%%
+    This directory contains the branding banners, GitHub Social Preview cards, multi-resolution icons, web favicons, and desktop integration files for **Infinity-Context (`icx`)**.
 
-flowchart TB
-  subgraph AGENTS["Host AI Coding & Research Agents"]
-    direction LR
-    CC["Claude Code CLI<br/>PostToolUse / UserPromptSubmit<br/>PreCompact / SessionStart / Stop"]
-    CX["OpenAI Codex CLI<br/>~/.codex/hooks.json<br/>state_5.sqlite + Wire Proxy"]
-    AG["Google Antigravity (agy)<br/>~/.gemini/config/hooks.json (exit 0)<br/>injectSteps Envelope"]
-    HM["Hermes Agent + MCP<br/>MemoryProvider Bridge<br/>state.db + mind.db"]
-  end
+    See [branding status](branding/README.md): existing raster banners/social cards are archived, non-normative artwork; current vector labels and runtime diagrams supersede their embedded claims.
 
-  subgraph P1["Plane 1: Alien Holographic Token Lattice (icx-codec)"]
-    direction LR
-    RED["SecretRedactor<br/>Sanitizes API Keys &amp;<br/>Prompt-Injection Guards"]
-    SKEL["StructuralSkeletonizer<br/>Extracts §fn / §ty / §mod<br/>Preserves !err / !panic"]
-    AHTL["AhtlPacket Codec<br/>«AHTLv1 #icx:hash !surp @fcga<br/>⟦Braille-256⟧ §...» (214x synthetic)"]
-  end
+    ## Directory Structure
 
-  subgraph P2["Plane 2: Virtual Context Memory & Merkle-DAG (icx-core)"]
-    direction LR
-    CDC["FastCdcChunker + CasStore<br/>Gear-Hash Rolling CDC<br/>BLAKE3 64-Bit #icx:handle"]
-    DAG["MerkleContextDag (LCM)<br/>L0 Raw -> L1 Episode -> L2 Folded -> L3 Epoch<br/>100% Lossless O(1) Page-In"]
-  end
+    ```text
+    assets/
+    ├── README.md
+    ├── branding/
+    │   ├── icx-banner-1500x500.png          # Hero banner (3:1, 1500x500)
+    │   ├── icx-banner-1200x400.png          # Medium banner (3:1, 1200x400)
+    │   ├── icx-banner-900x300.png           # Compact banner (3:1, 900x300)
+    │   ├── icx-social-preview-1280x640.png  # GitHub Social Preview Card (2:1, 1280x640)
+    │   └── icx-social-preview-1280x640.svg  # Vector Social Preview Card (2:1, 1280x640)
+    ├── icons/
+    │   ├── svg/
+    │   │   └── icx-icon.svg                 # Master vector icon
+    │   ├── png/
+    │   │   └── icon-{16..1024}.png          # Solid square PNG icons (16px to 1024px)
+    │   ├── transparent/
+    │   │   └── icx-icon-transparent-{16..512}.png # Rounded-rect transparent badge icons
+    │   └── ico/
+    │       ├── icx.ico                      # Multi-resolution Windows/Web .ico (16..256px)
+    │       └── icx-small.ico                # Compact .ico (16..48px)
+    ├── linux/
+    │   ├── icx.desktop                      # Freedesktop.org .desktop launcher
+    │   └── icx.png                          # 256x256 Linux hicolor icon
+    └── web/
+        ├── android-chrome-192x192.png
+        ├── android-chrome-512x512.png
+        ├── apple-touch-icon.png
+        ├── favicon-16x16.png
+        ├── favicon-32x32.png
+        ├── favicon-96x96.png
+        ├── favicon.ico
+        └── site.webmanifest
+    ```
 
-  subgraph P3["Plane 3: Associative Recall & Temporal Graph (icx-hdc + icx-store)"]
-    direction LR
-    HDC["10,240-Bit Hypervector VSA<br/>Infini-Attention Delta Bundler<br/>POPCNT Scan (~62 us / 1K nodes)"]
-    FCGA["Contractive IFS FractalCoord<br/>+ TitansSurpriseGate<br/>Momentum S_t = eta*S_{t-1} + (1-eta)*surp"]
-    PPR["Bi-Temporal Graph + HippoRAG PPR<br/>Valid [t_valid, t_invalid)<br/>Tx [t_created, t_expired)"]
-  end
+    ## Regeneration
 
-  subgraph P45["Plane 4 & Plane 5: Cache-Epoch Wire Proxy & /dev/shm Seqlock Fabric"]
-    direction LR
-    EPOCH["CacheEpochController + WireProxyTransformer<br/>Byte-Frozen Prefix Epochs (95.5% byte reuse, proxy)<br/>Anthropic 4-Slot &amp; OpenAI 1024-Tok Prefix"]
-    SHM["SeqlockTelemetryBus (icx-bus)<br/>icx-fabric-v1.shm (256-slot seqlock ring file)<br/>~38 us file-backed Cross-Agent Telepathy"]
-  end
+    Run `python3 scripts/generate_assets_and_graphs.py` and `python3 scripts/render_diagrams.py` from the repository root to regenerate all assets and diagrams deterministically.
+    """,
+            encoding="utf-8",
+        )
 
-  CC & CX & AG & HM --> RED
-  RED --> SKEL --> AHTL
-  RED --> CDC --> DAG
-  DAG --> AHTL
-  AHTL --> HDC --> FCGA --> PPR
-  AHTL & PPR & DAG --> EPOCH
-  HDC <--> SHM
-  SHM -.-> CC & CX & AG & HM
-""",
-        encoding="utf-8",
-    )
-
-    (d_dir / "crate-and-agent-relationships.mmd").write_text(
-        """%%{init: {"theme": "dark", "flowchart": {"curve": "basis"}}}%%
-flowchart LR
-  subgraph CLI_LAYER["Binary & Wire Entry Points"]
-    CLI["icx-cli<br/>(icx binary)"]
-  end
-
-  subgraph ORCH_LAYER["Adapter & Proxy Orchestration"]
-    ADAPT["icx-adapters<br/>InfinityContextMmu<br/>Claude / Codex / agy / Hermes<br/>McpPagerServer"]
-    PROXY["icx-proxy<br/>WireProxyTransformer<br/>Anthropic &amp; OpenAI Cache-Epoch"]
-  end
-
-  subgraph ENGINE_LAYER["Codec, Graph & IPC Engines"]
-    CODEC["icx-codec<br/>AhtlPacket + Braille-256<br/>StructuralSkeletonizer<br/>SecretRedactor"]
-    STORE["icx-store<br/>BiTemporalGraph<br/>PersonalizedPageRank"]
-    BUS["icx-bus<br/>SeqlockTelemetryBus<br/>/dev/shm mmap Ring"]
-  end
-
-  subgraph CORE_LAYER["Mathematical & Cryptographic Foundation"]
-    HDC["icx-hdc<br/>Hypervector ([u64; 160])<br/>HdcBundler + FractalCoord<br/>TitansSurpriseGate"]
-    CORE["icx-core<br/>IcxHandle + FastCdcChunker<br/>CasStore + MerkleContextDag<br/>CacheEpochController"]
-  end
-
-  CLI --> ADAPT & PROXY & CODEC & STORE & BUS & HDC & CORE
-  ADAPT --> CODEC & STORE & BUS & HDC & CORE
-  PROXY --> CODEC & CORE
-  CODEC --> HDC & CORE
-  STORE --> HDC & CORE
-  BUS --> HDC & CORE
-  HDC --> CORE
-""",
-        encoding="utf-8",
-    )
-
-    (d_dir / "synchronous-hook-and-shm-flow.mmd").write_text(
-        """sequenceDiagram
-  autonumber
-  participant Agent as Host Agent (Claude / Codex / agy / Hermes)
-  participant Hook as icx-adapters (Hook / MCP)
-  participant Codec as icx-codec (Redactor + AHTL)
-  participant DAG as icx-core (BLAKE3 CAS + Merkle-DAG)
-  participant HDC as icx-hdc + icx-store (10,240-Bit VSA + PPR)
-  participant SHM as icx-bus (/dev/shm Seqlock Ring)
-
-  Agent->>Hook: PostToolUse / MCP Tool Output (e.g., 50 KB cargo test log)
-  Hook->>Codec: SecretRedactor::sanitize(raw_payload)
-  Codec-->>Hook: Sanitized text + redaction count
-  Hook->>DAG: CasStore::put_bytes() + MerkleContextDag::insert_raw_chunk()
-  DAG-->>Hook: IcxHandle (#icx:7bf8239fb7c504f1)
-  Hook->>HDC: Hypervector::from_text() + FractalCoord::project() + TitansSurpriseGate::observe()
-  HDC->>HDC: BiTemporalGraph::upsert_node() + PersonalizedPageRank
-  Hook->>Codec: AhtlPacket::encode() (Braille-256 + §fn/§ty + !err)
-  Codec-->>Hook: Compact AHTL Packet (214x synthetic)
-  Hook->>SHM: SeqlockTelemetryBus::publish(SeqlockSlot [4096 B])
-  SHM-->>Agent: Cross-Agent Telepathy Broadcast (~38 us file-backed)
-  Hook-->>Agent: Return JSON Envelope (updatedMCPToolOutput / AdditionalContext, exit 0)
-""",
-        encoding="utf-8",
-    )
-
-    (d_dir / "cache-epoch-lifecycle.mmd").write_text(
-        """stateDiagram-v2
-  [*] --> Epoch0_Genesis: SessionStart / Initial System + Frozen Epoch 0
-  Epoch0_Genesis --> ActiveEpoch_Accumulating: Append Turn Delta & AHTL Page Table
-  ActiveEpoch_Accumulating --> ActiveEpoch_Accumulating: Pending Tokens < epoch_token_threshold (16,384)
-  ActiveEpoch_Accumulating --> EpochBoundary_Seal: Pending Tokens >= 16,384 OR Subtask Fold
-  EpochBoundary_Seal -->MerkleL3_Committed: Seal L3 EpochRoot (#icx:epoch_hash) + Pin cache_control
-  MerkleL3_Committed --> ActiveEpoch_Accumulating: Open Epoch N+1 (Prefix 0..N 100% Byte-Frozen)
-  ActiveEpoch_Accumulating --> PreCompact_Intercept: Host Agent Fires PreCompact Hook
-  PreCompact_Intercept --> MerkleL3_Committed: Emit Lossless AHTL Epoch Manifest (Zero Summary Loss)
-""",
-        encoding="utf-8",
-    )
-
-    (d_dir / "README.md").write_text(
-        """# Architecture & Relationship Diagrams (`docs/diagrams/`)
-
-This directory contains normative Mermaid (`.mmd`) diagram sources for **Infinity-Context (`icx`)**:
-
-- [`five-plane-architecture.mmd`](five-plane-architecture.mmd) — Complete 5-plane Virtual Context MMU dataflow across Claude Code, OpenAI Codex CLI, Google Antigravity CLI (`agy`), and Hermes Agent.
-- [`crate-and-agent-relationships.mmd`](crate-and-agent-relationships.mmd) — Strict acyclic 8-crate Rust workspace dependency graph (`icx-core` through `icx-cli`).
-- [`synchronous-hook-and-shm-flow.mmd`](synchronous-hook-and-shm-flow.mmd) — Sequence diagram of synchronous `PostToolUse` / `UserPromptSubmit` hook interception, BLAKE3 CAS storage, AHTL encoding, and `/dev/shm` Seqlock broadcast.
-- [`cache-epoch-lifecycle.mmd`](cache-epoch-lifecycle.mmd) — State machine of the Prefix-Cache-Locked Epoch Controller (95.5% prefix byte reuse, synthetic proxy).
-
-High-resolution Graphviz (`.dot`, `.png`, `.svg`) relationship diagrams live in [`../../images/`](../../images/), and vector theme-adaptive SVGs live in [`../images/`](../images/).
-""",
-        encoding="utf-8",
-    )
-
-    (ROOT / "assets" / "README.md").write_text(
-        """# Infinity-Context (`icx`) Branding & Platform Assets (`assets/`)
-
-This directory contains the branding banners, GitHub Social Preview cards, multi-resolution icons, web favicons, and desktop integration files for **Infinity-Context (`icx`)**.
-
-## Directory Structure
-
-```text
-assets/
-├── README.md
-├── branding/
-│   ├── icx-banner-1500x500.png          # Hero banner (3:1, 1500x500)
-│   ├── icx-banner-1200x400.png          # Medium banner (3:1, 1200x400)
-│   ├── icx-banner-900x300.png           # Compact banner (3:1, 900x300)
-│   ├── icx-social-preview-1280x640.png  # GitHub Social Preview Card (2:1, 1280x640)
-│   └── icx-social-preview-1280x640.svg  # Vector Social Preview Card (2:1, 1280x640)
-├── icons/
-│   ├── svg/
-│   │   └── icx-icon.svg                 # Master vector icon
-│   ├── png/
-│   │   └── icon-{16..1024}.png          # Solid square PNG icons (16px to 1024px)
-│   ├── transparent/
-│   │   └── icx-icon-transparent-{16..512}.png # Rounded-rect transparent badge icons
-│   └── ico/
-│       ├── icx.ico                      # Multi-resolution Windows/Web .ico (16..256px)
-│       └── icx-small.ico                # Compact .ico (16..48px)
-├── linux/
-│   ├── icx.desktop                      # Freedesktop.org .desktop launcher
-│   └── icx.png                          # 256x256 Linux hicolor icon
-└── web/
-    ├── android-chrome-192x192.png
-    ├── android-chrome-512x512.png
-    ├── apple-touch-icon.png
-    ├── favicon-16x16.png
-    ├── favicon-32x32.png
-    ├── favicon-96x96.png
-    ├── favicon.ico
-    └── site.webmanifest
-```
-
-## Regeneration
-
-Run `python3 scripts/generate_assets_and_graphs.py` and `python3 scripts/render_diagrams.py` from the repository root to regenerate all assets and diagrams deterministically.
-""",
-        encoding="utf-8",
-    )
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--graphs-only", action="store_true", help="Regenerate runtime diagrams without private branding inputs")
+    modes.add_argument("--branding-svg-only", action="store_true", help="Refresh only the standalone vector social card; preserve archived rasters")
+    args = parser.parse_args()
+    if args.branding_svg_only:
+        generate_social_preview_svg()
+        print("Updated vector social card; archived branding rasters preserved.")
+        return
     ensure_dirs()
-    generate_images_and_icons()
+    if not args.graphs_only:
+        generate_images_and_icons()
     generate_graphviz_relationship_graphs()
-    generate_mermaid_files_and_readmes()
-    print("Successfully generated all images/, assets/, and docs/diagrams/ artifacts.")
+    generate_mermaid_files_and_readmes(include_asset_readme=not args.graphs_only)
+    print("Generated runtime diagrams." if args.graphs_only else "Generated all assets and diagrams.")
 
 
 if __name__ == "__main__":

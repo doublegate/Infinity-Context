@@ -1,0 +1,10 @@
+{
+  "revision": "a996d59f1eb468e7c386747e15f4c7e58d08410e",
+  "branch": "codex-audit",
+  "tracked_count": 519,
+  "starting_branch": "ci/release-workflow",
+  "starting_status": " M AGENTS.md",
+  "starting_diff_stat": "AGENTS.md | 25; 24 insertions(+), 1 deletion(-)",
+  "agents_sha256": "7acd606aa0825eecaf8b6dd6e0dc210d6e41f82b99af6736d9eeeb8ee27e0310",
+  "notes": "Starting status independently captured before audit files were created. Inventory includes the preserved local AGENTS.md content."
+}

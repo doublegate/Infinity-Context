@@ -1,0 +1,10 @@
+Found 15 mutants to test
+ok       Unmutated baseline in 24s build + 0s test
+MISSED   crates/icx-core/src/cas.rs:77:9: replace CasStore::unique_chunk_count -> usize with 0 in 1s build + 0s test
+MISSED   crates/icx-core/src/cas.rs:565:21: replace || with && in CasStore::from_parts in 2s build + 0s test
+MISSED   crates/icx-core/src/chunker.rs:111:23: replace < with > in chunk_bytes in 2s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:324:22: replace match guard *n_agent == agent && n_role == role && *n_raw == raw_artifact with false in MerkleContextDag::find_turn in 2s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:976:21: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors in 2s build + 0s test
+MISSED   crates/icx-core/src/dag.rs:1112:25: replace || with && in MerkleContextDag::verify_merkle_integrity_with_ancestors in 1s build + 0s test
+MISSED   crates/icx-core/src/epoch.rs:456:21: replace <= with > in CacheEpochController::assemble_window in 1s build + 0s test
+15 mutants tested in 57s: 7 missed, 7 caught, 1 unviable

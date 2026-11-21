@@ -1,9 +1,23 @@
+%% Infinity-Context v1.2.0 candidate; no provider cache-hit guarantee.
 stateDiagram-v2
-  [*] --> Epoch0_Genesis: SessionStart / Initial System + Frozen Epoch 0
-  Epoch0_Genesis --> ActiveEpoch_Accumulating: Append Turn Delta & AHTL Page Table
-  ActiveEpoch_Accumulating --> ActiveEpoch_Accumulating: Pending Tokens < epoch_token_threshold (16,384)
-  ActiveEpoch_Accumulating --> EpochBoundary_Seal: Pending Tokens >= 16,384 OR Subtask Fold
-  EpochBoundary_Seal -->MerkleL3_Committed: Seal L3 EpochRoot (#icx:epoch_hash) + Pin cache_control
-  MerkleL3_Committed --> ActiveEpoch_Accumulating: Open Epoch N+1 (Prefix 0..N 100% Byte-Frozen)
-  ActiveEpoch_Accumulating --> PreCompact_Intercept: Host Agent Fires PreCompact Hook
-  PreCompact_Intercept --> MerkleL3_Committed: Emit Lossless AHTL Epoch Manifest (Zero Summary Loss)
+  [*] --> Active: Initialize head and policy
+  Active --> Active: Accumulate pending frames below configured threshold
+  Active --> Seal: Threshold reached (default 4096) or explicit fold
+  Seal --> ColdHistory: Seal immutable epoch; retain recoverable CAS history
+  ColdHistory --> Active: Start next active epoch
+  Active --> Select: Assemble managed window
+  ColdHistory --> Select: Select sealed frames that fit policy
+  Select --> Tail: Reserve head and whole recent frames; fit useful whole tail frames
+  Tail --> Emit: Compact handles when needed; queue unsent bus events
+  Emit --> Active: Return bounded managed text
+  note right of Select
+    Default context 32768, completion 4096, external 4096.
+    Managed allowance 24576 UTF-8 bytes.
+    One byte per conservative token allowance.
+    Caller budgets external instructions, current message and tools.
+  end note
+  note right of ColdHistory
+    Cold bytes remain immutable.
+    Budgeted selection or policy changes may invalidate provider prefixes.
+    Provider requests and native host transcripts are not fully bounded here.
+  end note

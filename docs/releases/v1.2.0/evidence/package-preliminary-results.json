@@ -1,0 +1,356 @@
+{
+  "scope": "preliminary existing-binary local checks only; no builds, install, daemon, tag or publication",
+  "work_dir": "/tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal",
+  "commit_epoch": 1795220264,
+  "host_glibc": {
+    "argv": [
+      "ldd",
+      "--version"
+    ],
+    "exit": 0,
+    "stdout": "ldd (GNU libc) 2.44\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\nWritten by Roland McGrath and Ulrich Drepper.\n",
+    "stderr": ""
+  },
+  "notices_sha256": "477b390ca1e5134ea208eb71455fc282bc3f4081e3a61ad7960f5dcfdfab8df6",
+  "results": [
+    {
+      "label": "x86_64-unknown-linux-musl",
+      "binary": "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx",
+      "preliminary": true,
+      "final_source_binding": "not established",
+      "checks": {
+        "cpu_provenance": true,
+        "static_linkage": false,
+        "musl_notice": true,
+        "host_cpu_compatible": true,
+        "isolated_smoke": false,
+        "third_party_notices": true
+      },
+      "binary_sha256": "8d377f37bf4891a71c292293f5be235fc7356131463d83821ed0666436d7efbc",
+      "binary_mtime_ns": 1795276326243021530,
+      "file": {
+        "argv": [
+          "file",
+          "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-musl-x86_64.so.1, not stripped\n",
+        "stderr": ""
+      },
+      "program_headers": {
+        "argv": [
+          "readelf",
+          "-l",
+          "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "\nElf file type is DYN (Position-Independent Executable file)\nEntry point 0x27db6\nThere are 11 program headers, starting at offset 64\n\nProgram Headers:\n  Type           Offset             VirtAddr           PhysAddr\n                 FileSiz            MemSiz              Flags  Align\n  PHDR           0x0000000000000040 0x0000000000000040 0x0000000000000040\n                 0x0000000000000268 0x0000000000000268  R      0x8\n  INTERP         0x00000000000002a8 0x00000000000002a8 0x00000000000002a8\n                 0x0000000000000019 0x0000000000000019  R      0x1\n      [Requesting program interpreter: /lib/ld-musl-x86_64.so.1]\n  LOAD           0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x000000000001aa50 0x000000000001aa50  R      0x1000\n  LOAD           0x000000000001b000 0x000000000001b000 0x000000000001b000\n                 0x00000000003e95bb 0x00000000003e95bb  R E    0x1000\n  LOAD           0x0000000000405000 0x0000000000405000 0x0000000000405000\n                 0x00000000000a29d4 0x00000000000a29d4  R      0x1000\n  LOAD           0x00000000004a7f70 0x00000000004a8f70 0x00000000004a8f70\n                 0x0000000000012888 0x0000000000014770  RW     0x1000\n  DYNAMIC        0x00000000004b4108 0x00000000004b5108 0x00000000004b5108\n                 0x0000000000000190 0x0000000000000190  RW     0x8\n  TLS            0x00000000004a7f70 0x00000000004a8f70 0x00000000004a8f70\n                 0x0000000000000040 0x0000000000000060  R      0x8\n  GNU_EH_FRAME   0x000000000043e004 0x000000000043e004 0x000000000043e004\n                 0x000000000000a484 0x000000000000a484  R      0x4\n  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x0000000000000000 0x0000000000000000  RW     0x10\n  GNU_RELRO      0x00000000004a7f70 0x00000000004a8f70 0x00000000004a8f70\n                 0x000000000000e090 0x000000000000e090  R      0x1\n\n Section to Segment mapping:\n  Segment Sections...\n   00     \n   01     .interp \n   02     .interp .hash .gnu.hash .dynsym .dynstr .rela.dyn \n   03     .init .plt .plt.got .text .fini \n   04     .rodata .eh_frame_hdr .eh_frame .gcc_except_table \n   05     .tdata .init_array .fini_array .data.rel.ro .dynamic .got .data .bss \n   06     .dynamic \n   07     .tdata .tbss \n   08     .eh_frame_hdr \n   09     \n   10     .tdata .init_array .fini_array .data.rel.ro .dynamic .got \n",
+        "stderr": ""
+      },
+      "dynamic": {
+        "argv": [
+          "readelf",
+          "-d",
+          "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "\nDynamic section at offset 0x4b4108 contains 21 entries:\n  Tag        Type                         Name/Value\n 0x000000000000000c (INIT)               0x1b000\n 0x000000000000000d (FINI)               0x4045b8\n 0x0000000000000019 (INIT_ARRAY)         0x4a8fb0\n 0x000000000000001b (INIT_ARRAYSZ)       8 (bytes)\n 0x000000000000001a (FINI_ARRAY)         0x4a8fb8\n 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)\n 0x0000000000000004 (HASH)               0x2c8\n 0x000000006ffffef5 (GNU_HASH)           0x318\n 0x0000000000000005 (STRTAB)             0x3f8\n 0x0000000000000006 (SYMTAB)             0x338\n 0x000000000000000a (STRSZ)              120 (bytes)\n 0x000000000000000b (SYMENT)             24 (bytes)\n 0x0000000000000015 (DEBUG)              0x0\n 0x0000000000000003 (PLTGOT)             0x4b5298\n 0x0000000000000007 (RELA)               0x470\n 0x0000000000000008 (RELASZ)             108000 (bytes)\n 0x0000000000000009 (RELAENT)            24 (bytes)\n 0x000000000000001e (FLAGS)              BIND_NOW\n 0x000000006ffffffb (FLAGS_1)            Flags: NOW PIE\n 0x000000006ffffff9 (RELACOUNT)          4493\n 0x0000000000000000 (NULL)               0x0\n",
+        "stderr": ""
+      },
+      "build_provenance_sha256": "2aeb957d0550f7d1bf62bc2c5ea21816c194c8175224de0216b9e92ba454c8f3",
+      "build_provenance": "cargo:rerun-if-env-changed=TARGET\ncargo:rerun-if-env-changed=PROFILE\ncargo:rerun-if-env-changed=CARGO_ENCODED_RUSTFLAGS\ncargo:rerun-if-env-changed=RUSTC\ncargo:rustc-env=ICX_BUILD_TARGET=x86_64-unknown-linux-musl\ncargo:rustc-env=ICX_BUILD_PROFILE=release\ncargo:rustc-env=ICX_BUILD_RUSTFLAGS=-C target-cpu=x86-64\ncargo:rustc-env=ICX_BUILD_RUSTC=rustc 1.100.0 (0ef1bc386 2026-11-09)\n",
+      "recorded_build_flags": "-C target-cpu=x86-64",
+      "smoke": [
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx",
+            "doctor"
+          ],
+          "exit": -11,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx",
+            "init"
+          ],
+          "exit": -11,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx",
+            "status"
+          ],
+          "exit": -11,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "local_eligibility": false
+    },
+    {
+      "label": "x86_64_v3-unknown-linux-musl",
+      "binary": "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx",
+      "preliminary": true,
+      "final_source_binding": "not established",
+      "checks": {
+        "cpu_provenance": true,
+        "static_linkage": false,
+        "musl_notice": true,
+        "host_cpu_compatible": true,
+        "isolated_smoke": false,
+        "third_party_notices": true
+      },
+      "binary_sha256": "7e3d1c870b4e0285e6a146f44eeed04a7210c32229208ca2063f5b952e1de3ca",
+      "binary_mtime_ns": 1795276326839016312,
+      "file": {
+        "argv": [
+          "file",
+          "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-musl-x86_64.so.1, not stripped\n",
+        "stderr": ""
+      },
+      "program_headers": {
+        "argv": [
+          "readelf",
+          "-l",
+          "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "\nElf file type is DYN (Position-Independent Executable file)\nEntry point 0x27696\nThere are 11 program headers, starting at offset 64\n\nProgram Headers:\n  Type           Offset             VirtAddr           PhysAddr\n                 FileSiz            MemSiz              Flags  Align\n  PHDR           0x0000000000000040 0x0000000000000040 0x0000000000000040\n                 0x0000000000000268 0x0000000000000268  R      0x8\n  INTERP         0x00000000000002a8 0x00000000000002a8 0x00000000000002a8\n                 0x0000000000000019 0x0000000000000019  R      0x1\n      [Requesting program interpreter: /lib/ld-musl-x86_64.so.1]\n  LOAD           0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x000000000001a9d8 0x000000000001a9d8  R      0x1000\n  LOAD           0x000000000001b000 0x000000000001b000 0x000000000001b000\n                 0x00000000003f257b 0x00000000003f257b  R E    0x1000\n  LOAD           0x000000000040e000 0x000000000040e000 0x000000000040e000\n                 0x00000000000a34ac 0x00000000000a34ac  R      0x1000\n  LOAD           0x00000000004b1f90 0x00000000004b2f90 0x00000000004b2f90\n                 0x0000000000012868 0x0000000000014750  RW     0x1000\n  DYNAMIC        0x00000000004be128 0x00000000004bf128 0x00000000004bf128\n                 0x0000000000000190 0x0000000000000190  RW     0x8\n  TLS            0x00000000004b1f90 0x00000000004b2f90 0x00000000004b2f90\n                 0x0000000000000040 0x0000000000000060  R      0x8\n  GNU_EH_FRAME   0x0000000000447d44 0x0000000000447d44 0x0000000000447d44\n                 0x000000000000a454 0x000000000000a454  R      0x4\n  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x0000000000000000 0x0000000000000000  RW     0x10\n  GNU_RELRO      0x00000000004b1f90 0x00000000004b2f90 0x00000000004b2f90\n                 0x000000000000e070 0x000000000000e070  R      0x1\n\n Section to Segment mapping:\n  Segment Sections...\n   00     \n   01     .interp \n   02     .interp .hash .gnu.hash .dynsym .dynstr .rela.dyn \n   03     .init .plt .plt.got .text .fini \n   04     .rodata .eh_frame_hdr .eh_frame .gcc_except_table \n   05     .tdata .init_array .fini_array .data.rel.ro .dynamic .got .data .bss \n   06     .dynamic \n   07     .tdata .tbss \n   08     .eh_frame_hdr \n   09     \n   10     .tdata .init_array .fini_array .data.rel.ro .dynamic .got \n",
+        "stderr": ""
+      },
+      "dynamic": {
+        "argv": [
+          "readelf",
+          "-d",
+          "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "\nDynamic section at offset 0x4be128 contains 21 entries:\n  Tag        Type                         Name/Value\n 0x000000000000000c (INIT)               0x1b000\n 0x000000000000000d (FINI)               0x40d578\n 0x0000000000000019 (INIT_ARRAY)         0x4b2fd0\n 0x000000000000001b (INIT_ARRAYSZ)       8 (bytes)\n 0x000000000000001a (FINI_ARRAY)         0x4b2fd8\n 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)\n 0x0000000000000004 (HASH)               0x2c8\n 0x000000006ffffef5 (GNU_HASH)           0x318\n 0x0000000000000005 (STRTAB)             0x3f8\n 0x0000000000000006 (SYMTAB)             0x338\n 0x000000000000000a (STRSZ)              120 (bytes)\n 0x000000000000000b (SYMENT)             24 (bytes)\n 0x0000000000000015 (DEBUG)              0x0\n 0x0000000000000003 (PLTGOT)             0x4bf2b8\n 0x0000000000000007 (RELA)               0x470\n 0x0000000000000008 (RELASZ)             107880 (bytes)\n 0x0000000000000009 (RELAENT)            24 (bytes)\n 0x000000000000001e (FLAGS)              BIND_NOW\n 0x000000006ffffffb (FLAGS_1)            Flags: NOW PIE\n 0x000000006ffffff9 (RELACOUNT)          4488\n 0x0000000000000000 (NULL)               0x0\n",
+        "stderr": ""
+      },
+      "build_provenance_sha256": "62c98823bb12279689c69d9b60621d6dc0cdb48737216d725f13f8da64cc79c9",
+      "build_provenance": "cargo:rerun-if-env-changed=TARGET\ncargo:rerun-if-env-changed=PROFILE\ncargo:rerun-if-env-changed=CARGO_ENCODED_RUSTFLAGS\ncargo:rerun-if-env-changed=RUSTC\ncargo:rustc-env=ICX_BUILD_TARGET=x86_64-unknown-linux-musl\ncargo:rustc-env=ICX_BUILD_PROFILE=release\ncargo:rustc-env=ICX_BUILD_RUSTFLAGS=-C target-cpu=x86-64-v3\ncargo:rustc-env=ICX_BUILD_RUSTC=rustc 1.100.0 (0ef1bc386 2026-11-09)\n",
+      "recorded_build_flags": "-C target-cpu=x86-64-v3",
+      "smoke": [
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx",
+            "doctor"
+          ],
+          "exit": -11,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx",
+            "init"
+          ],
+          "exit": -11,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx",
+            "status"
+          ],
+          "exit": -11,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "local_eligibility": false
+    },
+    {
+      "label": "x86_64-unknown-linux-gnu",
+      "binary": "/tmp/Infinity-Context/v120/bench-portable/release/icx",
+      "preliminary": true,
+      "final_source_binding": "not established",
+      "checks": {
+        "cpu_provenance": true,
+        "glibc_at_most_2_35": false,
+        "host_cpu_compatible": true,
+        "isolated_smoke": true,
+        "third_party_notices": true
+      },
+      "binary_sha256": "db0c2a293ac551ae270d6cb33f2c657e61dc75fe810ba76cf665e6def9b01e37",
+      "binary_mtime_ns": 1795243937105263579,
+      "file": {
+        "argv": [
+          "file",
+          "/tmp/Infinity-Context/v120/bench-portable/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "/tmp/Infinity-Context/v120/bench-portable/release/icx: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 6.1.0, BuildID[sha1]=1b300004717f96e6996c59f38df0b253cff6386b, not stripped\n",
+        "stderr": ""
+      },
+      "program_headers": {
+        "argv": [
+          "readelf",
+          "-l",
+          "/tmp/Infinity-Context/v120/bench-portable/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "\nElf file type is DYN (Position-Independent Executable file)\nEntry point 0xb8d80\nThere are 14 program headers, starting at offset 64\n\nProgram Headers:\n  Type           Offset             VirtAddr           PhysAddr\n                 FileSiz            MemSiz              Flags  Align\n  PHDR           0x0000000000000040 0x0000000000000040 0x0000000000000040\n                 0x0000000000000310 0x0000000000000310  R      0x8\n  INTERP         0x0000000000000350 0x0000000000000350 0x0000000000000350\n                 0x000000000000001c 0x000000000000001c  R      0x1\n      [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]\n  NOTE           0x0000000000000370 0x0000000000000370 0x0000000000000370\n                 0x0000000000000064 0x0000000000000064  R      0x8\n  LOAD           0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x00000000000b7ace 0x00000000000b7ace  R      0x1000\n  LOAD           0x00000000000b7ad0 0x00000000000b8ad0 0x00000000000b8ad0\n                 0x00000000003ca766 0x00000000003ca766  R E    0x1000\n  LOAD           0x0000000000482238 0x0000000000484238 0x0000000000484238\n                 0x000000000000e380 0x000000000000edc8  RW     0x1000\n  LOAD           0x0000000000490600 0x0000000000493600 0x0000000000493600\n                 0x00000000000046c8 0x0000000000004ca0  RW     0x1000\n  TLS            0x0000000000482238 0x0000000000484238 0x0000000000484238\n                 0x0000000000000040 0x0000000000000060  R      0x8\n  DYNAMIC        0x000000000048e2c0 0x00000000004902c0 0x00000000004902c0\n                 0x0000000000000220 0x0000000000000220  RW     0x8\n  GNU_EH_FRAME   0x000000000006ae3c 0x000000000006ae3c 0x000000000006ae3c\n                 0x000000000000a28c 0x000000000000a28c  R      0x4\n  GNU_SFRAME     0x00000000000b7a98 0x00000000000b7a98 0x00000000000b7a98\n                 0x0000000000000036 0x0000000000000036  R      0x8\n  GNU_PROPERTY   0x0000000000000370 0x0000000000000370 0x0000000000000370\n                 0x0000000000000020 0x0000000000000020  R      0x8\n  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x0000000000000000 0x0000000000000000  RW     0x1\n  GNU_RELRO      0x0000000000482238 0x0000000000484238 0x0000000000484238\n                 0x000000000000e380 0x000000000000edc8  R      0x1\n\n Section to Segment mapping:\n  Segment Sections...\n   00     \n   01     .interp \n   02     .note.gnu.property .note.ABI-tag .note.gnu.build-id \n   03     .interp .note.gnu.property .note.ABI-tag .note.gnu.build-id .gnu.hash .dynsym .dynstr .gnu.version .gnu.version_r .rela.dyn .rela.plt .eh_frame .eh_frame_hdr .gcc_except_table .rodata .rodata.cst16 .rodata.cst32 .rodata.cst4 .rodata.cst8 .rodata.str1.1 .rodata.str1.8 .sframe \n   04     .fini .init .plt .plt.got .text \n   05     .tdata .data.rel.ro .dynamic .fini_array .got.plt .init_array .got .relro_padding \n   06     .data .bss \n   07     .tdata .tbss \n   08     .dynamic \n   09     .eh_frame_hdr \n   10     .sframe \n   11     .note.gnu.property \n   12     \n   13     .tdata .data.rel.ro .dynamic .fini_array .got.plt .init_array .got .relro_padding \n",
+        "stderr": ""
+      },
+      "dynamic": {
+        "argv": [
+          "readelf",
+          "-d",
+          "/tmp/Infinity-Context/v120/bench-portable/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "\nDynamic section at offset 0x48e2c0 contains 29 entries:\n  Tag        Type                         Name/Value\n 0x0000000000000001 (NEEDED)             Shared library: [libgcc_s.so.1]\n 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]\n 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]\n 0x0000000000000001 (NEEDED)             Shared library: [ld-linux-x86-64.so.2]\n 0x0000000000000007 (RELA)               0x2758\n 0x0000000000000008 (RELASZ)             108888 (bytes)\n 0x0000000000000009 (RELAENT)            24 (bytes)\n 0x0000000000000017 (JMPREL)             0x1d0b0\n 0x0000000000000002 (PLTRELSZ)           648 (bytes)\n 0x0000000000000014 (PLTREL)             RELA\n 0x0000000000000003 (PLTGOT)             0x4904e8\n 0x0000000000000006 (SYMTAB)             0x3f8\n 0x000000000000000b (SYMENT)             24 (bytes)\n 0x0000000000000005 (STRTAB)             0x1880\n 0x000000000000000a (STRSZ)              2830 (bytes)\n 0x0000000000000019 (INIT_ARRAY)         0x4905d8\n 0x000000000000001b (INIT_ARRAYSZ)       16 (bytes)\n 0x000000000000001a (FINI_ARRAY)         0x4904e0\n 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)\n 0x000000006ffffff0 (VERSYM)             0x238e\n 0x000000006ffffffe (VERNEED)            0x2544\n 0x000000006fffffff (VERNEEDNUM)         4\n 0x000000000000000c (INIT)               0xb8ae0\n 0x000000000000000d (FINI)               0xb8ad0\n 0x000000006ffffef5 (GNU_HASH)           0x3d8\n 0x000000000000001e (FLAGS)              BIND_NOW\n 0x000000006ffffffb (FLAGS_1)            Flags: NOW PIE\n 0x0000000000000015 (DEBUG)              0x0\n 0x0000000000000000 (NULL)               0x0\n",
+        "stderr": ""
+      },
+      "build_provenance_sha256": "0c7408c14ed93581ad90f612d825326ec3a016dfee8bfecf21e17a7e0b8ab756",
+      "build_provenance": "cargo:rerun-if-env-changed=TARGET\ncargo:rerun-if-env-changed=PROFILE\ncargo:rerun-if-env-changed=CARGO_ENCODED_RUSTFLAGS\ncargo:rerun-if-env-changed=RUSTC\ncargo:rustc-env=ICX_BUILD_TARGET=x86_64-unknown-linux-gnu\ncargo:rustc-env=ICX_BUILD_PROFILE=release\ncargo:rustc-env=ICX_BUILD_RUSTFLAGS=-C target-cpu=x86-64 -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked\ncargo:rustc-env=ICX_BUILD_RUSTC=rustc 1.100.0 (0ef1bc386 2026-11-09)\n",
+      "recorded_build_flags": "-C target-cpu=x86-64 -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+      "symbols": {
+        "argv": [
+          "objdump",
+          "-T",
+          "/tmp/Infinity-Context/v120/bench-portable/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "\n/tmp/Infinity-Context/v120/bench-portable/release/icx:     file format elf64-x86-64\n\nDYNAMIC SYMBOL TABLE:\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_DeleteException\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.3)    _Unwind_GetCFA\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    __udivti3\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_SetGR\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    __floattidf\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_GetLanguageSpecificData\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.3)    _Unwind_FindEnclosingFunction\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_GetTextRelBase\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_Resume\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_GetDataRelBase\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_SetIP\n0000000000000000      DF *UND*\t0000000000000000 (GCC_12.0.0) __extendhfsf2\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_RaiseException\n0000000000000000      DF *UND*\t0000000000000000 (GCC_12.0.0) __truncsfhf2\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.3)    _Unwind_Backtrace\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_GetIP\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_GetRegionStart\n0000000000000000      DF *UND*\t0000000000000000 (GCC_4.2.0)  _Unwind_GetIPInfo\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.27) log2f\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.29) log\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.29) log2\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.29) pow\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) nanosleep\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_detach\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) gethostname\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.10) pwritev\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) fchmod\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) writev\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_attr_setstacksize\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) gnu_get_libc_version\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) setsockopt\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) chmod\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) readv\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getpeername\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_key_delete\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  renameat\n0000000000000000      DO *UND*\t0000000000000000 (GLIBC_2.2.5) environ\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sysconf\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) symlink\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) dirfd\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) setsid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.17) clock_gettime\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) chroot\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.39) pidfd_spawnp\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  openat64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  __stack_chk_fail\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) free\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) chdir\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) exit\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) lseek64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawn_file_actions_init\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_mutexattr_settype\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.28) statx\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.3)  sendfile64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) setgid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pread64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sigaddset\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) readdir64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) setenv\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  mkdirat\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) freeaddrinfo\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.10) accept4\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.6)  futimens\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getaddrinfo\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pthread_self\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.33) fstatat64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) dlclose\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sigaction\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.29) posix_spawn_file_actions_addchdir_np\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) fcntl\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawnattr_setsigdefault\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) closedir\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.3)  realpath\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) bind\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) open64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strspn\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_mutexattr_destroy\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) setuid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) socketpair\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strrchr\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) unlink\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) munmap\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) memmove\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) mmap64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) fdatasync\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) setgroups\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.18) __cxa_thread_atexit_impl\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) gettimeofday\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) waitid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawnattr_setpgroup\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) poll\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) flock\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) socket\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) setpgid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) time\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) localtime_r\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) fork\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) recvfrom\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.3.4) __xpg_strerror_r\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strlen\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getppid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_join\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) rmdir\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) read\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) unsetenv\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strnlen\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) send\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pthread_mutex_destroy\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_mutex_trylock\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) mkdir\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_attr_getguardsize\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pthread_attr_init\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_mutexattr_init\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) fchown\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_create\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) dup2\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getpid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) recv\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) chown\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) readlink\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pthread_mutex_lock\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) realloc\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) execvp\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pthread_attr_destroy\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) _exit\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) utimes\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) dl_iterate_phdr\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.39) pidfd_getpid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.33) lstat64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.16) getauxval\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) shutdown\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strcspn\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) malloc\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) __libc_start_main\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sched_yield\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) recvmsg\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.27) copy_file_range\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_key_create\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawn_file_actions_adddup2\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sendto\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_attr_getstack\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) listen\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) memchr\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawn_file_actions_destroy\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  fchmodat\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawnattr_setflags\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) mprotect\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.28) fcntl64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) dlsym\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sendmsg\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  fdopendir\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  linkat\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) __res_init\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) killpg\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) mremap\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.33) fstat64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getsockname\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.17) clock_nanosleep\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) dlopen\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.2.5) __cxa_finalize\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) dlerror\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.6)  utimensat\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strchr\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) kill\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getsockopt\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) bcmp\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) mkfifo\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getenv\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pthread_mutex_init\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) calloc\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) fsync\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) memcmp\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.30) gettid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) ftruncate64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sigaltstack\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) memset\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_setspecific\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawnattr_init\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) ioctl\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) close\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.10) preadv\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) rename\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) waitpid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) signal\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) connect\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawnattr_destroy\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pwrite64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pthread_mutex_unlock\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) opendir\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) gai_strerror\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_setname_np\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getuid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sigemptyset\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) access\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getpwuid_r\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.32) pthread_getattr_np\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.14) memcpy\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getcwd\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.15) posix_spawnp\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strcmp\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) qsort\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  unlinkat\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.33) stat64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) __errno_location\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) write\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) syscall\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_memalign\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) abort\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.25) getrandom\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.3.4) sched_getaffinity\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pause\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.5)  splice\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) lchown\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strncmp\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) geteuid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) dup\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.9)  pipe2\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.3)  __tls_get_addr\n\n\n",
+        "stderr": ""
+      },
+      "highest_glibc_symbol": "2.39",
+      "genuine_glibc_2_35_runtime_smoke": "not performed; host smoke does not establish this",
+      "smoke": [
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/bench-portable/release/icx",
+            "doctor"
+          ],
+          "exit": 0,
+          "stdout": "=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===\n  [ABSENT  ] Claude Code Binary               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64-unknown-linux-gnu/smoke/home/.local/bin/claude\n  [ABSENT  ] Claude Settings                  -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64-unknown-linux-gnu/smoke/home/.claude/settings.json\n  [ABSENT  ] OpenAI Codex Binary              -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64-unknown-linux-gnu/smoke/home/.local/bin/codex\n  [ABSENT  ] Codex Hooks Config               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64-unknown-linux-gnu/smoke/home/.codex/hooks.json\n  [ABSENT  ] Codex State SQLite               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64-unknown-linux-gnu/smoke/home/.codex/state_5.sqlite\n  [ABSENT  ] Antigravity CLI (agy)            -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64-unknown-linux-gnu/smoke/home/.local/bin/agy\n  [ABSENT  ] Antigravity Hooks                -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64-unknown-linux-gnu/smoke/home/.gemini/config/hooks.json\n  [ABSENT  ] Hermes Agent Source              -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64-unknown-linux-gnu/smoke/home/.hermes/hermes-agent/agent/context_engine.py\n  [DETECTED] HTTPS Proxy Transport (curl)     -> /usr/bin/curl\n  [DETECTED] POSIX Shared Memory (/dev/shm)   -> /dev/shm (writable=true)\nDoctor status: READY\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/bench-portable/release/icx",
+            "init"
+          ],
+          "exit": 0,
+          "stdout": "\u27eaICX:INIT\u2502dir=/tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64-unknown-linux-gnu/smoke/home/.local/state/icx/workspaces/0cd2874cee42764d\u2502status=READY\u27eb\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/bench-portable/release/icx",
+            "status"
+          ],
+          "exit": 0,
+          "stdout": "\u27eaICX:STATUS\u2502cas_artifacts=0\u2502redacted_artifacts=0\u2502unique_chunks=0\u2502dag_nodes=0\u2502sealed_epochs=0\u2502hdc_entries=0\u2502graph_edges=0\u2502shm_seq=0\u27eb\n",
+          "stderr": ""
+        }
+      ],
+      "local_eligibility": false
+    },
+    {
+      "label": "x86_64_v3-unknown-linux-gnu",
+      "binary": "/tmp/Infinity-Context/v120/bench-native/release/icx",
+      "preliminary": true,
+      "final_source_binding": "not established",
+      "checks": {
+        "cpu_provenance": false,
+        "glibc_at_most_2_35": false,
+        "host_cpu_compatible": true,
+        "isolated_smoke": true,
+        "third_party_notices": true
+      },
+      "binary_sha256": "5446350ab370a9a219be7dbb1a81efe6cbc7864837e235efb925f57bd9f8367e",
+      "binary_mtime_ns": 1795243937412260999,
+      "file": {
+        "argv": [
+          "file",
+          "/tmp/Infinity-Context/v120/bench-native/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "/tmp/Infinity-Context/v120/bench-native/release/icx: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 6.1.0, BuildID[sha1]=a77e0ec55497bcbb69c6bbb6f9ef8302bd8914f1, not stripped\n",
+        "stderr": ""
+      },
+      "program_headers": {
+        "argv": [
+          "readelf",
+          "-l",
+          "/tmp/Infinity-Context/v120/bench-native/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "\nElf file type is DYN (Position-Independent Executable file)\nEntry point 0xb9380\nThere are 14 program headers, starting at offset 64\n\nProgram Headers:\n  Type           Offset             VirtAddr           PhysAddr\n                 FileSiz            MemSiz              Flags  Align\n  PHDR           0x0000000000000040 0x0000000000000040 0x0000000000000040\n                 0x0000000000000310 0x0000000000000310  R      0x8\n  INTERP         0x0000000000000350 0x0000000000000350 0x0000000000000350\n                 0x000000000000001c 0x000000000000001c  R      0x1\n      [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]\n  NOTE           0x0000000000000370 0x0000000000000370 0x0000000000000370\n                 0x0000000000000064 0x0000000000000064  R      0x8\n  LOAD           0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x00000000000b80b6 0x00000000000b80b6  R      0x1000\n  LOAD           0x00000000000b80b8 0x00000000000b90b8 0x00000000000b90b8\n                 0x00000000003d3a9b 0x00000000003d3a9b  R E    0x1000\n  LOAD           0x000000000048bb58 0x000000000048db58 0x000000000048db58\n                 0x000000000000e340 0x000000000000e4a8  RW     0x1000\n  LOAD           0x0000000000499f00 0x000000000049cf00 0x000000000049cf00\n                 0x00000000000046c8 0x0000000000004c82  RW     0x1000\n  TLS            0x000000000048bb58 0x000000000048db58 0x000000000048db58\n                 0x0000000000000040 0x0000000000000060  R      0x8\n  DYNAMIC        0x0000000000497be0 0x0000000000499be0 0x0000000000499be0\n                 0x0000000000000220 0x0000000000000220  RW     0x8\n  GNU_EH_FRAME   0x000000000006ab40 0x000000000006ab40 0x000000000006ab40\n                 0x000000000000a23c 0x000000000000a23c  R      0x4\n  GNU_SFRAME     0x00000000000b8080 0x00000000000b8080 0x00000000000b8080\n                 0x0000000000000036 0x0000000000000036  R      0x8\n  GNU_PROPERTY   0x0000000000000370 0x0000000000000370 0x0000000000000370\n                 0x0000000000000020 0x0000000000000020  R      0x8\n  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x0000000000000000 0x0000000000000000  RW     0x1\n  GNU_RELRO      0x000000000048bb58 0x000000000048db58 0x000000000048db58\n                 0x000000000000e340 0x000000000000e4a8  R      0x1\n\n Section to Segment mapping:\n  Segment Sections...\n   00     \n   01     .interp \n   02     .note.gnu.property .note.ABI-tag .note.gnu.build-id \n   03     .interp .note.gnu.property .note.ABI-tag .note.gnu.build-id .gnu.hash .dynsym .dynstr .gnu.version .gnu.version_r .rela.dyn .rela.plt .eh_frame .eh_frame_hdr .gcc_except_table .rodata .rodata.cst16 .rodata.cst32 .rodata.cst4 .rodata.cst8 .rodata.str1.1 .rodata.str1.8 .sframe \n   04     .fini .init .plt .plt.got .text \n   05     .tdata .data.rel.ro .dynamic .fini_array .got.plt .init_array .got .relro_padding \n   06     .data .bss \n   07     .tdata .tbss \n   08     .dynamic \n   09     .eh_frame_hdr \n   10     .sframe \n   11     .note.gnu.property \n   12     \n   13     .tdata .data.rel.ro .dynamic .fini_array .got.plt .init_array .got .relro_padding \n",
+        "stderr": ""
+      },
+      "dynamic": {
+        "argv": [
+          "readelf",
+          "-d",
+          "/tmp/Infinity-Context/v120/bench-native/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "\nDynamic section at offset 0x497be0 contains 29 entries:\n  Tag        Type                         Name/Value\n 0x0000000000000001 (NEEDED)             Shared library: [libgcc_s.so.1]\n 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]\n 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]\n 0x0000000000000001 (NEEDED)             Shared library: [ld-linux-x86-64.so.2]\n 0x0000000000000007 (RELA)               0x2758\n 0x0000000000000008 (RELASZ)             108696 (bytes)\n 0x0000000000000009 (RELAENT)            24 (bytes)\n 0x0000000000000017 (JMPREL)             0x1cff0\n 0x0000000000000002 (PLTRELSZ)           648 (bytes)\n 0x0000000000000014 (PLTREL)             RELA\n 0x0000000000000003 (PLTGOT)             0x499e08\n 0x0000000000000006 (SYMTAB)             0x3f8\n 0x000000000000000b (SYMENT)             24 (bytes)\n 0x0000000000000005 (STRTAB)             0x1880\n 0x000000000000000a (STRSZ)              2830 (bytes)\n 0x0000000000000019 (INIT_ARRAY)         0x499ef8\n 0x000000000000001b (INIT_ARRAYSZ)       16 (bytes)\n 0x000000000000001a (FINI_ARRAY)         0x499e00\n 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)\n 0x000000006ffffff0 (VERSYM)             0x238e\n 0x000000006ffffffe (VERNEED)            0x2544\n 0x000000006fffffff (VERNEEDNUM)         4\n 0x000000000000000c (INIT)               0xb90c8\n 0x000000000000000d (FINI)               0xb90b8\n 0x000000006ffffef5 (GNU_HASH)           0x3d8\n 0x000000000000001e (FLAGS)              BIND_NOW\n 0x000000006ffffffb (FLAGS_1)            Flags: NOW PIE\n 0x0000000000000015 (DEBUG)              0x0\n 0x0000000000000000 (NULL)               0x0\n",
+        "stderr": ""
+      },
+      "build_provenance_sha256": "e080be62baa0e4206fa83e48cb94d6785fed16a9654bb02f4bfe1fd25383e66d",
+      "build_provenance": "cargo:rerun-if-env-changed=TARGET\ncargo:rerun-if-env-changed=PROFILE\ncargo:rerun-if-env-changed=CARGO_ENCODED_RUSTFLAGS\ncargo:rerun-if-env-changed=RUSTC\ncargo:rustc-env=ICX_BUILD_TARGET=x86_64-unknown-linux-gnu\ncargo:rustc-env=ICX_BUILD_PROFILE=release\ncargo:rustc-env=ICX_BUILD_RUSTFLAGS=-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked\ncargo:rustc-env=ICX_BUILD_RUSTC=rustc 1.100.0 (0ef1bc386 2026-11-09)\n",
+      "recorded_build_flags": "-C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked",
+      "symbols": {
+        "argv": [
+          "objdump",
+          "-T",
+          "/tmp/Infinity-Context/v120/bench-native/release/icx"
+        ],
+        "exit": 0,
+        "stdout": "\n/tmp/Infinity-Context/v120/bench-native/release/icx:     file format elf64-x86-64\n\nDYNAMIC SYMBOL TABLE:\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_DeleteException\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.3)    _Unwind_GetCFA\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    __udivti3\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_SetGR\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    __floattidf\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_GetLanguageSpecificData\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.3)    _Unwind_FindEnclosingFunction\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_GetTextRelBase\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_Resume\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_GetDataRelBase\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_SetIP\n0000000000000000      DF *UND*\t0000000000000000 (GCC_12.0.0) __extendhfsf2\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_RaiseException\n0000000000000000      DF *UND*\t0000000000000000 (GCC_12.0.0) __truncsfhf2\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.3)    _Unwind_Backtrace\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_GetIP\n0000000000000000      DF *UND*\t0000000000000000 (GCC_3.0)    _Unwind_GetRegionStart\n0000000000000000      DF *UND*\t0000000000000000 (GCC_4.2.0)  _Unwind_GetIPInfo\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.27) log2f\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.29) log\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.29) log2\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.29) pow\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) nanosleep\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_detach\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) gethostname\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.10) pwritev\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) fchmod\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) writev\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_attr_setstacksize\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) gnu_get_libc_version\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) setsockopt\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) chmod\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) readv\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getpeername\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_key_delete\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  renameat\n0000000000000000      DO *UND*\t0000000000000000 (GLIBC_2.2.5) environ\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sysconf\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) symlink\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) dirfd\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) setsid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.17) clock_gettime\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) chroot\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.39) pidfd_spawnp\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  openat64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  __stack_chk_fail\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) free\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) chdir\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) exit\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) lseek64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawn_file_actions_init\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_mutexattr_settype\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.28) statx\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.3)  sendfile64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) setgid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pread64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sigaddset\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) readdir64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) setenv\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  mkdirat\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) freeaddrinfo\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.10) accept4\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.6)  futimens\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getaddrinfo\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pthread_self\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.33) fstatat64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) dlclose\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sigaction\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.29) posix_spawn_file_actions_addchdir_np\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) fcntl\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawnattr_setsigdefault\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) closedir\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.3)  realpath\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) bind\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) open64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strspn\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_mutexattr_destroy\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) setuid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) socketpair\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strrchr\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) unlink\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) munmap\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) memmove\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) mmap64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) fdatasync\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) setgroups\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.18) __cxa_thread_atexit_impl\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) gettimeofday\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) waitid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawnattr_setpgroup\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) poll\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) flock\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) socket\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) setpgid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) time\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) localtime_r\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) fork\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) recvfrom\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.3.4) __xpg_strerror_r\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strlen\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getppid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_join\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) rmdir\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) read\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) unsetenv\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strnlen\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) send\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pthread_mutex_destroy\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_mutex_trylock\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) mkdir\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_attr_getguardsize\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pthread_attr_init\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_mutexattr_init\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) fchown\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_create\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) dup2\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getpid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) recv\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) chown\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) readlink\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pthread_mutex_lock\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) realloc\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) execvp\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pthread_attr_destroy\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) _exit\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) utimes\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) dl_iterate_phdr\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.39) pidfd_getpid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.33) lstat64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.16) getauxval\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) shutdown\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strcspn\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) malloc\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) __libc_start_main\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sched_yield\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) recvmsg\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.27) copy_file_range\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_key_create\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawn_file_actions_adddup2\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sendto\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_attr_getstack\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) listen\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) memchr\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawn_file_actions_destroy\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  fchmodat\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawnattr_setflags\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) mprotect\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.28) fcntl64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) dlsym\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sendmsg\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  fdopendir\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  linkat\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) __res_init\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) killpg\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) mremap\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.33) fstat64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getsockname\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.17) clock_nanosleep\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) dlopen\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.2.5) __cxa_finalize\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) dlerror\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.6)  utimensat\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strchr\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) kill\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getsockopt\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) bcmp\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) mkfifo\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getenv\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pthread_mutex_init\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) calloc\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) fsync\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) memcmp\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.30) gettid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) ftruncate64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sigaltstack\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) memset\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_setspecific\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawnattr_init\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) ioctl\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) close\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.10) preadv\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) rename\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) waitpid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) signal\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) connect\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_spawnattr_destroy\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pwrite64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pthread_mutex_unlock\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) opendir\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) gai_strerror\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_setname_np\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getuid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) sigemptyset\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) access\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getpwuid_r\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.32) pthread_getattr_np\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.14) memcpy\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) getcwd\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.15) posix_spawnp\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strcmp\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) qsort\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.4)  unlinkat\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.33) stat64\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) __errno_location\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) write\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) syscall\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) posix_memalign\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) abort\n0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.25) getrandom\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.3.4) sched_getaffinity\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) pause\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.5)  splice\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) lchown\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) strncmp\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) geteuid\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) dup\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.9)  pipe2\n0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.3)  __tls_get_addr\n\n\n",
+        "stderr": ""
+      },
+      "highest_glibc_symbol": "2.39",
+      "genuine_glibc_2_35_runtime_smoke": "not performed; host smoke does not establish this",
+      "smoke": [
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/bench-native/release/icx",
+            "doctor"
+          ],
+          "exit": 0,
+          "stdout": "=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===\n  [ABSENT  ] Claude Code Binary               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64_v3-unknown-linux-gnu/smoke/home/.local/bin/claude\n  [ABSENT  ] Claude Settings                  -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64_v3-unknown-linux-gnu/smoke/home/.claude/settings.json\n  [ABSENT  ] OpenAI Codex Binary              -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64_v3-unknown-linux-gnu/smoke/home/.local/bin/codex\n  [ABSENT  ] Codex Hooks Config               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64_v3-unknown-linux-gnu/smoke/home/.codex/hooks.json\n  [ABSENT  ] Codex State SQLite               -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64_v3-unknown-linux-gnu/smoke/home/.codex/state_5.sqlite\n  [ABSENT  ] Antigravity CLI (agy)            -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64_v3-unknown-linux-gnu/smoke/home/.local/bin/agy\n  [ABSENT  ] Antigravity Hooks                -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64_v3-unknown-linux-gnu/smoke/home/.gemini/config/hooks.json\n  [ABSENT  ] Hermes Agent Source              -> /tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64_v3-unknown-linux-gnu/smoke/home/.hermes/hermes-agent/agent/context_engine.py\n  [DETECTED] HTTPS Proxy Transport (curl)     -> /usr/bin/curl\n  [DETECTED] POSIX Shared Memory (/dev/shm)   -> /dev/shm (writable=true)\nDoctor status: READY\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/bench-native/release/icx",
+            "init"
+          ],
+          "exit": 0,
+          "stdout": "\u27eaICX:INIT\u2502dir=/tmp/Infinity-Context/v120/package-qualification/preliminary-8ubcqcal/x86_64_v3-unknown-linux-gnu/smoke/home/.local/state/icx/workspaces/0cd2874cee42764d\u2502status=READY\u27eb\n",
+          "stderr": ""
+        },
+        {
+          "argv": [
+            "/tmp/Infinity-Context/v120/bench-native/release/icx",
+            "status"
+          ],
+          "exit": 0,
+          "stdout": "\u27eaICX:STATUS\u2502cas_artifacts=0\u2502redacted_artifacts=0\u2502unique_chunks=0\u2502dag_nodes=0\u2502sealed_epochs=0\u2502hdc_entries=0\u2502graph_edges=0\u2502shm_seq=0\u27eb\n",
+          "stderr": ""
+        }
+      ],
+      "local_eligibility": false
+    }
+  ],
+  "final_release_certified": false,
+  "counts": {
+    "locally_eligible": 0,
+    "candidates": 4
+  }
+}

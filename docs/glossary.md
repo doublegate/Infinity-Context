@@ -1,6 +1,6 @@
 # Glossary of Terms & Abbreviations
 
-**Applies to:** `icx` v1.1.0  
+**Applies to:** `icx` v1.2.0 development candidate
 **References:** [ref-docs/research-report.md](../ref-docs/research-report.md), [docs/architecture.md](architecture.md)
 
 | Term / Acronym | Definition |
@@ -9,7 +9,7 @@
 | **AHTL** | **Alien Holographic Token Lattice** — Infinity-Context's non-human, BPE-aligned symbolic representation (`⟪...⟫`, `⟦Δ/Ψ/Ω/Θ/Φ:...⟧`) that replaces bulky tool output in the context window with a structural skeleton plus a `#icx:` handle to the stored bytes. A packet is not a lossless encoding; the full text is recovered by dereferencing the handle. |
 | **Bi-Temporal Graph** | Knowledge graph model (inspired by Zep/Graphiti `arXiv:2501.13956`) tracking both *valid time* (`[t_valid, t_invalid)`) and *transaction time* (`[t_tx_start, t_tx_end)`) so superseded facts are invalidated without losing lineage. |
 | **Braille-256 Sketch** | Encoding of a 64-bit topological fingerprint into 8 Unicode Braille Pattern codepoints (`U+2800..U+28FF`), embedded in the `⋮Ψ:` tail of an AHTL packet. |
-| **Cache Epoch (`E_k`)** | An immutable, cryptographically sealed block of compressed historical context (`L3` DAG node) aligned to provider prompt-cache boundaries (`arXiv:2610.28577`). |
+| **Cache Epoch (`E_k`)** | An immutable, cryptographically sealed block of compressed historical context (`L3` DAG node). Whole frames can be omitted from the rendered window while remaining in cold storage; provider cache reuse is workload-dependent. |
 | **CAS** | **Content-Addressed Storage** — Storage engine where every chunk and artifact is identified by its `BLAKE3` digest and addressed by a 64-bit handle (`#icx:<16-hex>`, or `#icx:<12-hex>` in Profile A); a handle collision is reported as `IcxError::HashCollision`. |
 | **Context-Folding** | Technique (`arXiv:2510.11967`) that branches multi-step debugging/subagent trajectories and folds the intermediate loop into a single compact commit packet (`⟦Φ:...⟧`) upon completion. |
 | **Ephemeral Tail Slot** | The per-turn region placed after the stable prompt prefix, containing HDC/PPR/fractal recall and cross-agent telepathy events. Budget: 1,024 tokens by default, 2,048 in the Anthropic and OpenAI presets. |
@@ -18,7 +18,8 @@
 | **HDC / HRR** | **Hyperdimensional Computing / Holographic Reduced Representations** — Algebraic memory paradigm representing symbols and bound relations as 10,240-bit quasi-orthogonal hypervectors manipulated via XOR binding ($\oplus$), permutation ($\Pi$), and Delta-Rule majority bundling. |
 | **LCM** | **Lossless Context Management** — Deterministic hierarchical Merkle-DAG architecture (`arXiv:2605.04050`) In `icx`, every compacted message or tool output can be recovered byte for byte as stored, which is the content after secret redaction. |
 | **Owner seal** | Keyed BLAKE3 MAC of a workspace's canonical path under the per-install key, stored in the workspace's `OWNER` file. A workspace without a valid seal is refused until `icx trust` adopts it. |
-| **PPR** | **Personalized PageRank** — Graph random-walk algorithm with restart probability $\alpha$, used in HippoRAG (`arXiv:2405.14831`) and `icx-store` for single-pass multi-hop associative retrieval. |
+| **PPR** | **Personalized PageRank** — Iterative graph random-walk algorithm with restart probability $\alpha$, used in HippoRAG (`arXiv:2405.14831`) and `icx-store` for multi-hop associative retrieval. |
+| **Prompt window budget** | Persisted policy for icx-managed rendered context, inspected with `icx context-budget`. The default 32,768-unit total reserves 4,096 each for completion and external input. Its identified UTF8-byte estimator does not measure an entire provider request. Cold CAS/DAG history remains available. |
 | **Seqlock Ring** | The 256-slot telepathy ring (`SeqlockTelemetryBus`). Odd/even per-slot version counters let readers detect torn or overwritten slots without locking. The in-process backend is atomic; the file-backed backend (default `icx-fabric-v1.shm` in the workspace, or `ICX_SHM_PATH`) uses positional I/O under a writer mutex and advisory file lock, and is not memory-mapped. Dropped events are reported (`dropped_publishes`, `poll_since_with_loss`). |
 | **Store seal** | Keyed BLAKE3 MAC over a workspace store's canonical path, generation and a digest of all persisted state, written on every save and checked on load. |
 | **Titans-inspired surprise gate** | `TitansSurpriseGate`: an importance and retention heuristic inspired by Titans (Behrouz et al., `arXiv:2501.00663`), combining HDC novelty, byte entropy, diagnostic and exit-code signals, and momentum smoothing ($S_t = \eta S_{t-1} + (1-\eta)g_t$). It is a hand-tuned heuristic, not the paper's learned neural memory with gradient-based surprise. |

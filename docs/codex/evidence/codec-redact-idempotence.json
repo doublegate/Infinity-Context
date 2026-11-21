@@ -1,0 +1,28 @@
+{
+  "original_bytes": 153,
+  "original_sha256": "565d4de317ac8f92eae0c6f1df205d47ec8a00a6b4a0c4331df645fe59921230",
+  "original_hex": "223a735f524546524553485f544f4b454e3a0a525345545246485f454f5f52454652457a5050736b2d736b2d73566b2d6b502d503d5353472e4753485f544f4b454e3a0a525345545246485f454f454e3a0a525345545246485f454f5f524546524553485f544f4b454e3a0a525345545246485f454f797979544f4b454e3a0a4f797979002e79792e79797979797979790000000000000005",
+  "original_replay": [
+    2,
+    "same=false\ninput=\"\\\":s_REFRESH_TOKEN:\\nRSETRFH_EO_REFREzPPsk-sk-sVk-kP-P=SSG.GSH_TOKEN:\\nRSETRFH_EOEN:\\nRSETRFH_EO_REFRESH_TOKEN:\\nRSETRFH_EOyyyTOKEN:\\nOyyy\\0.yy.yyyyyyyy\\0\\0\\0\\0\\0\\0\\0\\u{5}\"\nonce=\"\\\":s_REFRESH_TOKEN:\\nRSETRFH_EO_REFREzPP[REDACTED:API_KEY]=SSG.GSH_TOKEN:\\nRSETRFH_EOEN:\\nRSETRFH_EO_REFRESH_TOKEN:\\nRSETRFH_EOyyyTOKEN:\\nOyyy\\0.yy.yyyyyyyy\\0\\0\\0\\0\\0\\0\\0\\u{5}\"\ntwice=\"\\\":s_REFRESH_TOKEN:\\n[REDACTED:SECRET]\\nRSETRFH_EOEN:\\nRSETRFH_EO_REFRESH_TOKEN:\\nRSETRFH_EOyyyTOKEN:\\nOyyy\\0.yy.yyyyyyyy\\0\\0\\0\\0\\0\\0\\0\\u{5}\"\n",
+    ""
+  ],
+  "minimal_bytes": 22,
+  "minimal_sha256": "6881bcdd47c3972c7e4f56380851c51981bb59482bf0c1072e29563026c8fdfa",
+  "minimal_hex": "544f4b454e3a0a50736b2d7373566b2d6b502d503d53",
+  "minimal_replay": [
+    2,
+    "same=false\ninput=\"TOKEN:\\nPsk-ssVk-kP-P=S\"\nonce=\"TOKEN:\\nP[REDACTED:API_KEY]=S\"\ntwice=\"TOKEN:\\n[REDACTED:SECRET]\"\n",
+    ""
+  ],
+  "readable_bytes": 28,
+  "readable_sha256": "e59908f4370963a497cb4f6f4634a3cb48d7d3b8252684091ff1e0418f8f377e",
+  "readable_utf8": "password:\n  ask-123456789=x\n",
+  "readable_replay": [
+    2,
+    "same=false\ninput=\"password:\\n  ask-123456789=x\\n\"\nonce=\"password:\\n  a[REDACTED:API_KEY]=x\\n\"\ntwice=\"password:\\n  [REDACTED:SECRET]\\n\"\n",
+    ""
+  ],
+  "criterion": "Non-idempotence returns exit2 from audit harness, not a production panic",
+  "minimality": "1-minimal by byte deletion, not a proof of globally shortest input"
+}

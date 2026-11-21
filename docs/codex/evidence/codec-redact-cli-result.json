@@ -1,0 +1,40 @@
+{
+  "fixture": "password:\n  user=correcthorse\npublic: ok\n",
+  "commands": [
+    {
+      "args": [
+        "init",
+        "--dir",
+        "/tmp/Infinity-Context/codec-yaml-ekhk2ows/workspace"
+      ],
+      "exit": 0,
+      "stdout": "\u27eaICX:INIT\u2502dir=/tmp/Infinity-Context/codec-yaml-ekhk2ows/workspace\u2502status=READY\u27eb\n",
+      "stderr": ""
+    },
+    {
+      "args": [
+        "encode-ahtl",
+        "/tmp/Infinity-Context/codec-yaml-ekhk2ows/plain.yaml",
+        "--dir",
+        "/tmp/Infinity-Context/codec-yaml-ekhk2ows/workspace"
+      ],
+      "exit": 0,
+      "stdout": "\u27e6\u0394:/tmp/Infinity-Context/codec-yaml-ekhk2ows/plain.yaml#L1-3\u22a2head:password:\u22eeraw_B:41\u21a6#icx:715aff208313e762\u22ee\u03a8:\u2817\u285a\u286d\u287e\u28f7\u28e8\u288e\u2800\u27e7\n",
+      "stderr": ""
+    },
+    {
+      "args": [
+        "deref",
+        "#icx:715aff208313e762",
+        "--raw",
+        "--dir",
+        "/tmp/Infinity-Context/codec-yaml-ekhk2ows/workspace"
+      ],
+      "exit": 0,
+      "stdout": "password:\n  user=correcthorse\npublic: ok\n",
+      "stderr": ""
+    }
+  ],
+  "synthetic_password_survives": true,
+  "note": "Input is valid YAML: password scalar contains an equals sign, not a nested mapping."
+}

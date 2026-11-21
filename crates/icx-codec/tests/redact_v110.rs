@@ -216,8 +216,11 @@ fn continuation_values_that_look_like_assignments_are_still_redacted() {
         assert!(!out.contains(value), "leaked `{value}`: {out:?}");
         assert!(out.contains("host: x"), "{out:?}");
     }
-    let nested = "secret:\n  provider = vault\n";
-    assert_eq!(SecretRedactor::redact(nested), nested);
+    // Security correction in v1.2.0: YAML has no `=` mapping separator. This is a secret scalar.
+    assert_eq!(
+        SecretRedactor::redact("secret:\n  provider = vault\n"),
+        "secret:\n  [REDACTED:SECRET]\n"
+    );
 }
 
 #[test]

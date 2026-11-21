@@ -1,0 +1,10 @@
+{
+  "target": "redact",
+  "runs": 859078,
+  "fuzzer_seconds": 901,
+  "exit": 0,
+  "attempt": 7,
+  "log_sha256": "731d7dc6debb31803b3311d7c97f72457fb2b705c2ce821c6e4dc2df93e24e5e",
+  "scope": "Final pending-key-block/URL authority/UTF8/adjacent credential fixes; existing failures remain preserved, regression fixtures pass",
+  "sanitizer": "Default ASAN/LSAN normal shutdown, no leak-detection override"
+}

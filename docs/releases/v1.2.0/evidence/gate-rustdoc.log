@@ -1,0 +1,17 @@
+    Checking icx-core v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core)
+ Documenting icx-core v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core)
+    Checking icx-hdc v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-hdc)
+    Checking icx-codec v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-codec)
+    Checking icx-store v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-store)
+    Checking icx-bus v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-bus)
+ Documenting icx-codec v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-codec)
+ Documenting icx-store v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-store)
+ Documenting icx-bus v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-bus)
+ Documenting icx-hdc v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-hdc)
+    Checking icx-adapters v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-adapters)
+ Documenting icx-adapters v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-adapters)
+    Checking icx-proxy v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-proxy)
+ Documenting icx-proxy v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-proxy)
+ Documenting icx-cli v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.50s
+   Generated /tmp/Infinity-Context/v120/target/doc/icx_adapters/index.html and 7 other files

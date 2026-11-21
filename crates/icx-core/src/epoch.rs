@@ -7,6 +7,75 @@ use crate::dag::{DagNode, MerkleContextDag};
 use crate::{AgentKind, ArtifactId, IcxError};
 use serde::{Deserialize, Serialize};
 
+/// Leading bytes of the single Zone 1 frame that announces history evicted from a saturated
+/// window to cold storage. It is the first `AssembledWindow::sealed_epochs` entry when present.
+pub const HISTORY_OMITTED_MARKER_PREFIX: &str = "⟪ICX:HISTORY_OMITTED│";
+
+/// Conservative prompt accounting: one UTF-8 byte consumes one token of allowance. This is
+/// an identified upper-bound estimator, not a measured provider tokenizer. External input/tool
+/// schemas and completion space must be reserved by the caller.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PromptWindowBudget {
+    version: u8,
+    context_tokens: usize,
+    completion_reserve: usize,
+    external_input_reserve: usize,
+}
+
+impl Default for PromptWindowBudget {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            context_tokens: 32_768,
+            completion_reserve: 4_096,
+            external_input_reserve: 4_096,
+        }
+    }
+}
+
+impl PromptWindowBudget {
+    pub const fn context_tokens(self) -> usize {
+        self.context_tokens
+    }
+    pub const fn completion_reserve(self) -> usize {
+        self.completion_reserve
+    }
+    pub const fn external_input_reserve(self) -> usize {
+        self.external_input_reserve
+    }
+    /// Constructs a budget, refusing overflowing reservations or no prompt allowance.
+    pub fn new(
+        context_tokens: usize,
+        completion_reserve: usize,
+        external_input_reserve: usize,
+    ) -> Result<Self, IcxError> {
+        let reserved = completion_reserve
+            .checked_add(external_input_reserve)
+            .filter(|&reserved| reserved < context_tokens)
+            .ok_or_else(|| {
+                IcxError::Io("context reservations must fit inside the model window".into())
+            })?;
+        let _ = reserved;
+        Ok(Self {
+            version: 1,
+            context_tokens,
+            completion_reserve,
+            external_input_reserve,
+        })
+    }
+
+    /// Maximum bytes of icx-managed rendered context; invalid persisted policies fail closed.
+    pub fn window_bytes(self) -> usize {
+        if self.version != 1 {
+            return 0;
+        }
+        self.completion_reserve
+            .checked_add(self.external_input_reserve)
+            .and_then(|reserved| self.context_tokens.checked_sub(reserved))
+            .unwrap_or(0)
+    }
+}
+
 /// Configuration for the `CacheEpochController`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EpochControllerConfig {
@@ -114,6 +183,13 @@ pub struct CacheEpochController {
     sealed_epochs: Vec<DagNode>,
     unsealed_turn_ids: Vec<ArtifactId>,
     next_epoch_index: u32,
+    #[serde(default)]
+    window_budget: PromptWindowBudget,
+    /// Number of oldest `sealed_epochs` evicted from the assembled window to cold storage. It
+    /// only moves in discrete hysteretic steps (see `plan_eviction`), so the provider prefix
+    /// stays byte-stable between steps. Older state lacks it and re-plans from zero.
+    #[serde(default)]
+    evicted_epochs: usize,
 }
 
 impl CacheEpochController {
@@ -125,7 +201,52 @@ impl CacheEpochController {
             sealed_epochs: Vec::new(),
             unsealed_turn_ids: Vec::new(),
             next_epoch_index: 0,
+            window_budget: PromptWindowBudget::default(),
+            evicted_epochs: 0,
         }
+    }
+
+    /// Changes model-window policy without deleting any cold history. A smaller policy changes
+    /// the selected provider prefix, so a cache invalidation is expected.
+    pub fn set_window_budget(&mut self, budget: PromptWindowBudget) -> Result<(), IcxError> {
+        if budget.window_bytes() < self.pinned_head.len() {
+            return Err(IcxError::Io(
+                "context budget cannot hold the pinned head".into(),
+            ));
+        }
+        self.window_budget = budget;
+        // The selected prefix changes anyway; re-plan eviction against the new allowance.
+        self.evicted_epochs = 0;
+        Ok(())
+    }
+
+    pub const fn window_budget(&self) -> PromptWindowBudget {
+        self.window_budget
+    }
+
+    /// Bounds the direct hook/proxy recall path without assembling or cloning history.
+    /// Oversized formatted context is omitted whole so packet framing is never truncated.
+    pub fn bound_tail_slot(&self, tail: String) -> String {
+        let limit = self.tail_slot_byte_limit();
+        if tail.len() <= limit {
+            return tail;
+        }
+        let diagnostic = "⟪ICX:TAIL_OMITTED│reason=context_budget⟫";
+        if diagnostic.len() <= limit {
+            diagnostic.into()
+        } else {
+            String::new()
+        }
+    }
+
+    /// Maximum complete UTF-8 bytes available to a tail, using the conservative one-byte
+    /// accounting policy. Producers can select whole frames before committing delivery cursors.
+    pub fn tail_slot_byte_limit(&self) -> usize {
+        self.config.tail_slot_max_tokens.min(
+            self.window_budget
+                .window_bytes()
+                .saturating_sub(self.pinned_head.len()),
+        )
     }
 
     /// Number of immutable sealed Cache Epochs in Zone 1.
@@ -188,6 +309,7 @@ impl CacheEpochController {
             self.unsealed_turn_ids.push(node_id);
         }
         self.maybe_rollover(dag);
+        self.evicted_epochs = self.plan_eviction(dag, self.evicted_epochs);
     }
 
     /// Records a new turn into the active window and triggers an amortized Epoch Rollover if
@@ -264,6 +386,7 @@ impl CacheEpochController {
             self.next_epoch_index = self.next_epoch_index.saturating_add(1);
             let epoch_node = dag.seal_epoch(epoch_idx, to_seal, raw_tokens);
             self.sealed_epochs.push(epoch_node);
+            self.evicted_epochs = self.plan_eviction(dag, self.evicted_epochs);
         }
         if self.sealed_epochs.len() >= 2 {
             let epoch_ids: Vec<ArtifactId> = self.sealed_epochs.iter().map(DagNode::id).collect();
@@ -320,33 +443,195 @@ impl CacheEpochController {
             unproductive_checks = 0;
         }
 
+        if folds > 0 {
+            // Folding re-indexes Zone 1, so the old eviction point no longer names the same
+            // epochs; the prefix changes regardless, so re-plan from the start.
+            self.evicted_epochs = self.plan_eviction(dag, 0);
+        }
         folds
+    }
+
+    /// Number of oldest sealed epochs currently evicted from the assembled window. Evicted
+    /// epochs stay in the DAG and are dereferenceable through the omission marker's handles.
+    pub fn evicted_epoch_count(&self) -> usize {
+        self.evicted_epochs.min(self.sealed_epochs.len())
+    }
+
+    /// Bytes available to Zone 1 + Zone 2 (and the omission marker) after the pinned head and
+    /// the *maximum* tail slot. Planning against the maximum tail keeps the eviction point
+    /// independent of the per-turn recall length.
+    fn history_allowance(&self) -> usize {
+        self.window_budget
+            .window_bytes()
+            .saturating_sub(self.pinned_head.len())
+            .saturating_sub(self.tail_slot_byte_limit())
+    }
+
+    /// Hysteretic eviction planner (prefix-stable paging under saturation).
+    ///
+    /// While the window assembled from `start` fits the history allowance, `start` is kept, so
+    /// head + marker + retained epochs remain byte-identical turn after turn. Only when it no
+    /// longer fits are the oldest epochs evicted in one step, down to the low-water mark of
+    /// `allowance / EVICTION_LOW_WATER_DIVISOR`, leaving headroom for many further turns before
+    /// the next step. Deterministic and idempotent: `plan(plan(s)) == plan(s)`.
+    fn plan_eviction(&self, dag: &MerkleContextDag, start: usize) -> usize {
+        let n = self.sealed_epochs.len();
+        let start = start.min(n);
+        let allowance = self.history_allowance();
+        let active = self
+            .unsealed_turn_ids
+            .iter()
+            .filter_map(|&id| dag.get_node(id))
+            .map(|node| frame_cost(node.ahtl_representation()))
+            .fold(0usize, usize::saturating_add);
+        let frame_len = |node: &DagNode| epoch_frame(node).map_or(0, str::len);
+        let mut retained = self.sealed_epochs[start..]
+            .iter()
+            .map(|node| epoch_frame(node).map_or(0, frame_cost))
+            .fold(0usize, usize::saturating_add);
+        let mut omitted_bytes = self.sealed_epochs[..start]
+            .iter()
+            .map(frame_len)
+            .fold(0usize, usize::saturating_add);
+        let cost = |p: usize, retained: usize, omitted_bytes: usize| {
+            let marker = if p == 0 {
+                0
+            } else {
+                frame_cost(&format_omission_marker(
+                    p,
+                    0,
+                    omitted_bytes,
+                    self.sealed_epochs[0].id(),
+                    self.sealed_epochs[p - 1].id(),
+                ))
+            };
+            retained.saturating_add(active).saturating_add(marker)
+        };
+        if cost(start, retained, omitted_bytes) <= allowance {
+            return start;
+        }
+        let low_water = allowance / EVICTION_LOW_WATER_DIVISOR;
+        for p in start + 1..=n {
+            let node = &self.sealed_epochs[p - 1];
+            retained = retained.saturating_sub(epoch_frame(node).map_or(0, frame_cost));
+            omitted_bytes = omitted_bytes.saturating_add(frame_len(node));
+            if cost(p, retained, omitted_bytes) <= low_water {
+                return p;
+            }
+        }
+        n
     }
 
     /// Assembles the 4-zone prompt view with the provided dynamic Ephemeral Tail Slot recall.
     pub fn assemble_window(
         &self,
         dag: &MerkleContextDag,
-        ephemeral_tail_slot: String,
+        mut ephemeral_tail_slot: String,
     ) -> AssembledWindow {
-        let sealed_epochs: Vec<String> = self
-            .sealed_epochs
-            .iter()
-            .filter_map(|n| match n {
-                DagNode::CacheEpoch { ahtl_frame, .. } => Some(ahtl_frame.clone()),
-                _ => None,
-            })
-            .collect();
-
-        let active_window: Vec<String> = self
+        let cap = self.window_budget.window_bytes();
+        if self.pinned_head.len() > cap {
+            let diagnostic = "ICX_CONTEXT_BUDGET_EXCEEDED";
+            let pinned_head = if diagnostic.len() <= cap {
+                diagnostic.into()
+            } else {
+                String::new()
+            };
+            return AssembledWindow {
+                total_cached_prefix_bytes: pinned_head.len(),
+                pinned_head,
+                sealed_epochs: Vec::new(),
+                active_window: Vec::new(),
+                ephemeral_tail_slot: String::new(),
+                total_uncached_tail_bytes: 0,
+            };
+        }
+        ephemeral_tail_slot = self.bound_tail_slot(ephemeral_tail_slot);
+        let remaining = cap - self.pinned_head.len() - ephemeral_tail_slot.len();
+        // Selection borrows frames and clones only what is emitted. Cold DAG/CAS stays intact,
+        // whole frames are retained (no partial packet or UTF-8 truncation), and retained
+        // history is always a contiguous newest suffix: anything older than the first retained
+        // frame is announced by exactly one omission marker, never skipped silently.
+        let active: Vec<&DagNode> = self
             .unsealed_turn_ids
             .iter()
-            .filter_map(|&id| dag.get_node(id).map(|n| n.ahtl_representation().to_owned()))
+            .filter_map(|&id| dag.get_node(id))
             .collect();
-
+        let n = self.sealed_epochs.len();
+        let mut evicted = self.plan_eviction(dag, self.evicted_epochs);
+        let mut omitted_turns = 0usize;
+        let render = |evicted: usize, omitted_turns: usize| -> (Option<String>, usize) {
+            let omitted_bytes = self.sealed_epochs[..evicted]
+                .iter()
+                .filter_map(epoch_frame)
+                .chain(
+                    active[..omitted_turns]
+                        .iter()
+                        .map(|node| node.ahtl_representation()),
+                )
+                .map(str::len)
+                .fold(0usize, usize::saturating_add);
+            let first = self.sealed_epochs[..evicted]
+                .first()
+                .map(DagNode::id)
+                .or_else(|| active[..omitted_turns].first().map(|node| node.id()));
+            let last = active[..omitted_turns]
+                .last()
+                .map(|node| node.id())
+                .or_else(|| self.sealed_epochs[..evicted].last().map(DagNode::id));
+            let marker = first.zip(last).map(|(first, last)| {
+                format_omission_marker(evicted, omitted_turns, omitted_bytes, first, last)
+            });
+            let cost = marker
+                .as_deref()
+                .map_or(0, frame_cost)
+                .saturating_add(
+                    self.sealed_epochs[evicted..]
+                        .iter()
+                        .filter_map(epoch_frame)
+                        .map(frame_cost)
+                        .fold(0usize, usize::saturating_add),
+                )
+                .saturating_add(
+                    active[omitted_turns..]
+                        .iter()
+                        .map(|node| frame_cost(node.ahtl_representation()))
+                        .fold(0usize, usize::saturating_add),
+                );
+            (marker, cost)
+        };
+        let (mut marker, cost) = render(evicted, 0);
+        if cost > remaining {
+            // Degenerate budget: even with every sealed epoch evicted the active window does
+            // not fit. Keep the newest contiguous active suffix behind the marker; this marker
+            // then changes per turn, which is unavoidable once Zone 2 alone overflows.
+            evicted = n;
+            omitted_turns = active.len();
+            marker = None;
+            for skip in 0..=active.len() {
+                let (candidate, cost) = render(evicted, skip);
+                if cost <= remaining {
+                    omitted_turns = skip;
+                    marker = candidate;
+                    break;
+                }
+            }
+        }
+        // `marker` is None here only when no history was omitted, or when the budget cannot
+        // even hold the marker (then nothing beyond the head and tail is emitted at all).
+        let mut sealed_epochs: Vec<String> = marker.into_iter().collect();
+        sealed_epochs.extend(
+            self.sealed_epochs[evicted..]
+                .iter()
+                .filter_map(epoch_frame)
+                .map(str::to_owned),
+        );
+        let active_window: Vec<String> = active[omitted_turns..]
+            .iter()
+            .map(|node| node.ahtl_representation().to_owned())
+            .collect();
         let total_cached_prefix_bytes = self.pinned_head.len()
-            + sealed_epochs.iter().map(String::len).sum::<usize>()
-            + active_window.iter().map(String::len).sum::<usize>();
+            + sealed_epochs.iter().map(|s| s.len() + 1).sum::<usize>()
+            + active_window.iter().map(|s| s.len() + 1).sum::<usize>();
         let total_uncached_tail_bytes = ephemeral_tail_slot.len();
 
         AssembledWindow {
@@ -358,6 +643,37 @@ impl CacheEpochController {
             total_uncached_tail_bytes,
         }
     }
+}
+
+/// Low-water mark of one eviction step: history is cut back to `allowance / 2`, so roughly
+/// half the allowance is available for growth before the next (cache-invalidating) step.
+const EVICTION_LOW_WATER_DIVISOR: usize = 2;
+
+/// Rendered bytes of a frame in `AssembledWindow::deterministic_prefix` (frame + newline).
+fn frame_cost(frame: &str) -> usize {
+    frame.len().saturating_add(1)
+}
+
+fn epoch_frame(node: &DagNode) -> Option<&str> {
+    match node {
+        DagNode::CacheEpoch { ahtl_frame, .. } => Some(ahtl_frame),
+        _ => None,
+    }
+}
+
+/// Compact, stable Zone 1 frame naming the history held only in cold storage. Its text depends
+/// only on the eviction point, so it changes only at eviction steps. `first`/`last` are DAG
+/// handles accepted by the `icx` tool (`deref`, `slice`, `grep`).
+fn format_omission_marker(
+    epochs: usize,
+    turns: usize,
+    bytes: usize,
+    first: ArtifactId,
+    last: ArtifactId,
+) -> String {
+    format!(
+        "{HISTORY_OMITTED_MARKER_PREFIX}epochs={epochs}│turns={turns}│bytes={bytes}│first={first}│last={last}│recall=icx:deref|slice|grep⟫"
+    )
 }
 
 #[cfg(test)]

@@ -1,0 +1,14 @@
+[
+  {
+    "label": "x86_64-unknown-linux-musl",
+    "binary": "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/icx",
+    "build_provenance": "/tmp/Infinity-Context/v120/package-musl-baseline/x86_64-unknown-linux-musl/release/build/icx-cli/290bff38d0702ace/run/stdout",
+    "note": "preliminary rebuilt frozen source; final fuzz pending; build+source manifests retained separately"
+  },
+  {
+    "label": "x86_64_v3-unknown-linux-musl",
+    "binary": "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/icx",
+    "build_provenance": "/tmp/Infinity-Context/v120/package-musl-v3/x86_64-unknown-linux-musl/release/build/icx-cli/4128e86b408630cf/run/stdout",
+    "note": "preliminary rebuilt frozen source; final fuzz pending; build+source manifests retained separately"
+  }
+]

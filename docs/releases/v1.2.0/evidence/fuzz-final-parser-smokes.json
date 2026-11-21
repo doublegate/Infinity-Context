@@ -1,0 +1,43 @@
+{
+  "scope": "Final-source60second sanitizer smoke supplements original900second campaigns, not a replacement for their provenance",
+  "results": [
+    {
+      "target": "ahtl_stream",
+      "command": [
+        "cargo",
+        "+nightly",
+        "fuzz",
+        "run",
+        "ahtl_stream",
+        "/tmp/Infinity-Context/v120/fuzz/ahtl_stream/corpus",
+        "--",
+        "-max_total_time=60",
+        "-max_len=8192",
+        "-rss_limit_mb=2048",
+        "-artifact_prefix=/tmp/Infinity-Context/v120/fuzz/ahtl_stream/artifacts/"
+      ],
+      "exit": 0,
+      "outer_seconds": 96.39,
+      "log_sha256": "675770f518f371eb6050c5b04bb6a85ddd97402d961366e083a6ca3e4b9fcc77"
+    },
+    {
+      "target": "mcp_jsonrpc",
+      "command": [
+        "cargo",
+        "+nightly",
+        "fuzz",
+        "run",
+        "mcp_jsonrpc",
+        "/tmp/Infinity-Context/v120/fuzz/mcp_jsonrpc/corpus",
+        "--",
+        "-max_total_time=60",
+        "-max_len=8192",
+        "-rss_limit_mb=2048",
+        "-artifact_prefix=/tmp/Infinity-Context/v120/fuzz/mcp_jsonrpc/artifacts/"
+      ],
+      "exit": 0,
+      "outer_seconds": 95.42,
+      "log_sha256": "f5bd8d7a7ceee0572b3a8eba4d5393fb23ec124fe24f63681c8f8ded5250dc11"
+    }
+  ]
+}

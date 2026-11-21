@@ -1,0 +1,19 @@
+    Checking icx-core v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-core)
+    Checking icx-hdc v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-hdc)
+    Checking icx-codec v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-codec)
+    Checking icx-bus v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-bus)
+    Checking icx-store v1.2.0 (/home/parobek/Code/OSS_Public-Projects/Infinity-Context/crates/icx-store)
+error: casting `usize` to `i16` may wrap around the value on targets with 16-bit wide pointers
+  --> crates/icx-bus/tests/loss_signalling.rs:60:43
+   |
+60 |     let coords = std::array::from_fn(|i| (i as i16 - 8) * 100);
+   |                                           ^^^^^^^^
+   |
+   = note: `usize` and `isize` may be as small as 16 bits on some platforms
+   = note: for more information see https://doc.rust-lang.org/reference/types/numeric.html#machine-dependent-integer-types
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#cast_possible_wrap
+   = note: `-D clippy::cast-possible-wrap` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::cast_possible_wrap)]`
+
+error: could not compile `icx-bus` (test "loss_signalling") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

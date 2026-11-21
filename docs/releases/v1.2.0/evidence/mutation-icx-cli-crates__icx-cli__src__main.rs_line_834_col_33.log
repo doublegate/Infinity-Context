@@ -1,0 +1,181 @@
+
+*** crates/icx-cli/src/main.rs:834:33: replace match guard i + 1 < args.len() with true in run_proxy_server
+
+*** mutation diff:
+--- crates/icx-cli/src/main.rs
++++ replace match guard i + 1 < args.len() with true in run_proxy_server
+@@ -826,17 +826,17 @@
+             "--upstream" if i + 1 < args.len() => {
+                 upstream_str = Some(args[i + 1].as_str());
+                 i += 2;
+             }
+             "--dir" if i + 1 < args.len() => {
+                 dir_str = Some(args[i + 1].as_str());
+                 i += 2;
+             }
+-            "--max-requests" if i + 1 < args.len() => {
++            "--max-requests" if true /* ~ changed by cargo-mutants ~ */ => {
+                 max_requests = Some(
+                     args[i + 1]
+                         .parse::<usize>()
+                         .map_err(|e| format!("proxy error: invalid --max-requests: {e}"))?,
+                 );
+                 i += 2;
+             }
+             _ => i += 1,
+
+
+*** /home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo test --no-run --verbose --package=icx-cli@1.2.0
+       Fresh find-msvc-tools v0.1.15
+       Fresh shlex v2.0.1
+       Fresh unicode-ident v1.0.27
+       Fresh cfg-if v1.0.5
+       Fresh cpufeatures v0.3.1
+       Fresh arrayvec v0.7.8
+       Fresh memchr v2.8.3
+       Fresh constant_time_eq v0.4.2
+       Fresh itoa v1.0.19
+       Fresh vcpkg v0.2.15
+       Fresh pkg-config v0.3.34
+       Fresh foldhash v0.2.0
+       Fresh bitflags v2.13.2
+       Fresh linux-raw-sys v0.12.1
+       Fresh cc v1.11.2
+       Fresh hashbrown v0.17.1
+       Fresh fallible-iterator v0.3.0
+       Fresh smallvec v1.16.6
+       Fresh fallible-streaming-iterator v0.1.9
+       Fresh proc-macro2 v1.0.107
+       Fresh serde_core v1.0.229
+       Fresh zmij v1.0.23
+       Fresh rustix v1.1.6
+       Fresh hashlink v0.12.2
+       Fresh quote v1.0.47
+       Fresh serde_json v1.0.154
+       Fresh syn v3.0.10
+       Fresh blake3 v1.8.7
+       Fresh libsqlite3-sys v0.40.0
+       Fresh serde_derive v1.0.229
+       Fresh thiserror-impl v2.0.21
+       Fresh rusqlite v0.43.0
+       Fresh serde v1.0.229
+       Fresh thiserror v2.0.21
+       Fresh icx-core v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-core)
+       Fresh icx-bus v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-bus)
+       Fresh icx-hdc v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-hdc)
+       Fresh icx-codec v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-codec)
+       Fresh icx-store v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-store)
+       Fresh icx-adapters v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-adapters)
+       Fresh icx-proxy v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-proxy)
+       Dirty icx-cli v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-cli): the file `crates/icx-cli/src/main.rs` has changed (1795236918.065927743s, 3s after last build at 1795236915.235953365s)
+   Compiling icx-cli v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-cli)
+     Running `/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/rustc --crate-name icx --edition=2024 crates/icx-cli/src/main.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat,unused-externs-silent --crate-type bin --emit=dep-info,link -C embed-bitcode=no -C debuginfo=line-tables-only -C split-debuginfo=unpacked '--warn=clippy::pedantic' '--warn=clippy::all' --forbid=unsafe_code '--allow=clippy::uninlined_format_args' '--allow=clippy::too_many_lines' '--allow=clippy::too_many_arguments' '--allow=clippy::similar_names' '--allow=clippy::return_self_not_must_use' '--allow=clippy::redundant_else' '--allow=clippy::needless_range_loop' '--allow=clippy::naive_bytecount' '--allow=clippy::must_use_candidate' '--allow=clippy::module_name_repetitions' '--allow=clippy::missing_panics_doc' '--allow=clippy::missing_errors_doc' --warn=missing_debug_implementations '--allow=clippy::map_unwrap_or' '--allow=clippy::manual_let_else' '--allow=clippy::large_stack_arrays' '--allow=clippy::format_push_string' '--allow=clippy::doc_markdown' '--allow=clippy::collapsible_if' '--allow=clippy::cast_sign_loss' '--allow=clippy::cast_precision_loss' '--allow=clippy::cast_possible_truncation' '--allow=clippy::cast_lossless' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=0afcb6dbc34fcc18 --out-dir /tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-cli/7c943b2c13a90052/out -C linker=clang -C incremental=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/incremental -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/arrayvec/3011af89d6265d30/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/bitflags/ded0e04483872093/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/blake3/93a7a8faff8501eb/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/cfg-if/7ffad8ebfe148498/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/constant_time_eq/3c255603d278105d/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/cpufeatures/4e18b1ea79144acd/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/fallible-iterator/4a01fac56bcd7b16/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/fallible-streaming-iterator/2a6fe048530be49d/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/foldhash/396c82543da19dfe/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/hashbrown/3fccc4f13a6f6472/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/hashlink/c5ec087e10d6b523/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-adapters/eba8e852baf8ce3a/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-bus/bc8cd366292b3a19/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-codec/e5d86bc36bc32720/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-core/a91b5b93709c37fe/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-hdc/01c589beda162ff3/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-store/ee16434634a0fb9e/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/itoa/935c8e34c71ff85f/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/libsqlite3-sys/d99f07d258b1655e/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/linux-raw-sys/ec406bcdc3f7088f/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/memchr/95593b991a8737e0/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/rusqlite/3564097f600480b6/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/rustix/2169aac8b872bf5f/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/serde/365efd42537cf115/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/serde_core/6f1a08327c0302c2/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/serde_derive/1e769d8662a69684/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/serde_json/674785134492a40e/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/smallvec/d5d2979972f5d50c/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/thiserror-impl/065429223a415a61/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/thiserror/8c1e9b5863e92247/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/zmij/d4d43da35350787d/out --extern blake3=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/blake3/93a7a8faff8501eb/out/libblake3-93a7a8faff8501eb.rlib --extern icx_adapters=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-adapters/eba8e852baf8ce3a/out/libicx_adapters-eba8e852baf8ce3a.rlib --extern icx_bus=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-bus/bc8cd366292b3a19/out/libicx_bus-bc8cd366292b3a19.rlib --extern icx_codec=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-codec/e5d86bc36bc32720/out/libicx_codec-e5d86bc36bc32720.rlib --extern icx_core=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-core/a91b5b93709c37fe/out/libicx_core-a91b5b93709c37fe.rlib --extern icx_hdc=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-hdc/01c589beda162ff3/out/libicx_hdc-01c589beda162ff3.rlib --extern icx_proxy=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-proxy/7786834b0c8e4287/out/libicx_proxy-7786834b0c8e4287.rlib --extern icx_store=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-store/ee16434634a0fb9e/out/libicx_store-ee16434634a0fb9e.rlib --extern rustix=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/rustix/2169aac8b872bf5f/out/librustix-2169aac8b872bf5f.rlib --extern serde=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/serde/365efd42537cf115/out/libserde-365efd42537cf115.rlib --extern serde_json=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/serde_json/674785134492a40e/out/libserde_json-674785134492a40e.rlib -C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked --force-warn=unused_crate_dependencies -L native=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/blake3/58ced9ef5a5e53ce/out -L native=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/blake3/58ced9ef5a5e53ce/out -L native=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/libsqlite3-sys/cf8834b252d2f532/out`
+     Running `/home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/rustc --crate-name icx --edition=2024 crates/icx-cli/src/main.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat,unused-externs-silent --emit=dep-info,link -C embed-bitcode=no -C debuginfo=line-tables-only -C split-debuginfo=unpacked '--warn=clippy::pedantic' '--warn=clippy::all' --forbid=unsafe_code '--allow=clippy::uninlined_format_args' '--allow=clippy::too_many_lines' '--allow=clippy::too_many_arguments' '--allow=clippy::similar_names' '--allow=clippy::return_self_not_must_use' '--allow=clippy::redundant_else' '--allow=clippy::needless_range_loop' '--allow=clippy::naive_bytecount' '--allow=clippy::must_use_candidate' '--allow=clippy::module_name_repetitions' '--allow=clippy::missing_panics_doc' '--allow=clippy::missing_errors_doc' --warn=missing_debug_implementations '--allow=clippy::map_unwrap_or' '--allow=clippy::manual_let_else' '--allow=clippy::large_stack_arrays' '--allow=clippy::format_push_string' '--allow=clippy::doc_markdown' '--allow=clippy::collapsible_if' '--allow=clippy::cast_sign_loss' '--allow=clippy::cast_precision_loss' '--allow=clippy::cast_possible_truncation' '--allow=clippy::cast_lossless' --test --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=e627a01e28cf88f2 -C extra-filename=-4c0e94638923d0d7 --out-dir /tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-cli/4c0e94638923d0d7/out -C linker=clang -C incremental=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/incremental -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/arrayvec/3011af89d6265d30/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/bitflags/ded0e04483872093/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/blake3/93a7a8faff8501eb/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/cfg-if/7ffad8ebfe148498/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/constant_time_eq/3c255603d278105d/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/cpufeatures/4e18b1ea79144acd/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/fallible-iterator/4a01fac56bcd7b16/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/fallible-streaming-iterator/2a6fe048530be49d/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/foldhash/396c82543da19dfe/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/hashbrown/3fccc4f13a6f6472/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/hashlink/c5ec087e10d6b523/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-adapters/eba8e852baf8ce3a/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-bus/bc8cd366292b3a19/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-codec/e5d86bc36bc32720/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-core/a91b5b93709c37fe/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-hdc/01c589beda162ff3/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-store/ee16434634a0fb9e/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/itoa/935c8e34c71ff85f/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/libsqlite3-sys/d99f07d258b1655e/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/linux-raw-sys/ec406bcdc3f7088f/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/memchr/95593b991a8737e0/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/rusqlite/3564097f600480b6/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/rustix/2169aac8b872bf5f/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/serde/365efd42537cf115/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/serde_core/6f1a08327c0302c2/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/serde_derive/1e769d8662a69684/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/serde_json/674785134492a40e/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/smallvec/d5d2979972f5d50c/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/thiserror-impl/065429223a415a61/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/thiserror/8c1e9b5863e92247/out -L dependency=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/zmij/d4d43da35350787d/out --extern blake3=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/blake3/93a7a8faff8501eb/out/libblake3-93a7a8faff8501eb.rlib --extern icx_adapters=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-adapters/eba8e852baf8ce3a/out/libicx_adapters-eba8e852baf8ce3a.rlib --extern icx_bus=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-bus/bc8cd366292b3a19/out/libicx_bus-bc8cd366292b3a19.rlib --extern icx_codec=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-codec/e5d86bc36bc32720/out/libicx_codec-e5d86bc36bc32720.rlib --extern icx_core=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-core/a91b5b93709c37fe/out/libicx_core-a91b5b93709c37fe.rlib --extern icx_hdc=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-hdc/01c589beda162ff3/out/libicx_hdc-01c589beda162ff3.rlib --extern icx_proxy=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-proxy/7786834b0c8e4287/out/libicx_proxy-7786834b0c8e4287.rlib --extern icx_store=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-store/ee16434634a0fb9e/out/libicx_store-ee16434634a0fb9e.rlib --extern rusqlite=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/rusqlite/3564097f600480b6/out/librusqlite-3564097f600480b6.rlib --extern rustix=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/rustix/2169aac8b872bf5f/out/librustix-2169aac8b872bf5f.rlib --extern serde=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/serde/365efd42537cf115/out/libserde-365efd42537cf115.rlib --extern serde_json=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/serde_json/674785134492a40e/out/libserde_json-674785134492a40e.rlib -C target-cpu=native -C link-arg=-fuse-ld=mold -C split-debuginfo=unpacked --force-warn=unused_crate_dependencies -L native=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/blake3/58ced9ef5a5e53ce/out -L native=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/blake3/58ced9ef5a5e53ce/out -L native=/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/libsqlite3-sys/cf8834b252d2f532/out`
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.49s
+  Executable `/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-cli/4c0e94638923d0d7/out/icx-4c0e94638923d0d7`
+  Executable `/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-cli/67ae1130aa5ba434/out/benchmark_report_v120-67ae1130aa5ba434`
+  Executable `/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-cli/dcd0f4cb46ed9498/out/cli_bin-dcd0f4cb46ed9498`
+  Executable `/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-cli/0ae405879e29cf95/out/context_budget_v120-0ae405879e29cf95`
+  Executable `/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-cli/5ed009a06e58945c/out/daemon_durability_v120-5ed009a06e58945c`
+
+*** result: Success
+
+*** /home/parobek/.rustup/toolchains/1.100.0-x86_64-unknown-linux-gnu/bin/cargo test --verbose --package=icx-cli@1.2.0
+       Fresh shlex v2.0.1
+       Fresh find-msvc-tools v0.1.15
+       Fresh cc v1.11.2
+       Fresh unicode-ident v1.0.27
+       Fresh cfg-if v1.0.5
+       Fresh cpufeatures v0.3.1
+       Fresh proc-macro2 v1.0.107
+       Fresh arrayvec v0.7.8
+       Fresh memchr v2.8.3
+       Fresh constant_time_eq v0.4.2
+       Fresh itoa v1.0.19
+       Fresh pkg-config v0.3.34
+       Fresh vcpkg v0.2.15
+       Fresh foldhash v0.2.0
+       Fresh bitflags v2.13.2
+       Fresh linux-raw-sys v0.12.1
+       Fresh fallible-iterator v0.3.0
+       Fresh smallvec v1.16.6
+       Fresh fallible-streaming-iterator v0.1.9
+       Fresh quote v1.0.47
+       Fresh serde_core v1.0.229
+       Fresh zmij v1.0.23
+       Fresh hashbrown v0.17.1
+       Fresh syn v3.0.10
+       Fresh serde_json v1.0.154
+       Fresh blake3 v1.8.7
+       Fresh rustix v1.1.6
+       Fresh hashlink v0.12.2
+       Fresh serde_derive v1.0.229
+       Fresh thiserror-impl v2.0.21
+       Fresh libsqlite3-sys v0.40.0
+       Fresh serde v1.0.229
+       Fresh thiserror v2.0.21
+       Fresh rusqlite v0.43.0
+       Fresh icx-core v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-core)
+       Fresh icx-bus v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-bus)
+       Fresh icx-hdc v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-hdc)
+       Fresh icx-codec v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-codec)
+       Fresh icx-store v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-store)
+       Fresh icx-adapters v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-adapters)
+       Fresh icx-proxy v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-proxy)
+       Fresh icx-cli v1.2.0 (/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/crates/icx-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running `/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-cli/4c0e94638923d0d7/out/icx-4c0e94638923d0d7`
+
+running 16 tests
+test tests::deref_output_is_framed_as_untrusted_unless_raw ... ok
+test tests::encode_ahtl_refuses_an_untrusted_workspace_instead_of_printing_a_dangling_handle ... ok
+test tests::daemon_rejects_overlong_socket_paths ... ok
+test tests::stdin_and_mcp_lines_are_bounded ... ok
+test tests::failed_trust_leaves_the_directory_unadopted ... ok
+test tests::daemon_reports_persistent_commit_failure_and_exits_unsuccessfully ... ok
+test daemon::tests::save_failure_is_not_acknowledged_and_serve_returns_error ... ok
+test tests::trust_does_not_adopt_emitted_block_digests_from_the_adopted_store ... ok
+test tests::cloned_repo_workspace_is_not_injected_into_agent_context_until_trusted ... ok
+test tests::daemon_refuses_an_uncommitted_response_and_releases_the_lock_for_retry ... ok
+test tests::daemon_serves_hooks_over_private_socket_and_flushes_state_on_exit ... ok
+test tests::cli_init_and_deref_round_trip_with_full_and_short_handles ... ok
+test daemon::tests::successful_ack_is_already_committed_before_idle_or_exit ... ok
+test tests::daemon_does_not_save_after_requests_it_could_not_dispatch ... ok
+test tests::daemon_handles_bad_requests_refuses_a_second_instance_and_idle_exits_after_flushing ... ok
+{"id":1,"jsonrpc":"2.0","result":{"capabilities":{"tools":{}},"protocolVersion":"2025-11-25","serverInfo":{"name":"infinity-context-mmu","version":"1.2.0"}}}
+{"id":2,"jsonrpc":"2.0","result":{"content":[{"text":"ERR: no active sub-trajectory branch to fold","type":"text"}],"isError":true}}
+{"id":1,"jsonrpc":"2.0","result":{}}
+test tests::cli_subcommands_status_doctor_benchmark_encode_decode_hook_and_mcp_run_cleanly ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.17s
+
+     Running `/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-cli/67ae1130aa5ba434/out/benchmark_report_v120-67ae1130aa5ba434`
+
+running 1 test
+test json_benchmark_reports_measured_scans_and_build_provenance ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.99s
+
+     Running `/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-cli/dcd0f4cb46ed9498/out/cli_bin-dcd0f4cb46ed9498`
+
+running 1 test
+test icx_binary_main_entrypoint_handles_success_and_error_exit_codes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running `/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-cli/0ae405879e29cf95/out/context_budget_v120-0ae405879e29cf95`
+
+running 1 test
+test cli_can_set_and_inspect_a_persisted_model_budget ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running `/tmp/Infinity-Context/v120/mutation-campaign/cargo-mutants-source-TBQUsF.tmp/target/debug/build/icx-cli/5ed009a06e58945c/out/daemon_durability_v120-5ed009a06e58945c`
+
+running 1 test
+test every_successful_ack_survives_sigkill_and_cli_reopen ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+
+*** result: Success

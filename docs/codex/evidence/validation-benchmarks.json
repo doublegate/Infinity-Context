@@ -1,0 +1,156 @@
+[
+  {
+    "profile": "portable",
+    "run": 0,
+    "warmup": true,
+    "exit": 1,
+    "wall_ms": 104.93834502995014
+  },
+  {
+    "profile": "portable",
+    "run": 1,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 106.10731097403914
+  },
+  {
+    "profile": "portable",
+    "run": 2,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 130.18037902656943
+  },
+  {
+    "profile": "portable",
+    "run": 3,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 122.26493691559881
+  },
+  {
+    "profile": "portable",
+    "run": 4,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 108.0186830367893
+  },
+  {
+    "profile": "portable",
+    "run": 5,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 105.4819580167532
+  },
+  {
+    "profile": "portable",
+    "run": 6,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 104.86101009882987
+  },
+  {
+    "profile": "portable",
+    "run": 7,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 104.43519498221576
+  },
+  {
+    "profile": "portable",
+    "run": 8,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 106.52667400427163
+  },
+  {
+    "profile": "portable",
+    "run": 9,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 106.6478390712291
+  },
+  {
+    "profile": "portable",
+    "run": 10,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 107.03703900799155
+  },
+  {
+    "profile": "native",
+    "run": 0,
+    "warmup": true,
+    "exit": 1,
+    "wall_ms": 92.86696801427752
+  },
+  {
+    "profile": "native",
+    "run": 1,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 136.35749102104455
+  },
+  {
+    "profile": "native",
+    "run": 2,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 144.21825401950628
+  },
+  {
+    "profile": "native",
+    "run": 3,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 182.97721806447953
+  },
+  {
+    "profile": "native",
+    "run": 4,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 124.89784695208073
+  },
+  {
+    "profile": "native",
+    "run": 5,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 115.07313908077776
+  },
+  {
+    "profile": "native",
+    "run": 6,
+    "warmup": false,
+    "exit": 0,
+    "wall_ms": 89.83972202986479
+  },
+  {
+    "profile": "native",
+    "run": 7,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 114.77585101965815
+  },
+  {
+    "profile": "native",
+    "run": 8,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 106.24927096068859
+  },
+  {
+    "profile": "native",
+    "run": 9,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 188.58684808947146
+  },
+  {
+    "profile": "native",
+    "run": 10,
+    "warmup": false,
+    "exit": 1,
+    "wall_ms": 86.02469007018954
+  }
+]
