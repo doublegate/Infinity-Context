@@ -60,12 +60,12 @@ cargo +nightly fuzz run ahtl_stream    # also: hdc_snapshot, mcp_jsonrpc, redact
 | Workflow / job | Runs |
 | :--- | :--- |
 | `ci.yml` main job | `cargo fmt --check`, zero-`unsafe` policy check, `cargo clippy -D warnings`, `cargo test --workspace`, `cargo doc` with `-D warnings`, `icx benchmark`, `icx doctor`, reviewer and CLA script self-tests |
-| `ci.yml` `deny` | `cargo deny --workspace check` with `cargo-deny@0.21.0` and the policy in `deny.toml` |
+| `ci.yml` `deny` | `cargo deny --workspace check` with `cargo-deny@0.21.0` and the policy in `deny.toml`; `cargo-about@0.9.3` generates the third-party notices, so a dependency whose license text cannot be collected fails here rather than at release time |
 | `ci.yml` coverage | `cargo llvm-cov` (`cargo-llvm-cov@0.9.1`) with `--fail-under-lines 95`; uploads to Codecov |
 | `ci.yml` secret scan | gitleaks (pinned version, SHA-256-verified download) over the git history |
 | `reuse.yml` | REUSE 3.3 licensing lint |
 | `cla.yml`, `antigravity-review.yml` | Contributor-agreement check and PR review automation |
-| `release.yml` | On a `vX.Y.Z` tag push (or a manual run naming an existing tag): checks the tag matches the `icx-cli` version and has a CHANGELOG section, runs `cargo test --workspace --locked`, builds static musl binaries for baseline x86-64 and x86-64-v3, smoke-tests them, packages them with the license texts, writes `SHA256SUMS`, attests build provenance, and attaches everything to the release. A new release is created as a draft with the CHANGELOG section as notes; assets already attached to an existing release are never replaced |
+| `release.yml` | On a `vX.Y.Z` tag push (or a manual run naming an existing tag): requires the tagged commit to be on `main` (so every `ci.yml` gate has run on it), checks the tag matches the `icx-cli` version and has a CHANGELOG section, runs `cargo test --workspace --locked`, generates `THIRD-PARTY-NOTICES.txt` with `cargo-about` (`.github/about.toml`), builds baseline and x86-64-v3 binaries for static musl and for glibc 2.35+ (built on Ubuntu 22.04), checks linkage and smoke-tests them, packages them with the license texts and notices, attests build provenance, and attaches them with `SHA256SUMS`. A new release is created as a draft with the CHANGELOG section as notes. Files already attached are never replaced; `SHA256SUMS` is only ever extended (`.github/scripts/release-assemble.sh`) |
 
 Supply-chain rules (ICX-AUD-040):
 
