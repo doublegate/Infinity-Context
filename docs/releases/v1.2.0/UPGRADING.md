@@ -45,3 +45,8 @@ canonical tool name `icx` with explicit typed operations; invalid legacy aliases
 v1.2.2 (which supersedes the unpublished v1.2.1) writes `ICXHDC05` and rebuilds the token postings of a v1.2.0 (`ICXHDC04`) index from the
 CAS event log on first load; no data changes. As with v1.2.0, upgrade the one `icx` binary all
 agents use, and keep a pre-upgrade backup if a downgrade to v1.2.0 might be needed.
+
+## Moving on to v1.3.0
+
+v1.3.0 adds the Meta Muse Code adapter and no format change. Install it for every agent before
+wiring Muse: a v1.2.x binary cannot read a workspace once a Muse event has been recorded in it.

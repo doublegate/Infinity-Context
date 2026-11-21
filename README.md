@@ -24,10 +24,10 @@
   <a href="LICENSING.md"><img src="https://img.shields.io/badge/specs-CC--BY--NC--ND--4.0-blueviolet.svg" alt="Specs: CC-BY-NC-ND-4.0"></a>
   <a href="PATENTS.md"><img src="https://img.shields.io/badge/patents-5%20Pending%20Families-d97706.svg" alt="Patents: 5 Pending Families"></a>
   <a href="COMMERCIAL.md"><img src="https://img.shields.io/badge/commercial%20license-available-ea580c.svg" alt="Commercial License Available"></a><br/>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v1.2.2-2563eb.svg" alt="Release: v1.2.2"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v1.3.0-2563eb.svg" alt="Release: v1.3.0"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.100%2B%20(Edition%202024)-f97316.svg?logo=rust" alt="Rust: 1.100+ (Edition 2024)"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/unsafe_code-forbid-16a34a.svg" alt="unsafe_code: forbid"></a>
-  <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20MCP-475569.svg" alt="Supported Agents"></a><br/>
+  <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20Muse%20%7C%20MCP-475569.svg" alt="Supported Agents"></a><br/>
   <a href="docs/numbers.md"><img src="https://img.shields.io/badge/AHTL%20ratio-214x%20repetitive%20log%20%7C%20159.8x%20varied%20log-7c3aed.svg" alt="AHTL inline ratio: 214x on a repetitive test log, 159.8x on a varied log (synthetic fixtures)"></a>
   <a href="#alien-holographic-token-lattice-ahtl"><img src="https://img.shields.io/badge/deref-exact%20stored%20bytes%20(post--redaction)-16a34a.svg" alt="Deref returns the exact stored bytes, after secret redaction"></a><br/>
   <a href="docs/numbers.md"><img src="https://img.shields.io/badge/prefix%20reuse%20(byte%20proxy)-96.31%25%20synthetic-059669.svg" alt="Byte-weighted prefix reuse: 96.31% on a synthetic transcript"></a>
@@ -61,6 +61,17 @@ An `AHTL` packet replaces a bulky tool log, unified `git diff`, or source file w
 The inline size reduction depends on the input. In the built-in synthetic benchmark it is 214.0x on a repetitive 1,200-line test log and 159.8x on a varied log. Every quantitative claim the project makes, with its fixture and source, is collected in [`docs/numbers.md`](docs/numbers.md).
 
 ---
+
+## What Changed in v1.3.0
+
+v1.3.0 adds **Meta Muse Code** as a fifth agent (`icx hook --agent muse`). The adapter follows the
+hook contract observed on Muse 1.4.25: session start and each prompt receive icx's tail slot and
+recall, and every tool output is captured for recall and `deref`. Muse does not let hooks replace
+tool output, so icx does not shrink output inside Muse; its value there is the shared working
+context across agents. It also hides more quoted text inside function calls under secret-looking
+keys and rejects `--dir` without a folder. Upgrade every agent to v1.3.0 before wiring Muse. Details:
+[v1.3.0 release notes](docs/releases/v1.3.0/README.md), setup in the
+[deployment guide](docs/deployment-and-agent-integration-guide.md) §2.6.
 
 ## What Changed in v1.2.2
 
@@ -110,6 +121,7 @@ v1.1.0 is a remediation release that follows an internal audit of v1.0.0 (findin
 
 ## Contents
 
+- [What Changed in v1.3.0](#what-changed-in-v130)
 - [What Changed in v1.2.2](#what-changed-in-v122)
 - [What Changed in v1.2.0](#what-changed-in-v120)
 - [What Changed in v1.1.0](#what-changed-in-v110-historical)
@@ -233,7 +245,7 @@ flowchart TB
 ```mermaid
 sequenceDiagram
   autonumber
-  participant Agent as Host Agent (Claude / Codex / agy / Hermes)
+  participant Agent as Host Agent (Claude / Codex / agy / Hermes / Muse)
   participant Hook as icx-adapters (Hook / MCP)
   participant Codec as icx-codec (Redactor + AHTL)
   participant DAG as icx-core (BLAKE3 CAS + Merkle-DAG)
@@ -325,6 +337,7 @@ The hook contracts below were checked against each agent's upstream documentatio
 | **OpenAI Codex CLI** (`codex`) | `~/.codex/hooks.json` + `OPENAI_BASE_URL` wire proxy + MCP | Under Codex, icx does not shrink tool output: it ingests outputs so they can be recalled and dereferenced later. `PostToolUse` no longer appends `additionalContext`, which duplicated tokens next to the full native output. icx still emits `updatedMCPToolOutput` for MCP tools, but the Codex hooks documentation describes that field as not yet supported. `hooks.json` uses PascalCase event names, a string `command` and `timeout` in seconds. `SubagentStop` reads `last_assistant_message`. `PreToolUse` returns no decision. |
 | **Google Antigravity CLI** (`agy`) | `hooks.json` at workspace `.agents/hooks.json` or global `~/.gemini/config/hooks.json`; events `SessionStart`, `PreToolUse`, `PostToolUse`, `PreInvocation`, `PostInvocation`, `Stop` | `PreToolUse`: always `{"decision":"allow"}`. `PostToolUse`: `{}`. `PostInvocation` never sets `force_continue`. `Stop`: always `{"decision":"stop"}`, so a user's token or invocation budget is never overridden; it seals an epoch on `max_steps_exceeded` or error. `transcriptPath` is opened non-blocking, without following symlinks, regular files only. |
 | **Hermes Agent** (`hermes`) | `ContextEngine` plugin (`agent/context_engine.py`); there is no `hooks.yaml` integration | The Rust `HermesAdapter` implements the logic. This repository ships no Python shim: Hermes needs a small `ContextEngine` plugin that calls `icx hook --agent hermes --event ...`. |
+| **Meta Muse Code** (`muse`) | `~/.config/muse/settings.json` hooks (Claude-Code shape): `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `SubagentStart`, `SubagentStop`, `PreCompact`, `SessionEnd` + MCP (`muse mcp add icx --user -- icx mcp-serve`) | `SessionStart`/`UserPromptSubmit`: tail slot and recall in `additionalContext`. `PostToolUse`: output captured (Bash JSON unwrapped) but not replaced, because Muse rejects replacement; everything else `{}`. New in v1.3.0 ([adapter spec](docs/agent-adapters-and-interception.md)). |
 | **MCP Clients** | `icx mcp-serve` (JSON-RPC 2.0 over stdio) | One tool, `icx` (ops `deref`, `slice`, `grep`, `recall`, `fold`, `expand`, `xagent`, `status`). Legacy `initialize` negotiates 2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05; protocol 2026-07-28 clients use `server/discover` and per-request `_meta` versions. Fold depth is at most 64; input lines are bounded at 4 MiB. |
 
 ---
@@ -389,7 +402,7 @@ Infinity-Context/
 │   ├── icx-codec/              # AhtlPacket, Braille-256 bijection, StructuralSkeletonizer, SecretRedactor
 │   ├── icx-store/              # BiTemporalGraph & HippoRAG PersonalizedPageRank (PPR)
 │   ├── icx-bus/                # SeqlockTelemetryBus: in-process atomic ring (256 x 4,096 B) + file-backed pread/pwrite variant
-│   ├── icx-adapters/           # InfinityContextMmu, Claude/Codex/agy/Hermes adapters, McpPagerServer
+│   ├── icx-adapters/           # InfinityContextMmu, Claude/Codex/agy/Hermes/Muse adapters, McpPagerServer
 │   ├── icx-proxy/              # WireProxyTransformer + token-authenticated loopback proxy
 │   └── icx-cli/                # `icx` binary (init, trust, daemon, deref, hook, mcp-serve, proxy, benchmark, doctor, ...)
 ├── fuzz/                       # cargo-fuzz targets: ahtl_stream, hdc_snapshot, mcp_jsonrpc, redact
@@ -437,7 +450,7 @@ cargo install --path crates/icx-cli
 # Create and seal this project's workspace (run inside the project)
 icx init
 
-# Inspect local agent installations (Claude Code, Codex, Antigravity, Hermes) and workspace integrity
+# Inspect local agent installations (Claude Code, Codex, Antigravity, Hermes, Muse) and workspace integrity
 icx doctor
 
 # Run the built-in synthetic benchmark suite
@@ -483,7 +496,7 @@ icx deref "#icx:7bf8239fb7c504f1" --raw
 ### Agent Hook, MCP Server & Proxy Commands
 
 ```bash
-# Run as a synchronous lifecycle hook for Claude Code, Codex, Antigravity (agy), or Hermes
+# Run as a synchronous lifecycle hook for Claude Code, Codex, Antigravity (agy), Hermes or Muse
 icx hook --agent claude-code --event PostToolUse < tool_event.json
 icx hook --agent agy --event PreInvocation < agy_event.json
 

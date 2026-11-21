@@ -167,7 +167,7 @@ HexDigit           = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7"
 
 UnsignedInt        = Digit, { Digit };
 Digit              = "0" .. "9";
-AgentId            = "claude-code" | "codex" | "agy" | "hermes"
+AgentId            = "claude-code" | "codex" | "agy" | "hermes" | "muse"
                    | "gemini-cli" | "open-code" | "cursor" | "mcp";
 
 (* Any printable UTF-8 scalar except reserved AHTL structural delimiters;

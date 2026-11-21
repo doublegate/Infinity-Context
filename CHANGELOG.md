@@ -5,6 +5,61 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-21
+
+Adds Meta Muse Code as a fifth agent. Release notes:
+[`docs/releases/v1.3.0/`](docs/releases/v1.3.0/README.md).
+
+### Added
+
+- **Meta Muse Code adapter** (`icx hook --agent muse`, `AgentKind::Muse`, `MuseAdapter`). Built
+  from Muse Code 1.4.25's observed hook contract (probe hooks on a real session): Claude-Code-shaped
+  payloads, `additionalContext` on SessionStart/UserPromptSubmit/PostToolUse, `hookEventName`
+  required in `hookSpecificOutput`. SessionStart and UserPromptSubmit return the tail slot and
+  recall; PostToolUse/PostToolUseFailure capture the output (the Bash tool's JSON result is
+  unwrapped to its text and exit code). Muse rejects replacing tool output, so icx stores and
+  recalls Muse output but does not shrink it. Every other event gets `{}`; no reply has a `null`.
+  `icx doctor` detects the Muse binary and settings. Setup: deployment guide §2.6.
+- `AgentKind::from_repr` is now the single decoder of the agent byte on the telemetry bus, and a
+  test round-trips every variant, so a new agent cannot be decoded as `GenericMcp` (which would
+  echo Muse's own events back to it as sibling activity).
+
+### Fixed
+
+- Redaction: a value that starts with a call (dotted names allowed, e.g. `pydantic.SecretStr("...")`,
+  `field(default="...")`, `unwrap_or(x, "...")`) has every quoted literal in its argument list
+  redacted, not only one directly after the first `(`; union type annotations
+  (`str | None = "..."`) keep their literal defaults redacted (review of #25).
+- Redaction (review of #27): literals in chained calls (`env::var("K").unwrap_or("...")`,
+  `... or SecretStr("...")`) and in unions led by `None`/`null`/`undefined` stay redacted; Rust
+  lifetimes (`&'a str`, but not a quoted `&'...'`) are not treated as quotes; only exact
+  redactor markers count as already redacted, so redaction stays idempotent without letting an
+  input that merely starts with `[REDACTED:` hide a secret.
+- Redaction: under a secret-looking key, every quoted literal in a code-shaped value (a call, index
+  or generic after its head, or an `or`/`and`/`??`/`||` chain) is hidden up to the end of the
+  expression; in a chain the leading reference is hidden too, and a `#` or `//` does not end the
+  scan (it may be an operator). A dotted bare value (`v1.secret`) is not code-shaped, so it keeps
+  the plain value rule and later assignments on the line are still found. Typed `SecretStr`/`SecretBytes` fields (also
+  `pydantic.SecretStr`; dotted paths count only for these, with lowercase module names) keep
+  their defaults redacted; a `'` counts as a Rust lifetime only when it cannot be a quoted literal.
+  These rules fail closed: harmless references or comment words on such a line may be hidden.
+- CLI: a `--dir` with no value (trailing, followed by another flag, or empty) is rejected instead
+  of falling back to the default workspace; every `icx hook` fail-open path replies with the
+  agent's own no-op for that event (agy: `allow` on PreToolUse, `stop` on Stop).
+- `AgentKind` decodes an unknown agent name as `GenericMcp` (`#[serde(other)]`), so v1.3.0 can read
+  workspaces written by later versions that add agents.
+- Muse adapter review (#27): only the Bash tool's JSON result is unwrapped (other tools' JSON text
+  is stored verbatim); subagent identity falls back to `child_session_id`; a PostCompact
+  `compact_summary` is stored.
+- Deployment guide (review of #26): the ai-memory MCP JSON example carries `--server-url` and an
+  expanded path; the agy wrapper requirement sits next to the global `hooks.json` example; the
+  daemon save-failure text matches v1.2.2.
+
+### Compatibility
+
+- `AgentKind` gains value 8 (`muse`). A v1.2.x binary cannot read a workspace in which a Muse event
+  was recorded; upgrade every agent before wiring Muse.
+
 ## [1.2.2] - 2026-11-21
 
 Supersedes v1.2.1, which was tagged but never published: a redactor panic was found after

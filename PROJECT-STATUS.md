@@ -2,7 +2,9 @@
 
 ## Executive summary
 
-v1.2.2 is the current release (2026-11-21, pull requests #23 and #25). It follows up v1.2.0
+v1.3.0 is the current release (2026-11-21): it adds the Meta Muse Code adapter on top of v1.2.2.
+
+v1.2.2 (2026-11-21, pull requests #23 and #25) followed up v1.2.0
 with the open review suggestions, two post-upgrade regressions (command recall, token-count
 over-redaction) and a redactor panic found after v1.2.1 was tagged; v1.2.1 was therefore never
 published. Notes: [`docs/releases/v1.2.2/`](docs/releases/v1.2.2/README.md).
@@ -57,6 +59,7 @@ full-request bound is claimed.
   evidence, digest rule, measured parallel 10k ceiling), pull request; v1.2.0 released.
 - 2026-11-21: v1.2.1 follow-up (#23) tagged; held unpublished after a redactor panic was found.
 - 2026-11-21: v1.2.2 (#25) released: panic fix, issue #24, all v1.2.1 changes.
+- 2026-11-21: v1.3.0 released: Meta Muse Code adapter (fifth agent).
 
 ## Known issues and remaining work
 

@@ -29,6 +29,7 @@ pub enum AgentKind {
     GeminiCli = 5,
     OpenCode = 6,
     Cursor = 7,
+    Muse = 8, // v1.3.0; a v1.2.x binary cannot decode it
     GenericMcp = 255,
 }
 

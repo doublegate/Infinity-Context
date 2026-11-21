@@ -159,7 +159,7 @@ icx <SUBCOMMAND> [OPTIONS]
   deref <HANDLE> [--lines <START:END>] [--dir <PATH>] [--raw]
                                       Dereference a #icx:<16-hex> or #icx:<12-hex> handle; framed as
                                       untrusted data unless --raw
-  hook --agent <claude-code|codex|agy|hermes> --event <EVENT> [--dir <PATH>]
+  hook --agent <claude-code|codex|agy|hermes|muse> --event <EVENT> [--dir <PATH>]
                                       Synchronous lifecycle hook (JSON on stdin, JSON on stdout)
   mcp-serve [--dir <PATH>]            Single-tool MCP pager over stdio (JSON-RPC 2.0)
   proxy [--listen <HOST:PORT>] [--provider <anthropic|openai|gemini>] [--upstream <URL>]

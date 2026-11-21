@@ -8,7 +8,7 @@
 
 ## 1. Purpose
 
-`crates/icx-adapters` and `crates/icx-proxy` connect the **Infinity-Context (`icx`)** Virtual Context MMU to agent CLIs. They implement four native hook adapters (**Claude Code**, **OpenAI Codex CLI**, **Google Antigravity CLI (`agy`)**, **Hermes Agent**), the single-tool MCP pager (`McpPagerServer`), and an **HTTP/1.1 & SSE Cache-Epoch reverse proxy** (`WireProxyTransformer`).
+`crates/icx-adapters` and `crates/icx-proxy` connect the **Infinity-Context (`icx`)** Virtual Context MMU to agent CLIs. They implement five native hook adapters (**Claude Code**, **OpenAI Codex CLI**, **Google Antigravity CLI (`agy`)**, **Hermes Agent**, **Meta Muse Code**), the single-tool MCP pager (`McpPagerServer`), and an **HTTP/1.1 & SSE Cache-Epoch reverse proxy** (`WireProxyTransformer`).
 
 Hook contracts below were checked against upstream documentation on 2026-11-18 (Claude Code 2.1.328, codex-cli 0.170.0, agy 1.5.11, Hermes source `dc394c6`). `crates/icx-adapters/tests/claude_contract.rs` pins the Claude Code output shapes; the other adapters are covered by unit tests, not by fixtures captured from live agent runs.
 
@@ -175,7 +175,51 @@ Target: the Hermes `ContextEngine` ABC (`agent/context_engine.py`) and `MemoryPr
 
 ---
 
-## 6. Wire-Level Reverse Proxy (`crates/icx-proxy`)
+## 6. Meta Muse Code Adapter (`MuseAdapter`, v1.3.0)
+
+`icx hook --agent muse --event <event>`. Contract observed on Muse Code 1.4.25 with probe hooks
+(a real headless session; every event below fired and its payload was recorded):
+
+- **Configuration.** Command hooks live in `~/.config/muse/settings.json` (`${XDG_CONFIG_HOME}`
+  honoured) in Claude Code's shape: `"hooks": {"<Event>": [{"matcher": "", "hooks": [{"type":
+  "command", "command": "...", "timeout": <seconds>}]}]}`. The file must keep
+  `"schema_version": 1`. Muse rejects an unknown event name (`unsupported hook event`), and
+  `Interrupt` and `ToolUseStart` admit only `async: true` hooks. MCP servers are added with
+  `muse mcp add <name> --user -- <command> [args]`.
+- **Invocation.** Hooks run in the project directory with the caller's environment (plus
+  `MUSE_SESSION_ID` and `MUSE_THREAD_ID`), so icx resolves the project workspace from the working
+  directory, as for Claude Code.
+- **Payload.** Claude-Code-shaped JSON on stdin: `hook_event_name`, `session_id`, `cwd`,
+  `tool_name`, `tool_input`, `tool_response`, `tool_use_id`, plus `turn_id`, `model`,
+  `model_provider` and `permission_mode`; `transcript_path` is null. The Bash tool's
+  `tool_response` is a JSON-encoded string (`output`, `exit_code`, `terminal_status`,
+  `truncated`); icx stores its `output` text and uses its `exit_code`. Subagent events carry
+  `subagent_id` and `child_session_id`; `Stop`/`SubagentStop` carry `last_assistant_message`.
+- **Replies.** `hookSpecificOutput.additionalContext` from SessionStart, UserPromptSubmit and
+  PostToolUse reaches the model; `hookSpecificOutput` must name its `hookEventName`. A reply's
+  `systemMessage` is shown to the user, not the model.
+
+| Event | icx action | Reply |
+| --- | --- | --- |
+| `SessionStart` | Tail slot with the AHTL legend | `additionalContext` |
+| `UserPromptSubmit` | Prompt-scoped tail slot (recall) | `additionalContext` |
+| `PostToolUse` | Ingest the tool output (Bash JSON unwrapped) | `{"hookSpecificOutput":{"hookEventName":"PostToolUse"}}` |
+| `PostToolUseFailure` | Ingest the error text as an anomaly | `{}` |
+| `SubagentStart` / `SubagentStop` | Open / fold the subagent branch | `{}` |
+| `PreCompact` / `PostCompact` | Seal the epoch; PostCompact also stores a `compact_summary` when present | `{}` |
+| `SessionEnd` | Fold open subagents, seal the epoch | `{}` |
+| any other event | none | `{}` |
+
+**No output replacement.** Muse refuses it ("PostToolUse output cannot replace tool output"),
+so `MuseAdapter::SUPPORTS_TOOL_OUTPUT_REPLACEMENT` is `false`. Under Muse icx stores every tool
+output and feeds recent activity and recall back into the conversation, like Codex; it does not
+shrink tool output in Muse's own context. No reply carries a JSON `null`, and malformed stdin
+fails open with `{}`.
+
+**Compatibility.** `AgentKind::Muse` (value 8) is new in v1.3.0. A v1.2.x binary cannot read a
+workspace in which a Muse event was recorded, so upgrade every agent's `icx` before wiring Muse.
+
+## 7. Wire-Level Reverse Proxy (`crates/icx-proxy`)
 
 `icx proxy` is an HTTP/1.1 listener (upstream requests are sent over HTTPS through `curl`).
 

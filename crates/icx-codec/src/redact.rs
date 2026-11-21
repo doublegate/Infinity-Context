@@ -580,48 +580,47 @@ impl SecretRedactor {
         Self::redact_high_entropy_tokens(&current)
     }
 
-    /// `String::from("...")`, `Some('...')`, `Secret::new("...")`: a value that wraps quoted
-    /// literals in a call. Replaces every quoted literal up to the closing parenthesis (v1.2.1;
-    /// the unquoted span used to stop at the opening quote and leave the literal visible).
-    /// Returns the position after the call, or `None` when the value has another shape.
+    /// `String::from("...")`, `pydantic.SecretStr("...")`, `env::var("K").unwrap_or("...")`: a value
+    /// that starts with a call. Every quoted literal from there to the end of the expression is
+    /// replaced: across nested and chained calls (`.unwrap_or("...")`, `... or SecretStr("...")`)
+    /// until a newline, or a `;`, `,` or closing bracket outside the parentheses opened in it.
+    /// The plain value span stops at the first quote, so it used to leave the literal visible
+    /// (v1.2.1, v1.2.2, v1.3.0). Empty literals and existing `[REDACTED:...]` markers are left
+    /// alone (idempotent); a `'` right after `&` or `<` is a Rust lifetime, not a quote.
+    /// Returns the position after the expression, or `None` when the value is not a call or has
+    /// no literal.
     fn redact_call_wrapped_literals(
         out: &mut String,
         val_start: usize,
         replacement: &str,
     ) -> Option<usize> {
         let rest = out.get(val_start..)?;
-        // One or more nested calls (`Some(String::from(` ...) directly before a quote (v1.2.2).
-        let mut pos = 0usize;
-        let mut depth = 0usize;
-        loop {
-            if !rest
-                .as_bytes()
-                .get(pos)
-                .is_some_and(u8::is_ascii_alphabetic)
-            {
-                return None;
-            }
-            pos += rest[pos..]
-                .bytes()
-                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b':')
-                .count();
-            if !rest[pos..].starts_with('(') {
-                return None;
-            }
-            pos += 1;
-            depth += 1;
-            pos += rest[pos..].len() - rest[pos..].trim_start_matches([' ', '\t']).len();
-            if rest[pos..].starts_with(['"', '\'']) {
-                break;
-            }
+        if !rest.as_bytes().first().is_some_and(u8::is_ascii_alphabetic) {
+            return None;
         }
-        let open = val_start + pos;
+        let name_len = rest
+            .bytes()
+            .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b':' | b'.'))
+            .count();
+        // Code-shaped values only (v1.3.0): a call, index or generic right after the head, a
+        // dotted / `::` path, or an `or` / `and` / `??` / `||` chain. A plain value such as
+        // `hunter2 'note'` is left to the plain value rule, which hides its bare token.
+        let after_head = &rest[name_len..];
+        let chained = after_head.trim_start_matches([' ', '\t']);
+        // A dotted / `::` head alone is not code (`v1.secret user="x"`): it may be the secret.
+        let code_like = after_head.starts_with(['(', '[', '<'])
+            || ["or ", "and ", "??", "||"]
+                .iter()
+                .any(|op| chained.starts_with(op));
+        if !code_like {
+            return None;
+        }
+        let bytes = out.as_bytes();
+        let mut depth = 0usize;
         let mut quote: Option<u8> = None;
         let mut spans = Vec::new();
         let mut lit_start = 0usize;
-        let mut close = None;
-        let bytes = out.as_bytes();
-        let mut i = open;
+        let mut i = val_start + name_len;
         while i < bytes.len() && bytes[i] != b'\n' {
             let b = bytes[i];
             match quote {
@@ -633,36 +632,81 @@ impl SecretRedactor {
                     spans.push((lit_start, i));
                     quote = None;
                 }
+                None if b == b'\'' && Self::is_lifetime_quote(bytes, i) => {}
                 None if b == b'"' || b == b'\'' => {
                     quote = Some(b);
                     lit_start = i + 1;
                 }
-                None if b == b'(' => depth += 1,
-                None if b == b')' => {
-                    depth -= 1;
+                None if b == b'(' || b == b'[' || b == b'{' => depth += 1,
+                None if b == b')' || b == b']' || b == b'}' => {
                     if depth == 0 {
-                        close = Some(i);
                         break;
                     }
+                    depth -= 1;
                 }
+                None if depth == 0 && (b == b';' || b == b',') => break,
                 _ => {}
             }
             i += 1;
         }
-        let i = i.min(bytes.len());
+        let end = i.min(bytes.len());
         // An unterminated literal is hidden to the end of the line.
         if quote.is_some() {
-            spans.push((lit_start, i));
+            spans.push((lit_start, end));
         }
+        let had_marker = spans
+            .iter()
+            .any(|&(a, b)| Self::is_redaction_marker(&out[a..b]));
+        spans.retain(|&(a, b)| b > a && !Self::is_redaction_marker(&out[a..b]));
         if spans.is_empty() {
-            return None;
+            // Already redacted by an earlier pass: leave it (idempotent). Only empty literals:
+            // not handled here, so the plain value rule still runs.
+            return had_marker.then_some(end);
         }
-        let end = close.map_or(i, |c| c + 1);
+        // Fail closed: a head that is not a call, index or generic (`hunter2.prod "x"`,
+        // `token.x or "y"`) could itself be the secret, so it is hidden too.
+        if !after_head.starts_with(['(', '[', '<']) {
+            spans.insert(0, (val_start, val_start + name_len));
+        }
         let removed: usize = spans.iter().map(|&(a, b)| b - a).sum();
         for &(a, b) in spans.iter().rev() {
             out.replace_range(a..b, replacement);
         }
         Some((end + spans.len() * replacement.len() - removed).min(out.len()))
+    }
+
+    /// Whether `text` is exactly one marker this redactor emits (`[REDACTED:ENV_SECRET]`), not an
+    /// input that merely starts like one.
+    fn is_redaction_marker(text: &str) -> bool {
+        text.strip_prefix("[REDACTED:")
+            .and_then(|r| r.strip_suffix(']'))
+            .is_some_and(|kind| {
+                !kind.is_empty() && kind.bytes().all(|b| b.is_ascii_uppercase() || b == b'_')
+            })
+    }
+
+    /// Whether the `'` at `i` opens a Rust lifetime (`&'a str`, `<'a>`, `&'static`): it follows
+    /// `&` or `<`, an identifier follows it, and no closing `'` comes right after that identifier
+    /// (`&'secret'` is a quoted literal).
+    fn is_lifetime_quote(bytes: &[u8], i: usize) -> bool {
+        if i == 0 || !matches!(bytes[i - 1], b'&' | b'<') {
+            return false;
+        }
+        let ident = bytes[i + 1..]
+            .iter()
+            .take_while(|b| b.is_ascii_alphanumeric() || **b == b'_')
+            .count();
+        // Fail closed: only a delimiter a lifetime can be followed by, and no later `'` on the
+        // line (otherwise `&'abc def'` / `&'my-secret.value'` would hide a literal).
+        let after = i + 1 + ident;
+        let delimiter_ok = bytes
+            .get(after)
+            .is_none_or(|b| matches!(b, b' ' | b'\t' | b'>' | b',' | b')' | b']' | b';' | b'\n'));
+        let line_end = bytes[after..]
+            .iter()
+            .position(|&b| b == b'\n')
+            .map_or(bytes.len(), |p| after + p);
+        ident > 0 && delimiter_ok && !bytes[after..line_end].contains(&b'\'')
     }
 
     fn redact_value_span(
@@ -1056,6 +1100,8 @@ impl SecretRedactor {
             "char",
             "Duration",
             "SecretString",
+            "SecretStr",
+            "SecretBytes",
             "string",
             "number",
             "boolean",
@@ -1087,15 +1133,68 @@ impl SecretRedactor {
             // `&'a mut T`: `mut` follows the lifetime (v1.2.2).
             r.strip_prefix("mut ").unwrap_or(r)
         });
+        // Dotted type paths (`pydantic.SecretStr`) are checked by their last segment.
         let name_len = s
             .bytes()
-            .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+            .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'.')
             .count();
-        if !TYPES.contains(&&s[..name_len]) {
+        // Dotted paths count only for the Secret* types with lowercase module segments
+        // (`pydantic.SecretStr`); `sk_live_x.str` is a value, not a type (fail closed).
+        let base = Self::annotation_type_name(&s[..name_len])?;
+        let null_led = matches!(base, "None" | "null" | "undefined")
+            && s[name_len..]
+                .trim_start_matches([' ', '\t'])
+                .starts_with('|');
+        if !TYPES.contains(&base) && !null_led {
             return None;
         }
         s = &s[name_len..];
-        // Rust/TS `<...>` and Python `[...]` generics (v1.2.2).
+        s = Self::skip_generic_args(s)?;
+        // Union members (`str | None`, `string | null`), v1.3.0.
+        loop {
+            let t = s.trim_start_matches([' ', '\t']);
+            let Some(after) = t.strip_prefix('|') else {
+                break;
+            };
+            let after = after.trim_start_matches([' ', '\t']);
+            let n = after
+                .bytes()
+                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'.')
+                .count();
+            let member = Self::annotation_type_name(&after[..n])?;
+            if !(TYPES.contains(&member) || matches!(member, "None" | "null" | "undefined")) {
+                return None;
+            }
+            s = Self::skip_generic_args(&after[n..])?;
+        }
+        let s = s.trim_start_matches([' ', '\t']);
+        (s.is_empty()
+            || s.starts_with(['=', ',', ')', ';', '{', '>', '\n', '\r'])
+            || s.starts_with("->"))
+        .then(|| rest.len() - s.len())
+    }
+
+    /// The type name of an annotation path: the path itself, or for a dotted path the last segment
+    /// when it is a `Secret*` type under lowercase module segments (`pydantic.SecretStr`). Any
+    /// other dotted path (`sk_live_x.str`) is a value, not a type (fail closed).
+    fn annotation_type_name(path: &str) -> Option<&str> {
+        match path.rsplit_once('.') {
+            None => Some(path),
+            Some((modules, last))
+                if last.starts_with("Secret")
+                    && modules.split('.').all(|m| {
+                        !m.is_empty() && m.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+                    }) =>
+            {
+                Some(last)
+            }
+            Some(_) => None,
+        }
+    }
+
+    /// Skips one balanced Rust/TS `<...>` or Python `[...]` generic argument list at the start of
+    /// `s` (v1.2.2); `None` if it is unterminated or contains a literal, `=` or a single `:`.
+    fn skip_generic_args(s: &str) -> Option<&str> {
         let brackets = match s.as_bytes().first() {
             Some(b'<') => Some(('<', '>')),
             Some(b'[') => Some(('[', ']')),
@@ -1123,13 +1222,9 @@ impl SecretRedactor {
                 }
             }
             let end = end?;
-            s = &inner[end..];
+            return Some(&inner[end..]);
         }
-        let s = s.trim_start_matches([' ', '\t']);
-        (s.is_empty()
-            || s.starts_with(['=', ',', ')', ';', '{', '>', '\n', '\r'])
-            || s.starts_with("->"))
-        .then(|| rest.len() - s.len())
+        Some(s)
     }
 
     /// `f(x)`, `Self::new()`, `config.token`, `&pair`: a code expression with no string literal,
@@ -1142,9 +1237,11 @@ impl SecretRedactor {
             .chars()
             .next()
             .is_some_and(|c| c.is_ascii_alphabetic() || matches!(c, '_' | '&' | '*' | '('));
-        starts_ok
-            && !expr.contains(['"', '\'', '`'])
-            && (expr.contains(['(', '.', '&', '*']) || expr.contains("::"))
+        // A `'` right after `&` or `<` is a Rust lifetime (`&'a str`), not a string quote.
+        let has_literal = expr.char_indices().any(|(i, c)| {
+            matches!(c, '"' | '`') || (c == '\'' && !Self::is_lifetime_quote(expr.as_bytes(), i))
+        });
+        starts_ok && !has_literal && (expr.contains(['(', '.', '&', '*']) || expr.contains("::"))
     }
 
     /// `let q_tokens = f(...)`, `const MAX_TOKENS = 4096`: a source-code binding, not an env
