@@ -971,8 +971,13 @@ impl SecretRedactor {
                         ]
                         .iter()
                         .any(|kw| {
+                            // The keyword must end the value: anything glued to it
+                            // (`None-x`, `True.x`) could be a credential.
                             rhs.strip_prefix(kw).is_some_and(|after| {
-                                !after.starts_with(|c: char| c.is_alphanumeric() || c == '_')
+                                after.is_empty()
+                                    || after.starts_with(|c: char| {
+                                        c.is_whitespace() || matches!(c, ',' | ')' | ';' | '#')
+                                    })
                             })
                         })
                     };

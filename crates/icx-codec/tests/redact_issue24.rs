@@ -36,3 +36,23 @@ fn python_optional_and_rust_mut_lifetime_annotations_are_not_secrets() {
     let clean = SecretRedactor::redact("password: Optional[str] = \"lowsecretliteral\"\n");
     assert!(!clean.contains("lowsecretliteral"), "{clean:?}");
 }
+
+#[test]
+fn null_defaults_must_end_the_value() {
+    for (line, secret) in [
+        (
+            "password: Optional[str] = None-lowsecretliteral\n",
+            "lowsecretliteral",
+        ),
+        ("api_key: str = null@lowsecretliteral\n", "lowsecretliteral"),
+    ] {
+        let clean = SecretRedactor::redact(line);
+        assert!(!clean.contains(secret), "{line:?} -> {clean:?}");
+    }
+    for code in [
+        "def f(password: Optional[str] = None, token: str = None) -> None:\n",
+        "    api_key: Optional[str] = None  # set later\n",
+    ] {
+        assert_eq!(SecretRedactor::redact(code), code, "redacted: {code:?}");
+    }
+}
