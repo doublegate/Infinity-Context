@@ -56,14 +56,18 @@ jobs:
              || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             all true; exit 0
           fi
-          files="$(git diff --name-only "$BASE...$HEAD")"
+          # quotePath=false lists unusual names raw; any name git still quotes (control characters)
+          # could slip past the anchored patterns below, so it fails safe to a full run.
+          files="$(git -c core.quotePath=false diff --name-only "$BASE...$HEAD")"
           printf '%s\n' "$files"
+          if printf '%s\n' "$files" | grep -q '^"'; then all true; exit 0; fi
           has() { printf '%s\n' "$files" | grep -Eq "$1" && echo true || echo false; }
           # Editing this workflow re-runs everything it gates.
           ci='^\.github/workflows/ci\.yml$'
           {
             echo "rust=$(has "^(crates/|fuzz/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|\.cargo/)|$ci")"
-            echo "deps=$(has "(^|/)Cargo\.(toml|lock)$|^deny\.toml$|^\.github/about\.|$ci")"
+            # Any Rust input can change what is resolved (`.cargo/` can redirect sources).
+            echo "deps=$(has "^(crates/|fuzz/|\.cargo/)|(^|/)Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^deny\.toml$|^\.github/about\.|$ci")"
             echo "scripts=$(has "^scripts/|^\.github/scripts/|$ci")"
           } >> "$GITHUB_OUTPUT"
       - name: Summary
@@ -117,15 +121,15 @@ jobs:
           fi
       - name: Run Clippy
         if: env.RUST == 'true'
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Run tests
         if: env.RUST == 'true'
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
       - name: Build docs
         if: env.RUST == 'true'
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --workspace --no-deps
+        run: cargo doc --workspace --no-deps --locked
       - name: Run benchmark & SLO gate
         if: env.RUST == 'true'
         run: cargo run --release -p icx-cli -- benchmark
