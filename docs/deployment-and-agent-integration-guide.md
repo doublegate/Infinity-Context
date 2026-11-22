@@ -784,8 +784,21 @@ For Codex and agy, replace the first bullet with: "Tool output is captured into 
    - Codex's `PreModelRequest` / `PostModelRequest` hooks are diagnostic only and cannot change the request, so icx does not use them.
 2. **Wire-level middle-history virtualization (`WireProxyTransformer::transform_openai_request`):**
    - To reduce what Codex resends, route it through `icx proxy` (§2.3). The proxy replaces middle-history items outside the last 2 items (`protect_tail = 2`) that are at or above the threshold (`function_call_output` items and `input_text` parts) with their AHTL packets, and leaves `system`/`developer` items unchanged.
-3. **Rollout tailing (`CodexRolloutTailer`):**
-   - The library includes a bounded JSONL tailer for `~/.codex/sessions/**/rollout-*.jsonl`. It is not wired into the `icx` CLI in this candidate, and it does not read the zstd-compressed (`.jsonl.zst`) rollout files that current Codex versions write.
+3. **Rollout ingestion (`icx codex-ingest`, v1.4.0):**
+   - **What it does:** reads the project's Codex rollouts, both `.jsonl` and the zstd-compressed `.jsonl.zst`, into the workspace. Later runs read only what is new.
+
+     ```bash
+     icx codex-ingest                    # rollouts whose session ran in this project
+     icx codex-ingest --all-projects     # every rollout under $CODEX_HOME/sessions
+     icx codex-ingest --sessions <DIR> --project <DIR> --dir <WORKSPACE>
+     ```
+
+   - **Output:** it prints how many rollouts matched, how many had new records, how many records were ingested, and how many files were skipped. Skipped files (corrupt, oversized, symlinked) are named on stderr, and the run still succeeds.
+   - **Cost:** the first run over a long history takes a while. Measured on a desktop with a release build, 2026-11-22:
+     - **One project:** 33 rollouts, 2,906 records, about 25 s.
+     - **Every project (`--all-projects`):** 574 rollouts including 518 compressed, 99,283 records, about 7 minutes, with a peak of about 2 GB of memory. The whole workspace store is held in memory for the run.
+     - **A run with nothing new:** about 1.5 s.
+4. **`additionalContext` size:** Codex delivers `additionalContext` inline only up to the handler's `additionalContextLimit`, by default 2,500 tokens (about 10,000 bytes). Beyond that it writes the text to a file and the model sees a preview. icx keeps every Codex reply within the default. Setting `additionalContextLimit` on a handler changes the limit, and `0` removes it.
 
 ---
 

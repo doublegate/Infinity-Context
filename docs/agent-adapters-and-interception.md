@@ -103,6 +103,7 @@ Upstream reference: the Codex hooks documentation (developers.openai.com/codex/h
 
 1. **`SessionStart`, `UserPromptSubmit` & `SubagentStart`:**
    - Return `{"continue": true, "hookSpecificOutput": {"hookEventName": ..., "additionalContext": ...}, ...}` with the legend and/or tail slot.
+   - Each `additionalContext` is kept within 10,000 UTF-8 bytes (`CODEX_INLINE_CONTEXT_MAX_BYTES`, v1.4.0). That is Codex's default per-handler `additionalContextLimit` of 2,500 tokens, which Codex estimates as bytes / 4. Above the limit, Codex writes the context to a file and gives the model only a preview. The tail slot is already far smaller; a larger value would be replaced whole by a diagnostic, so no `#icx:` handle is cut.
 2. **`PostToolUse`:**
    - Ingests the tool output (store, index, bus) in every case.
    - Returns a non-replacing response (`continue:true` and `hookSpecificOutput.hookEventName`
@@ -114,7 +115,15 @@ Upstream reference: the Codex hooks documentation (developers.openai.com/codex/h
 4. **`SubagentStop`:** reads `last_assistant_message` and folds the subagent branch; the fold frame is returned in `systemMessage`.
 5. **`PreCompact`, `PostCompact` & `SessionEnd`:** seal the epoch and return `{"continue": true, "systemMessage": "<deterministic prefix>"}`.
 6. **`PreModelRequest` / `PostModelRequest`:** not used. Upstream defines them as diagnostic only; they cannot change the request.
-7. **Rollout tailer (`CodexRolloutTailer`):** a bounded JSONL reader for `~/.codex/sessions/**/rollout-*.jsonl`. **Known limitations:** it is not wired into the `icx` CLI in this candidate (only the library and tests use it), and it does not read zstd-compressed `.jsonl.zst` rollouts, which current Codex versions write.
+7. **Rollout ingestion (`icx codex-ingest`, v1.4.0; `codex_ingest` module):**
+   - **What it reads:** the rollouts under `$CODEX_HOME/sessions` (default `~/.codex/sessions`) whose `session_meta.cwd` is the project or lies beneath it. `--all-projects` drops the filter.
+   - **Both forms:** plain `rollout-*.jsonl` and the zstd-compressed `rollout-*.jsonl.zst` files that Codex writes for rollouts older than 7 days.
+   - **Compressed files** are decoded by a pure-Rust decoder that verifies frame checksums. They are measured before anything is ingested and refused above 1 GiB decompressed, so a corrupt frame or a decompression bomb ingests nothing.
+   - **Bookmarks:** each rollout's read position is saved in `codex-rollouts.json` in the workspace, keyed by its path without `.zst` and checked against a hash of its first 64 KiB. Ingestion resumes where it stopped when Codex recompresses a file or decompresses it again on append, and starts from the beginning for a replaced file. An incomplete trailing line is left for the next run.
+   - **Safety:** symlinks and special files are refused.
+   - **Locking:** the run holds the workspace lock while it loads, ingests and saves, like a hook.
+   - **Not automatic:** run `icx codex-ingest` on demand or on a schedule; hooks do not call it.
+   - `CodexRolloutTailer` remains the in-process tailer for plain files.
 
 ---
 

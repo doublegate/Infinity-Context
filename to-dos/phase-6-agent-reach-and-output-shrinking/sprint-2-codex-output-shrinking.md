@@ -59,6 +59,33 @@ section and decision table). Source at `rust-v0.171.0`; the installed binary mat
 - **No other changes:** nothing else in the hooks or rollout code since the tag changes the
   Sprint 1 findings.
 
+**2026-11-22, research gate for T-62-003, T-62-004 and T-62-006:**
+
+- **zstd decoder:** `ruzstd` 0.9.1 (MIT, pure Rust, one dependency `twox-hash`, MIT). Its default
+  `hash` feature verifies frame checksums. It needs no C toolchain, so static musl release builds
+  are unchanged. `cargo deny check`: advisories, bans, licences and sources all pass.
+  - The C-binding `zstd` crate was rejected: it needs a C build.
+  - `structured-zstd` was rejected: it adds a compressor icx does not need.
+- **Codex rollout form on this machine:**
+  - 56 plain and 518 compressed rollouts, 216 MB;
+  - each compressed file is a single frame;
+  - the first record is `session_meta`, whose `payload.cwd` identifies the project.
+- **Codex token estimate:** `approx_token_count` is UTF-8 bytes / 4, rounded up
+  (`codex-rs/utils/string/src/truncate.rs:94-97`). The default limit is
+  `DEFAULT_HOOK_OUTPUT_TOKEN_LIMIT = 2_500` (`hooks/src/output_spill.rs`), so the inline bound is
+  10,000 bytes.
+- **icx's own tail slot:** capped at 2,048 bytes at most by the epoch presets, plus the legend, so
+  every Codex reply was already within the bound. T-62-006 therefore pins the bound at the reply,
+  rather than adding a truncation algorithm.
+
+**2026-11-22, results on the installed data** (release build, throwaway workspace, read-only on
+`~/.codex/sessions`):
+
+- **This project:** 33 rollouts, 2,906 records in 24.7 s. The second run took 1.5 s and ingested
+  nothing.
+- **`--all-projects`:** 574 rollouts (518 compressed) and 99,283 records in 426 s, with a peak of
+  about 2 GB of memory. Nothing was skipped, so every real compressed rollout decoded.
+
 ## Tickets
 
 ### T-62-001 — Verify `continue:false` substitution on the installed Codex
@@ -126,10 +153,14 @@ from `~/.codex/sessions/**/rollout-*.jsonl` without library-only use.
 
 **Acceptance Criteria:**
 
-- [ ] A CLI entry point (subcommand or daemon option) that tails rollouts with bounded reads.
-- [ ] Ingested items are redacted and stored like hook output.
-- [ ] Integration test over a recorded rollout fixture.
-- [ ] The "not wired into the CLI" limitation removed from the adapters doc.
+- [x] A CLI entry point (subcommand or daemon option) that tails rollouts with bounded reads.
+  `icx codex-ingest`, built on a new `codex_ingest` module that shares the tailer's bounded
+  record reader. It filters by session `cwd` and saves bookmarks in the workspace.
+- [x] Ingested items are redacted and stored like hook output (`ingest_payload_with_exit_code`
+  runs `SecretRedactor` before storage).
+- [x] Integration test over a recorded rollout fixture (`crates/icx-cli/tests/codex_ingest_cli.rs`,
+  with a synthetic `zstd -3` rollout).
+- [x] The "not wired into the CLI" limitation removed from the adapters doc.
 
 **Dependencies:** T-61-003
 
@@ -150,9 +181,12 @@ size as on plain JSONL.
 
 **Acceptance Criteria:**
 
-- [ ] `.jsonl.zst` rollouts are read; a decompression bomb is refused with a typed error.
-- [ ] Fuzz or property test over truncated and corrupt frames.
-- [ ] `deny.toml` and licence checks pass for the new dependency.
+- [x] `.jsonl.zst` rollouts are read; a decompression bomb is refused with a typed error
+  (`RolloutIngestError::DecompressedTooLarge`, 1 GiB, checked before anything is ingested).
+- [x] Fuzz or property test over truncated and corrupt frames
+  (`crates/icx-adapters/tests/codex_rollout_zstd_props.rs`, plus deterministic truncations in the
+  module tests).
+- [x] `deny.toml` and licence checks pass for the new dependency.
 
 **Dependencies:** T-62-003
 
@@ -172,8 +206,9 @@ When it lands, add a version-gated replacement path and flip the capability for 
 
 **Acceptance Criteria:**
 
-- [ ] A dated watch entry in the research notes at each sprint close of this phase.
-- [ ] Until support lands, the existing tests that keep `updatedToolOutput` and
+- [ ] A dated watch entry in the research notes at each sprint close of this phase. The first is
+  recorded (2026-11-22, Sprint 1 close: not supported); more follow at each sprint close.
+- [x] Until support lands, the existing tests that keep `updatedToolOutput` and
   `updatedMCPToolOutput` out of every Codex reply stay in place. On 0.171.0 either field breaks
   the reply (Sprint 1).
 - [ ] If support lands: version-gated path, contract test, and capability matrix update.
@@ -201,11 +236,13 @@ sizes on recorded sessions.
 
 **Acceptance Criteria:**
 
-- [ ] Codex replies are budgeted below the default limit, using Codex's own token estimate or a
-  documented conservative bound.
-- [ ] Truncation keeps every `#icx:` handle intact and is deterministic.
-- [ ] Property test: no reply exceeds the budget for any input.
-- [ ] Deployment guide documents `additionalContextLimit` (0 disables the limit).
+- [x] Codex replies are budgeted below the default limit, using Codex's own token estimate or a
+  documented conservative bound (`CODEX_INLINE_CONTEXT_MAX_BYTES` = 10,000 bytes = 2,500 × 4).
+- [x] Truncation keeps every `#icx:` handle intact and is deterministic: an oversized value is
+  replaced whole by a diagnostic, never cut.
+- [x] Property test: no reply exceeds the budget for any input (proptest on the guard; an
+  integration test over every preset and the three context-carrying events).
+- [x] Deployment guide documents `additionalContextLimit` (0 disables the limit).
 
 **Dependencies:** None
 

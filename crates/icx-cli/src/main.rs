@@ -80,6 +80,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
         #[cfg(unix)]
         "daemon" => run_daemon(tail),
         "deref" => run_deref(tail),
+        "codex-ingest" => run_codex_ingest(tail),
         "hook" => {
             let stdin_buf = match read_bounded(&mut reader, MAX_STDIN_BYTES) {
                 Ok(buf) => buf,
@@ -210,6 +211,9 @@ Subcommands:",
   deref <HANDLE> [--lines <START:END>] [--dir <PATH>] [--raw]
       Dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle; output is framed as
       untrusted data and delimiter-escaped unless --raw (byte-exact) is given
+  codex-ingest [--sessions <DIR>] [--project <DIR> | --all-projects] [--dir <PATH>]
+      Ingest new records from Codex rollouts (.jsonl and .jsonl.zst) whose session ran in the
+      project (default: the current project; sessions default to $CODEX_HOME/sessions)
   hook --agent <claude-code|codex|agy|hermes|muse> --event <EVENT> [--dir <PATH>]
       Execute synchronous <500us lifecycle hook (reads JSON from stdin, writes JSON to stdout)
   mcp-serve [--dir <PATH>]
@@ -669,6 +673,117 @@ fn run_deref(args: &[String]) -> Result<(), String> {
     let out = deref_from_workspace_dir(&icx_dir, handle, line_range)
         .map_err(|e| format!("icx deref error: {e}"))?;
     print!("{}", format_deref_output(&out, handle, raw));
+    Ok(())
+}
+
+/// `$CODEX_HOME/sessions`, else `~/.codex/sessions`.
+fn default_codex_sessions_dir() -> Option<PathBuf> {
+    if let Some(home) = env::var_os("CODEX_HOME").filter(|v| !v.is_empty()) {
+        return Some(PathBuf::from(home).join("sessions"));
+    }
+    env::var_os("HOME")
+        .filter(|v| !v.is_empty())
+        .map(|h| PathBuf::from(h).join(".codex").join("sessions"))
+}
+
+/// `icx codex-ingest` (T-62-003, T-62-004): ingests Codex rollouts into the workspace under the
+/// workspace lock, resuming each from its saved bookmark.
+fn run_codex_ingest(args: &[String]) -> Result<(), String> {
+    const CMD: &str = "icx codex-ingest";
+    const USAGE: &str = "Usage: icx codex-ingest [--sessions <DIR>] [--project <DIR> | --all-projects] [--dir <PATH>]";
+    let mut dir_str: Option<&str> = None;
+    let mut sessions: Option<&str> = None;
+    let mut project: Option<&str> = None;
+    let mut all_projects = false;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--dir" => {
+                let value = flag_value_at(args, i, CMD)?;
+                set_option_once(&mut dir_str, CMD, "--dir", value)?;
+                i += 2;
+            }
+            "--sessions" => {
+                let value = flag_value_at(args, i, CMD)?;
+                set_option_once(&mut sessions, CMD, "--sessions", value)?;
+                i += 2;
+            }
+            "--project" => {
+                let value = flag_value_at(args, i, CMD)?;
+                set_option_once(&mut project, CMD, "--project", value)?;
+                i += 2;
+            }
+            "--all-projects" => {
+                all_projects = true;
+                i += 1;
+            }
+            other => {
+                return Err(format!(
+                    "{CMD} error: unexpected argument `{other}`\n{USAGE}"
+                ));
+            }
+        }
+    }
+    if all_projects && project.is_some() {
+        return Err(format!(
+            "{CMD} error: --project and --all-projects conflict\n{USAGE}"
+        ));
+    }
+    let cwd = env::current_dir().map_err(|e| format!("{CMD} error: {e}"))?;
+    let absolute = |p: &str| {
+        let p = PathBuf::from(p);
+        if p.is_absolute() { p } else { cwd.join(p) }
+    };
+    let sessions_dir = match sessions {
+        Some(s) => absolute(s),
+        None => default_codex_sessions_dir()
+            .ok_or_else(|| format!("{CMD} error: set CODEX_HOME or HOME, or pass --sessions"))?,
+    };
+    let project_dir = if all_projects {
+        None
+    } else {
+        let p = project.map_or_else(|| workspace::project_root(&cwd), absolute);
+        Some(fs::canonicalize(&p).unwrap_or(p))
+    };
+
+    let ws_dir = resolve_workspace_dir(dir_str);
+    match workspace_state(&ws_dir, true) {
+        WsState::Ready => {}
+        WsState::Absent => return Err(format!("{CMD} error: workspace unavailable")),
+        WsState::Refused(r) => return Err(format!("{CMD} error: {r}")),
+    }
+    let lock = acquire_workspace_lock(&ws_dir).map_err(|e| format!("{CMD} error: {e}"))?;
+    let mut mmu = workspace_mmu();
+    mmu.load_workspace_dir_unlocked(&ws_dir)
+        .map_err(|e| format!("{CMD} error: failed to load workspace state: {e}"))?;
+    let mut state = icx_adapters::codex_ingest::RolloutIngestState::load(&ws_dir)
+        .map_err(|e| format!("{CMD} error: {e}"))?;
+    let summary = icx_adapters::codex_ingest::ingest_sessions_dir(
+        &sessions_dir,
+        project_dir.as_deref(),
+        &mut state,
+        &mut mmu,
+    )
+    .map_err(|e| format!("{CMD} error: {}: {e}", sessions_dir.display()))?;
+    // Records first, bookmarks second: a crash between the two re-reads records rather than
+    // losing them.
+    mmu.save_workspace_dir_unlocked(&ws_dir)
+        .map_err(|e| format!("{CMD} error: failed to save workspace state: {e}"))?;
+    state
+        .save(&ws_dir)
+        .map_err(|e| format!("{CMD} error: failed to save rollout bookmarks: {e}"))?;
+    drop(lock);
+
+    for (path, reason) in &summary.refused {
+        eprintln!("{CMD} warning: skipped {}: {reason}", path.display());
+    }
+    println!(
+        "{CMD}: {} rollout(s) matched, {} with new records, {} record(s) ingested, {} skipped",
+        summary.matched,
+        summary.updated,
+        summary.records,
+        summary.refused.len()
+    );
     Ok(())
 }
 

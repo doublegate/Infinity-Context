@@ -56,7 +56,7 @@ impl CodexAdapter {
                     "continue": true,
                     "hookSpecificOutput": {
                         "hookEventName": "SessionStart",
-                        "additionalContext": format!("{ICX_AHTL_LEGEND}\n{tail}")
+                        "additionalContext": codex_inline_context(format!("{ICX_AHTL_LEGEND}\n{tail}"))
                     },
                     "stopReason": null,
                     "suppressOutput": false,
@@ -73,7 +73,7 @@ impl CodexAdapter {
                     "continue": true,
                     "hookSpecificOutput": {
                         "hookEventName": "UserPromptSubmit",
-                        "additionalContext": tail
+                        "additionalContext": codex_inline_context(tail)
                     },
                     "stopReason": null,
                     "suppressOutput": false,
@@ -148,7 +148,7 @@ impl CodexAdapter {
                     "continue": true,
                     "hookSpecificOutput": {
                         "hookEventName": "SubagentStart",
-                        "additionalContext": tail
+                        "additionalContext": codex_inline_context(tail)
                     },
                     "stopReason": null,
                     "suppressOutput": false,
@@ -205,6 +205,59 @@ impl CodexAdapter {
         let mut response = response;
         strip_null_members(&mut response);
         serde_json::to_string(&response)
+    }
+}
+
+/// Largest `additionalContext` Codex delivers inline under its default per-handler
+/// `additionalContextLimit` of 2,500 tokens. Codex estimates tokens as UTF-8 bytes / 4 (rounded up)
+/// and spills anything larger to a file, leaving the model only a preview (T-62-006; Codex
+/// `codex-rs/hooks/src/output_spill.rs` and `utils/string/src/truncate.rs` at `rust-v0.171.0`).
+pub const CODEX_INLINE_CONTEXT_MAX_BYTES: usize = 2_500 * 4;
+
+/// Keeps a Codex `additionalContext` value within [`CODEX_INLINE_CONTEXT_MAX_BYTES`]. The tail
+/// slot is already far smaller; this pins the bound at the reply. Over the bound, the context is
+/// replaced whole by a diagnostic, never cut mid-frame, so no `#icx:` handle is ever split.
+fn codex_inline_context(context: String) -> String {
+    if context.len() <= CODEX_INLINE_CONTEXT_MAX_BYTES {
+        context
+    } else {
+        "⟪ICX:TAIL_OMITTED│reason=codex_additional_context_limit⟫".to_owned()
+    }
+}
+
+#[cfg(test)]
+mod inline_context_tests {
+    use super::*;
+
+    #[test]
+    fn context_at_the_limit_passes_and_one_byte_over_is_replaced_whole() {
+        let at = "x".repeat(CODEX_INLINE_CONTEXT_MAX_BYTES);
+        assert_eq!(codex_inline_context(at.clone()), at);
+        let over = format!("{at}y");
+        let replaced = codex_inline_context(over);
+        assert!(replaced.starts_with("⟪ICX:TAIL_OMITTED"));
+        assert!(replaced.len() <= CODEX_INLINE_CONTEXT_MAX_BYTES);
+        // Multi-byte text is measured in bytes, as Codex measures it.
+        let wide = "⟪".repeat(CODEX_INLINE_CONTEXT_MAX_BYTES / 3 + 1);
+        assert!(codex_inline_context(wide).starts_with("⟪ICX:TAIL_OMITTED"));
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(64))]
+
+        /// For any input the reply fits, and fitting input passes through unchanged.
+        #[test]
+        fn any_context_fits_and_fitting_context_is_unchanged(
+            unit in "[a-z⟪⟫#:0-9 \n]{1,8}",
+            repeat in 0usize..4_000,
+        ) {
+            let input = unit.repeat(repeat);
+            let out = codex_inline_context(input.clone());
+            proptest::prop_assert!(out.len() <= CODEX_INLINE_CONTEXT_MAX_BYTES);
+            if input.len() <= CODEX_INLINE_CONTEXT_MAX_BYTES {
+                proptest::prop_assert_eq!(out, input);
+            }
+        }
     }
 }
 
@@ -431,18 +484,26 @@ impl CodexRolloutTailer {
         start_offset: u64,
         mmu: &mut InfinityContextMmu,
     ) -> Result<(u64, usize, File), io::Error> {
-        let mut committed = start_offset;
-        file.seek(SeekFrom::Start(committed))?;
+        file.seek(SeekFrom::Start(start_offset))?;
         let mut reader = BufReader::new(file);
+        let (consumed, ingested) = Self::ingest_jsonl_records(&mut reader, mmu)?;
+        Ok((start_offset + consumed, ingested, reader.into_inner()))
+    }
+
+    /// Ingests complete `\n`-terminated rollout records from `reader` into `mmu`, stopping before
+    /// an incomplete trailing line. Returns `(bytes_consumed_through_last_complete_line,
+    /// ingested_count)`. Shared by the plain-file tailer and the compressed-rollout reader.
+    pub(crate) fn ingest_jsonl_records<R: BufRead>(
+        reader: &mut R,
+        mmu: &mut InfinityContextMmu,
+    ) -> Result<(u64, usize), io::Error> {
+        let mut committed = 0u64;
         let mut raw_line = Vec::new();
         let mut ingested = 0usize;
 
         loop {
-            let (bytes_read, ended_with_nl, was_truncated) = Self::read_bounded_jsonl_record(
-                &mut reader,
-                MAX_ROLLOUT_RECORD_BYTES,
-                &mut raw_line,
-            )?;
+            let (bytes_read, ended_with_nl, was_truncated) =
+                Self::read_bounded_jsonl_record(reader, MAX_ROLLOUT_RECORD_BYTES, &mut raw_line)?;
             if bytes_read == 0 || !ended_with_nl {
                 // Stop before decoding or consuming any incomplete trailing line (including
                 // mid-character UTF-8 sequences) still being written.
@@ -482,7 +543,7 @@ impl CodexRolloutTailer {
                 ingested += 1;
             }
         }
-        Ok((committed, ingested, reader.into_inner()))
+        Ok((committed, ingested))
     }
 
     fn non_empty_body_value(v: &Value) -> Option<String> {

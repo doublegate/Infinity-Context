@@ -5,6 +5,7 @@
 pub mod antigravity;
 pub mod claude;
 pub mod codex;
+pub mod codex_ingest;
 pub mod hermes;
 pub mod mcp;
 pub mod mmu;
@@ -14,7 +15,7 @@ pub mod workspace;
 
 pub use antigravity::AntigravityAdapter;
 pub use claude::ClaudeCodeAdapter;
-pub use codex::{CodexAdapter, CodexRolloutTailer};
+pub use codex::{CODEX_INLINE_CONTEXT_MAX_BYTES, CodexAdapter, CodexRolloutTailer};
 pub use hermes::{HermesAdapter, HermesMessage, PRE_COMPRESS_CHECKPOINT_API_VERSION};
 pub use mcp::McpPagerServer;
 pub use mmu::{
