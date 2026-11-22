@@ -372,3 +372,32 @@ fn lifetimes_and_literal_or_operator_led_values() {
     let r = SecretRedactor::redact("password=\"aaaa\" user=\"admin\"\n");
     assert!(!r.contains("aaaa") && r.contains("user=\"admin\""), "{r:?}");
 }
+
+/// Review of #27 (00:49 UTC): any value with a quote is hidden whole unless it is a lone plain
+/// literal; a field boundary needs a value-ending character before it.
+#[test]
+fn prefixed_literals_keywords_unary_and_tight_ternaries() {
+    for line in [
+        "secret: SecretBytes = b\"aaaa\"\n",
+        "api_key = f\"prefix_{x}_aaaa\"\n",
+        "api_key = r#\"aaaa\"#\n",
+        "password = new Secret(\"aaaa\")\n",
+        "token = await get_token() ?? \"aaaa\"\n",
+        "password = not disabled and \"aaaa\"\n",
+        "token = !cond ? \"aaaa\" : \"bbbb\";\n",
+        "token = cond ? x: \"aaaa\"\n",
+        "token = (mode == \"prod\") ? x: \"aaaa\"\n",
+        "const password = (() => { init(); return \"aaaa\"; })();\n",
+    ] {
+        let clean = SecretRedactor::redact(line);
+        assert!(
+            !clean.contains("aaaa") && !clean.contains("bbbb"),
+            "{line:?} -> {clean:?}"
+        );
+        assert_eq!(
+            SecretRedactor::redact(&clean),
+            clean,
+            "not idempotent: {clean:?}"
+        );
+    }
+}

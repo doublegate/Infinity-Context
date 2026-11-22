@@ -36,8 +36,8 @@ and recalls it, and shares it with the other agents in the same project, as it d
 
 These come from the automated reviews of #25 and #26 and apply to every agent:
 
-- **Code-shaped values are redacted whole.** Under a secret-looking key, a value that looks like
-  code and contains a quote is replaced entirely, up to the next field (`name=`, `name: value`,
+- **Values with quotes are redacted whole.** Under a secret-looking key, any value that contains a
+  quote, other than a lone plain quoted literal, is replaced entirely, up to the next field (`name=`, `name: value`,
   `--flag`) or the end of the line: calls (`pydantic.SecretStr("...")`, `env::var("K").unwrap_or("...")`),
   chains (`settings.api_key or "..."`), concatenation and ternaries. The trade-off is deliberate:
   harmless code on such a line is hidden too, for example all of `password = getenv("DB_PASSWORD")`,

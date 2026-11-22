@@ -377,3 +377,17 @@ fn empty_error_strings_fall_back() {
     let stored = String::from_utf8(mmu.cas.deref_bytes(id).unwrap()).unwrap();
     assert!(stored.contains("tool call failed"), "{stored:?}");
 }
+
+/// Review of #27 (00:49 UTC): a structured error object is kept, not replaced by the default.
+#[test]
+fn structured_error_objects_are_kept() {
+    let mut mmu = InfinityContextMmu::default();
+    let mut f = base("PostToolUseFailure");
+    f["tool_name"] = json!("read_file");
+    f["tool_input"] = json!({"path": "a.txt"});
+    f["error"] = json!({"message": "disk quota exceeded"});
+    let _ = reply(&mut mmu, "PostToolUseFailure", &f);
+    let id = mmu.hdc_index.latest_entry().expect("indexed").artifact_id;
+    let stored = String::from_utf8(mmu.cas.deref_bytes(id).unwrap()).unwrap();
+    assert!(stored.contains("disk quota exceeded"), "{stored:?}");
+}

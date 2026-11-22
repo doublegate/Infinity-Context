@@ -596,32 +596,24 @@ impl SecretRedactor {
     ) -> Option<usize> {
         let rest = out.get(val_start..)?;
         let first = *rest.as_bytes().first()?;
-        let code_like = if first.is_ascii_alphabetic() || first == b'_' {
-            let name_len = rest
-                .bytes()
-                .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b':' | b'.'))
-                .count();
-            // A dotted / `::` head alone is not code (`v1.secret user="x"`): it may be the secret.
-            let after_head = &rest[name_len..];
-            after_head.starts_with(['(', '[', '<'])
-                || Self::continuation_len(after_head).is_some()
-                || Self::starts_with_operator(after_head)
-        } else if matches!(first, b'&' | b'*' | b'(') {
-            // `&"..."`, `*x`, `(x or "...")`.
-            true
-        } else if matches!(first, b'"' | b'\'' | b'`') {
-            // A literal followed by an operator or a method (`"a" + "b"`, `"{}".format(...)`).
+        // A lone plain literal (`"x"`, `'x'` followed by nothing code-like) keeps the plain value
+        // rule. Every other value is scanned, and hidden whole when it holds a quote: prefixed
+        // literals (`b"..."`, `f"..."`), keyword-led expressions (`new X("...")`, `not a and
+        // "..."`), unary operators, ternaries. Deciding what "looks like code" was the source of
+        // every bypass in review, so that decision is gone (fail closed).
+        // An escaped-quote value (`\"x\"`, `\'x\'`) is the plain value rule's (v1.2.0).
+        if first == b'\\' {
+            return None;
+        }
+        if matches!(first, b'"' | b'\'' | b'`') {
             let after = Self::after_leading_literal(rest)?;
-            // A following field (`"x" --flag`, `"x" user=...`) is not an operator.
-            !Self::starts_new_field(after)
+            let code_like = !Self::starts_new_field(after)
                 && (after.starts_with('.')
                     || Self::continuation_len(after).is_some()
-                    || Self::starts_with_operator(after))
-        } else {
-            false
-        };
-        if !code_like {
-            return None;
+                    || Self::starts_with_operator(after));
+            if !code_like {
+                return None;
+            }
         }
         let bytes = rest.as_bytes();
         let mut quote: Option<u8> = None;
@@ -651,9 +643,19 @@ impl SecretRedactor {
                 }
                 None if matches!(b, b'(' | b'[' | b'{') => depth += 1,
                 None if matches!(b, b')' | b']' | b'}') => depth = depth.saturating_sub(1),
+                // A new field follows a finished value (`... x user=...`), never an operator
+                // (`cond ? x: "..."`).
                 None if !no_split
                     && depth == 0
                     && (b == b' ' || b == b'\t')
+                    && rest[..i]
+                        .trim_end_matches([' ', '\t'])
+                        .bytes()
+                        .last()
+                        .is_some_and(|c| {
+                            c.is_ascii_alphanumeric()
+                                || matches!(c, b'"' | b'\'' | b'`' | b')' | b']' | b'}' | b'_')
+                        })
                     && Self::starts_new_field(&rest[i..]) =>
                 {
                     break;
@@ -1295,7 +1297,19 @@ impl SecretRedactor {
     /// which a code binding may assign without it being a secret. A bare word, number or quoted
     /// value is treated as a literal and keeps the key rule (v1.2.1).
     fn is_code_expression(rhs: &str) -> bool {
-        let end = rhs.find([';', '\n']).unwrap_or(rhs.len());
+        // The first `;` or newline outside brackets (`(() => { a(); return "x"; })()`).
+        let mut depth = 0usize;
+        let end = rhs
+            .bytes()
+            .position(|b| {
+                match b {
+                    b'(' | b'[' | b'{' => depth += 1,
+                    b')' | b']' | b'}' => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+                b == b'\n' || (b == b';' && depth == 0)
+            })
+            .unwrap_or(rhs.len());
         let expr = rhs[..end].trim();
         let starts_ok = expr
             .chars()

@@ -35,10 +35,11 @@ Adds Meta Muse Code as a fifth agent. Release notes:
   lifetimes (`&'a str`, but not a quoted `&'...'`) are not treated as quotes; only exact
   redactor markers count as already redacted, so redaction stays idempotent without letting an
   input that merely starts with `[REDACTED:` hide a secret.
-- Redaction: under a secret-looking key, a code-shaped value (a head followed by a call, index or
-  generic, or by an operator such as `or`, `??`, `+` or `?`) that holds any quote is replaced as a
-  whole, from its start to the next field (`token=...`, `user: value`, `--flag`) or the end of the
-  line. Quote and lifetime tracking only decides where the next field starts, so a mistake can
+- Redaction: under a secret-looking key, any value that holds a quote, other than a lone plain
+  quoted literal, is replaced as a whole, from its start to the next field (`token=...`,
+  `user: value`, `--flag`, only after a finished value and outside brackets) or the end of the
+  line: calls, chains, prefixed literals (`b"..."`, `f"..."`), keyword-led and unary expressions,
+  and ternaries alike. Quote and lifetime tracking only decides where the next field starts, so a mistake can
   over-redact but cannot leave a literal visible. A dotted bare value (`v1.secret`) is not
   code-shaped and keeps the plain value rule. Typed `SecretStr`/`SecretBytes` fields (also
   `pydantic.SecretStr`; dotted paths count only for these, with lowercase module names) and union

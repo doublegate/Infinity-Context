@@ -134,10 +134,16 @@ impl MuseAdapter {
                     );
                     if failure {
                         // Keep the error next to any partial output (as AntigravityAdapter does).
-                        let error = ["error", "message", "reason"]
-                            .into_iter()
-                            .find_map(|k| payload.get(k).and_then(Value::as_str))
-                            .filter(|e| !e.trim().is_empty());
+                        // A string, or a structured error (`{"error":{"message":...}}`) as JSON.
+                        let error_owned =
+                            ["error", "message", "reason"]
+                                .into_iter()
+                                .find_map(|k| match payload.get(k)? {
+                                    Value::String(e) if !e.trim().is_empty() => Some(e.clone()),
+                                    v @ Value::Object(o) if !o.is_empty() => Some(v.to_string()),
+                                    _ => None,
+                                });
+                        let error = error_owned.as_deref();
                         match (text.is_empty(), error) {
                             (true, e) => e.unwrap_or("tool call failed").clone_into(&mut text),
                             (false, Some(e)) => {
