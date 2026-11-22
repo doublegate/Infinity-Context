@@ -778,10 +778,11 @@ fn run_codex_ingest(args: &[String]) -> Result<(), String> {
         eprintln!("{CMD} warning: skipped {}: {reason}", path.display());
     }
     println!(
-        "{CMD}: {} rollout(s) matched, {} with new records, {} record(s) ingested, {} skipped",
+        "{CMD}: {} rollout(s) matched, {} with new records, {} record(s) ingested, {} already stored, {} skipped",
         summary.matched,
         summary.updated,
         summary.records,
+        summary.already_held,
         summary.refused.len()
     );
     Ok(())

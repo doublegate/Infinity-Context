@@ -17,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Compressed files are decoded by the pure-Rust `ruzstd` decoder, which verifies frame
     checksums. A file over 1 GiB decompressed, a corrupt file and a symlink are each skipped and
     named, and nothing from them is ingested.
+  - A record whose output the store already holds, usually the copy icx's Codex hook captured,
+    is skipped and counted as "already stored", so recall does not index it twice.
 
 ### Changed
 

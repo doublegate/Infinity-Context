@@ -144,6 +144,12 @@ below (observed: two found by Ghidra, two by a direct scan of the machine code):
   text in place of the result. The call is not marked failed, logs keep the original output, and
   the turn continues (`registry.rs:371-393`, `1089-1096`; `post_tool_use.rs:44-49`). This is the
   only whole-result substitution available on this version.
+  - **Update, same day (live run, T-62-001):** this substitution does not reach the model in
+    practice.
+    - Every model this Codex install offers is Code-Mode-only: it calls tools from a script.
+    - For a script, the substitute wrapper returns the original output (`code_mode_result` in
+      `registry.rs`).
+    - Measured for shell and MCP tools, `continue: false` changed nothing the model saw.
 - **`additionalContext`** is subject to a per-handler `additionalContextLimit`, default about
   2,500 tokens, where 0 means no limit (`output_spill.rs:13`). Text over the limit goes to a file,
   and the model gets a preview and the path (`output_spill.rs:127`). The limit applies to
@@ -325,7 +331,7 @@ agent on 2026-11-22.
 
 | Candidate | Decision | Reason | Follow-up |
 | --- | --- | --- | --- |
-| `continue: false` with `reason` as stub substitution | Go | Source-confirmed whole-result substitution that is not marked failed. It relies on a side effect, so pin it with a version test | T-62-001, T-62-002 |
+| `continue: false` with `reason` as stub substitution | No-go (revised after the live run, 2026-11-22) | Source-confirmed for direct tool calls, but every available model is Code-Mode-only, and Code Mode returns the original output; measured as ignored for shell and MCP tools | T-62-001 (closed with the finding); T-62-002 not built |
 | `decision: "block"` as substitution | No-go | The model sees a failed tool call, which changes its behaviour | T-62-001 records the finding |
 | Never emit `updatedToolOutput` or `updatedMCPToolOutput` | Go (test only) | Either field breaks the reply; icx already omits both, and tests pin it | T-62-005 |
 | Respect the 2,500-token `additionalContextLimit` | Go | Over the limit the context is spilled to a file and only a preview reaches the model | T-62-006 |

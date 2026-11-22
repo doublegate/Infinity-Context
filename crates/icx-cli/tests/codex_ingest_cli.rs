@@ -76,7 +76,7 @@ fn codex_ingest_reads_plain_and_compressed_rollouts_once() {
     assert!(first.status.success(), "stderr: {}", stderr(&first));
     assert!(
         stdout(&first)
-            .contains("2 rollout(s) matched, 2 with new records, 41 record(s) ingested, 0 skipped"),
+            .contains("2 rollout(s) matched, 2 with new records, 41 record(s) ingested, 0 already stored, 0 skipped"),
         "stdout: {}",
         stdout(&first)
     );
@@ -106,7 +106,7 @@ fn codex_ingest_reads_plain_and_compressed_rollouts_once() {
     assert!(all.status.success(), "stderr: {}", stderr(&all));
     assert!(
         stdout(&all)
-            .contains("4 rollout(s) matched, 1 with new records, 1 record(s) ingested, 1 skipped"),
+            .contains("4 rollout(s) matched, 1 with new records, 1 record(s) ingested, 0 already stored, 1 skipped"),
         "--all-projects adds only the other project's record and skips the corrupt file: {}",
         stdout(&all)
     );

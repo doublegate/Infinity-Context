@@ -486,20 +486,24 @@ impl CodexRolloutTailer {
     ) -> Result<(u64, usize, File), io::Error> {
         file.seek(SeekFrom::Start(start_offset))?;
         let mut reader = BufReader::new(file);
-        let (consumed, ingested) = Self::ingest_jsonl_records(&mut reader, mmu)?;
+        let (consumed, ingested, _) = Self::ingest_jsonl_records(&mut reader, mmu, false)?;
         Ok((start_offset + consumed, ingested, reader.into_inner()))
     }
 
     /// Ingests complete `\n`-terminated rollout records from `reader` into `mmu`, stopping before
-    /// an incomplete trailing line. Returns `(bytes_consumed_through_last_complete_line,
-    /// ingested_count)`. Shared by the plain-file tailer and the compressed-rollout reader.
+    /// an incomplete trailing line. Shared by the plain-file tailer and the compressed-rollout
+    /// reader. With `skip_held`, a record whose redacted bytes the store already holds (for
+    /// example because a hook ingested the same output) is skipped, so recall does not index it
+    /// twice. Returns `(bytes_consumed_through_last_complete_line, ingested, skipped_as_held)`.
     pub(crate) fn ingest_jsonl_records<R: BufRead>(
         reader: &mut R,
         mmu: &mut InfinityContextMmu,
-    ) -> Result<(u64, usize), io::Error> {
+        skip_held: bool,
+    ) -> Result<(u64, usize, usize), io::Error> {
         let mut committed = 0u64;
         let mut raw_line = Vec::new();
         let mut ingested = 0usize;
+        let mut skipped = 0usize;
 
         loop {
             let (bytes_read, ended_with_nl, was_truncated) =
@@ -516,6 +520,10 @@ impl CodexRolloutTailer {
                 continue;
             }
             if was_truncated {
+                if skip_held && mmu.holds_ingested(trimmed) {
+                    skipped += 1;
+                    continue;
+                }
                 let _ = mmu.ingest_payload_with_exit_code(
                     AgentKind::Codex,
                     "oversized_rollout_item",
@@ -533,6 +541,10 @@ impl CodexRolloutTailer {
                 if InfinityContextMmu::is_icx_pager_tool(&subject) {
                     continue;
                 }
+                if skip_held && mmu.holds_ingested(&body) {
+                    skipped += 1;
+                    continue;
+                }
                 let _ = mmu.ingest_payload_with_exit_code(
                     AgentKind::Codex,
                     &subject,
@@ -543,7 +555,7 @@ impl CodexRolloutTailer {
                 ingested += 1;
             }
         }
-        Ok((committed, ingested))
+        Ok((committed, ingested, skipped))
     }
 
     fn non_empty_body_value(v: &Value) -> Option<String> {

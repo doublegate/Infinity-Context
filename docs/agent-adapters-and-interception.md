@@ -111,6 +111,10 @@ Upstream reference: the Codex hooks documentation (developers.openai.com/codex/h
      `CodexAdapter::SUPPORTS_TOOL_OUTPUT_REPLACEMENT` is `false`. v1.1.0 emitted the unsupported
      MCP replacement field; v1.2.0 removes it rather than claiming replacement succeeded.
    - **Net effect:** through hooks alone, icx does not shrink tool output in Codex; the model still sees the full native output. Use the wire proxy (§6) to reduce what Codex resends.
+   - **Live-verified on Codex 0.171.0 (2026-11-22, T-62-001):** neither documented reply substitutes a result. Every model available to this install (`tool_mode: code_mode_only`) runs tools inside a Code Mode script, and Code Mode hands the script the original result.
+     - `continue:false` plus a reason changes nothing the model sees, for shell and MCP tools alike.
+     - `decision:"block"` reaches the model as a failed tool call carrying the reason.
+     - icx therefore keeps the non-replacing reply.
 3. **`PreToolUse`:** returns `continue: true` with no decision and no input change.
 4. **`SubagentStop`:** reads `last_assistant_message` and folds the subagent branch; the fold frame is returned in `systemMessage`.
 5. **`PreCompact`, `PostCompact` & `SessionEnd`:** seal the epoch and return `{"continue": true, "systemMessage": "<deterministic prefix>"}`.
@@ -120,6 +124,7 @@ Upstream reference: the Codex hooks documentation (developers.openai.com/codex/h
    - **Both forms:** plain `rollout-*.jsonl` and the zstd-compressed `rollout-*.jsonl.zst` files that Codex writes for rollouts older than 7 days.
    - **Compressed files** are decoded by a pure-Rust decoder that verifies frame checksums. They are measured before anything is ingested and refused above 1 GiB decompressed, so a corrupt frame or a decompression bomb ingests nothing.
    - **Bookmarks:** each rollout's read position is saved in `codex-rollouts.json` in the workspace, keyed by its path without `.zst` and checked against a hash of its first 64 KiB. Ingestion resumes where it stopped when Codex recompresses a file or decompresses it again on append, and starts from the beginning for a replaced file. An incomplete trailing line is left for the next run.
+   - **No double indexing:** a rollout record whose redacted output the store already holds is skipped and counted as "already stored". Usually that is the copy icx's Codex hook ingested when the tool ran. Measured on this project's live workspace: 1,403 of 1,583 rollout tool outputs were already stored. Messages and turn context, which hooks never see, are ingested as new. Copies that differ in formatting are not recognised.
    - **Safety:** symlinks and special files are refused.
    - **Locking:** the run holds the workspace lock while it loads, ingests and saves, like a hook.
    - **Not automatic:** run `icx codex-ingest` on demand or on a schedule; hooks do not call it.

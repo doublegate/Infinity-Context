@@ -102,11 +102,44 @@ both tool kinds; rejected otherwise, and the ticket closes with the finding.
 
 **Acceptance Criteria:**
 
-- [ ] Codex version, hook config and raw rollout excerpts recorded in the research notes.
-- [ ] Result per tool kind (shell, MCP) and per reply (`continue:false`, `decision:"block"`):
+- [x] Codex version, hook config and raw rollout excerpts recorded in the research notes (below).
+- [x] Result per tool kind (shell, MCP) and per reply (`continue:false`, `decision:"block"`):
   substituted, shown as error, or ignored.
-- [ ] Whether the rollout stores the substitute or the original recorded.
-- [ ] Decision recorded: proceed to T-62-002, or close with the finding.
+- [x] Whether the rollout stores the substitute or the original recorded.
+- [x] Decision recorded: proceed to T-62-002, or close with the finding. **Closed: hypothesis
+  rejected.** T-62-002 is not built.
+
+**Result (2026-11-22, Codex CLI 0.171.0, model `gpt-6.1-sol`):**
+
+- **Harness:**
+  - an isolated `CODEX_HOME` in the session scratchpad, holding only the test PostToolUse hook
+    (`hooks.json`) and the icx MCP server, with `~/.codex` untouched;
+  - `codex exec --dangerously-bypass-hook-trust`, the documented per-invocation option for vetted
+    automation hooks, so no trust hash was written;
+  - launched through `agent-workstation run codex`;
+  - the hook logged every payload, and each mode was run once per tool kind.
+
+| Tool kind | Reply | What the model saw | Call status | Rollout stored |
+| --- | --- | --- | --- | --- |
+| Shell | none (control) | raw output | success | raw |
+| Shell | `continue:false` + reason | raw output (ignored) | success | raw |
+| Shell | `decision:"block"` + reason | the reason, as `Script error:` | failure | the reason |
+| MCP (`icx` status) | none (control) | raw output | success | raw |
+| MCP | `continue:false` + reason | raw output (ignored) | success | raw |
+| MCP | `decision:"block"` + reason | the reason, as `Script error:` | failure | the reason |
+
+- **Why `continue:false` does nothing here:**
+  - Every model this install offers has `tool_mode: "code_mode_only"` in its metadata, including
+    `gpt-6.1-sol`, the `gpt-6.x`, `gpt-5.6` and `daybreak` lines, and the auto-review model.
+  - So the model calls one `exec` tool, whose script calls `exec_command` or the MCP tool.
+  - The substitute wrapper's `code_mode_result` returns the original output
+    (`codex-rs/core/src/tools/registry.rs` at `rust-v0.171.0`), so the script, and therefore the
+    model, sees the raw result.
+  - `-c features.code_mode=false` does not change this: the model metadata decides.
+- **Why `block` is no better:** it is visible as a failed call, which changes model behaviour,
+  so it stays a no-go (Sprint 1 decision).
+- **Re-test when:** a direct-tool (non-Code-Mode) model appears, or Code Mode starts honouring
+  the substitute. The hook harness is kept under the session scratchpad for that re-run.
 
 **Dependencies:** T-61-003
 
@@ -118,6 +151,10 @@ Codex hooks documentation
 ---
 
 ### T-62-002 — Implement `continue:false` substitution behind a flag
+
+**Status (2026-11-22): not built.** T-62-001 rejected its premise on Codex 0.171.0: with
+Code-Mode-only models, `continue:false` changes nothing the model sees. The ticket stays open
+behind T-62-001's re-test condition, and nothing ships for it in v1.4.0.
 
 **Description:** If T-62-001 confirms substitution, add an opt-in mode in `CodexAdapter` that
 returns `continue:false` with the icx stub as `reason`, for outputs over the stub threshold. The

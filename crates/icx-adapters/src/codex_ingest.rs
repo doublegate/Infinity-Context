@@ -237,6 +237,8 @@ pub fn rollout_belongs_to(path: &Path, project: &Path) -> bool {
 /// - A `prior` mark resumes only if its prefix hash still matches the logical stream; otherwise
 ///   the rollout is ingested from the start.
 /// - Ingestion stops before an incomplete trailing line, which a later call picks up.
+/// - A record whose redacted output the store already holds (typically because icx's Codex
+///   hook ingested it when the tool ran) is skipped, so recall does not index it twice.
 pub fn ingest_rollout(
     path: &Path,
     prior: Option<&RolloutMark>,
@@ -252,6 +254,18 @@ pub fn ingest_rollout_with_limit(
     mmu: &mut InfinityContextMmu,
     decompressed_limit: u64,
 ) -> Result<(RolloutMark, usize), RolloutIngestError> {
+    ingest_rollout_counted(path, prior, mmu, decompressed_limit)
+        .map(|(mark, ingested, _)| (mark, ingested))
+}
+
+/// [`ingest_rollout_with_limit`], also returning how many records were skipped because the store
+/// already held them: `(mark, ingested, skipped_as_held)`.
+pub fn ingest_rollout_counted(
+    path: &Path,
+    prior: Option<&RolloutMark>,
+    mmu: &mut InfinityContextMmu,
+    decompressed_limit: u64,
+) -> Result<(RolloutMark, usize, usize), RolloutIngestError> {
     let meta = regular_file_meta(path)?;
     let compressed = is_compressed(path);
     let source_len = meta.len();
@@ -261,7 +275,7 @@ pub fn ingest_rollout_with_limit(
         && p.source_len == source_len
         && p.source_mtime_nanos == source_mtime_nanos
     {
-        return Ok((p.clone(), 0));
+        return Ok((p.clone(), 0, 0));
     }
 
     let logical_len = if compressed {
@@ -294,8 +308,8 @@ pub fn ingest_rollout_with_limit(
         file.seek(SeekFrom::Start(resume))?;
         reader = BufReader::new(Box::new(file) as Box<dyn Read>);
     }
-    let (consumed, ingested) =
-        CodexRolloutTailer::ingest_jsonl_records(&mut reader, mmu).map_err(map_decode)?;
+    let (consumed, ingested, skipped) =
+        CodexRolloutTailer::ingest_jsonl_records(&mut reader, mmu, true).map_err(map_decode)?;
     let offset = resume + consumed;
 
     let mut prefix_reader = open_logical(path)?;
@@ -309,6 +323,7 @@ pub fn ingest_rollout_with_limit(
             compressed,
         },
         ingested,
+        skipped,
     ))
 }
 
@@ -336,6 +351,8 @@ pub struct IngestSummary {
     pub updated: usize,
     /// Records ingested.
     pub records: usize,
+    /// Records skipped because the store already held the same output (usually from a hook).
+    pub already_held: usize,
     /// Rollouts refused, with the reason.
     pub refused: Vec<(PathBuf, String)>,
 }
@@ -357,12 +374,18 @@ pub fn ingest_sessions_dir(
         }
         summary.matched += 1;
         let key = logical_key(&path);
-        match ingest_rollout(&path, state.rollouts.get(&key), mmu) {
-            Ok((mark, n)) => {
+        match ingest_rollout_counted(
+            &path,
+            state.rollouts.get(&key),
+            mmu,
+            MAX_DECOMPRESSED_ROLLOUT_BYTES,
+        ) {
+            Ok((mark, n, held)) => {
                 if n > 0 {
                     summary.updated += 1;
                     summary.records += n;
                 }
+                summary.already_held += held;
                 state.rollouts.insert(key, mark);
             }
             Err(e) => summary.refused.push((path, e.to_string())),
@@ -571,6 +594,40 @@ mod tests {
         wrong[0] ^= 0xFF;
         write(&bad, &wrong);
         assert!(ingest_rollout(&bad, None, &mut m).is_err());
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn output_already_ingested_by_the_hook_is_not_indexed_twice() {
+        let d = tmpdir("dedup");
+        let p = d.join("rollout-g.jsonl");
+        let output = "cargo test output\ntest a ... ok\ntest b ... ok\n";
+        let mut m = mmu();
+        // The Codex PostToolUse hook ingests the output when the tool runs.
+        let hook = serde_json::json!({
+            "tool_name": "Bash",
+            "tool_input": {"command": "cargo test"},
+            "tool_response": output,
+        });
+        crate::codex::CodexAdapter::handle_hook("PostToolUse", &hook.to_string(), &mut m).unwrap();
+        let hdc_before = m.hdc_index.len();
+        // The same output then appears in the rollout, next to one the hook never saw.
+        write(
+            &p,
+            rollout_text("/proj", &[("c1", output), ("c2", "only in the rollout")]).as_bytes(),
+        );
+        let (_, ingested, held) =
+            ingest_rollout_counted(&p, None, &mut m, MAX_DECOMPRESSED_ROLLOUT_BYTES).unwrap();
+        assert_eq!(
+            (ingested, held),
+            (1, 1),
+            "the hook's copy is skipped, the new one ingested"
+        );
+        assert_eq!(
+            m.hdc_index.len(),
+            hdc_before + 1,
+            "recall gains one entry, not two"
+        );
         std::fs::remove_dir_all(d).unwrap();
     }
 
