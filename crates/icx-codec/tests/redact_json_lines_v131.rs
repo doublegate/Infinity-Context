@@ -94,7 +94,7 @@ fn formatting_is_kept_and_invalid_json_falls_back() {
     // Not valid JSON (trailing comma): the first-quote rule applies.
     let broken = r#"{"password":"aaaa","user":"octo",}"#;
     assert_eq!(once(broken), r#"{"password":[REDACTED:CONFIG_SECRET]"#);
-    // Escaped and unicode keys are decoded before classification.
+    // An escaped (`\\u0077` = `w`) key is decoded before classification.
     assert!(!once(r#"{"password":"aaaa"}"#).contains("aaaa"));
 }
 
@@ -231,4 +231,33 @@ fn invalid_json_falls_back_and_edge_cases_parse() {
     // A value already redacted stays exactly as it is.
     let done = r#"{"token":"[REDACTED:CONFIG_SECRET]","n":1}"#;
     assert_eq!(once(done), done);
+}
+
+/// Review of #31 (04:54 UTC, blocking 1): a JSON string value is decoded before redaction, so
+/// escaped newlines, tabs and `\uXXXX` escapes cannot hide a key, and multi-line content is
+/// redacted line by line.
+#[test]
+fn json_string_values_are_decoded_before_redaction() {
+    for line in [
+        r#"{"stdout":"ok\npassword=\"aaaa\""}"#,
+        r#"{"stdout":"ok\npassword: aaaa"}"#,
+        r#"{"stdout":"ok\napi_key=aaaa"}"#,
+        r#"{"stdout":"ok\ttoken=aaaa"}"#,
+        r#"{"stdout":"password:\n  aaaa"}"#,
+        r#"{"cmd":"password=aaaa"}"#,
+        r#"{"cmd":"password=aaaa"}"#,
+    ] {
+        let clean = once(line);
+        assert!(!clean.contains("aaaa"), "{line} -> {clean}");
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&clean).is_ok(),
+            "invalid JSON: {clean}"
+        );
+    }
+    // Later lines of a multi-line string value survive.
+    let clean = once(r#"{"stdout":"password=\"aaaa\"\nline 2\nline 3"}"#);
+    assert!(
+        !clean.contains("aaaa") && clean.contains(r"\nline 2\nline 3"),
+        "{clean}"
+    );
 }

@@ -172,3 +172,33 @@ fn first_quote_to_end_of_line() {
     let c = hidden("api_key = settings.key or \"aaaa\"\n");
     assert_eq!(c, "api_key = [REDACTED:ENV_SECRET]\n", "{c:?}");
 }
+
+/// Review of #31 (04:54 UTC, blocking 2): no exemption (null default, type annotation, code
+/// expression, token counter) skips the first-quote rule when a quote follows the key.
+#[test]
+fn exemptions_never_skip_a_later_quote() {
+    for line in [
+        "password: str = None or \"aaaa\"\n",
+        "token: string = null ?? \"aaaa\"\n",
+        "api_key: Optional[str] = None if prod else \"aaaa\"\n",
+        "secret: str = False or \"aaaa\"\n",
+        "password: str, \"aaaa\"\n",
+        "{password: string, \"user\": \"aaaa\"}\n",
+        "password: String, // \"aaaa\"\n",
+        "let password = get_pw(); // \"aaaa\"\n",
+        "password: str = get_pw(); # \"aaaa\"\n",
+        "tokens = 0 or \"aaaa\"\n",
+        "tokens = \"123\" + \"aaaa\"\n",
+    ] {
+        hidden(line);
+    }
+    // Without a quote the exemptions still apply.
+    for line in [
+        "max_tokens: 4096\n",
+        "token: String,\n",
+        "let password = get_pw();\n",
+        "password: Optional[str] = None\n",
+    ] {
+        assert_eq!(icx_codec::SecretRedactor::redact(line), line);
+    }
+}
