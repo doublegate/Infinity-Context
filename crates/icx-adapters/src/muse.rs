@@ -135,7 +135,8 @@ impl MuseAdapter {
                         // Keep the error next to any partial output (as AntigravityAdapter does).
                         let error = ["error", "message", "reason"]
                             .into_iter()
-                            .find_map(|k| payload.get(k).and_then(Value::as_str));
+                            .find_map(|k| payload.get(k).and_then(Value::as_str))
+                            .filter(|e| !e.trim().is_empty());
                         match (text.is_empty(), error) {
                             (true, e) => e.unwrap_or("tool call failed").clone_into(&mut text),
                             (false, Some(e)) => {

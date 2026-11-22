@@ -363,3 +363,17 @@ fn failure_error_text_is_appended_to_partial_output() {
         "{stored:?}"
     );
 }
+
+/// Review of #27 (23:59 UTC): an empty error string falls back to the default failure text.
+#[test]
+fn empty_error_strings_fall_back() {
+    let mut mmu = InfinityContextMmu::default();
+    let mut f = base("PostToolUseFailure");
+    f["tool_name"] = json!("read_file");
+    f["tool_input"] = json!({"path": "a.txt"});
+    f["error"] = json!("   ");
+    let _ = reply(&mut mmu, "PostToolUseFailure", &f);
+    let id = mmu.hdc_index.latest_entry().expect("indexed").artifact_id;
+    let stored = String::from_utf8(mmu.cas.deref_bytes(id).unwrap()).unwrap();
+    assert!(stored.contains("tool call failed"), "{stored:?}");
+}

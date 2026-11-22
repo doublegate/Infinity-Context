@@ -224,3 +224,37 @@ fn dotted_bare_values_and_dotted_union_members() {
         }
     }
 }
+
+/// Review of #27 (23:59 UTC, blocking): a code-shaped value ends at whitespace unless an operator
+/// continues it, so later assignments on the line are still found; generics with commas work.
+#[test]
+fn code_values_end_at_the_expression_and_generics_nest() {
+    for (line, secrets) in [
+        (
+            "password=SecretStr(\"aaaa\") token=bbbbbbbb\n",
+            &["aaaa", "bbbbbbbb"][..],
+        ),
+        (
+            "--api-key SecretStr(\"aaaa\") --password bbbbbbbb\n",
+            &["aaaa", "bbbbbbbb"][..],
+        ),
+        (
+            "password=my_secret(1) user=\"admin\" token=bbbbbbbb\n",
+            &["my_secret(1)", "bbbbbbbb"][..],
+        ),
+        (
+            "password = parse::<&str, String>(\"aaaa\")\n",
+            &["aaaa"][..],
+        ),
+        ("password: cccc<x> \"note\"\n", &["cccc"][..]),
+        ("api_key = settings.key\tor\t\"aaaa\"\n", &["aaaa"][..]),
+    ] {
+        let clean = SecretRedactor::redact(line);
+        for s in secrets {
+            assert!(!clean.contains(s), "{line:?} -> {clean:?}");
+        }
+    }
+    // Non-sensitive fields after the value are left as they were.
+    let r = SecretRedactor::redact("password=SecretStr(\"aaaa\") user=\"admin\"\n");
+    assert!(r.contains("user=\"admin\""), "{r:?}");
+}

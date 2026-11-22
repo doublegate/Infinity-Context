@@ -581,14 +581,14 @@ impl SecretRedactor {
     }
 
     /// `String::from("...")`, `pydantic.SecretStr("...")`, `env::var("K").unwrap_or("...")`: a value
-    /// that starts with a call. Every quoted literal from there to the end of the expression is
-    /// replaced: across nested and chained calls (`.unwrap_or("...")`, `... or SecretStr("...")`)
-    /// until a newline, or a `;`, `,` or closing bracket outside the parentheses opened in it.
-    /// The plain value span stops at the first quote, so it used to leave the literal visible
-    /// (v1.2.1, v1.2.2, v1.3.0). Empty literals and existing `[REDACTED:...]` markers are left
-    /// alone (idempotent); a `'` right after `&` or `<` is a Rust lifetime, not a quote.
-    /// Returns the position after the expression, or `None` when the value is not a call or has
-    /// no literal.
+    /// that starts with a call, index or generic, or an `or`/`and`/`??`/`||` chain. Every quoted
+    /// literal in that expression is replaced, across nested and chained calls. The expression
+    /// ends at a newline, or outside its own brackets at `;`, `,`, an unmatched closing bracket,
+    /// or whitespace not followed by an operator continuation (`or`, `and`, `??`, `||`, `.`), so a
+    /// later `token=...` on the same line is still examined (v1.2.1–v1.3.0). Empty literals and
+    /// exact redactor markers are left alone (idempotent); a `'` is a Rust lifetime only when it
+    /// cannot be a quoted literal. Returns the position after the expression, or `None` when the
+    /// value is not code-shaped or holds no literal (the plain value rule then runs).
     fn redact_call_wrapped_literals(
         out: &mut String,
         val_start: usize,
@@ -602,21 +602,22 @@ impl SecretRedactor {
             .bytes()
             .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b':' | b'.'))
             .count();
-        // Code-shaped values only (v1.3.0): a call, index or generic right after the head, a
-        // dotted / `::` path, or an `or` / `and` / `??` / `||` chain. A plain value such as
-        // `hunter2 'note'` is left to the plain value rule, which hides its bare token.
-        let after_head = &rest[name_len..];
-        let chained = after_head.trim_start_matches([' ', '\t']);
         // A dotted / `::` head alone is not code (`v1.secret user="x"`): it may be the secret.
-        let code_like = after_head.starts_with(['(', '[', '<'])
-            || ["or ", "and ", "??", "||"]
-                .iter()
-                .any(|op| chained.starts_with(op));
+        let after_head = &rest[name_len..];
+        let calls_or_indexes = after_head.starts_with(['(', '[']);
+        let code_like = calls_or_indexes
+            || after_head.starts_with('<')
+            || Self::continuation_len(after_head).is_some();
         if !code_like {
             return None;
         }
         let bytes = out.as_bytes();
         let mut depth = 0usize;
+        // Generic angle brackets, counted apart so `a > b` cannot close a call.
+        let mut angle = 0usize;
+        // After a top-level `#` or `//` (a comment or an operator such as floor division) the
+        // scan runs to the end of the line: fail closed.
+        let mut to_eol = false;
         let mut quote: Option<u8> = None;
         let mut spans = Vec::new();
         let mut lit_start = 0usize;
@@ -637,14 +638,38 @@ impl SecretRedactor {
                     quote = Some(b);
                     lit_start = i + 1;
                 }
+                None if b == b'<'
+                    && i > 0
+                    && (bytes[i - 1].is_ascii_alphanumeric()
+                        || matches!(bytes[i - 1], b'_' | b':')) =>
+                {
+                    angle += 1;
+                }
+                None if b == b'>' && angle > 0 => angle -= 1,
+                None if depth == 0
+                    && (b == b'#' || (b == b'/' && bytes.get(i + 1) == Some(&b'/'))) =>
+                {
+                    to_eol = true;
+                }
                 None if b == b'(' || b == b'[' || b == b'{' => depth += 1,
                 None if b == b')' || b == b']' || b == b'}' => {
                     if depth == 0 {
-                        break;
+                        if !to_eol {
+                            break;
+                        }
+                    } else {
+                        depth -= 1;
                     }
-                    depth -= 1;
                 }
-                None if depth == 0 && (b == b';' || b == b',') => break,
+                None if !to_eol && depth == 0 && angle == 0 && (b == b';' || b == b',') => break,
+                // Whitespace ends the expression unless an operator continues it; the operator
+                // and the whitespace around it are skipped as one step.
+                None if !to_eol && depth == 0 && angle == 0 && (b == b' ' || b == b'\t') => {
+                    match Self::continuation_len(&out[i..]) {
+                        Some(len) => i += len - 1,
+                        None => break,
+                    }
+                }
                 _ => {}
             }
             i += 1;
@@ -663,9 +688,9 @@ impl SecretRedactor {
             // not handled here, so the plain value rule still runs.
             return had_marker.then_some(end);
         }
-        // Fail closed: a head that is not a call, index or generic (`hunter2.prod "x"`,
-        // `token.x or "y"`) could itself be the secret, so it is hidden too.
-        if !after_head.starts_with(['(', '[', '<']) {
+        // Fail closed: a head that is not directly a call or index (`token.x or "y"`,
+        // `parse::<T>(...)`) could itself be the secret, so it is hidden too.
+        if !calls_or_indexes {
             spans.insert(0, (val_start, val_start + name_len));
         }
         let removed: usize = spans.iter().map(|&(a, b)| b - a).sum();
@@ -673,6 +698,27 @@ impl SecretRedactor {
             out.replace_range(a..b, replacement);
         }
         Some((end + spans.len() * replacement.len() - removed).min(out.len()))
+    }
+
+    /// When `text` continues an expression, the length of that continuation: leading spaces or
+    /// tabs, then `or`/`and` followed by whitespace, `??` or `||` (each with the whitespace after
+    /// it), or a `.`, `#` or `//` (not included, so the scan carries on there). `None` otherwise;
+    /// `Some` is at least 1 whenever `text` starts with whitespace.
+    fn continuation_len(text: &str) -> Option<usize> {
+        let ws = |t: &str| t.len() - t.trim_start_matches([' ', '\t']).len();
+        let lead = ws(text);
+        let t = &text[lead..];
+        // A `.` method call, or a `#` / `//` that sends the scan to the end of the line.
+        if t.starts_with(['.', '#']) || t.starts_with("//") {
+            return (lead > 0).then_some(lead);
+        }
+        let op = ["or", "and", "??", "||"].into_iter().find(|op| {
+            t.strip_prefix(op).is_some_and(|r| {
+                !op.starts_with(|c: char| c.is_ascii_alphabetic()) || r.starts_with([' ', '\t'])
+            })
+        })?;
+        let rest = &t[op.len()..];
+        Some(lead + op.len() + ws(rest))
     }
 
     /// Whether `text` is exactly one marker this redactor emits (`[REDACTED:ENV_SECRET]`), not an

@@ -37,8 +37,10 @@ Adds Meta Muse Code as a fifth agent. Release notes:
   input that merely starts with `[REDACTED:` hide a secret.
 - Redaction: under a secret-looking key, every quoted literal in a code-shaped value (a call, index
   or generic after its head, or an `or`/`and`/`??`/`||` chain) is hidden up to the end of the
-  expression; in a chain the leading reference is hidden too, and a `#` or `//` does not end the
-  scan (it may be an operator). A dotted bare value (`v1.secret`) is not code-shaped, so it keeps
+  expression, which ends at whitespace unless an operator (`or`, `and`, `??`, `||`, `.`) continues
+  it, so a later `token=...` on the same line is still examined. Generic angle brackets nest
+  (`parse::<A, B>("...")`). In a chain the leading reference is hidden too, and after a `#` or
+  `//` (a comment, or an operator such as floor division) the scan runs to the end of the line. A dotted bare value (`v1.secret`) is not code-shaped, so it keeps
   the plain value rule and later assignments on the line are still found. Typed `SecretStr`/`SecretBytes` fields (also
   `pydantic.SecretStr`; dotted paths count only for these, with lowercase module names) keep
   their defaults redacted; a `'` counts as a Rust lifetime only when it cannot be a quoted literal.

@@ -45,8 +45,9 @@ These come from the automated reviews of #25 and #26 and apply to every agent:
   default redacted; `= None` stays visible.
 - **Code-shaped values fail closed.** Under such a key, a value that looks like code (a call, index
   or generic, or an `or`/`??` chain) has all its quoted literals and its leading reference hidden
-  to the end of the line, comments included, since `#` or `//` can be operators. Expect lines like
-  `api_key = settings.api_key or "..."` to show only redaction markers.
+  to the end of that expression, and to the end of the line once a `#` or `//` appears, since
+  either can be an operator. Expect lines like `api_key = settings.api_key or "..."` to show only
+  redaction markers; a later `user="admin"` field on the same line is left as it was.
 - **`--dir` without a folder is an error.** `icx init --dir` or `icx status --dir` used to fall
   back to the default workspace silently; now the command fails. `icx hook` still fails open,
   with the agent's own no-op reply.

@@ -51,6 +51,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
             .rposition(|a| a == flag)
             .and_then(|i| tail.get(i + 1))
             .map(String::as_str)
+            .filter(|v| !v.starts_with('-'))
     };
     let hook_agent = flag_value("--agent").map_or(AgentKind::ClaudeCode, AgentKind::parse_agent);
     let hook_event = flag_value("--event").unwrap_or("SessionStart");
@@ -680,7 +681,7 @@ fn non_replacing_hook_response(agent: AgentKind, event: &str) -> String {
         AgentKind::AntigravityCli => match event {
             "PreToolUse" | "pre-tool-use" => r#"{"decision":"allow"}"#.to_owned(),
             "Stop" | "stop" => r#"{"decision":"stop"}"#.to_owned(),
-            "PostToolUse" | "post-tool-use" => "{}".to_owned(),
+            "PostToolUse" | "post-tool-use" | "SessionEnd" | "session-end" => "{}".to_owned(),
             _ => r#"{"injectSteps":[],"terminationBehavior":""}"#.to_owned(),
         },
         // Muse validates hook replies strictly; an empty object is always accepted.
