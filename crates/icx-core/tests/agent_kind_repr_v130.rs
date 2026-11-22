@@ -12,11 +12,11 @@ fn every_agent_kind_round_trips_through_its_repr() {
     assert!(AgentKind::ALL.contains(&AgentKind::Muse));
 }
 
-/// Review of #27: a future agent name in persisted state decodes as `GenericMcp` instead of failing.
+/// Review of #27: an unknown agent name in persisted state fails to decode (fail closed) rather
+/// than being remapped, which would break Merkle digests and rewrite the node on the next save.
 #[test]
-fn unknown_agent_names_deserialize_as_generic_mcp() {
+fn unknown_agent_names_are_rejected() {
     let known: AgentKind = serde_json::from_str("\"Muse\"").expect("known variant");
     assert_eq!(known, AgentKind::Muse);
-    let future: AgentKind = serde_json::from_str("\"SomeFutureAgent\"").expect("unknown variant");
-    assert_eq!(future, AgentKind::GenericMcp);
+    assert!(serde_json::from_str::<AgentKind>("\"SomeFutureAgent\"").is_err());
 }

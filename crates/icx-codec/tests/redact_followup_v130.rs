@@ -345,3 +345,30 @@ fn keyword_arguments_inside_brackets_do_not_end_the_value() {
         assert!(!clean.contains("aaaa"), "{line:?} -> {clean:?}");
     }
 }
+
+/// Review of #27 (00:36 UTC): lifetimes cannot move the field boundary, and values led by `&`,
+/// `*`, `(` or a string literal followed by an operator or method are code-shaped.
+#[test]
+fn lifetimes_and_literal_or_operator_led_values() {
+    for (line, secret) in [
+        ("password = f::<&'a str>('v1 label: aaaa')\n", "aaaa"),
+        ("password = f::<&'a str>('v1 --aaaa')\n", "aaaa"),
+        ("password = &\"aaaa\"\n", "aaaa"),
+        ("password = (\"aaaa\")\n", "aaaa"),
+        ("api_key = (x or \"aaaa\")\n", "aaaa"),
+        ("password = *\"aaaa\"\n", "aaaa"),
+        ("api_key = \"prefix_\" + \"aaaa\"\n", "aaaa"),
+        ("password = \"{}\".format(\"aaaa\")\n", "aaaa"),
+    ] {
+        let clean = SecretRedactor::redact(line);
+        assert!(!clean.contains(secret), "{line:?} -> {clean:?}");
+        assert_eq!(
+            SecretRedactor::redact(&clean),
+            clean,
+            "not idempotent: {clean:?}"
+        );
+    }
+    // A plain quoted value followed by another field is still handled field by field.
+    let r = SecretRedactor::redact("password=\"aaaa\" user=\"admin\"\n");
+    assert!(!r.contains("aaaa") && r.contains("user=\"admin\""), "{r:?}");
+}

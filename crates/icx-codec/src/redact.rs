@@ -595,22 +595,31 @@ impl SecretRedactor {
         replacement: &str,
     ) -> Option<usize> {
         let rest = out.get(val_start..)?;
-        if !rest
-            .as_bytes()
-            .first()
-            .is_some_and(|c| c.is_ascii_alphabetic() || *c == b'_')
-        {
-            return None;
-        }
-        let name_len = rest
-            .bytes()
-            .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b':' | b'.'))
-            .count();
-        // A dotted / `::` head alone is not code (`v1.secret user="x"`): it may be the secret.
-        let after_head = &rest[name_len..];
-        let code_like = after_head.starts_with(['(', '[', '<'])
-            || Self::continuation_len(after_head).is_some()
-            || Self::starts_with_operator(after_head);
+        let first = *rest.as_bytes().first()?;
+        let code_like = if first.is_ascii_alphabetic() || first == b'_' {
+            let name_len = rest
+                .bytes()
+                .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b':' | b'.'))
+                .count();
+            // A dotted / `::` head alone is not code (`v1.secret user="x"`): it may be the secret.
+            let after_head = &rest[name_len..];
+            after_head.starts_with(['(', '[', '<'])
+                || Self::continuation_len(after_head).is_some()
+                || Self::starts_with_operator(after_head)
+        } else if matches!(first, b'&' | b'*' | b'(') {
+            // `&"..."`, `*x`, `(x or "...")`.
+            true
+        } else if matches!(first, b'"' | b'\'' | b'`') {
+            // A literal followed by an operator or a method (`"a" + "b"`, `"{}".format(...)`).
+            let after = Self::after_leading_literal(rest)?;
+            // A following field (`"x" --flag`, `"x" user=...`) is not an operator.
+            !Self::starts_new_field(after)
+                && (after.starts_with('.')
+                    || Self::continuation_len(after).is_some()
+                    || Self::starts_with_operator(after))
+        } else {
+            false
+        };
         if !code_like {
             return None;
         }
@@ -620,20 +629,30 @@ impl SecretRedactor {
         // Open brackets: a `key=` inside them is an argument, not a new field. An unclosed
         // bracket keeps the value open to the end of the line (fail closed).
         let mut depth = 0usize;
-        let mut i = name_len;
+        // A Rust lifetime makes quote tracking unreliable: the value then runs to the end of
+        // the line rather than letting a mis-tracked quote move the field boundary.
+        let mut no_split = false;
+        let mut i = 0;
         while i < bytes.len() && bytes[i] != b'\n' {
             let b = bytes[i];
             match quote {
                 Some(_) if b == b'\\' && bytes.get(i + 1).is_some_and(|&n| n != b'\n') => i += 1,
                 Some(q) if b == q => quote = None,
-                None if b == b'\'' && Self::is_lifetime_quote(bytes, i) => {}
+                None if b == b'\'' && i > 0 && matches!(bytes[i - 1], b'&' | b'<') => {
+                    no_split = true;
+                    if !Self::is_lifetime_quote(bytes, i) {
+                        quote = Some(b);
+                        saw_quote = true;
+                    }
+                }
                 None if matches!(b, b'"' | b'\'' | b'`') => {
                     quote = Some(b);
                     saw_quote = true;
                 }
                 None if matches!(b, b'(' | b'[' | b'{') => depth += 1,
                 None if matches!(b, b')' | b']' | b'}') => depth = depth.saturating_sub(1),
-                None if depth == 0
+                None if !no_split
+                    && depth == 0
                     && (b == b' ' || b == b'\t')
                     && Self::starts_new_field(&rest[i..]) =>
                 {
@@ -650,6 +669,23 @@ impl SecretRedactor {
         let len = value.len();
         out.replace_range(val_start..val_start + len, replacement);
         Some(val_start + replacement.len())
+    }
+
+    /// The text after a leading quoted literal (honouring backslash escapes on its line), or
+    /// `None` when the literal is not closed on that line.
+    fn after_leading_literal(text: &str) -> Option<&str> {
+        let bytes = text.as_bytes();
+        let q = *bytes.first()?;
+        let mut i = 1;
+        while i < bytes.len() && bytes[i] != b'\n' {
+            match bytes[i] {
+                b'\\' => i += 1,
+                b if b == q => return text.get(i + 1..),
+                _ => {}
+            }
+            i += 1;
+        }
+        None
     }
 
     /// Whether `text` (starting at whitespace) begins a new field after a value: an identifier

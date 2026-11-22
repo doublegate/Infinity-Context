@@ -59,6 +59,7 @@ fn unwrap_muse_tool_response(tool_name: &str, response: Option<&Value>) -> (Stri
             if let Some(output) = obj.get("output").and_then(Value::as_str) {
                 let code = obj
                     .get("exit_code")
+                    .or_else(|| obj.get("exitCode"))
                     .and_then(Value::as_i64)
                     .and_then(|n| i32::try_from(n).ok());
                 return (output.to_owned(), code);

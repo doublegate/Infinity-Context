@@ -174,8 +174,9 @@ pub enum AgentKind {
     Cursor = 7,
     /// Meta Muse Code (v1.3.0).
     Muse = 8,
-    /// Unknown or future agents (also what a newer agent name in persisted state decodes to).
-    #[serde(other)]
+    /// Generic MCP clients. An unknown agent name in persisted state is rejected, not mapped
+    /// here: DAG digests hash the original discriminant, so remapping would fail verification
+    /// and a later save would rewrite the node (review of #27).
     GenericMcp = 255,
 }
 

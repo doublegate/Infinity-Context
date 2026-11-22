@@ -46,8 +46,6 @@ Adds Meta Muse Code as a fifth agent. Release notes:
 - CLI: a `--dir` with no value (trailing, followed by another flag, or empty) is rejected instead
   of falling back to the default workspace; every `icx hook` fail-open path replies with the
   agent's own no-op for that event (agy: `allow` on PreToolUse, `stop` on Stop).
-- `AgentKind` decodes an unknown agent name as `GenericMcp` (`#[serde(other)]`), so v1.3.0 can read
-  workspaces written by later versions that add agents.
 - Muse adapter review (#27): only the Bash tool's JSON result is unwrapped (other tools' JSON text
   is stored verbatim); subagent identity falls back to `child_session_id`; a PostCompact
   `compact_summary` is stored.
