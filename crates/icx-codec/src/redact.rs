@@ -642,15 +642,30 @@ impl SecretRedactor {
         if quote.is_some() {
             spans.push((lit_start, i));
         }
-        if spans.is_empty() {
-            return None;
-        }
+        // Exact redactor markers are already redacted: leave them (idempotent). A literal that
+        // only starts like a marker is still redacted.
+        let had_marker = spans
+            .iter()
+            .any(|&(a, b)| Self::is_redaction_marker(&out[a..b]));
+        spans.retain(|&(a, b)| !Self::is_redaction_marker(&out[a..b]));
         let end = close.map_or(i, |c| c + 1);
+        if spans.is_empty() {
+            return had_marker.then_some(end);
+        }
         let removed: usize = spans.iter().map(|&(a, b)| b - a).sum();
         for &(a, b) in spans.iter().rev() {
             out.replace_range(a..b, replacement);
         }
         Some((end + spans.len() * replacement.len() - removed).min(out.len()))
+    }
+
+    /// Whether `text` is exactly one marker this redactor emits (`[REDACTED:ENV_SECRET]`).
+    fn is_redaction_marker(text: &str) -> bool {
+        text.strip_prefix("[REDACTED:")
+            .and_then(|r| r.strip_suffix(']'))
+            .is_some_and(|kind| {
+                !kind.is_empty() && kind.bytes().all(|b| b.is_ascii_uppercase() || b == b'_')
+            })
     }
 
     fn redact_value_span(
@@ -1044,6 +1059,8 @@ impl SecretRedactor {
             "char",
             "Duration",
             "SecretString",
+            "SecretStr",
+            "SecretBytes",
             "string",
             "number",
             "boolean",
@@ -1075,11 +1092,19 @@ impl SecretRedactor {
             // `&'a mut T`: `mut` follows the lifetime (v1.2.2).
             r.strip_prefix("mut ").unwrap_or(r)
         });
+        // Dotted type paths (`pydantic.SecretStr`) are checked by their last segment.
         let name_len = s
             .bytes()
-            .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+            .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'.')
             .count();
-        if !TYPES.contains(&&s[..name_len]) {
+        // Dotted paths count only for the Secret* types with lowercase module segments
+        // (`pydantic.SecretStr`); `sk_live_x.str` is a value, not a type (fail closed).
+        let base = Self::annotation_type_name(&s[..name_len])?;
+        let null_led = matches!(base, "None" | "null" | "undefined")
+            && s[name_len..]
+                .trim_start_matches([' ', '\t'])
+                .starts_with('|');
+        if !TYPES.contains(&base) && !null_led {
             return None;
         }
         s = &s[name_len..];
@@ -1093,9 +1118,9 @@ impl SecretRedactor {
             let after = after.trim_start_matches([' ', '\t']);
             let n = after
                 .bytes()
-                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'.')
                 .count();
-            let member = &after[..n];
+            let member = Self::annotation_type_name(&after[..n])?;
             if !(TYPES.contains(&member) || matches!(member, "None" | "null" | "undefined")) {
                 return None;
             }
@@ -1106,6 +1131,24 @@ impl SecretRedactor {
             || s.starts_with(['=', ',', ')', ';', '{', '>', '\n', '\r'])
             || s.starts_with("->"))
         .then(|| rest.len() - s.len())
+    }
+
+    /// The type name of an annotation path: the path itself, or for a dotted path the last segment
+    /// when it is a `Secret*` type under lowercase module segments (`pydantic.SecretStr`). Any
+    /// other dotted path (`sk_live_x.str`) is a value, not a type (fail closed).
+    fn annotation_type_name(path: &str) -> Option<&str> {
+        match path.rsplit_once('.') {
+            None => Some(path),
+            Some((modules, last))
+                if last.starts_with("Secret")
+                    && modules.split('.').all(|m| {
+                        !m.is_empty() && m.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+                    }) =>
+            {
+                Some(last)
+            }
+            Some(_) => None,
+        }
     }
 
     /// Skips one balanced Rust/TS `<...>` or Python `[...]` generic argument list at the start of
@@ -1147,7 +1190,19 @@ impl SecretRedactor {
     /// which a code binding may assign without it being a secret. A bare word, number or quoted
     /// value is treated as a literal and keeps the key rule (v1.2.1).
     fn is_code_expression(rhs: &str) -> bool {
-        let end = rhs.find([';', '\n']).unwrap_or(rhs.len());
+        // The first `;` or newline outside brackets (`(() => { a(); return "x"; })()`).
+        let mut depth = 0usize;
+        let end = rhs
+            .bytes()
+            .position(|b| {
+                match b {
+                    b'(' | b'[' | b'{' => depth += 1,
+                    b')' | b']' | b'}' => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+                b == b'\n' || (b == b';' && depth == 0)
+            })
+            .unwrap_or(rhs.len());
         let expr = rhs[..end].trim();
         let starts_ok = expr
             .chars()

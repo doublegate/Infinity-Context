@@ -64,8 +64,20 @@ fn unwrap_muse_tool_response(tool_name: &str, response: Option<&Value>) -> (Stri
                 .and_then(|n| i32::try_from(n).ok());
             match obj.get("output") {
                 Some(Value::String(output)) => return (output.clone(), code),
-                None | Some(Value::Null) if code.is_some() => return (String::new(), code),
-                _ => {}
+                None | Some(Value::Null) => {
+                    // `stdout` / `stderr` in place of `output`.
+                    let streams: Vec<&str> = ["stdout", "stderr"]
+                        .into_iter()
+                        .filter_map(|k| obj.get(k).and_then(Value::as_str))
+                        .filter(|t| !t.is_empty())
+                        .collect();
+                    if !streams.is_empty() || code.is_some() {
+                        return (streams.join("\n"), code);
+                    }
+                }
+                Some(_) => {
+                    return (crate::claude::tool_output_text(Some(response)), code);
+                }
             }
         }
     }
@@ -144,6 +156,7 @@ impl MuseAdapter {
                                 .find_map(|k| match payload.get(k)? {
                                     Value::String(e) if !e.trim().is_empty() => Some(e.clone()),
                                     v @ Value::Object(o) if !o.is_empty() => Some(v.to_string()),
+                                    v @ Value::Array(a) if !a.is_empty() => Some(v.to_string()),
                                     _ => None,
                                 });
                         let error = error_owned.as_deref();

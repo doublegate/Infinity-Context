@@ -409,3 +409,29 @@ fn bash_exit_code_without_output_is_kept() {
         "{stored:?}"
     );
 }
+
+/// Review of #27 (01:24 UTC): `stdout`/`stderr` stand in for a missing `output`; array errors
+/// are kept.
+#[test]
+fn bash_streams_and_array_errors() {
+    let mut mmu = InfinityContextMmu::default();
+    let mut p = base("PostToolUse");
+    p["tool_name"] = json!("bash");
+    p["tool_input"] = json!({"command": "make"});
+    p["tool_response"] = json!(r#"{"stdout":"built-ok","stderr":"warn-1","exit_code":0}"#);
+    let _ = reply(&mut mmu, "PostToolUse", &p);
+    let id = mmu.hdc_index.latest_entry().expect("indexed").artifact_id;
+    let stored = String::from_utf8(mmu.cas.deref_bytes(id).unwrap()).unwrap();
+    assert!(
+        stored.contains("built-ok") && stored.contains("warn-1") && !stored.contains("exit_code"),
+        "{stored:?}"
+    );
+    let mut f = base("PostToolUseFailure");
+    f["tool_name"] = json!("read_file");
+    f["tool_input"] = json!({"path": "b.txt"});
+    f["error"] = json!(["eacces", "b.txt"]);
+    let _ = reply(&mut mmu, "PostToolUseFailure", &f);
+    let id = mmu.hdc_index.latest_entry().expect("indexed").artifact_id;
+    let stored = String::from_utf8(mmu.cas.deref_bytes(id).unwrap()).unwrap();
+    assert!(stored.contains("eacces"), "{stored:?}");
+}
