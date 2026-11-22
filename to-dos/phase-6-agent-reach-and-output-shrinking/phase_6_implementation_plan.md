@@ -21,6 +21,10 @@ where icx ingests output but cannot shrink it. Each sprint lands as its own pull
    open for upstream `updatedMCPToolOutput` support.
 3. **Sprint 3 — New adapters.** Gemini CLI, Cursor and OpenCode, each with contract tests and a
    deployment-guide section. Each adapter starts with a research ticket on the installed version.
+   - **OpenCode** targets the V2 plugin API that v2.2.7 loads: `ctx.tool.hook("execute.after")`,
+     `ctx.session.hook("context")` and `ctx.session.hook("compaction")`.
+   - **Gemini CLI** is not installed (owner decision, 2026-11-22). Its adapter is built and tested
+     against the documented contract and is marked unverified live.
 4. **Sprint 4 — Claude Code depth.** Shape-exact `updatedToolOutput` for every built-in tool with
    a silent-ignore detector; the newer lifecycle events; the `additionalContext` budget; and the
    plan-mode permission-prompt test for the icx MCP tool.

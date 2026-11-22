@@ -57,7 +57,9 @@ notes:
   schema.
 - Gemini CLI hooks documentation and releases (`AfterTool`, `BeforeModel`, `PreCompress`).
 - Cursor hooks documentation (`postToolUse`, `updated_mcp_tool_output`).
-- OpenCode plugin API (`tool.execute.after`, `experimental.session.compacting`).
+- OpenCode V2 plugin API (`Plugin.define({ id, setup })`; `ctx.tool.hook("execute.after")`,
+  `ctx.session.hook("context")`, `ctx.session.hook("compaction")`), the API that v2.2.7 loads. The
+  V1 hooks `tool.execute.after` and `experimental.session.compacting` are not present in it.
 - Hermes Agent source (`ContextEngine`, `select_context`) and Meta Muse Code release notes,
   including its policy plane.
 - MCP specification changelog (2026-07-28 revision and later), in particular tool
