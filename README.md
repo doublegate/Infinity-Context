@@ -64,9 +64,10 @@ The inline size reduction depends on the input. In the built-in synthetic benchm
 
 ## What Changed in v1.3.1
 
-v1.3.1 hides every quoted string after a sensitive key to the end of the line, so secrets inside
-code (`env::var("K").unwrap_or("...")`, `x or "..."`, template and prefixed literals) no longer stay
-visible in icx's stored copy (#29). The code around the strings stays visible. It also rejects CLI
+v1.3.1 hides a value after a sensitive key from its first quote to the end of the line, so secrets
+inside code (`env::var("K").unwrap_or("...")`, `x or "..."`, template and prefixed literals) no
+longer stay visible in icx's stored copy (#29). A call head such as `env::var(` stays visible;
+later text on the line is hidden with the value. It also rejects CLI
 flags with a missing or flag-shaped value (#28), and aligns hook fail-open replies with each
 adapter's own no-op (#30). Details: [v1.3.1 release notes](docs/releases/v1.3.1/README.md).
 

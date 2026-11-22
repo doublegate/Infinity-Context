@@ -12,14 +12,14 @@ Fixes #28, #29 and #30. Release notes:
 
 ### Changed
 
-- Redaction (#29): after a sensitive key, every quoted string on the rest of the line is hidden,
-  and the code around it stays visible (`env::var("[REDACTED]").unwrap_or("[REDACTED]")`).
-  This covers chained calls, operator chains (`or`, `??`, `+`, ternaries), prefixed and template
-  literals (`b"..."`, `f"..."`, backticks), keyword-led and lambda values, and Rust generics.
-  There are no stopping points by design: later quoted text on the same line is hidden too, JSON
-  keys included. Ambiguous quoting (an apostrophe after a word character or `&`/`<`, a backslash
-  outside a literal, an unterminated literal) hides everything from there to the end of the
-  line. Pinned by a property test over random code shapes.
+- Redaction (#29): after a sensitive key, a value that holds any quote is hidden from its first
+  quote to the end of the line, as one marker. A call head right before that quote stays visible
+  (`password = env::var([REDACTED:ENV_SECRET]`); any other value is hidden from its start, since a
+  bare head could itself be the secret (`hunter2 "note"`). There is deliberately no quote
+  pairing, no field boundary and no key detection: each was bypassed in review (a stray quote
+  shifted the pairing; redacted key names hid later sensitive keys). So later text on the same
+  line is hidden with the value, JSON keys and later CLI flags included. Pinned by a corpus of
+  every reported shape and a property test over random code shapes.
 
 ### Fixed
 

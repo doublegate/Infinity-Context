@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 3861fbd64b26129c7df6add7f312a698eddf84867acc53e26388b9f27850bbcc # shrinks to key = "password", sep = " = ", units = ["f`qqzz`", "\"qqzz\""]
+cc 9a3539ac4412e5673fa728f34bbd006747c3b398ff43e9119ea95e71dc3c34ef # shrinks to key = "password", sep = " = ", units = ["f(\"qqzz\")"]

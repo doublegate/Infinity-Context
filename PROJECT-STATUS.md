@@ -60,7 +60,7 @@ full-request bound is claimed.
 - 2026-11-21: v1.2.1 follow-up (#23) tagged; held unpublished after a redactor panic was found.
 - 2026-11-21: v1.2.2 (#25) released: panic fix, issue #24, all v1.2.1 changes.
 - 2026-11-21: v1.3.0 released: Meta Muse Code adapter (fifth agent).
-- 2026-11-22: v1.3.1 released: strict redaction of quoted strings after sensitive keys (#29), CLI flag values (#28), fail-open replies and Muse fixes (#30).
+- 2026-11-22: v1.3.1 released: redaction from the first quote to the end of the line after sensitive keys (#29), CLI flag values (#28), fail-open replies and Muse fixes (#30).
 
 ## Known issues and remaining work
 

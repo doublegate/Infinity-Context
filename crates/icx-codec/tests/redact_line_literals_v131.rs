@@ -1,7 +1,7 @@
-//! v1.3.1 (#29): after a sensitive key, every quoted literal on the rest of the line is redacted,
-//! the code around it stays visible, ambiguous quoting fails closed to the end of the line, and
-//! structural boundaries (`, "key":`, a closing bracket, a CLI `--flag`) end the pass so JSON keys
-//! and later arguments survive. Placeholders are low-entropy on purpose (gitleaks).
+//! v1.3.1 (#29): after a sensitive key, everything from the value's first quote to the end of
+//! the line is one redaction marker; only a call head right before that quote (`env::var(`) stays
+//! visible, and any other value is hidden from its start. No quote pairing, no field boundaries,
+//! no key detection (owner decisions, PR #31). Placeholders are low-entropy on purpose (gitleaks).
 use icx_codec::SecretRedactor;
 
 const S: &str = "aaaa";
@@ -51,31 +51,22 @@ fn reported_code_shapes_hide_their_literals() {
     }
 }
 
-/// The code around the literals stays visible.
+/// A call head right before the first quote stays visible; the rest of the line is one marker.
 #[test]
-fn surrounding_code_stays_visible() {
+fn call_heads_stay_visible() {
     let c = hidden("password = env::var(\"DB_PASSWORD\").unwrap_or(\"aaaa\")\n");
-    assert!(
-        c.contains("env::var(") && c.contains(").unwrap_or("),
-        "{c:?}"
-    );
+    assert_eq!(c, "password = env::var([REDACTED:ENV_SECRET]\n", "{c:?}");
     let c = hidden("api_key = os.getenv(\"K\") or SecretStr(\"aaaa\")\n");
-    assert!(
-        c.contains("os.getenv(") && c.contains(" or SecretStr("),
-        "{c:?}"
-    );
+    assert_eq!(c, "api_key = os.getenv([REDACTED:ENV_SECRET]\n", "{c:?}");
 }
 
-/// No stopping points (owner decision): later quoted text on the line is hidden too, JSON keys
-/// included, so nothing can slip past a guessed field boundary. Code outside quotes and the JSON
-/// structure stay. The three bypasses found against the earlier stopping points are pinned here.
+/// No stopping points (owner decision): the rest of the line is hidden with the value, so nothing
+/// can slip past a guessed field boundary. The bypasses found against earlier stopping points are
+/// pinned here.
 #[test]
 fn later_literals_on_the_line_are_hidden_too() {
     let c = hidden("{\"password\": \"aaaa\", \"user\": \"aaaa\"}\n");
-    assert!(
-        c.starts_with("{\"password\": \"[REDACTED:") && c.contains(", \"[REDACTED:"),
-        "{c:?}"
-    );
+    assert_eq!(c, "{\"password\": [REDACTED:CONFIG_SECRET]\n", "{c:?}");
     hidden("password: SecretStr(\"aaaa\"), user: \"aaaa\"\n");
     hidden("curl --api-key=\"aaaa\" --user \"aaaa\"\n");
     // Bypasses of the stopping points tried before the owner chose the strict rule.
@@ -155,4 +146,24 @@ mod properties {
             prop_assert_eq!(SecretRedactor::redact(&clean), clean);
         }
     }
+}
+
+/// Review of #31 (owner decision): hide from the value's first quote to the end of the line, so
+/// quote pairing and key detection cannot leak anything. Only a call head stays visible.
+#[test]
+fn first_quote_to_end_of_line() {
+    // Leaks found in review of the literal-by-literal rule.
+    hidden("password = a\"b + \"aaaa\"\n");
+    hidden("password = a\"b + \"aaaa\" + c\"d\n");
+    hidden("{\"api_key\": \"x\", \"password\": aaaa}\n");
+    hidden("{\"api_key\": \"x\", \"tokens\": [aaaa, 67890]}\n");
+    hidden("password = \\\"x\\\" + \\\"aaaa\\\"\n");
+    // A call head stays visible; everything from the first quote is one marker.
+    let c = hidden("password = env::var(\"K\").unwrap_or(\"aaaa\")\n");
+    assert_eq!(c, "password = env::var([REDACTED:ENV_SECRET]\n", "{c:?}");
+    // Any other head could itself be the secret: hidden from the key's value onward.
+    let c = hidden("password=hunter2aaaa \"note\"\n");
+    assert_eq!(c, "password=[REDACTED:ENV_SECRET]\n", "{c:?}");
+    let c = hidden("api_key = settings.key or \"aaaa\"\n");
+    assert_eq!(c, "api_key = [REDACTED:ENV_SECRET]\n", "{c:?}");
 }

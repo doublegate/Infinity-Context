@@ -668,82 +668,55 @@ impl SecretRedactor {
             })
     }
 
-    /// Under a sensitive key, replaces every quoted literal from `val_start` to the end of the line
-    /// (v1.3.1, #29): `env::var("[REDACTED]").unwrap_or("[REDACTED]")`. The code outside quotes
-    /// stays visible. There are deliberately no stopping points (owner decision): any rule for
-    /// where a "next field" starts inside arbitrary code can be bypassed, so later quoted text on
-    /// the same line is hidden too, JSON keys included. Ambiguous quoting fails closed: a `'` after a
-    /// word character or `&`/`<` (prose apostrophe, string prefix, Rust lifetime), a `\` outside a
-    /// literal, or an unterminated literal hides everything from there to the end of the line.
-    /// Empty literals and exact redactor markers are left alone (idempotent).
-    fn redact_line_literals(out: &mut String, val_start: usize, replacement: &str) {
-        let Some(rest) = out.get(val_start..) else {
-            return;
+    /// Under a sensitive key, a value whose line holds any quote (`"`, `'`, a backtick, or an
+    /// escaped `\"`) is replaced from its first quote to the end of the line by one marker
+    /// (v1.3.1, #29). A call head directly before that quote stays visible
+    /// (`env::var([REDACTED]`), since it is an identifier path ending in `(` or `[`. Any other head
+    /// could itself be the secret (`hunter2 "note"`, `x or "..."`), so the value is replaced from
+    /// its start. Owner decisions on PR #31: there is deliberately no quote pairing, no field
+    /// boundary and no key detection. Each of those was bypassed in review: a stray quote shifted
+    /// the pairing, and redacted key names hid later sensitive keys. Later text on the same line is
+    /// hidden with the value. Returns the end of the replacement, or `None` when the value's line
+    /// holds no quote, or holds nothing but a call head and an existing marker (idempotent).
+    fn redact_from_first_quote(
+        out: &mut String,
+        val_start: usize,
+        replacement: &str,
+    ) -> Option<usize> {
+        let rest = out.get(val_start..)?;
+        let line_end = rest.find('\n').unwrap_or(rest.len());
+        let line = rest[..line_end].trim_end_matches('\r');
+        // Already done by an earlier pass: a call head (or nothing) followed by one marker.
+        if let Some(m) = line.find("[REDACTED:")
+            && (m == 0 || Self::is_call_head(&line[..m]))
+            && Self::is_redaction_marker(&line[m..])
+        {
+            return Some(val_start + line.len());
+        }
+        let quote = line.find(['"', '\'', '`'])?;
+        // An escaped quote (`\"`) starts at its backslash.
+        let quote = if quote > 0 && line.as_bytes()[quote - 1] == b'\\' {
+            quote - 1
+        } else {
+            quote
         };
-        let bytes = rest.as_bytes();
-        let line_end = bytes
-            .iter()
-            .position(|&b| b == b'\n')
-            .unwrap_or(bytes.len());
-        // Spans relative to `rest`, in order; `tail` hides `[from, line_end)` when quoting turns
-        // ambiguous.
-        let mut spans: Vec<(usize, usize)> = Vec::new();
-        let mut tail: Option<usize> = None;
-        let mut i = 0usize;
-        while i < line_end {
-            let b = bytes[i];
-            match b {
-                b'"' | b'\'' | b'`' => {
-                    let ambiguous = b == b'\''
-                        && i > 0
-                        && (bytes[i - 1].is_ascii_alphanumeric()
-                            || matches!(bytes[i - 1], b'_' | b'&' | b'<'));
-                    if ambiguous {
-                        tail = Some(i);
-                        break;
-                    }
-                    // Find the closing quote (backslash escapes honoured).
-                    let mut j = i + 1;
-                    let mut closed = None;
-                    while j < line_end {
-                        match bytes[j] {
-                            b'\\' => j += 1,
-                            c if c == b => {
-                                closed = Some(j);
-                                break;
-                            }
-                            _ => {}
-                        }
-                        j += 1;
-                    }
-                    let Some(close) = closed else {
-                        tail = Some(i + 1);
-                        break;
-                    };
-                    let inner = &rest[i + 1..close];
-                    if !inner.is_empty() && !Self::is_redaction_marker(inner) {
-                        spans.push((i + 1, close));
-                    }
-                    i = close + 1;
-                    continue;
-                }
-                b'\\' => {
-                    tail = Some(i);
-                    break;
-                }
-                _ => {}
-            }
-            i += 1;
-        }
-        if let Some(from) = tail {
-            let hidden = rest[from..line_end].trim_end_matches(['\r']);
-            if !hidden.is_empty() && !Self::is_redaction_marker(hidden) {
-                spans.push((from, from + hidden.len()));
-            }
-        }
-        for &(a, b) in spans.iter().rev() {
-            out.replace_range(val_start + a..val_start + b, replacement);
-        }
+        let head = &line[..quote];
+        let from = if Self::is_call_head(head) { quote } else { 0 };
+        let len = line.len();
+        out.replace_range(val_start + from..val_start + len, replacement);
+        Some(val_start + from + replacement.len())
+    }
+
+    /// `env::var(`, `os.getenv(`, `SecretStr(`, `cfg[`: an identifier path ending in `(` or `[`.
+    fn is_call_head(head: &str) -> bool {
+        head.ends_with(['(', '['])
+            && head
+                .as_bytes()
+                .first()
+                .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
+            && head[..head.len() - 1]
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b':' | b'.'))
     }
 
     fn redact_value_span(
@@ -752,24 +725,10 @@ impl SecretRedactor {
         replacement: &str,
         stop_at_comma: bool,
     ) -> Option<usize> {
-        // Every quoted literal on the rest of the line first (v1.3.1, #29); the rules below then
-        // see redaction markers where the literals were and handle the value's head.
-        if out.as_bytes().get(val_start).is_none_or(|b| *b != b'\\') {
-            Self::redact_line_literals(out, val_start, replacement);
-        }
-        // A value that is now one quoted marker (`"[REDACTED:...]"`, also backtick-quoted) is done.
-        if let Some(q) = out
-            .as_bytes()
-            .get(val_start)
-            .copied()
-            .filter(|q| matches!(q, b'"' | b'\'' | b'`'))
-        {
-            let inner = &out[val_start + 1..];
-            if let Some(close) = inner.find(q as char)
-                && Self::is_redaction_marker(&inner[..close])
-            {
-                return Some(val_start + 1 + close + 1);
-            }
+        // A value with any quote is hidden from its first quote to the end of the line (v1.3.1,
+        // #29, owner decision on PR #31).
+        if let Some(end) = Self::redact_from_first_quote(out, val_start, replacement) {
+            return Some(end);
         }
         if let Some(end) = Self::redact_call_wrapped_literals(out, val_start, replacement) {
             return Some(end);
@@ -2077,9 +2036,8 @@ urls: postgres://localhost:5432/dev postgres://admin:p@ssw0rd!@prod.db:5432/main
         assert!(!clean_multi.contains("nested_tok_789"));
         assert!(clean_multi.contains("Apply basic configuration and nonbasic settings"));
         assert!(!clean_multi.contains("quoted_aws_secret"));
-        assert!(
-            clean_multi.contains("FOO=1 AWS_SECRET_ACCESS_KEY=\"[REDACTED:ENV_SECRET]\" BAR=2")
-        );
+        // Since v1.3.1 (#29) the rest of the line after the quoted value is hidden with it.
+        assert!(clean_multi.contains("FOO=1 AWS_SECRET_ACCESS_KEY=[REDACTED:ENV_SECRET]\n"));
         assert!(!clean_multi.contains("p@ssw0rd!"));
         assert!(clean_multi.contains("postgres://localhost:5432/dev"));
         assert!(clean_multi.contains("postgres://admin:[REDACTED:URL_PASSWORD]@prod.db:5432/main"));
@@ -2110,11 +2068,17 @@ path: C:\\Users\\dev\\file.rs root={high_entropy_hex}
         assert!(!clean_edges.contains("édefghijkl"));
         assert!(clean_edges.contains("SECRET_KEY=[REDACTED:ENV_SECRET]"));
         assert!(!clean_edges.contains(",defghijkl"));
-        assert!(clean_edges.contains("--api-key=\"[REDACTED:CLI_SECRET]\""));
-        assert!(clean_edges.contains("--private-key='[REDACTED:CLI_SECRET]'"));
-        assert!(clean_edges.contains("--refresh-token [REDACTED:CLI_SECRET]"));
-        // Hidden by the strict pass from the earlier `--api-key` (v1.3.1, #29), escapes included.
-        assert!(clean_edges.contains("--secret=") && !clean_edges.contains("esc_cli_000"));
+        // Since v1.3.1 (#29) everything from the first quoted value to the end of the line is one
+        // marker, so the later flags on this line go with it.
+        assert!(clean_edges.contains("curl --api-key=[REDACTED:CLI_SECRET]\n"));
+        for leaked in [
+            "quoted_cli_secret_123",
+            "priv_cli_456",
+            "space_cli_789",
+            "esc_cli_000",
+        ] {
+            assert!(!clean_edges.contains(leaked), "{leaked}");
+        }
         assert!(clean_edges.contains("postgres://api_key:[REDACTED:URL_PASSWORD]@host:5432/db"));
         assert!(clean_edges.contains("redis://token:[REDACTED:URL_PASSWORD]@host:6379"));
         assert!(clean_edges.contains(&format!("root={high_entropy_hex}")));

@@ -12,24 +12,29 @@ icx redacts tool output before storing it, so anything hidden is gone from its s
 agent. The automated reviews of v1.3.0 found that a quoted secret could stay visible when the value
 under a sensitive key (`password`, `token`, `api_key`, ...) was code rather than a plain literal.
 
-From v1.3.1, after a sensitive key **every quoted string on the rest of the line is hidden**, and
-the code around it stays visible:
+From v1.3.1, after a sensitive key, **a value that holds any quote is hidden from its first quote to
+the end of the line**, as one marker. A call head right before that quote stays visible:
 
 ```text
-password = env::var("[REDACTED:ENV_SECRET]").unwrap_or("[REDACTED:ENV_SECRET]")
-api_key = os.getenv("[REDACTED:ENV_SECRET]") or SecretStr("[REDACTED:ENV_SECRET]")
+password = env::var([REDACTED:ENV_SECRET]
+api_key = os.getenv([REDACTED:ENV_SECRET]
 ```
 
-The rule is deliberately blunt. It has no stopping points, because any rule for where a "next
-field" starts inside arbitrary code was bypassed in review. So later quoted text on the same line
-is hidden too, JSON keys included. On one-line JSON, a key and value after a sensitive key are
-hidden as well: `{"password": "[REDACTED]", "[REDACTED]": "[REDACTED]"}`. Ambiguous quoting fails
-closed and hides everything from there to the end of the line: an apostrophe after a word
-character or `&`/`<`, a backslash outside a literal, or an unterminated literal. Your files are not
+Any other value is hidden from its start, because a bare head such as `hunter2 "note"` could
+itself be the secret: `api_key = settings.key or "..."` becomes `api_key = [REDACTED:ENV_SECRET]`.
+
+The rule is deliberately blunt. A first version hid each quoted string separately and kept the
+code between them. Review of the release PR found that a stray quote earlier on the line shifted
+the pairing and left a secret visible. Hiding later JSON key names also stopped icx from
+recognising later sensitive keys, so `{"api_key": "x", "password": secret}` leaked the bare value.
+Rules that stop at a "next field" were bypassed the same way. So there is no quote pairing, no
+field boundary and no key detection, and later text on the same line is hidden with the value:
+`{"password": [REDACTED:CONFIG_SECRET]`, `curl --api-key=[REDACTED:CLI_SECRET]`. Your files are not
 changed; only icx's stored copy is.
 
 A property test checks the rule over random code shapes. They combine calls, chains, ternaries,
-generics, lifetimes, lambdas, and prefixed and template literals.
+generics, lifetimes, lambdas, and prefixed and template literals. The corpus also pins every
+bypass found in review.
 
 ## Other fixes
 
@@ -49,7 +54,7 @@ re-redacted.
 
 ## Verification
 
-- 322 workspace tests, line coverage 95.43%; the #29 property test was also run with 20,000 cases.
+- 324 workspace tests, line coverage 95.17%; the #29 property test was also run with 20,000 cases.
 - `cargo clippy -D warnings`, `cargo doc -D warnings`, REUSE 3.3, gitleaks.
 - Exact-commit CI on the merge commit; release assets checked against `SHA256SUMS` and build
   attestations.

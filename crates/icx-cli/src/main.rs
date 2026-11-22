@@ -1005,16 +1005,16 @@ fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, S
     let mut dir_str: Option<&str> = None;
     let mut i = 0;
     while i < args.len() {
-        if args[i] == "--provider" && i + 1 < args.len() {
-            let raw = args[i + 1].as_str();
+        if args[i] == "--provider" {
+            let raw = flag_value_at(args, i, "icx proxy-transform")?;
             provider = Some(ProviderFormat::parse_provider(raw).ok_or_else(|| {
                 format!(
                     "proxy-transform error: unknown --provider `{raw}` (expected anthropic, openai, or gemini)"
                 )
             })?);
             i += 2;
-        } else if args[i] == "--dir" && i + 1 < args.len() {
-            dir_str = Some(args[i + 1].as_str());
+        } else if args[i] == "--dir" {
+            dir_str = Some(flag_value_at(args, i, "icx proxy-transform")?);
             i += 2;
         } else {
             i += 1;

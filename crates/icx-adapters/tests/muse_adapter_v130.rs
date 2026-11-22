@@ -452,3 +452,17 @@ fn empty_output_falls_back_to_streams() {
         "{stored:?}"
     );
 }
+
+/// Review of #31: `{"output": ""}` with nothing else is empty text, not the raw JSON envelope.
+#[test]
+fn empty_output_envelope_is_not_stored_raw() {
+    let mut mmu = InfinityContextMmu::default();
+    let mut p = base("PostToolUseFailure");
+    p["tool_name"] = json!("bash");
+    p["tool_input"] = json!({"command": "true"});
+    p["tool_response"] = json!(r#"{"output":""}"#);
+    let _ = reply(&mut mmu, "PostToolUseFailure", &p);
+    let id = mmu.hdc_index.latest_entry().expect("indexed").artifact_id;
+    let stored = String::from_utf8(mmu.cas.deref_bytes(id).unwrap()).unwrap();
+    assert!(!stored.contains("\"output\""), "{stored:?}");
+}

@@ -72,7 +72,9 @@ fn unwrap_muse_tool_response(tool_name: &str, response: Option<&Value>) -> (Stri
                         .filter_map(|k| obj.get(k).and_then(Value::as_str))
                         .filter(|t| !t.is_empty())
                         .collect();
-                    if !streams.is_empty() || code.is_some() {
+                    // An `output` key (even empty) means this is Bash's own envelope: never store
+                    // the raw JSON for it.
+                    if !streams.is_empty() || code.is_some() || obj.contains_key("output") {
                         return (streams.join("\n"), code);
                     }
                 }

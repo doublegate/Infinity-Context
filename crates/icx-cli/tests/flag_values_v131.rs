@@ -91,6 +91,8 @@ fn value_taking_flags_reject_flag_shaped_missing_or_blank_values() {
         &["proxy", "--upstream", "--dir", ws][..],
         &["proxy", "--listen", "--dir", ws],
         &["proxy", "--provider", "", "--dir", ws],
+        &["proxy-transform", "--provider", "--dir", ws],
+        &["proxy-transform", "--dir", ws, "--provider"],
     ] {
         let out = run(&b, args, b"");
         assert!(!out.status.success(), "{args:?} accepted: {out:?}");
