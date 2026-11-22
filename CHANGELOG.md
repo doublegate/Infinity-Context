@@ -43,6 +43,14 @@ Fixes #28, #29 and #30. Release notes:
 
 - Muse loads MCP servers only in a trusted workspace; hooks run either way (deployment guide §2.6,
   adapter spec §6).
+- README badges grouped in a table by topic (build and quality, release and agents, licensing,
+  benchmarks and guarantees), sized to fit GitHub's README width.
+- Release notes state that stored content is not re-checked after an upgrade.
+
+### Build
+
+- The Antigravity PR review pins `AGY_PRINT_TIMEOUT` to 15 minutes (a 79 KB diff timed out at
+  the scaled 367 s); `.gitignore` already excludes Playwright MCP output (`.playwright-mcp/`).
 
 ## [1.3.0] - 2026-11-21
 

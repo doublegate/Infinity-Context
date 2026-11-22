@@ -13,27 +13,35 @@
 
 <p align="center"><small>Archived concept artwork; embedded metrics and packet syntax are historical, non-normative. See <a href="assets/branding/README.md">branding status</a> and <a href="docs/adr/0006-v1-2-0-context-and-compatibility.md">current v1.2.0 contracts</a>.</small></p>
 
-<p align="center">
-  <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/ci.yml"><img src="https://github.com/doublegate/Infinity-Context/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
-  <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/reuse.yml"><img src="https://img.shields.io/badge/REUSE-3.3%20compliant-brightgreen.svg" alt="REUSE 3.3 Compliant"></a>
-  <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/cla.yml"><img src="https://img.shields.io/badge/CLA-enforced-success.svg" alt="CLA Enforced"></a>
-  <a href="https://codecov.io/gh/doublegate/Infinity-Context"><img src="https://img.shields.io/badge/coverage-Codecov-f01f7a.svg?logo=codecov" alt="Codecov Coverage"></a>
-  <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/antigravity-review.yml"><img src="https://img.shields.io/badge/PR%20review-Antigravity%20(agy)-4285F4.svg" alt="Antigravity PR Review"></a>
-  <a href="SECURITY.md"><img src="https://img.shields.io/badge/gitleaks-verified-0ea5e9.svg" alt="Gitleaks Secret Scan"></a><br/>
-  <a href="LICENSING.md"><img src="https://img.shields.io/badge/code-GPL--3.0--or--later%20%7C%20AGPL--3.0--or--later-blue.svg" alt="Code License: GPL-3.0-or-later | AGPL-3.0-or-later"></a>
-  <a href="LICENSING.md"><img src="https://img.shields.io/badge/specs-CC--BY--NC--ND--4.0-blueviolet.svg" alt="Specs: CC-BY-NC-ND-4.0"></a>
-  <a href="PATENTS.md"><img src="https://img.shields.io/badge/patents-5%20Pending%20Families-d97706.svg" alt="Patents: 5 Pending Families"></a>
-  <a href="COMMERCIAL.md"><img src="https://img.shields.io/badge/commercial%20license-available-ea580c.svg" alt="Commercial License Available"></a><br/>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v1.3.1-2563eb.svg" alt="Release: v1.3.1"></a>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.100%2B%20(Edition%202024)-f97316.svg?logo=rust" alt="Rust: 1.100+ (Edition 2024)"></a>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/unsafe_code-forbid-16a34a.svg" alt="unsafe_code: forbid"></a>
-  <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20Muse%20%7C%20MCP-475569.svg" alt="Supported Agents"></a><br/>
-  <a href="docs/numbers.md"><img src="https://img.shields.io/badge/AHTL%20ratio-214x%20repetitive%20log%20%7C%20159.8x%20varied%20log-7c3aed.svg" alt="AHTL inline ratio: 214x on a repetitive test log, 159.8x on a varied log (synthetic fixtures)"></a>
-  <a href="#alien-holographic-token-lattice-ahtl"><img src="https://img.shields.io/badge/deref-exact%20stored%20bytes%20(post--redaction)-16a34a.svg" alt="Deref returns the exact stored bytes, after secret redaction"></a><br/>
-  <a href="docs/numbers.md"><img src="https://img.shields.io/badge/prefix%20reuse%20(byte%20proxy)-96.31%25%20synthetic-059669.svg" alt="Byte-weighted prefix reuse: 96.31% on a synthetic transcript"></a>
-  <a href="docs/numbers.md"><img src="https://img.shields.io/badge/10%2C240--bit%20HDC%20scan-53.7%20%C2%B5s%20%2F%201k%20nodes-0284c7.svg" alt="HDC Hamming scan: 53.7 us per 1,000 nodes (synthetic)"></a>
-  <a href="docs/numbers.md"><img src="https://img.shields.io/badge/in--process%20seqlock-61.1%20ns%20%2F%20publish-0d9488.svg" alt="In-process seqlock publish: 61.1 ns (synthetic)"></a>
-</p>
+<!-- Badges grouped by topic: titles in the left column, each group's badges split evenly over
+     short lines (each under ~560 px) so the table stays whole at GitHub's README width. -->
+<table align="center">
+<tr><td align="center"><sub><b>Build &amp; Quality</b></sub></td><td align="center">
+
+<a href="https://github.com/doublegate/Infinity-Context/actions/workflows/ci.yml"><img src="https://github.com/doublegate/Infinity-Context/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a> <a href="https://codecov.io/gh/doublegate/Infinity-Context"><img src="https://img.shields.io/badge/coverage-Codecov-f01f7a.svg?logo=codecov" alt="Codecov Coverage"></a> <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/reuse.yml"><img src="https://img.shields.io/badge/REUSE-3.3%20compliant-brightgreen.svg" alt="REUSE 3.3 Compliant"></a><br/>
+<a href="https://github.com/doublegate/Infinity-Context/actions/workflows/cla.yml"><img src="https://img.shields.io/badge/CLA-enforced-success.svg" alt="CLA Enforced"></a> <a href="SECURITY.md"><img src="https://img.shields.io/badge/gitleaks-verified-0ea5e9.svg" alt="Gitleaks Secret Scan"></a> <a href="https://github.com/doublegate/Infinity-Context/actions/workflows/antigravity-review.yml"><img src="https://img.shields.io/badge/PR%20review-Antigravity%20(agy)-4285F4.svg" alt="Antigravity PR Review"></a>
+
+</td></tr>
+<tr><td align="center"><sub><b>Release &amp; Agents</b></sub></td><td align="center">
+
+<a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v1.3.1-2563eb.svg" alt="Release: v1.3.1"></a> <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.100%2B%20(Edition%202024)-f97316.svg?logo=rust" alt="Rust: 1.100+ (Edition 2024)"></a><br/>
+<a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20Muse%20%7C%20MCP-475569.svg" alt="Supported Agents"></a>
+
+</td></tr>
+<tr><td align="center"><sub><b>Licensing</b></sub></td><td align="center">
+
+<a href="LICENSING.md"><img src="https://img.shields.io/badge/code-GPL--3.0--or--later%20%7C%20AGPL--3.0--or--later-blue.svg" alt="Code License: GPL-3.0-or-later | AGPL-3.0-or-later"></a> <a href="LICENSING.md"><img src="https://img.shields.io/badge/specs-CC--BY--NC--ND--4.0-blueviolet.svg" alt="Specs: CC-BY-NC-ND-4.0"></a><br/>
+<a href="PATENTS.md"><img src="https://img.shields.io/badge/patents-5%20Pending%20Families-d97706.svg" alt="Patents: 5 Pending Families"></a> <a href="COMMERCIAL.md"><img src="https://img.shields.io/badge/commercial%20license-available-ea580c.svg" alt="Commercial License Available"></a>
+
+</td></tr>
+<tr><td align="center"><sub><b>Benchmarks<br/>(Synthetic) &amp;<br/>Guarantees</b></sub></td><td align="center">
+
+<a href="docs/numbers.md"><img src="https://img.shields.io/badge/AHTL%20ratio-214x%20repetitive%20log%20%7C%20159.8x%20varied%20log-7c3aed.svg" alt="AHTL inline ratio: 214x on a repetitive test log, 159.8x on a varied log (synthetic fixtures)"></a> <a href="docs/numbers.md"><img src="https://img.shields.io/badge/prefix%20reuse%20(byte%20proxy)-96.31%25%20synthetic-059669.svg" alt="Byte-weighted prefix reuse: 96.31% on a synthetic transcript"></a><br/>
+<a href="docs/numbers.md"><img src="https://img.shields.io/badge/10%2C240--bit%20HDC%20scan-53.7%20%C2%B5s%20%2F%201k%20nodes-0284c7.svg" alt="HDC Hamming scan: 53.7 us per 1,000 nodes (synthetic)"></a> <a href="docs/numbers.md"><img src="https://img.shields.io/badge/in--process%20seqlock-61.1%20ns%20%2F%20publish-0d9488.svg" alt="In-process seqlock publish: 61.1 ns (synthetic)"></a><br/>
+<a href="Cargo.toml"><img src="https://img.shields.io/badge/unsafe_code-forbid-16a34a.svg" alt="unsafe_code: forbid"></a> <a href="#alien-holographic-token-lattice-ahtl"><img src="https://img.shields.io/badge/deref-exact%20stored%20bytes%20(post--redaction)-16a34a.svg" alt="Deref returns the exact stored bytes, after secret redaction"></a>
+
+</td></tr>
+</table>
 
 </div>
 
