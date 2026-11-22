@@ -13,18 +13,21 @@ site_author = "DoubleGate"
 site_url = "https://doublegate.github.io/Infinity-Context/"
 repo_url = "https://github.com/doublegate/Infinity-Context"
 repo_name = "doublegate/Infinity-Context"
-edit_uri = "edit/main/docs/"
 copyright = "Code GPL-3.0-or-later / AGPL-3.0-or-later; specifications and diagrams CC-BY-NC-ND-4.0. See Licensing."
 docs_dir = "docs"
 site_dir = "site"
 strict = true
+# Math: pymdownx.arithmatex (generic) rendered by MathJax 3 (pinned) in the browser.
+extra_javascript = [
+  "javascripts/mathjax.js",
+  "https://unpkg.com/mathjax@3.2.2/es5/tex-mml-chtml.js",
+]
 
 [project.theme]
 logo = "_repo/assets/icons/png/icon-128.png"
 favicon = "_repo/assets/web/favicon-32x32.png"
 features = [
   "content.code.copy",
-  "content.action.view",
   "navigation.indexes",
   "navigation.sections",
   "navigation.top",

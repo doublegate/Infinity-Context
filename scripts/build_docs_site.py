@@ -93,7 +93,10 @@ NAV = [
 
 LINK_MD = re.compile(r"(\]\()([^)\s]+)((?:\s+\"[^\"]*\")?\))")
 LINK_HTML = re.compile(r"""((?:src|href|srcset)=")([^"]+)(")""")
-FENCE = re.compile(r"^\s*(```|~~~)")
+FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
+
+# Link targets that do not exist in the repository (reported, and the build fails).
+MISSING: list[str] = []
 
 
 def staged_page(repo_path: str) -> str | None:
@@ -114,7 +117,17 @@ def rewrite_target(target: str, src_repo: str, src_staged: str, out: Path) -> st
     repo_path = posixpath.normpath(posixpath.join(posixpath.dirname(src_repo), path))
     if repo_path.startswith("../") or repo_path == "..":
         return target
+    if not (REPO / repo_path).exists():
+        MISSING.append(f"{src_repo}: {target}")
+        return target
     staged = staged_page(repo_path)
+    # A directory without an index page has no page on the site: show it on GitHub.
+    if (
+        staged is not None
+        and (REPO / repo_path).is_dir()
+        and not any((REPO / repo_path / n).is_file() for n in ("README.md", "index.md"))
+    ):
+        staged = None
     if (
         staged is None
         and (REPO / repo_path).is_file()
@@ -132,11 +145,14 @@ def rewrite_target(target: str, src_repo: str, src_staged: str, out: Path) -> st
 
 
 def rewrite_text(text: str, src_repo: str, src_staged: str, out: Path) -> str:
-    lines, in_fence = [], False
+    lines, fence = [], ""
     for line in text.splitlines(keepends=True):
-        if FENCE.match(line):
-            in_fence = not in_fence
-        elif not in_fence:
+        m = FENCE.match(line)
+        if m and not fence:
+            fence = m.group(1)
+        elif m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence):
+            fence = ""
+        elif not fence:
 
             def fix(m: re.Match[str]) -> str:
                 return (
@@ -156,6 +172,8 @@ def stage(out: Path) -> list[str]:
     shutil.copytree(
         REPO / "docs", out, ignore=shutil.ignore_patterns("*.py", "__pycache__")
     )
+    # Site-only assets (the MathJax configuration) live outside docs/.
+    shutil.copytree(REPO / "scripts" / "site", out, dirs_exist_ok=True)
     for repo_path in STATIC:
         dest = out / "_repo" / repo_path
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -244,6 +262,11 @@ def main() -> int:
     config = re.sub(r"(?m)^docs_dir\s*=.*$", 'docs_dir = "docs"', config)
     config = re.sub(r"(?m)^site_dir\s*=.*$", 'site_dir = "site"', config)
     (out / "zensical.toml").write_text(config, encoding="utf-8")
+    if MISSING:
+        print("links to files that do not exist:", file=sys.stderr)
+        for item in MISSING:
+            print(f"  {item}", file=sys.stderr)
+        return 1
     print(f"staged {len(pages)} pages in {out.relative_to(REPO)}")
     return 0
 
