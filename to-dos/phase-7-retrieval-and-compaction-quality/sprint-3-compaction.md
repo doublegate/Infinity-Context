@@ -74,16 +74,29 @@ Claude Code, the `additionalContext` limit handled in T-64-006).
 
 ### T-73-002 — Inject the resume packet in Claude Code and Codex
 
-**Description:** Emit the resume packet from `PreCompact` and/or `PostCompact` for Claude Code
-and Codex, whichever the installed version applies to the post-compaction context.
+**Description:** Deliver the resume packet after compaction through the event each agent applies
+to the post-compaction context. Sprint 1 found that neither compaction hook can carry it to the
+model:
 
-**Research:** Hypothesis: a resume packet injected at compaction reduces the number of
-re-reads of already-seen artifacts in the turns after compaction. Measured on recorded sessions
-with and without the packet, counting repeated tool calls for the same file or command.
+- **Claude Code:** `PreCompact` stdout tells the summarizer to keep every `#icx:` handle, and the
+  packet itself goes in the `additionalContext` of the `SessionStart` that follows compaction.
+  `PostCompact` output reaches the user only.
+- **Codex:** no hook can change the summary, so `PreCompact` only seals the epoch and takes a
+  snapshot. The packet goes in the `additionalContext` of the first hook after compaction that
+  carries it (`SessionStart` if Codex fires one after compaction, otherwise the next
+  `UserPromptSubmit`), within `CODEX_INLINE_CONTEXT_MAX_BYTES` (T-62-006).
+
+**Research:**
+
+- **Re-confirm the routes on the installed versions:** Claude Code's post-compaction
+  `SessionStart`, and which Codex event first follows compaction.
+- **Hypothesis:** a resume packet delivered after compaction reduces re-reads of
+  already-seen artifacts in the turns that follow. Measured on recorded sessions with and
+  without the packet, counting repeated tool calls for the same file or command.
 
 **Acceptance Criteria:**
 
-- [ ] The event and field that work are recorded per agent version.
+- [ ] The event and field that carry the packet are recorded per agent version.
 - [ ] Contract tests over live-run fixtures.
 - [ ] Re-read counts with and without the packet measured and published in `docs/numbers.md`.
 - [ ] Opt-out switch documented.

@@ -14,8 +14,8 @@ interoperability conclusions only: which surfaces, fields and limits icx can rel
 Open-source agents are cited by file and line. Everything else, including per-agent scope and
 evidence, is kept privately, outside the repository.
 
-**Baseline:** this page supplements the two existing files in this folder, and neither is
-edited:
+**Baseline:** this page supplements, and does not change, the two existing files in this
+folder. The 2026-11-16 survey was converted to a public summary separately, under ADR-0008.
 
 - [rea-binary-and-sqlite-forensics.md](rea-binary-and-sqlite-forensics.md), the 2026-11-16
   survey;
@@ -117,9 +117,13 @@ are recorded in the owner's private notes, not here.
 
 ### Codex CLI 0.171.0 (T-61-003)
 
-All paths are relative to `codex-rs/` at tag `rust-v0.171.0` (source). In the installed binary, code
-references the message of each of the four hook behaviours below (observed: two found by
-Ghidra, two by a direct scan of the machine code).
+All paths are relative to `codex-rs/` at tag `rust-v0.171.0` (source). The installed binary has code that references four of the messages
+below (observed: two found by Ghidra, two by a direct scan of the machine code):
+
+- "unsupported updatedMCPToolOutput";
+- the PostToolUse "stopped execution" text used for `continue: false`;
+- the `additionalContextLimit` warning;
+- the "Full hook output saved to" spill notice.
 
 **Hook replies are parsed strictly:**
 

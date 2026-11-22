@@ -13,7 +13,8 @@ a resume packet at compaction, and replaces the line-based redactor with a struc
   and MRR for the shipped ranking are measured on it and published in `docs/numbers.md`.
 - [ ] Any ranking or embedding change that is on by default has a measured gain on that set;
   changes without a gain stay off or are removed.
-- [ ] Claude Code, Codex and Hermes receive a resume packet at compaction, within a byte budget.
+- [ ] Claude Code, Codex and Hermes receive a resume packet after compaction, within a byte
+  budget, through the event each agent applies to the post-compaction context.
 - [ ] `icx rescan` reports (dry-run default) or re-redacts existing stores, and the structural
   redactor has replaced "first quote to end of line".
 - [ ] Gates green: `cargo fmt --all -- --check`,
