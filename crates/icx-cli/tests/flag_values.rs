@@ -144,3 +144,111 @@ fn blank_agent_and_event_values_fail_open() {
     }
     let _ = std::fs::remove_dir_all(&b);
 }
+
+/// #33: a repeated value-taking flag is rejected instead of silently keeping the last value, and
+/// `deref` / `encode-ahtl` find their positional argument wherever it sits.
+#[test]
+fn repeated_flags_are_rejected_and_positionals_are_found_anywhere() {
+    let b = base("repeated");
+    let ws = b.join("ws");
+    let ws = ws.to_str().unwrap();
+    let init = run(&b, &["init", "--dir", ws], b"");
+    assert!(init.status.success(), "{init:?}");
+    for args in [
+        &[
+            "daemon",
+            "--idle-exit",
+            "1",
+            "--idle-exit",
+            "2",
+            "--dir",
+            ws,
+        ][..],
+        &[
+            "daemon",
+            "--max-requests",
+            "1",
+            "--max-requests",
+            "2",
+            "--dir",
+            ws,
+        ][..],
+        &[
+            "deref",
+            "#icx:0000000000000000",
+            "--lines",
+            "1:2",
+            "--lines",
+            "3:4",
+        ][..],
+        &["proxy", "--provider", "openai", "--provider", "anthropic"][..],
+        &[
+            "proxy",
+            "--listen",
+            "127.0.0.1:1",
+            "--listen",
+            "127.0.0.1:2",
+        ][..],
+        &[
+            "proxy",
+            "--upstream",
+            "http://a.invalid",
+            "--upstream",
+            "http://b.invalid",
+        ][..],
+        &[
+            "proxy-transform",
+            "--provider",
+            "openai",
+            "--provider",
+            "anthropic",
+        ][..],
+        &["encode-ahtl", "f", "--profile", "a", "--profile", "b"][..],
+    ] {
+        let out = run(&b, args, b"{}");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !out.status.success() && err.contains("more than once"),
+            "{args:?}: {err}"
+        );
+    }
+    // A flag is never taken as the handle or file.
+    for args in [
+        &["deref", "--lines", "1:2"][..],
+        &["encode-ahtl", "--profile", "a"][..],
+    ] {
+        let out = run(&b, args, b"");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !out.status.success() && err.contains("Usage:"),
+            "{args:?}: {err}"
+        );
+    }
+    // The positional may follow the flags.
+    let file = b.join("f.txt");
+    std::fs::write(&file, "fn main() {}\n".repeat(50)).unwrap();
+    let out = run(
+        &b,
+        &[
+            "encode-ahtl",
+            "--dir",
+            ws,
+            "--profile",
+            "b",
+            file.to_str().unwrap(),
+        ],
+        b"",
+    );
+    assert!(out.status.success(), "{out:?}");
+    let handle = String::from_utf8_lossy(&out.stdout)
+        .split("#icx:")
+        .nth(1)
+        .map(|r| format!("#icx:{}", &r[..16]))
+        .expect("handle");
+    let out = run(&b, &["deref", "--dir", ws, "--lines", "1:1", &handle], b"");
+    assert!(
+        out.status.success() && String::from_utf8_lossy(&out.stdout).contains("fn main"),
+        "{out:?}"
+    );
+    let _ = std::fs::remove_dir_all(&b);
+}

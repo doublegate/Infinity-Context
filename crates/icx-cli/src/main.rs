@@ -265,11 +265,26 @@ fn workspace_mmu() -> InfinityContextMmu {
     let mut mmu = InfinityContextMmu::default();
     // Real workspaces record real event times in the bi-temporal graph (ICX-AUD-048).
     mmu.use_wall_clock(true);
+    // Outputs smaller than this stay inline (v1.3.2): field data showed most stubs replaced
+    // ~1 KB outputs with a ~200-byte stub plus a deref round trip. `ICX_STUB_MIN_BYTES` overrides.
+    mmu.tool_virtualize_threshold = stub_min_bytes();
     match workspace::store_seal_key(roots()) {
         Ok(key) => mmu.set_store_seal_key(Some(key)),
         Err(e) => eprintln!("icx: store sealing unavailable: {e}"),
     }
     mmu
+}
+
+/// Default smallest tool output (bytes) that a hook replaces with a stub.
+const DEFAULT_STUB_MIN_BYTES: usize = 2048;
+
+/// `ICX_STUB_MIN_BYTES` (256..=1 MiB), else [`DEFAULT_STUB_MIN_BYTES`].
+fn stub_min_bytes() -> usize {
+    env::var("ICX_STUB_MIN_BYTES")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| (256..=1 << 20).contains(n))
+        .unwrap_or(DEFAULT_STUB_MIN_BYTES)
 }
 
 fn run_context_budget(args: &[String]) -> Result<(), String> {
@@ -435,16 +450,20 @@ fn run_daemon(args: &[String]) -> Result<(), String> {
                 let secs: u64 = value
                     .parse()
                     .map_err(|e| format!("icx daemon error: invalid --idle-exit: {e}"))?;
-                opts.idle_exit = Some(std::time::Duration::from_secs(secs));
+                set_option_once(
+                    &mut opts.idle_exit,
+                    "icx daemon",
+                    "--idle-exit",
+                    std::time::Duration::from_secs(secs),
+                )?;
                 i += 2;
             }
             "--max-requests" => {
                 let value = flag_value_at(args, i, "icx daemon")?;
-                opts.max_requests = Some(
-                    value
-                        .parse()
-                        .map_err(|e| format!("icx daemon error: invalid --max-requests: {e}"))?,
-                );
+                let n = value
+                    .parse()
+                    .map_err(|e| format!("icx daemon error: invalid --max-requests: {e}"))?;
+                set_option_once(&mut opts.max_requests, "icx daemon", "--max-requests", n)?;
                 i += 2;
             }
             _ => i += 1,
@@ -545,18 +564,12 @@ fn set_option_once<T>(
     Ok(())
 }
 
+/// The `--dir` value for commands whose arguments `dispatch_cli_args` has already validated (a
+/// missing, flag-shaped, blank or repeated `--dir` is rejected there). Uses the same value rule as
+/// every other flag (`flag_value_at`), so the two paths cannot disagree (#33).
 fn parse_dir_flag(args: &[String]) -> Option<&str> {
-    let mut dir_str: Option<&str> = None;
-    let mut i = 0;
-    while i < args.len() {
-        if args[i] == "--dir" && i + 1 < args.len() {
-            dir_str = Some(args[i + 1].as_str());
-            i += 2;
-        } else {
-            i += 1;
-        }
-    }
-    dir_str
+    let i = args.iter().position(|a| a == "--dir")?;
+    flag_value_at(args, i, "icx").ok()
 }
 
 fn run_init(args: &[String]) -> Result<(), String> {
@@ -612,13 +625,12 @@ fn deref_from_workspace_dir(
 }
 
 fn run_deref(args: &[String]) -> Result<(), String> {
-    let Some(handle) = args.first() else {
-        return Err("Usage: icx deref <HANDLE> [--lines <START:END>] [--dir <PATH>]".into());
-    };
+    const USAGE: &str = "Usage: icx deref <HANDLE> [--lines <START:END>] [--dir <PATH>] [--raw]";
+    let mut handle: Option<&String> = None;
     let mut dir_str: Option<&str> = None;
     let mut line_range: Option<(usize, usize)> = None;
     let mut raw = false;
-    let mut i = 1;
+    let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
             "--raw" => {
@@ -627,19 +639,27 @@ fn run_deref(args: &[String]) -> Result<(), String> {
             }
             "--dir" => {
                 let value = flag_value_at(args, i, "icx deref")?;
-                dir_str = Some(value);
+                set_option_once(&mut dir_str, "icx deref", "--dir", value)?;
                 i += 2;
             }
             "--lines" => {
                 let value = flag_value_at(args, i, "icx deref")?;
                 let range =
                     parse_line_range_arg(value).map_err(|e| format!("icx deref error: {e}"))?;
-                line_range = Some(range);
+                set_option_once(&mut line_range, "icx deref", "--lines", range)?;
                 i += 2;
+            }
+            // The handle is the first argument that is not a flag or a flag's value (#33).
+            other if !other.starts_with('-') && handle.is_none() => {
+                handle = Some(&args[i]);
+                i += 1;
             }
             _ => i += 1,
         }
     }
+    let Some(handle) = handle else {
+        return Err(USAGE.into());
+    };
     let icx_dir = resolve_workspace_dir(dir_str);
     let out = deref_from_workspace_dir(&icx_dir, handle, line_range)
         .map_err(|e| format!("icx deref error: {e}"))?;
@@ -729,6 +749,8 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
         || event_str.eq_ignore_ascii_case("session-start");
     let ws_dir = resolve_workspace_dir(dir_str);
     if matches!(workspace_state(&ws_dir, true), WsState::Ready) {
+        // Lets this agent's MCP server follow the workspace its hooks use (#34).
+        workspace::record_agent_workspace(&ws_dir, roots());
         #[cfg(unix)]
         if env::var_os("ICX_NO_DAEMON").is_none() {
             let socket = workspace::daemon_socket_path(&ws_dir, roots());
@@ -785,6 +807,29 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
     }
 }
 
+/// Names the workspace that was searched in a "not found" tool error, so a stub written to
+/// another workspace (a different project, or an old worktree) is diagnosable (#37).
+fn annotate_not_found(mut resp: serde_json::Value, ws_dir: &Path) -> serde_json::Value {
+    let is_err = resp
+        .pointer("/result/isError")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    if is_err
+        && let Some(text) = resp
+            .pointer_mut("/result/content/0/text")
+            .filter(|t| t.as_str().is_some_and(|s| s.contains("not found")))
+    {
+        let note = format!(
+            " (searched workspace {}; a handle from another project or worktree is stored in that project's workspace)",
+            ws_dir.display()
+        );
+        if let Some(s) = text.as_str() {
+            *text = serde_json::Value::String(format!("{s}{note}"));
+        }
+    }
+    resp
+}
+
 fn mcp_tool_error_response(req_line: &str, err_msg: &str) -> serde_json::Value {
     let parsed: serde_json::Value = serde_json::from_str(req_line).unwrap_or_default();
     let Some(id) = parsed.get("id").filter(|id| !id.is_null()).cloned() else {
@@ -806,9 +851,16 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
     mut writer: W,
 ) -> Result<(), String> {
     let mut mmu = workspace_mmu();
-    let ws_dir = resolve_workspace_dir(parse_dir_flag(args));
+    let explicit = parse_dir_flag(args);
+    let launch_dir = resolve_workspace_dir(explicit);
     // Creates and seals a missing workspace; refusals are reported once here.
-    let _ = workspace_state(&ws_dir, true);
+    let _ = workspace_state(&launch_dir, true);
+    // Without an explicit `--dir`/`ICX_DIR`, follow the workspace this agent's hooks use, so a
+    // session that moved into a nested project or works in a git worktree reads the same store
+    // its stubs were written to (#34, #37). `ICX_MCP_FOLLOW_HOOKS=0` pins the launch workspace.
+    let follow = explicit.is_none()
+        && env::var_os("ICX_DIR").is_none_or(|v| v.is_empty())
+        && env::var("ICX_MCP_FOLLOW_HOOKS").map_or(true, |v| v != "0");
     loop {
         let req_line = match read_bounded_line(&mut reader, MAX_MCP_LINE_BYTES) {
             Ok(None) | Err(_) => break,
@@ -827,6 +879,11 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
         if req_line.trim().is_empty() {
             continue;
         }
+        let ws_dir = if follow {
+            workspace::agent_workspace(roots()).unwrap_or_else(|| launch_dir.clone())
+        } else {
+            launch_dir.clone()
+        };
         // Re-checked per request (PR #20 review): `icx trust` run after start is picked up, and a
         // workspace whose ownership, mode or seal changed mid-session is no longer used.
         let resp = if McpPagerServer::requires_workspace_state(&req_line)
@@ -853,7 +910,7 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
                             )
                         } else {
                             drop(lock_guard);
-                            r
+                            annotate_not_found(r, &ws_dir)
                         }
                     }
                     Err(e) => {
@@ -891,7 +948,7 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
     let env_bind = env::var("ICX_PROXY_BIND")
         .ok()
         .filter(|s| !s.trim().is_empty());
-    let mut listen_addr: &str = env_bind.as_deref().unwrap_or("127.0.0.1:49380");
+    let mut listen_flag: Option<&str> = None;
     let mut provider: Option<ProviderFormat> = None;
     let mut upstream_str: Option<&str> = None;
     let mut dir_str: Option<&str> = None;
@@ -911,36 +968,36 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
             }
             "--listen" => {
                 let value = flag_value_at(args, i, "icx proxy")?;
-                listen_addr = value;
+                set_option_once(&mut listen_flag, "icx proxy", "--listen", value)?;
                 i += 2;
             }
             "--provider" => {
                 let value = flag_value_at(args, i, "icx proxy")?;
                 let raw = value;
-                provider = Some(ProviderFormat::parse_provider(raw).ok_or_else(|| {
+                let parsed = ProviderFormat::parse_provider(raw).ok_or_else(|| {
                     format!(
                         "proxy error: unknown --provider `{raw}` (expected anthropic, openai, or gemini)"
                     )
-                })?);
+                })?;
+                set_option_once(&mut provider, "icx proxy", "--provider", parsed)?;
                 i += 2;
             }
             "--upstream" => {
                 let value = flag_value_at(args, i, "icx proxy")?;
-                upstream_str = Some(value);
+                set_option_once(&mut upstream_str, "icx proxy", "--upstream", value)?;
                 i += 2;
             }
             "--dir" => {
                 let value = flag_value_at(args, i, "icx proxy")?;
-                dir_str = Some(value);
+                set_option_once(&mut dir_str, "icx proxy", "--dir", value)?;
                 i += 2;
             }
             "--max-requests" => {
                 let value = flag_value_at(args, i, "icx proxy")?;
-                max_requests = Some(
-                    value
-                        .parse::<usize>()
-                        .map_err(|e| format!("proxy error: invalid --max-requests: {e}"))?,
-                );
+                let n = value
+                    .parse::<usize>()
+                    .map_err(|e| format!("proxy error: invalid --max-requests: {e}"))?;
+                set_option_once(&mut max_requests, "icx proxy", "--max-requests", n)?;
                 i += 2;
             }
             _ => i += 1,
@@ -955,6 +1012,9 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
         .filter(|s| !s.trim().is_empty());
     let effective_upstream = upstream_str.or(env_upstream.as_deref()).or(Some("auto"));
     // ICX-AUD-012: loopback only unless explicitly allowed.
+    let listen_addr = listen_flag
+        .or(env_bind.as_deref())
+        .unwrap_or("127.0.0.1:49380");
     let resolved: Vec<std::net::SocketAddr> = std::net::ToSocketAddrs::to_socket_addrs(listen_addr)
         .map_err(|e| format!("proxy error: invalid --listen `{listen_addr}`: {e}"))?
         .collect();
@@ -1007,14 +1067,16 @@ fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, S
     while i < args.len() {
         if args[i] == "--provider" {
             let raw = flag_value_at(args, i, "icx proxy-transform")?;
-            provider = Some(ProviderFormat::parse_provider(raw).ok_or_else(|| {
+            let parsed = ProviderFormat::parse_provider(raw).ok_or_else(|| {
                 format!(
                     "proxy-transform error: unknown --provider `{raw}` (expected anthropic, openai, or gemini)"
                 )
-            })?);
+            })?;
+            set_option_once(&mut provider, "icx proxy-transform", "--provider", parsed)?;
             i += 2;
         } else if args[i] == "--dir" {
-            dir_str = Some(flag_value_at(args, i, "icx proxy-transform")?);
+            let value = flag_value_at(args, i, "icx proxy-transform")?;
+            set_option_once(&mut dir_str, "icx proxy-transform", "--dir", value)?;
             i += 2;
         } else {
             i += 1;
@@ -1104,16 +1166,16 @@ fn encode_payload_into_workspace(
 }
 
 fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
-    let Some(path_str) = args.first() else {
-        return Err("Usage: icx encode-ahtl <FILE> [--dir <PATH>] [--profile <a|b>]".into());
-    };
+    const USAGE: &str = "Usage: icx encode-ahtl <FILE> [--dir <PATH>] [--profile <a|b>]";
+    let mut path_arg: Option<&String> = None;
     let mut dir_str: Option<&str> = None;
-    let mut profile_a = false;
-    let mut i = 1;
+    let mut profile: Option<bool> = None;
+    let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
             "--dir" => {
-                dir_str = Some(flag_value_at(args, i, "icx encode-ahtl")?);
+                let value = flag_value_at(args, i, "icx encode-ahtl")?;
+                set_option_once(&mut dir_str, "icx encode-ahtl", "--dir", value)?;
                 i += 2;
             }
             "--profile" => {
@@ -1121,8 +1183,8 @@ fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
                     .to_ascii_lowercase()
                     .as_str()
                 {
-                    "a" => profile_a = true,
-                    "b" => profile_a = false,
+                    "a" => set_option_once(&mut profile, "icx encode-ahtl", "--profile", true)?,
+                    "b" => set_option_once(&mut profile, "icx encode-ahtl", "--profile", false)?,
                     other => {
                         return Err(format!(
                             "icx encode-ahtl error: invalid --profile `{other}` (expected `a` or `b`)"
@@ -1131,6 +1193,11 @@ fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
                 }
                 i += 2;
             }
+            // The file is the first argument that is not a flag or a flag's value (#33).
+            other if !other.starts_with('-') && path_arg.is_none() => {
+                path_arg = Some(&args[i]);
+                i += 1;
+            }
             unknown => {
                 return Err(format!(
                     "icx encode-ahtl error: unknown option `{unknown}` (expected `--dir` or `--profile`)"
@@ -1138,6 +1205,10 @@ fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
             }
         }
     }
+    let Some(path_str) = path_arg else {
+        return Err(USAGE.into());
+    };
+    let profile_a = profile.unwrap_or(false);
     let content =
         fs::read_to_string(path_str).map_err(|e| format!("Failed to read `{path_str}`: {e}"))?;
 

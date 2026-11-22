@@ -211,9 +211,36 @@ fn compaction_instructions(tail_slot: &str) -> String {
     out
 }
 
+/// The text of an MCP tool result made only of `text` content blocks (`[{"type":"text",...}]`, or
+/// a `CallToolResult` object with such a `content` array), joined by blank lines; `None` for any
+/// other shape, or when an image/resource block would be lost (v1.3.2, #37: stored as real lines,
+/// so `slice` and `grep` can address a docs result instead of one JSON line).
+fn mcp_text_content(response: &Value) -> Option<String> {
+    let blocks = match response {
+        Value::Array(blocks) => blocks,
+        Value::Object(map) => map.get("content")?.as_array()?,
+        _ => return None,
+    };
+    if blocks.is_empty() {
+        return None;
+    }
+    let texts = blocks
+        .iter()
+        .map(|b| {
+            (b.get("type").and_then(Value::as_str) == Some("text"))
+                .then(|| b.get("text").and_then(Value::as_str))
+                .flatten()
+        })
+        .collect::<Option<Vec<&str>>>()?;
+    Some(texts.join("\n\n"))
+}
+
 /// Text to store for a tool response: Bash-like `{stdout, stderr}` objects become their readable
-/// text; other shapes are stored as JSON.
+/// text, MCP text content becomes its text, and other shapes are stored as JSON.
 pub(crate) fn tool_output_text(response: Option<&Value>) -> String {
+    if let Some(text) = response.and_then(mcp_text_content) {
+        return text;
+    }
     match response {
         None => String::new(),
         Some(Value::String(s)) => s.clone(),

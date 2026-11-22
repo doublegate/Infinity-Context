@@ -112,13 +112,168 @@ fn io_err(e: impl std::fmt::Display) -> TrustError {
     TrustError::Io(e.to_string())
 }
 
-/// Nearest ancestor of `cwd` containing `.git` (directory or worktree file), else `cwd`.
+/// Nearest ancestor of `cwd` containing `.git`, else `cwd`. A linked git worktree (`.git` is a
+/// file naming `<main>/.git/worktrees/<name>`) resolves to its main repository, so an agent
+/// working in a worktree shares the project's workspace (v1.3.2, #37).
 pub fn project_root(cwd: &Path) -> PathBuf {
     let start = std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
-    start
-        .ancestors()
-        .find(|p| p.join(".git").exists())
-        .map_or_else(|| start.clone(), Path::to_path_buf)
+    let Some(found) = start.ancestors().find(|p| p.join(".git").exists()) else {
+        return start.clone();
+    };
+    worktree_main_root(found).unwrap_or_else(|| found.to_path_buf())
+}
+
+/// The main repository of the linked worktree at `root`, or `None` when `root` is not one.
+///
+/// Accepted only when both links agree: `root/.git` names `<common>/worktrees/<name>`, that
+/// directory's `commondir` names `<common>`, `<common>` is the `.git` directory of its parent,
+/// and git's own back-link `<common>/worktrees/<name>/gitdir` points at `root/.git`. A stray or
+/// planted `.git` file therefore cannot redirect a directory into another project's workspace.
+/// Submodules (`gitdir` under `.git/modules/`) have no `commondir` and stay their own project.
+fn worktree_main_root(root: &Path) -> Option<PathBuf> {
+    let dot_git = root.join(".git");
+    if !std::fs::symlink_metadata(&dot_git).ok()?.is_file() {
+        return None;
+    }
+    let read_small = |p: &Path| -> Option<String> {
+        let meta = std::fs::metadata(p).ok()?;
+        if !meta.is_file() || meta.len() > 4096 {
+            return None;
+        }
+        std::fs::read_to_string(p).ok()
+    };
+    let gitdir_line = read_small(&dot_git)?;
+    let gitdir = gitdir_line.trim().strip_prefix("gitdir:")?.trim();
+    let gitdir = std::fs::canonicalize(root.join(gitdir)).ok()?;
+    let common_rel = read_small(&gitdir.join("commondir"))?;
+    let common = std::fs::canonicalize(gitdir.join(common_rel.trim())).ok()?;
+    if common.file_name()? != ".git" || gitdir.parent()? != common.join("worktrees") {
+        return None;
+    }
+    let back = read_small(&gitdir.join("gitdir"))?;
+    let back = std::fs::canonicalize(back.trim()).ok()?;
+    if back != std::fs::canonicalize(&dot_git).ok()? {
+        return None;
+    }
+    let main = common.parent()?.to_path_buf();
+    std::fs::symlink_metadata(main.join(".git"))
+        .ok()?
+        .is_dir()
+        .then_some(main)
+}
+
+/// Linux: `(parent pid, start time in clock ticks)` of `pid` from `/proc/<pid>/stat`. The start
+/// time makes a record specific to one process, so a reused PID never matches an old record.
+#[cfg(target_os = "linux")]
+fn proc_parent_and_start(pid: u32) -> Option<(u32, u64)> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // `comm` (field 2) is parenthesised and may contain spaces: split after its last `)`.
+    let rest = stat.get(stat.rfind(')')? + 1..)?;
+    let fields: Vec<&str> = rest.split_whitespace().collect();
+    // After `comm`: state(3) ppid(4) ... starttime(22) -> indices 0, 1, 19.
+    Some((fields.get(1)?.parse().ok()?, fields.get(19)?.parse().ok()?))
+}
+
+/// Up to `depth` ancestors of this process, nearest first, as `(pid, start time)`; stops at init.
+#[cfg(target_os = "linux")]
+fn ancestors_of_self(depth: usize) -> Vec<(u32, u64)> {
+    let mut out = Vec::new();
+    let Some((mut pid, _)) = proc_parent_and_start(std::process::id()) else {
+        return out;
+    };
+    while pid > 1 && out.len() < depth {
+        let Some((parent, start)) = proc_parent_and_start(pid) else {
+            break;
+        };
+        out.push((pid, start));
+        pid = parent;
+    }
+    out
+}
+
+/// How many ancestor processes a hook records its workspace for, and an MCP server searches.
+/// The agent is usually the parent or grandparent of both (a shell or wrapper may sit between).
+const AGENT_ANCESTOR_DEPTH: usize = 4;
+
+fn agent_registry_dir(roots: &WorkspaceRoots) -> PathBuf {
+    roots.runtime_dir.join("agents")
+}
+
+/// Records `ws_dir` as the workspace this process's agent is using (v1.3.2, #34): one file per
+/// ancestor process in `$XDG_RUNTIME_DIR/icx/agents/` (`0700`, files `0600`, replaced atomically),
+/// named by PID and start time. Best effort; a failure only means the MCP server keeps its launch
+/// workspace. No-op off Linux.
+pub fn record_agent_workspace(ws_dir: &Path, roots: &WorkspaceRoots) {
+    #[cfg(target_os = "linux")]
+    {
+        let Ok(canonical) = std::fs::canonicalize(ws_dir) else {
+            return;
+        };
+        if ensure_runtime_dir(roots).is_err() {
+            return;
+        }
+        let dir = agent_registry_dir(roots);
+        if private_dir(&dir).is_err() || check_dir_security(&dir).is_err() {
+            return;
+        }
+        let text = canonical.to_string_lossy().into_owned();
+        for (pid, start) in ancestors_of_self(AGENT_ANCESTOR_DEPTH) {
+            let path = dir.join(format!("{pid}-{start}.ws"));
+            if std::fs::read_to_string(&path).is_ok_and(|t| t == text) {
+                continue;
+            }
+            let tmp = dir.join(format!(".{pid}-{start}.{}.tmp", std::process::id()));
+            // `create_new` opens with O_CREAT|O_EXCL, which refuses any existing path, a planted
+            // symlink included.
+            let written = {
+                use std::os::unix::fs::OpenOptionsExt;
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&tmp)
+                    .and_then(|mut f| f.write_all(text.as_bytes()))
+            };
+            if written.is_err() || std::fs::rename(&tmp, &path).is_err() {
+                let _ = std::fs::remove_file(&tmp);
+            }
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = (ws_dir, roots);
+}
+
+/// The workspace the nearest recorded ancestor agent's hooks are using, if any (v1.3.2, #34).
+/// Only a default per-project workspace under `<state>/workspaces/` is accepted, so a record can
+/// never point the MCP server outside icx's own workspaces; trust checks still run on use.
+pub fn agent_workspace(roots: &WorkspaceRoots) -> Option<PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        let dir = agent_registry_dir(roots);
+        let base = std::fs::canonicalize(roots.state_dir.join("workspaces")).ok()?;
+        for (pid, start) in ancestors_of_self(AGENT_ANCESTOR_DEPTH) {
+            let path = dir.join(format!("{pid}-{start}.ws"));
+            let Ok(meta) = std::fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if !meta.is_file() || meta.len() > 4096 {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let candidate = PathBuf::from(text.trim());
+            if candidate.is_absolute() && candidate.parent() == Some(base.as_path()) {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = roots;
+        None
+    }
 }
 
 /// Default workspace directory for the project containing `cwd`.
