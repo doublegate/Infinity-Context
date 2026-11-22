@@ -580,15 +580,15 @@ impl SecretRedactor {
         Self::redact_high_entropy_tokens(&current)
     }
 
-    /// `String::from("...")`, `pydantic.SecretStr("...")`, `env::var("K").unwrap_or("...")`: a value
-    /// that starts with a call, index or generic, or an `or`/`and`/`??`/`||` chain. Every quoted
-    /// literal in that expression is replaced, across nested and chained calls. The expression
-    /// ends at a newline, or outside its own brackets at `;`, `,`, an unmatched closing bracket,
-    /// or whitespace not followed by an operator continuation (`or`, `and`, `??`, `||`, `.`), so a
-    /// later `token=...` on the same line is still examined (v1.2.1–v1.3.0). Empty literals and
-    /// exact redactor markers are left alone (idempotent); a `'` is a Rust lifetime only when it
-    /// cannot be a quoted literal. Returns the position after the expression, or `None` when the
-    /// value is not code-shaped or holds no literal (the plain value rule then runs).
+    /// `String::from("...")`, `pydantic.SecretStr("...")`, `env::var("K").unwrap_or("...")`,
+    /// `x or "..."`, `a + "..."`: a code-shaped value under a sensitive key (a head followed by a
+    /// call, index or generic, or an operator). When the value holds any quote, the whole value is
+    /// replaced, from its start up to the next field (`name=`, `name: value`, `--flag`) or the end
+    /// of the line (v1.2.1–v1.3.0). Replacing the whole value rather than individual literals is
+    /// deliberate: quote, lifetime and bracket tracking in arbitrary code is a heuristic, and here
+    /// it only decides where the next field starts, so a mistake can over-redact but cannot leave a
+    /// literal visible. Returns the position after the replacement, or `None` when the value is not
+    /// code-shaped or holds no quote (the plain value and code-expression rules then decide).
     fn redact_call_wrapped_literals(
         out: &mut String,
         val_start: usize,
@@ -604,106 +604,38 @@ impl SecretRedactor {
             .count();
         // A dotted / `::` head alone is not code (`v1.secret user="x"`): it may be the secret.
         let after_head = &rest[name_len..];
-        let calls_or_indexes = after_head.starts_with(['(', '[']);
-        let code_like = calls_or_indexes
-            || after_head.starts_with('<')
+        let code_like = after_head.starts_with(['(', '[', '<'])
             || Self::continuation_len(after_head).is_some()
             || Self::starts_with_operator(after_head);
         if !code_like {
             return None;
         }
-        let bytes = out.as_bytes();
-        let mut depth = 0usize;
-        // Generic angle brackets, counted apart so `a > b` cannot close a call.
-        let mut angle = 0usize;
-        // After a top-level `#` or `//` (a comment or an operator such as floor division) the
-        // scan runs to the end of the line: fail closed.
-        let mut to_eol = false;
+        let bytes = rest.as_bytes();
         let mut quote: Option<u8> = None;
-        let mut spans = Vec::new();
-        let mut lit_start = 0usize;
-        let mut i = val_start + name_len;
+        let mut saw_quote = false;
+        let mut i = name_len;
         while i < bytes.len() && bytes[i] != b'\n' {
             let b = bytes[i];
             match quote {
-                // Skip the escaped byte, but never past the end of the input or the line.
-                Some(_) if b == b'\\' && bytes.get(i + 1).is_some_and(|&n| n != b'\n') => {
-                    i += 1;
-                }
-                Some(q) if b == q => {
-                    spans.push((lit_start, i));
-                    quote = None;
-                }
+                Some(_) if b == b'\\' && bytes.get(i + 1).is_some_and(|&n| n != b'\n') => i += 1,
+                Some(q) if b == q => quote = None,
                 None if b == b'\'' && Self::is_lifetime_quote(bytes, i) => {}
-                None if b == b'"' || b == b'\'' => {
+                None if matches!(b, b'"' | b'\'' | b'`') => {
                     quote = Some(b);
-                    lit_start = i + 1;
+                    saw_quote = true;
                 }
-                None if b == b'<'
-                    && i > 0
-                    && (bytes[i - 1].is_ascii_alphanumeric()
-                        || matches!(bytes[i - 1], b'_' | b':')) =>
-                {
-                    angle += 1;
-                }
-                None if b == b'>' && angle > 0 => angle -= 1,
-                None if depth == 0
-                    && (b == b'#' || (b == b'/' && bytes.get(i + 1) == Some(&b'/'))) =>
-                {
-                    to_eol = true;
-                }
-                None if b == b'(' || b == b'[' || b == b'{' => depth += 1,
-                None if b == b')' || b == b']' || b == b'}' => {
-                    if depth == 0 {
-                        if !to_eol {
-                            break;
-                        }
-                    } else {
-                        depth -= 1;
-                    }
-                }
-                None if !to_eol && depth == 0 && angle == 0 && (b == b';' || b == b',') => break,
-                // Whitespace ends the expression unless an operator continues it; the operator
-                // and the whitespace around it are skipped as one step.
-                // Fail closed: whitespace ends the expression only where a new field clearly
-                // starts (`token=...`, `user: ...`, `--flag`); otherwise the scan goes on
-                // (concatenation, ternaries, `if`/`else`, any operator).
-                None if !to_eol
-                    && depth == 0
-                    && angle == 0
-                    && (b == b' ' || b == b'\t')
-                    && Self::starts_new_field(&out[i..]) =>
-                {
-                    break;
-                }
+                None if (b == b' ' || b == b'\t') && Self::starts_new_field(&rest[i..]) => break,
                 _ => {}
             }
             i += 1;
         }
-        let end = i.min(bytes.len());
-        // An unterminated literal is hidden to the end of the line.
-        if quote.is_some() {
-            spans.push((lit_start, end));
+        let value = rest[..i].trim_end_matches([' ', '\t']);
+        if !saw_quote || Self::is_redaction_marker(value) {
+            return None;
         }
-        let had_marker = spans
-            .iter()
-            .any(|&(a, b)| Self::is_redaction_marker(&out[a..b]));
-        spans.retain(|&(a, b)| b > a && !Self::is_redaction_marker(&out[a..b]));
-        if spans.is_empty() {
-            // Already redacted by an earlier pass: leave it (idempotent). Only empty literals:
-            // not handled here, so the plain value rule still runs.
-            return had_marker.then_some(end);
-        }
-        // Fail closed: a head that is not directly a call or index (`token.x or "y"`,
-        // `parse::<T>(...)`) could itself be the secret, so it is hidden too.
-        if !calls_or_indexes {
-            spans.insert(0, (val_start, val_start + name_len));
-        }
-        let removed: usize = spans.iter().map(|&(a, b)| b - a).sum();
-        for &(a, b) in spans.iter().rev() {
-            out.replace_range(a..b, replacement);
-        }
-        Some((end + spans.len() * replacement.len() - removed).min(out.len()))
+        let len = value.len();
+        out.replace_range(val_start..val_start + len, replacement);
+        Some(val_start + replacement.len())
     }
 
     /// Whether `text` (starting at whitespace) begins a new field after a value: an identifier

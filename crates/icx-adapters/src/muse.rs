@@ -117,7 +117,7 @@ impl MuseAdapter {
                 })
             }
             "PostToolUse" | "post-tool-use" | "PostToolUseFailure" | "post-tool-use-failure" => {
-                let failure = event_name.contains("ailure");
+                let failure = matches!(event_name, "PostToolUseFailure" | "post-tool-use-failure");
                 let tool_name = payload
                     .get("tool_name")
                     .or_else(|| payload.get("toolName"))

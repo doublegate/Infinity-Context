@@ -35,17 +35,14 @@ Adds Meta Muse Code as a fifth agent. Release notes:
   lifetimes (`&'a str`, but not a quoted `&'...'`) are not treated as quotes; only exact
   redactor markers count as already redacted, so redaction stays idempotent without letting an
   input that merely starts with `[REDACTED:` hide a secret.
-- Redaction: under a secret-looking key, every quoted literal in a code-shaped value (a call, index
-  or generic after its head, or an `or`/`and`/`??`/`||` chain) is hidden up to the end of the
-  expression. It fails closed: whitespace ends it only where a new field clearly starts
-  (`token=...`, `user: ...`, `--flag`), so concatenation (`+ "..."`), ternaries and `if`/`else`
-  stay covered while a later `token=...` on the same line is still examined. Generic angle brackets nest
-  (`parse::<A, B>("...")`). In a chain the leading reference is hidden too, and after a `#` or
-  `//` (a comment, or an operator such as floor division) the scan runs to the end of the line. A dotted bare value (`v1.secret`) is not code-shaped, so it keeps
-  the plain value rule and later assignments on the line are still found. Typed `SecretStr`/`SecretBytes` fields (also
-  `pydantic.SecretStr`; dotted paths count only for these, with lowercase module names) keep
-  their defaults redacted; a `'` counts as a Rust lifetime only when it cannot be a quoted literal.
-  These rules fail closed: harmless references or comment words on such a line may be hidden.
+- Redaction: under a secret-looking key, a code-shaped value (a head followed by a call, index or
+  generic, or by an operator such as `or`, `??`, `+` or `?`) that holds any quote is replaced as a
+  whole, from its start to the next field (`token=...`, `user: value`, `--flag`) or the end of the
+  line. Quote and lifetime tracking only decides where the next field starts, so a mistake can
+  over-redact but cannot leave a literal visible. A dotted bare value (`v1.secret`) is not
+  code-shaped and keeps the plain value rule. Typed `SecretStr`/`SecretBytes` fields (also
+  `pydantic.SecretStr`; dotted paths count only for these, with lowercase module names) and union
+  annotations keep their defaults redacted.
 - CLI: a `--dir` with no value (trailing, followed by another flag, or empty) is rejected instead
   of falling back to the default workspace; every `icx hook` fail-open path replies with the
   agent's own no-op for that event (agy: `allow` on PreToolUse, `stop` on Stop).

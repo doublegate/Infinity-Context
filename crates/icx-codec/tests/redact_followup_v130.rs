@@ -285,3 +285,47 @@ fn concatenation_and_ternaries_fail_closed() {
         }
     }
 }
+
+/// Review of #27 (00:13 UTC): a code-shaped value with any quote is hidden as a whole up to the
+/// next field, so quote, lifetime and bracket mis-tracking cannot reveal anything.
+#[test]
+fn code_values_are_hidden_whole_up_to_the_next_field() {
+    for (line, secrets) in [
+        ("password = f::<&'a str>('aaaa')\n", &["aaaa"][..]),
+        (
+            "password=fn(x<1) user=\"admin\" token=bbbbbbbb\n",
+            &["fn(x<1)", "bbbbbbbb"][..],
+        ),
+        (
+            "password=cccc<1234 user=\"admin\" token=bbbbbbbb\n",
+            &["cccc", "bbbbbbbb"][..],
+        ),
+        (
+            "password=cccc(1234 user=\"admin\" token=bbbbbbbb\n",
+            &["cccc", "bbbbbbbb"][..],
+        ),
+        (
+            "password: my_secret(1) # see \"docs\"\n",
+            &["my_secret"][..],
+        ),
+        ("password: my_secret(1) # don't touch\n", &["my_secret"][..]),
+        ("password: cccc<123> # \"note\"\n", &["cccc"][..]),
+        (
+            "api_key = a.dddd or b.eeee or \"fallback\"\n",
+            &["a.dddd", "b.eeee", "fallback"][..],
+        ),
+    ] {
+        let clean = SecretRedactor::redact(line);
+        for s in secrets {
+            assert!(!clean.contains(s), "{line:?} -> {clean:?}");
+        }
+        assert_eq!(
+            SecretRedactor::redact(&clean),
+            clean,
+            "not idempotent: {clean:?}"
+        );
+    }
+    // The next field is kept as it was.
+    let r = SecretRedactor::redact("password=SecretStr(\"aaaa\") user=\"admin\"\n");
+    assert!(r.contains("user=\"admin\""), "{r:?}");
+}

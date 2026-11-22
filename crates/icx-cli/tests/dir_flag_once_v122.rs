@@ -129,3 +129,43 @@ fn trailing_valueless_dir_is_rejected() {
     );
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// Review of #27 (00:13 UTC): `execute_hook` treats `--agent --event Stop` like the fail-open
+/// path does: `--event` is not taken as the agent name.
+#[test]
+fn hook_flag_without_value_does_not_swallow_the_next_flag() {
+    let base = std::env::temp_dir()
+        .join(format!(
+            "icx-v130-tests-{}",
+            std::env::var("USER").unwrap_or_default()
+        ))
+        .join(format!("flag-value-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_icx"))
+        .env("ICX_CONFIG_HOME", base.join("config"))
+        .env("ICX_STATE_HOME", base.join("state"))
+        .env("XDG_CONFIG_HOME", base.join("xdg-config"))
+        .env("XDG_STATE_HOME", base.join("xdg-state"))
+        .env("XDG_RUNTIME_DIR", base.join("runtime"))
+        .env("ICX_NO_DAEMON", "1")
+        .args([
+            "hook",
+            "--agent",
+            "--event",
+            "Stop",
+            "--dir",
+            base.join("ws").to_str().unwrap(),
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(b"{}").unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(), "{out:?}");
+    let reply = String::from_utf8_lossy(&out.stdout);
+    assert!(!reply.trim().is_empty(), "{out:?}");
+    let _ = std::fs::remove_dir_all(&base);
+}

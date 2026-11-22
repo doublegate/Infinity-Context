@@ -493,6 +493,7 @@ groups such as ai-memory's):
     "SubagentStart":      [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent muse --event SubagentStart", "timeout": 10 }] }],
     "SubagentStop":       [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent muse --event SubagentStop", "timeout": 10 }] }],
     "PreCompact":         [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent muse --event PreCompact", "timeout": 10 }] }],
+    "PostCompact":        [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent muse --event PostCompact", "timeout": 10 }] }],
     "SessionEnd":         [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent muse --event SessionEnd", "timeout": 10 }] }]
   }
 }

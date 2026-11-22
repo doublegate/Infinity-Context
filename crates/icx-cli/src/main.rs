@@ -697,11 +697,12 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--agent" if i + 1 < args.len() => {
+            // A following flag is not a value (`--agent --event Stop`), as on the fail-open path.
+            "--agent" if args.get(i + 1).is_some_and(|v| !v.starts_with('-')) => {
                 agent_str = &args[i + 1];
                 i += 2;
             }
-            "--event" if i + 1 < args.len() => {
+            "--event" if args.get(i + 1).is_some_and(|v| !v.starts_with('-')) => {
                 event_str = &args[i + 1];
                 i += 2;
             }
