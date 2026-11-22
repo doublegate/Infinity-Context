@@ -80,10 +80,13 @@ The site at <https://doublegate.github.io/Infinity-Context/> is built with
 [Zensical](https://zensical.org/) (pinned in the workflow) from `docs/` plus the root README,
 CHANGELOG, PROJECT-STATUS, CONTRIBUTING, SECURITY and LICENSING pages. Pull requests that touch
 the docs build it in strict mode, so a broken internal link fails the check; pushes to `main`
-also deploy it to GitHub Pages. To build and preview locally (Python 3.11+):
+also deploy it to GitHub Pages. To build and preview locally, in a virtual environment (the
+hash-locked requirements target Python 3.12 on x86-64 Linux; PEP 668 systems reject a bare
+`pip install` outside one):
 
 ```bash
-pip install --require-hashes -r .github/docs-requirements.txt
+uv venv --python 3.12 .venv && . .venv/bin/activate   # or: python3.12 -m venv .venv
+uv pip install --require-hashes -r .github/docs-requirements.txt   # or: pip install ...
 python3 scripts/build_docs_site.py
 zensical build --clean --strict -f .site-src/zensical.toml   # output in .site-src/site
 zensical serve -f .site-src/zensical.toml                    # preview on localhost:8000

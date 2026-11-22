@@ -5,17 +5,64 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Documentation
+## [1.3.2] - 2026-11-22
 
-- Documentation site built with Zensical and published to GitHub Pages
-  (<https://doublegate.github.io/Infinity-Context/>): `zensical.toml`,
-  `scripts/build_docs_site.py` (stages `docs/` and the root pages, points links that leave the
-  site at GitHub, builds the navigation) and `.github/workflows/docs.yml` (strict build on pull
-  requests, deploy from `main`; Zensical pinned, actions pinned by SHA).
-- ADR-0007 (proposed): opt-in memory-mapped seqlock bus (`icx-shm`), tracked in #32.
-- Markdown lint: blank-line fixes across non-frozen documents.
+Fixes #33, #34, #36 and #37, plus problems found by mining four days of agent sessions for icx
+errors. Release notes: [`docs/releases/v1.3.2/`](docs/releases/v1.3.2/README.md).
+
+### Highlights
+
+Stubs that could not be dereferenced are fixed at both causes: an agent working in a git
+worktree now shares its project's workspace, and the `icx` MCP server follows the workspace its
+own agent's hooks use, so a session that moved into a nested project reads the store its stubs
+were written to. MCP results (Context7 and other docs servers) are stored as text with real
+lines. Small outputs stay inline, recall noise is filtered, `slice` and `grep` are friendlier,
+and several redactor over-redactions seen in the field are gone.
+
+### Fixed
+
+- **Worktree stubs not found (#37).** `project_root` resolves a linked git worktree to its main
+  repository, so a subagent in `.claude/worktrees/agent-*` stores into the project's workspace.
+  Accepted only when git's own back-link (`<main>/.git/worktrees/<name>/gitdir`) points at the
+  worktree, so a planted `.git` file cannot redirect a project; submodules are unchanged.
+- **MCP server on the wrong workspace (#34).** `icx hook` records the workspace it used for its
+  agent (the nearest ancestor process that is not a shell or launcher) in
+  `$XDG_RUNTIME_DIR/icx/agents/` (`0700`, files `0600`, named by PID and process start time, so a
+  reused PID never matches; records of exited agents are pruned). `icx mcp-serve` resolves its
+  workspace per request from its own agent's record; only a private record naming a workspace
+  under `<state>/workspaces/` is accepted, and trust checks still apply. An explicit `--dir`/`ICX_DIR` pins the workspace, and
+  `ICX_MCP_FOLLOW_HOOKS=0` disables following. A "not found" error now names the workspace it
+  searched.
+- **MCP results stored as one JSON line (#37).** A result made of `text` content blocks is stored
+  as its text, so `slice` and line-level `grep` address real lines; results with image or
+  resource blocks keep the JSON form.
+- **CLI (#33).** Repeated value-taking flags (`daemon`, `deref`, `proxy`, `proxy-transform`,
+  `encode-ahtl`) are rejected instead of silently keeping the last value; `deref` and
+  `encode-ahtl` find their handle or file wherever it sits, so a flag is never taken as one;
+  `--dir` uses one value rule everywhere.
+- **Redactor (#33).** Dotted or spaced counter keys (`max.tokens`) are not secrets; a multi-line
+  quoted value leaves no unmatched closing quote; a YAML block header whose key an earlier marker
+  swallowed is not glued onto it; CRLF lines inside JSON strings get the same digest and key-context
+  checks as LF lines. The code paths the v1.3.1 first-quote rule made unreachable are removed
+  (163 lines).
+- **Redactor over-redaction seen in the field.** A vendor prefix inside a word is not a token
+  start (`autodesk-...` matched `sk-`); a `-`-joined name made of words (project-directory slugs,
+  model names such as `Llama-4-Maverick-17B-Instruct`) is not a high-entropy secret, and a token
+  count labelling a list (`512 tokens: ...`) is not a `tokens` key. Only the generic `sk-` prefix
+  gets the in-word exemption, and only after an ordinary word (`disk-`, `autodesk-`); a slug with
+  a part of 20+ characters or a random mixed-case part stays subject to the entropy gate. Real
+  tokens are still caught.
+- **`slice`** (and `icx deref --lines`) clamps an end past the last line instead of failing, for
+  stored outputs and fold/epoch nodes alike (a start past the end is still an error). **`grep`** bounds each matched line to 400 characters and a reply to 32 KiB (a minified
+  line produced a 238,000-character reply that the client rejected).
 
 ### Changed
+
+- Hooks leave tool outputs under 2 KiB inline (`ICX_STUB_MIN_BYTES`, 256 B..1 MiB). In the field,
+  most stubs replaced ~1 KB outputs with a ~200-byte stub plus a deref round trip. The library
+  default (used by the benchmarks and simulations) is unchanged.
+- Recall entries weak on every signal (HDC similarity and combined score under 0.10, no shared
+  fractal suffix) are not injected; exact-identifier hits are kept.
 
 - Version-numbered file names replaced with descriptive ones, so names stay valid for every
   release: the 42 `*_v1NN.rs` / `redact_issue24.rs` integration tests (for example
@@ -28,6 +75,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   names the same two fixture files under both names, since history keeps the old paths.
 - `.gitignore`: `archive/` folders (local archives, never committed) and the docs-site build
   output (`.site-src/`, `site/`).
+
+### Build
+
+- Docs site (#36): a directory link resolves to its index page; the MathJax download retries with
+  backoff and is cached in CI (`actions/cache`, pip cache); the navigation injection works on CRLF
+  checkouts; `build-and-tooling.md` shows a virtual-environment setup.
+
+### Documentation
+
+- Documentation site built with Zensical and published to GitHub Pages
+  (<https://doublegate.github.io/Infinity-Context/>): `zensical.toml`,
+  `scripts/build_docs_site.py` (stages `docs/` and the root pages, points links that leave the
+  site at GitHub, builds the navigation) and `.github/workflows/docs.yml` (strict build on pull
+  requests, deploy from `main`; Zensical pinned, actions pinned by SHA).
+- ADR-0007 (proposed): opt-in memory-mapped seqlock bus (`icx-shm`), tracked in #32.
+- Markdown lint: blank-line fixes across non-frozen documents.
 
 ### Tests
 

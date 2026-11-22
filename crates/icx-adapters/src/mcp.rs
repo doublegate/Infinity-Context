@@ -15,12 +15,29 @@ pub const LEGACY_PROTOCOL_VERSIONS: &[&str] =
 
 /// Maximum number of simultaneously open `fold begin:` branches (ICX-AUD-014).
 pub const MAX_FOLD_DEPTH: usize = 64;
+/// Longest matched line a `grep` reply shows, in characters (the full line is one `slice` away).
+const GREP_LINE_CHARS: usize = 400;
+/// Largest `grep` reply, in bytes.
+const GREP_REPLY_BYTES: usize = 32 * 1024;
+/// Appended to a grep reply cut at `GREP_REPLY_BYTES`.
+const GREP_TRAILER: &str = "\n…[more matches omitted; narrow the pattern or pass `id`]";
+/// Bytes kept for the grep provenance header, which is written after the body is bounded.
+const HEADER_ROOM: usize = 96;
 
 /// Single-tool polymorphic Model Context Protocol (`MCP`) server.
 #[derive(Clone, Debug, Default)]
 pub struct McpPagerServer;
 
 impl McpPagerServer {
+    /// `text` cut to `max` characters, with a note of how many bytes were left out. Only the
+    /// first `max` characters are walked, so a huge line costs no more than a short one.
+    fn truncate_chars(text: &str, max: usize) -> String {
+        match text.char_indices().nth(max) {
+            None => text.to_owned(),
+            Some((cut, _)) => format!("{}…[+{} bytes]", &text[..cut], text.len() - cut),
+        }
+    }
+
     fn valid_envelope(req: &Value) -> bool {
         req.is_object()
             && req.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
@@ -400,6 +417,7 @@ impl McpPagerServer {
                     .unwrap_or((1, 50));
 
                 match mmu.resolve_handle(id_str) {
+                    // `deref_lines` clamps an end past the last line (v1.3.2).
                     Ok(aid) => match mmu.deref_lines(aid, range.0, range.1) {
                         Ok(text) => (Self::attach_provenance(&text, aid, args, mmu), false),
                         Err(e) => (Self::format_error(&e), true),
@@ -426,24 +444,44 @@ impl McpPagerServer {
                     None => None,
                 };
                 match mmu.grep_cold(target_id, pattern, limit) {
-                    Ok(matches) => (
-                        // Same provenance framing as deref/slice (SECURITY.md invariant 3).
-                        std::iter::once(format!(
-                            "⟪ICX:PROVENANCE│op=grep│matches={}│trust=untrusted_data⟫",
-                            matches.len()
-                        ))
-                        .chain(matches.iter().map(|m| {
-                            format!(
-                                "{}#L{}: {}",
+                    Ok(matches) => {
+                        // Same provenance framing as deref/slice (SECURITY.md invariant 3). Each
+                        // matched line and the whole reply are bounded (v1.3.2): one minified or
+                        // JSON line used to make a reply of hundreds of KB that the client
+                        // rejected. The full line stays available through `slice`.
+                        let mut body = String::new();
+                        let mut shown = 0usize;
+                        for (n, m) in matches.iter().enumerate() {
+                            let line = Self::truncate_chars(&m.line_text, GREP_LINE_CHARS);
+                            let entry = format!(
+                                "\n{}#L{}: {}",
                                 m.artifact_id,
                                 m.line_number,
-                                InfinityContextMmu::escape_untrusted_delimiters(&m.line_text)
-                            )
-                        }))
-                        .collect::<Vec<_>>()
-                        .join("\n"),
-                        false,
-                    ),
+                                InfinityContextMmu::escape_untrusted_delimiters(&line)
+                            );
+                            // Room for the trailer is kept only while more matches follow.
+                            let more = n + 1 < matches.len();
+                            let reserve = if more { GREP_TRAILER.len() } else { 0 };
+                            if HEADER_ROOM + body.len() + entry.len() + reserve > GREP_REPLY_BYTES {
+                                body.push_str(GREP_TRAILER);
+                                break;
+                            }
+                            body.push_str(&entry);
+                            shown += 1;
+                        }
+                        // `matches=<shown>/<total>` when the reply was cut (review of #38).
+                        let count = if shown == matches.len() {
+                            shown.to_string()
+                        } else {
+                            format!("{shown}/{}", matches.len())
+                        };
+                        (
+                            format!(
+                                "⟪ICX:PROVENANCE│op=grep│matches={count}│trust=untrusted_data⟫{body}"
+                            ),
+                            false,
+                        )
+                    }
                     Err(e) => (Self::format_error(&e), true),
                 }
             }

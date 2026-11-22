@@ -211,9 +211,44 @@ fn compaction_instructions(tail_slot: &str) -> String {
     out
 }
 
+/// The text of an MCP tool result made only of `text` content blocks (`[{"type":"text",...}]`, or
+/// a `CallToolResult` object with such a `content` array), joined by blank lines; `None` for any
+/// other shape, or when an image/resource block would be lost (v1.3.2, #37: stored as real lines,
+/// so `slice` and `grep` can address a docs result instead of one JSON line).
+fn mcp_text_content(response: &Value) -> Option<String> {
+    let blocks = match response {
+        Value::Array(blocks) => blocks,
+        // Only a plain result: any other field (`structuredContent`, ...) keeps the JSON form, so
+        // structured data is never dropped (review of #38).
+        Value::Object(map)
+            if map
+                .keys()
+                .all(|k| matches!(k.as_str(), "content" | "isError" | "_meta")) =>
+        {
+            map.get("content")?.as_array()?
+        }
+        _ => return None,
+    };
+    if blocks.is_empty() {
+        return None;
+    }
+    let texts = blocks
+        .iter()
+        .map(|b| {
+            (b.get("type").and_then(Value::as_str) == Some("text"))
+                .then(|| b.get("text").and_then(Value::as_str))
+                .flatten()
+        })
+        .collect::<Option<Vec<&str>>>()?;
+    Some(texts.join("\n\n"))
+}
+
 /// Text to store for a tool response: Bash-like `{stdout, stderr}` objects become their readable
-/// text; other shapes are stored as JSON.
+/// text, MCP text content becomes its text, and other shapes are stored as JSON.
 pub(crate) fn tool_output_text(response: Option<&Value>) -> String {
+    if let Some(text) = response.and_then(mcp_text_content) {
+        return text;
+    }
     match response {
         None => String::new(),
         Some(Value::String(s)) => s.clone(),
@@ -236,6 +271,19 @@ pub(crate) fn tool_output_text(response: Option<&Value>) -> String {
 /// become the stub; Bash-like objects get `stdout` = stub and an emptied `stderr`; any other
 /// object or array has its largest string leaf replaced, keeping every other field.
 pub(crate) fn shape_preserving_replacement(original: Option<&Value>, stub: &str) -> Value {
+    // A text-only MCP result was stored as all of its blocks joined, so every block is replaced
+    // by one stub block, matching `updatedMCPToolOutput` and the stored artifact (review of #38).
+    if let Some(v) = original.filter(|v| mcp_text_content(v).is_some()) {
+        let block = serde_json::json!([{"type": "text", "text": stub}]);
+        return match v {
+            Value::Object(map) => {
+                let mut out = map.clone();
+                out.insert("content".to_owned(), block);
+                Value::Object(out)
+            }
+            _ => block,
+        };
+    }
     match original {
         Some(Value::Object(map)) if map.get("stdout").is_some_and(Value::is_string) => {
             let mut out = map.clone();
