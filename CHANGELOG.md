@@ -12,7 +12,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Pushes to `main` and manual runs keep the full suite, which the release gate requires.
   - A weekly scheduled run re-checks advisories.
   - Rust caches are written only from `main`.
-  - The PR reviewer no longer queues a review for every intermediate push.
 
 ### Documentation
 

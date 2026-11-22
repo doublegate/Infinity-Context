@@ -60,15 +60,18 @@ jobs:
           # could slip past the anchored patterns below, so it fails safe to a full run.
           files="$(git -c core.quotePath=false diff --name-only "$BASE...$HEAD")"
           printf '%s\n' "$files"
-          if printf '%s\n' "$files" | grep -q '^"'; then all true; exit 0; fi
-          has() { printf '%s\n' "$files" | grep -Eq "$1" && echo true || echo false; }
+          if grep -q '^"' <<<"$files"; then all true; exit 0; fi
+          # A here-string, not a pipe: with pipefail, `grep -q` exiting early could SIGPIPE the
+          # writer and turn a match into "false".
+          has() { grep -Eq "$1" <<<"$files" && echo true || echo false; }
           # Editing this workflow re-runs everything it gates.
           ci='^\.github/workflows/ci\.yml$'
           {
             echo "rust=$(has "^(crates/|fuzz/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|\.cargo/)|$ci")"
             # Any Rust input can change what is resolved (`.cargo/` can redirect sources).
             echo "deps=$(has "^(crates/|fuzz/|\.cargo/)|(^|/)Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^deny\.toml$|^\.github/about\.|$ci")"
-            echo "scripts=$(has "^scripts/|^\.github/scripts/|$ci")"
+            # The self-tests also read these workflows (reviewer timeouts, CLA, release gate).
+            echo "scripts=$(has "^scripts/|^\.github/scripts/|^\.github/workflows/(antigravity-review|cla|release)\.yml$|$ci")"
           } >> "$GITHUB_OUTPUT"
       - name: Summary
         run: |
@@ -132,10 +135,10 @@ jobs:
         run: cargo doc --workspace --no-deps --locked
       - name: Run benchmark & SLO gate
         if: env.RUST == 'true'
-        run: cargo run --release -p icx-cli -- benchmark
+        run: cargo run --release --locked -p icx-cli -- benchmark
       - name: Run CLI doctor check
         if: env.RUST == 'true'
-        run: cargo run --release -p icx-cli -- doctor
+        run: cargo run --release --locked -p icx-cli -- doctor
       - name: Antigravity reviewer self-test
         run: bash scripts/agy-review-selftest.sh
       - name: CLA script self-test
@@ -193,7 +196,7 @@ jobs:
         with:
           tool: cargo-llvm-cov@0.9.1
       - name: Generate LCOV coverage report & enforce coverage floor
-        run: cargo llvm-cov --workspace --all-targets --lcov --output-path lcov.info --fail-under-lines 95
+        run: cargo llvm-cov --workspace --all-targets --locked --lcov --output-path lcov.info --fail-under-lines 95
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7
         with:

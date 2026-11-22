@@ -73,8 +73,8 @@ the other jobs:
 | Change touches | Jobs that run |
 | :--- | :--- |
 | `crates/`, `fuzz/`, `Cargo.toml`/`Cargo.lock`, `rust-toolchain.toml`, `.cargo/` | main job (all Rust steps), coverage |
-| a `Cargo.toml`, `Cargo.lock`, `deny.toml`, `.github/about.*` | `deny` |
-| `scripts/`, `.github/scripts/` | main job (self-tests only, no Rust toolchain) |
+| any Rust input above, a `Cargo.toml`, `Cargo.lock`, `deny.toml`, `.github/about.*` | `deny` |
+| `scripts/`, `.github/scripts/`, `antigravity-review.yml`, `cla.yml`, `release.yml` | main job (self-tests only, no Rust toolchain) |
 | anything, documentation included | secret scan, REUSE |
 | `.github/workflows/ci.yml` | everything |
 
@@ -88,8 +88,6 @@ the other jobs:
 - **Rust build caches** (`Swatinem/rust-cache`) are saved only from `main`. Pull requests restore
   them but never write their own, which keeps the repository cache small and the `main` entry
   warm.
-- **The reviewer:** `antigravity-review.yml` keeps one running review per pull request plus only
-  the newest pending push. A running review is never cancelled.
 
 Supply-chain rules (ICX-AUD-040):
 
