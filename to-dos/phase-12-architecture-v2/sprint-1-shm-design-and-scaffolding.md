@@ -173,6 +173,31 @@ and `icx-cli`.
 
 ---
 
+### T-12-1-011 — Owner approval of the unsafe-code policy exception
+
+**Description:** Before any `unsafe` code exists, the owner approves and applies the policy
+change that permits it: "`unsafe` confined to the opt-in `icx-shm` crate" in place of "zero
+`unsafe` code anywhere". The agent prepares the wording for `AGENTS.md`, `CLAUDE.md` and
+`GEMINI.md` as a proposed diff (`AGENTS.md` holds the owner's uncommitted edits and is never
+edited by the agent); the owner applies it. Sprint 5 later only refines this wording to what
+shipped.
+
+**Research:** Read the current safety bullets in `AGENTS.md`, `CLAUDE.md` and `GEMINI.md`, and
+how the managed `CLAUDE.md` block is regenerated, so the change survives regeneration.
+
+**Acceptance Criteria:**
+
+- [ ] The proposed diff is attached to the Sprint 1 PR and the owner has approved it in writing.
+- [ ] The owner has applied it to `AGENTS.md`; `CLAUDE.md` and `GEMINI.md` carry it (the managed
+  block through its own mechanism).
+- [ ] No `unsafe` code is merged before this ticket closes.
+
+**Dependencies:** T-12-1-005  
+**Reference:** review of PR #39 (Codex P1); `AGENTS.md` §4; `GEMINI.md:77`; ADR-0007 Consequences  
+**Estimated Complexity:** S
+
+---
+
 ### T-12-1-008 — New crate `crates/icx-shm` with its own lints table
 
 **Description:** Create `crates/icx-shm` with its own `[lints.rust]` table, `unsafe_code = "deny"`,
@@ -190,7 +215,7 @@ current stable toolchain.
   `clippy::undocumented_unsafe_blocks` at deny).
 - [ ] Workspace-wide clippy and the other lints still apply to the crate.
 
-**Dependencies:** T-12-1-001  
+**Dependencies:** T-12-1-001, T-12-1-011  
 **Reference:** ADR-0007 §Decision 1; module 50 (Safety)  
 **Estimated Complexity:** S
 

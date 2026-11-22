@@ -55,7 +55,7 @@ Ticket IDs for Phase 10 onward use `T-<phase>-<sprint>-<nnn>` (for example `T-12
 - [Sprint 6 — Memory Tiers](sprint-6-memory-tiers.md)
 - [Sprint 7 — Neural Tier](sprint-7-neural-tier.md)
 - [Sprint 8 — Format Break](sprint-8-format-break.md)
-- [Sprint 9 — Sync (Conditional)](sprint-9-sync-conditional.md)
+- [Sprint 9 — Sync (Conditional) and v2.0.0 Release](sprint-9-sync-conditional.md)
 
 ## Dependencies on Earlier Phases
 

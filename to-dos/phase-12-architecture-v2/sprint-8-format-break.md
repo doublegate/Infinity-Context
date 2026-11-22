@@ -11,7 +11,7 @@ one-way migration tool documented in ADR-0008.
 
 Before any ticket starts:
 
-- Re-read claude/11 A3 (keyed stub MAC) and A5 (encrypted raw tier), and the current key
+- Re-read `docs/claude/11-enhancements-and-optimizations.md` A3 (keyed stub MAC) and A5 (encrypted raw tier), and the current key
   truncation in `crates/icx-core` and the stub format in `crates/icx-codec`.
 - Check current RustCrypto `blake3` keyed mode, AEAD crate (for example `chacha20poly1305`) and
   key-storage options via Context7.
@@ -72,7 +72,7 @@ forged or altered stubs pasted back into context.
 - [ ] Stub size change measured and published in `docs/numbers.md`.
 
 **Dependencies:** T-12-8-001  
-**Reference:** Plan Phase 12 Sprint 8; claude/11 A3  
+**Reference:** Plan Phase 12 Sprint 8; `docs/claude/11-enhancements-and-optimizations.md` A3  
 **Estimated Complexity:** M
 
 ---
@@ -91,7 +91,7 @@ store.
 - [ ] Off by default; default build unchanged.
 
 **Dependencies:** T-12-8-001  
-**Reference:** Plan Phase 12 Sprint 8; claude/11 A5  
+**Reference:** Plan Phase 12 Sprint 8; `docs/claude/11-enhancements-and-optimizations.md` A5  
 **Estimated Complexity:** L
 
 ---

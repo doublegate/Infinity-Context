@@ -38,7 +38,8 @@ Cline memory bank.
 - [ ] Output is deterministic: two exports of the same state are byte-identical.
 - [ ] Format documented and versioned in `docs/data-model.md`.
 
-**Dependencies:** T-11-1-001, T-11-1-002  
+**Dependencies:** T-11-1-001, T-11-1-002, T-92-001 (`--markdown` is a second output format of
+the same `icx export` subcommand; `--format <v>` and `--markdown` are mutually exclusive)  
 **Reference:** Plan Phase 11 Sprint 9; basic-memory; Cline memory bank  
 **Estimated Complexity:** M
 

@@ -70,8 +70,9 @@ CI unsafe gate's messages.
 
 ### T-12-5-003 — `AGENTS.md` change proposed as a diff only
 
-**Description:** Prepare the `AGENTS.md` policy-wording change as a proposed diff for the owner
-to apply, since that file holds the owner's uncommitted edits. Do not edit `AGENTS.md` directly.
+**Description:** Refine the policy wording the owner approved in T-12-1-011 to match what shipped,
+again as a proposed `AGENTS.md` diff for the owner to apply, since that file holds the owner's
+uncommitted edits. Do not edit `AGENTS.md` directly.
 
 **Research:** Read `AGENTS.md` (read-only) to locate the policy statements.
 
@@ -87,9 +88,10 @@ uncommitted edits")
 
 ---
 
-### T-12-5-004 — `CLAUDE.md` project block wording
+### T-12-5-004 — `CLAUDE.md` and `GEMINI.md` project block wording
 
-**Description:** Update the safety bullet in the `CLAUDE.md` managed project block from "zero
+**Description:** Refine (after T-12-1-011) the safety bullet in the `CLAUDE.md` managed project
+block and in `GEMINI.md` from "zero
 `unsafe` code anywhere" to the precise `icx-shm` policy, through the managed-block mechanism.
 
 **Research:** Confirm how the managed block is regenerated so the change is not overwritten.

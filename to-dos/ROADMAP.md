@@ -150,10 +150,10 @@ Goal: governance, distribution and polish. This includes:
   - [Sprint 1 — Privacy and Policy](phase-11-govern-and-distribute/sprint-1-privacy-and-policy.md) (5 tickets)
   - [Sprint 2 — Timeline and Repo Map](phase-11-govern-and-distribute/sprint-2-timeline-and-repo-map.md) (3 tickets)
   - [Sprint 3 — Local Viewer](phase-11-govern-and-distribute/sprint-3-local-viewer.md) (3 tickets)
-  - [Sprint 4 — Packaging and Distribution](phase-11-govern-and-distribute/sprint-4-packaging-and-distribution.md) (6 tickets)
+  - [Sprint 4 — Packaging and Distribution](phase-11-govern-and-distribute/sprint-4-packaging-and-distribution.md) (5 tickets)
   - [Sprint 5 — Standards and Approvals](phase-11-govern-and-distribute/sprint-5-standards-and-approvals.md) (3 tickets)
   - [Sprint 6 — CLI, Config and Daemon API](phase-11-govern-and-distribute/sprint-6-cli-config-and-daemon-api.md) (6 tickets)
-  - [Sprint 7 — Library and Supply Chain](phase-11-govern-and-distribute/sprint-7-library-and-supply-chain.md) (6 tickets)
+  - [Sprint 7 — Library and Supply Chain](phase-11-govern-and-distribute/sprint-7-library-and-supply-chain.md) (7 tickets)
   - [Sprint 8 — Documentation Site](phase-11-govern-and-distribute/sprint-8-documentation-site.md) (8 tickets)
   - [Sprint 9 — Markdown Export and Import](phase-11-govern-and-distribute/sprint-9-markdown-export-and-import.md) (4 tickets)
 
@@ -169,7 +169,7 @@ Goal: the architecture changes that need a major release. This includes:
 
 - [Overview](phase-12-architecture-v2/overview.md) ·
   [Implementation plan](phase-12-architecture-v2/phase_12_implementation_plan.md)
-  - [Sprint 1 — `icx-shm` Design Acceptance and Scaffolding](phase-12-architecture-v2/sprint-1-shm-design-and-scaffolding.md) (10 tickets)
+  - [Sprint 1 — `icx-shm` Design Acceptance and Scaffolding](phase-12-architecture-v2/sprint-1-shm-design-and-scaffolding.md) (11 tickets)
   - [Sprint 2 — `icx-shm` Core Protocol](phase-12-architecture-v2/sprint-2-shm-core-protocol.md) (8 tickets)
   - [Sprint 3 — `icx-shm` Qualification](phase-12-architecture-v2/sprint-3-shm-qualification.md) (8 tickets)
   - [Sprint 4 — `icx-shm` Platforms and Integration](phase-12-architecture-v2/sprint-4-shm-platforms-and-integration.md) (4 tickets)
@@ -198,8 +198,7 @@ Goal: the architecture changes that need a major release. This includes:
 - **T-H-002:** propose removing the disowned figures from the project summary in `CLAUDE.md`
   (sub-50 µs recall, ≥94% cache hit as a provider metric). That block is managed, so the change is
   proposed rather than made directly.
-- **T-H-003:** decide what to do about large binaries in git history (`docs/claude/12`, lines
-  44 to 46). Decision only.
+- **T-H-003:** decide what to do about large binaries in git history (`docs/claude/12-v1.1.0-remediation-status.md`, lines 44 to 46). Decision only.
 - **T-H-004:** build the specification PDF in CI.
 
 ## History: Phases 0 to 5 (v0.1.0 to v1.0.0, completed)

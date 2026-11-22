@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Documentation
 
 - **Roadmap for v1.4.0 through v2.0.0.** `to-dos/ROADMAP.md` is rewritten from v1.3.2. Phases 6 to
-  12 are new: 56 files, 218 tickets, one minor release per phase and v2.0.0 last.
+  12 are new: 56 files, 219 tickets, one minor release per phase and v2.0.0 last.
   - Each sprint opens with a research gate, and each ticket carries a source and a Research line,
     so research continues while the work is done.
   - Phase 12 builds the opt-in `icx-shm` bus in full, which resolves issue #32 and ADR-0007.

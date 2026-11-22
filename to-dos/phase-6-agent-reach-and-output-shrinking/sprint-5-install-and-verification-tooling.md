@@ -162,7 +162,7 @@ Phase 11 Sprint 5 (install-time permission setup)
 **Description:** Generate a capability matrix (agent, version, event, ingests, shrinks, injects
 context, seals epoch) from the contract tests, and publish it in the adapters doc.
 
-**Research:** Check the matrix layout proposed in claude/11 §E against the current adapters.
+**Research:** Check the matrix layout proposed in `docs/claude/11-enhancements-and-optimizations.md` §E against the current adapters.
 
 **Acceptance Criteria:**
 

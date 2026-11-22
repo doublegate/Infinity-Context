@@ -13,7 +13,7 @@ Before any ticket starts:
 
 - Re-read the current Zensical site configuration and the Pages workflow from v1.3.1 (PR #35).
 - Check how to publish rustdoc beside the Zensical site on Pages without path collisions.
-- Re-read claude/11 §G (generated numbers table) and the Phase 8 benchmark dataset schema.
+- Re-read `docs/claude/11-enhancements-and-optimizations.md` §G (generated numbers table) and the Phase 8 benchmark dataset schema.
 - Collect the most frequent support questions from closed issues for the FAQ.
 
 ### Research notes
@@ -126,21 +126,22 @@ the workspace version.
 
 ---
 
-### T-11-8-007 — Numbers table generated from benchmark JSON
+### T-11-8-007 — Generated numbers table on the docs site
 
-**Description:** Generate the tables in `docs/numbers.md` from benchmark JSON output, so no
-figure is typed by hand.
+**Description:** T-83-005 generates `docs/numbers.md` from benchmark JSON. This ticket wires that
+generated page into the Zensical site build, so the published site never shows a stale table.
 
 **Research:** Confirm the Phase 8 benchmark dataset schema and the Phase 10 paired-benchmark
 output.
 
 **Acceptance Criteria:**
 
-- [ ] `docs/numbers.md` tables regenerate from JSON; CI fails if they are stale.
+- [ ] The docs workflow runs the T-83-005 generator before `zensical build`; a stale table fails
+  the docs build.
 - [ ] Each figure carries methodology, hardware and date.
 
 **Dependencies:** T-83-005  
-**Reference:** Plan Phase 11 Sprint 8; claude/11 §G  
+**Reference:** Plan Phase 11 Sprint 8; `docs/claude/11-enhancements-and-optimizations.md` §G  
 **Estimated Complexity:** M
 
 ---

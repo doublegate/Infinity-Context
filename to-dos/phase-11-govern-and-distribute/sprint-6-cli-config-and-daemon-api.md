@@ -15,7 +15,7 @@ Before any ticket starts:
   Context7.
 - Inventory every flag form the hand-written parser accepts today, including the v1.3.1
   flag-value fixes and `set_option_once` behaviour, as the compatibility baseline.
-- Re-read claude/11 §A.1 (shared index between proxy and pager) and ADR-0005 (daemon).
+- Re-read `docs/claude/11-enhancements-and-optimizations.md` §A.1 (shared index between proxy and pager) and ADR-0005 (daemon).
 - Re-read ADR-0007's "route through the daemon's Unix socket" alternative and issue #32, so the
   API carries what the comparison needs.
 - Re-measure the daemon hook median and record it.
@@ -108,7 +108,7 @@ reference.
 ### T-11-6-005 — Versioned daemon JSON-RPC API
 
 **Description:** Expose a versioned JSON-RPC API on the daemon's Unix socket (deref, status,
-recall, MCP proxying), so the proxy and pager share one index (claude/11 §A.1). The socket keeps
+recall, MCP proxying), so the proxy and pager share one index (`docs/claude/11-enhancements-and-optimizations.md` §A.1). The socket keeps
 owner-only permissions.
 
 **Research:** Pick the framing (newline-delimited JSON-RPC 2.0 or length-prefixed) after checking
@@ -121,7 +121,7 @@ what the existing daemon protocol uses; confirm concurrent-client behaviour.
 - [ ] Schema documented in `docs/interfaces.md`.
 
 **Dependencies:** None  
-**Reference:** Plan Phase 11 Sprint 6; claude/11 §A.1; ADR-0005  
+**Reference:** Plan Phase 11 Sprint 6; `docs/claude/11-enhancements-and-optimizations.md` §A.1; ADR-0005  
 **Estimated Complexity:** L
 
 ---

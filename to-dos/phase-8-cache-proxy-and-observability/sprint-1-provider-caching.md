@@ -108,8 +108,9 @@ responses, and which tiers omit them.
 ### T-81-004 — Relabel the `>= 94%` byte-reuse figure
 
 **Description:** The `>= 94%` figure is a byte-reuse result from the prefix-cache simulation, not a
-provider cache hit rate. Relabel it in README, the CLAUDE.md project summary, docs and release
-notes, and point each occurrence at `docs/numbers.md`. Do not reuse it as a provider metric.
+provider cache hit rate. Relabel it in README, docs and release notes, and propose the same change
+for the `CLAUDE.md` project summary (a managed block, changed through its own mechanism, as in
+T-H-002) and `GEMINI.md`. Point each occurrence at `docs/numbers.md`. Do not reuse it as a provider metric.
 
 **Research:** List every occurrence with `rg`, including badges, alt text and diagrams; check which
 are generated (diagram sources) so the source is edited rather than the output.

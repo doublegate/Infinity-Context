@@ -129,25 +129,6 @@ whether it composes with the existing `release.yml` steps.
 **Reference:** Plan Phase 11 Sprint 4; `dist` documentation  
 **Estimated Complexity:** L
 
----
-
-### T-11-4-006 — crates.io publishing decision
-
-**Description:** Decide whether to publish the crates to crates.io in v1.9.0, based on the
-Phase 10 Sprint 6 codebase-gap findings and Sprint 7's API gates.
-
-**Research:** Review the codebase-gap findings and the `cargo publish --dry-run` result from
-T-11-7-001.
-
-**Acceptance Criteria:**
-
-- [ ] Decision and rationale recorded in `docs/build-and-tooling.md`.
-- [ ] If publishing: crates published in dependency order after T-11-7-001 and T-11-7-002 pass.
-
-**Dependencies:** T-11-7-001, T-11-7-002, T-10-6-001 to T-10-6-008  
-**Reference:** Plan Phase 11 Sprint 4 ("depends on the codebase-gap findings")  
-**Estimated Complexity:** S
-
 ## Sprint exit
 
 - [ ] `cargo fmt --all -- --check` passes.

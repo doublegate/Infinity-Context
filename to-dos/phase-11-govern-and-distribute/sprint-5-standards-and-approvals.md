@@ -66,9 +66,10 @@ managed-settings file.
 
 ---
 
-### T-11-5-003 — Install-time tool pre-approval per agent
+### T-11-5-003 — Tool pre-approval for plugin-packaged installs
 
-**Description:** During `icx init` (and plugin install), add the allow rule that pre-approves the
+**Description:** Extend T-65-005 (`icx install` pre-approval) to the plugin and package-manager
+installs of Sprint 4: when icx is installed as a Claude Code or Codex plugin, add the allow rule that pre-approves the
 `icx` MCP tool wherever the agent supports it, so a missing user-level rule no longer causes
 repeated permission prompts. The change is shown and confirmed before it is written.
 
@@ -81,8 +82,8 @@ repeated permission prompts. The change is shown and confirmed before it is writ
 - [ ] Agents without such support are listed in the guide.
 - [ ] The edit is reversible by `icx init --uninstall` (tested).
 
-**Dependencies:** None  
-**Reference:** Plan Phase 11 Sprint 5; plan "Immediate fixes" (repeated prompts)  
+**Dependencies:** T-65-005, T-11-4-001  
+**Reference:** Plan Phase 11 Sprint 5; plan "Immediate fixes" (repeated prompts); review of PR #39  
 **Estimated Complexity:** M
 
 ## Sprint exit
