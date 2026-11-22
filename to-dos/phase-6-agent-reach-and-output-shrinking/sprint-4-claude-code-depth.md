@@ -27,7 +27,25 @@ Re-check before the sprint starts:
 
 ### Research notes
 
-_None recorded yet._
+**2026-11-22, from Sprint 1** (`ref-docs/agent-internals/below-hook-findings-2026-11-22.md`, Claude
+Code section and decision table; Claude Code 2.1.330):
+
+- **Replacement validation:** a replacement is checked against the tool's output schema and then
+  its renderer. On failure the original output is used and the user sees a hook-error notice.
+  The required fields per built-in tool are tabled in the dossier (Bash, Read, Grep, Glob,
+  WebFetch, Write, Edit). WebSearch and Agent are unresolved.
+- **Precedence:** `updatedToolOutput` wins. `updatedMCPToolOutput` is used only when it is
+  absent, and an empty value is ignored. MCP replacements are not schema-validated.
+- **Plan mode:** a non-read-only MCP tool is held before allow rules are consulted. Hook and
+  plugin allows do not lift the hold, so `readOnlyHint: true` is the only route. Expect the
+  "rule only" configuration in T-64-007 to keep prompting.
+- **`additionalContext`:** on the settings-file hook path icx uses, the cap is 8,000 characters
+  and 200 lines, not 10,000. Larger context is spilled to a file. A `hookEventName` that does not
+  match the event drops the context. The 10,000-character figure is the PreCompact stdout cap.
+- **Payloads confirmed:** `WorktreeCreate` (name), `WorktreeRemove` (worktree_path), `CwdChanged`
+  (old_cwd, new_cwd), `PostToolBatch` (`tool_calls[]`, may add context), and
+  `PreModelSwitch`/`PostModelSwitch` (model ids, source, context tokens, prompt-cache warmth and
+  TTL; Pre can allow, deny or ask).
 
 ## Tickets
 
@@ -47,6 +65,8 @@ model-visible output for a matching and a non-matching shape.
 - [ ] `claude_contract.rs` pins each shape.
 - [ ] A silent-ignore detector: a live-run test fails if the model-visible output is unchanged.
 - [ ] Tools where replacement does not work are listed as ingest-only in the adapters doc.
+- [ ] For MCP tools, a regression test pins that `updatedToolOutput` is sent and that
+  `updatedMCPToolOutput` is never empty.
 
 **Dependencies:** T-61-002
 
@@ -144,17 +164,19 @@ the installed version.
 
 ---
 
-### T-64-006 — Respect the 10,000-character `additionalContext` budget
+### T-64-006 — Respect the `additionalContext` budget (8,000 characters, 200 lines)
 
-**Description:** Keep every `additionalContext` reply within the documented 10,000-character
-limit, with deterministic truncation that keeps the handles and drops the lowest-ranked lines.
+**Description:** Keep every `additionalContext` reply within the cap Claude Code applies on the
+settings-file hook path: 8,000 characters and 200 lines (Sprint 1; the 10,000-character figure
+first planned is the PreCompact stdout cap). Use deterministic truncation that keeps the handles
+and drops the lowest-ranked lines. Always set `hookEventName` to the exact event name.
 
-**Research:** Confirm the current limit and what Claude Code does when it is exceeded
-(truncation, rejection, or spill to a file).
+**Research:** Re-confirm both caps and the spill-to-file behaviour on the installed version.
 
 **Acceptance Criteria:**
 
-- [ ] Budget enforced in characters, not bytes, at the adapter boundary.
+- [ ] Budget enforced in characters and lines, not bytes, at the adapter boundary.
+- [ ] Every reply carries the exact `hookEventName`; a test covers each emitting event.
 - [ ] Truncation keeps every `#icx:` handle intact and is deterministic.
 - [ ] Property test: no reply exceeds the limit for any input.
 
@@ -173,7 +195,9 @@ icx tool, a whole-server allow rule (`mcp__icx`), or both stop the permission pr
 appear in plan mode. Ship the annotations only if the test shows they work.
 
 **Research:** Hypothesis: with `readOnlyHint: true`, plan mode runs the icx tool without a
-prompt even when no allow rule exists. Measured by running plan-mode sessions in four
+prompt even when no allow rule exists. Sprint 1 found that plan mode holds non-read-only MCP
+tools before consulting allow rules, so "rule only" is expected to keep prompting. Measured by
+running plan-mode sessions in four
 configurations (no rule and no hint; rule only; hint only; both) and recording whether a prompt
 appears. A rejected hypothesis closes the annotation part with the finding, and the docs point
 users to the allow rule.

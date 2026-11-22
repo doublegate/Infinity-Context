@@ -24,7 +24,28 @@ Re-check before the sprint starts:
 
 ### Research notes
 
-_None recorded yet._
+**2026-11-22, from Phase 6 Sprint 1**
+(`ref-docs/agent-internals/below-hook-findings-2026-11-22.md`). Re-check each item at sprint
+start.
+
+- **Claude Code 2.1.330:**
+  - PreCompact stdout is appended to the summarizer's instructions, up to 10,000 characters, so
+    an instruction to keep `#icx:` handles reaches the summary.
+  - PostCompact output reaches the user only, so the resume packet must be re-injected from the
+    SessionStart that follows compaction (T-73-002).
+- **Codex 0.171.0:**
+  - No hook can change the compaction summary; only `compact_prompt` and
+    `experimental_compact_prompt_file` can.
+  - PreCompact is useful only to seal an epoch and take a snapshot (T-73-002).
+- **Hermes `caafe5389ae`:**
+  - `on_session_start` is called after every committed compaction, with
+    `boundary_reason="compression"`.
+  - A request-only `select_context` then carries the packet without persisting it, and fails
+    open (T-73-003).
+- **agy 1.5.14 and Muse 1.4.25:**
+  - agy has no compaction hook;
+  - Muse has PreCompact and PostCompact, but their payloads are undocumented.
+  - Neither is in scope for this sprint.
 
 ## Tickets
 
