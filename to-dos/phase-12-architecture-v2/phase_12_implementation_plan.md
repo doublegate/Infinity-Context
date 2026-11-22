@@ -32,7 +32,7 @@ one way.
 6. **Sprint 6 — Memory tiers.** L1–L4 tiering with automatic page-in on a recall fault.
 7. **Sprint 7 — Neural tier.** Optional, off by default, and gated on beating the BM25+RRF
    baseline on the evaluation set and the paired benchmark.
-8. **Sprint 8 — Format break.** ADR-0008, 256-bit internal keys, a keyed stub MAC, an optional
+8. **Sprint 8 — Format break.** ADR-0009, 256-bit internal keys, a keyed stub MAC, an optional
    encrypted raw tier, versioned policy file and savings ledger, and a one-way migration tool.
 9. **Sprint 9 — Sync (conditional) and release.** A privacy ADR decides; otherwise the sprint
    records the decision not to build. Then the v2.0.0 release ceremony.
@@ -61,7 +61,7 @@ one way.
   Mitigation: no figure is published before it is measured, with methodology and hardware.
 - **Neural tier cost without gain.** Mitigation: the tier ships only if it beats the BM25+RRF
   baseline; otherwise the finding is recorded and the ticket closes.
-- **Irreversible migration.** The format break is one way. Mitigation: ADR-0008, a backup step
+- **Irreversible migration.** The format break is one way. Mitigation: ADR-0009, a backup step
   in the migration tool, dry-run by default, and tests on real v1.9 stores.
 
 ## Verification

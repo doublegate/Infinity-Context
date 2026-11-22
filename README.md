@@ -543,6 +543,7 @@ The documentation is also published as a searchable site: <https://doublegate.gi
 - [ADR-0005: v1.1.0 Workspace Trust, SQLite Store & Resident Daemon](docs/adr/0005-v1-1-0-workspace-trust-store-and-daemon.md) (supersedes the zero-copy parts of ADR-0004)
 - [ADR-0006: v1.2.0 Context Budgets & Compatibility](docs/adr/0006-v1-2-0-context-and-compatibility.md)
 - [ADR-0007 (proposed): Opt-in Memory-Mapped Seqlock Bus (`icx-shm`)](docs/adr/0007-opt-in-icx-shm-bus.md)
+- [ADR-0008: Reverse-Engineering Output Stays Private](docs/adr/0008-reverse-engineering-output-stays-private.md)
 
 ### Deep Research & Forensics Corpus (`ref-docs/`)
 

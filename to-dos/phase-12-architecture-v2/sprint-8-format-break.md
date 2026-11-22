@@ -4,7 +4,7 @@
 **Release:** v2.0.0  
 **Sprint Goal:** Make the deliberate v2.0 format break: full 256-bit internal keys, a keyed MAC on
 emitted stubs, an optional encrypted raw tier, versioned policy file and savings ledger, and a
-one-way migration tool documented in ADR-0008.  
+one-way migration tool documented in ADR-0009.  
 **Estimated Duration:** 2.5 weeks
 
 ## Research gate
@@ -24,16 +24,16 @@ _None recorded yet._
 
 ## Tickets
 
-### T-12-8-001 — ADR-0008: the v2.0 format break and one-way upgrade
+### T-12-8-001 — ADR-0009: the v2.0 format break and one-way upgrade
 
-**Description:** Write ADR-0008 (Context, Decision, Consequences) covering the key width, stub
+**Description:** Write ADR-0009 (Context, Decision, Consequences) covering the key width, stub
 MAC, encrypted tier, policy and ledger versioning, and the deliberate one-way upgrade.
 
 **Research:** List every on-disk and on-wire format affected.
 
 **Acceptance Criteria:**
 
-- [ ] `docs/adr/0008-*.md` committed and linked from ADR-0005 and `docs/data-model.md`.
+- [ ] `docs/adr/0009-*.md` committed and linked from ADR-0005 and `docs/data-model.md`.
 
 **Dependencies:** None  
 **Reference:** Plan Phase 12 Sprint 8; module 40 (ADRs)  
@@ -128,7 +128,7 @@ backup step, an audit entry, and a refusal to run twice.
 - [ ] Upgrade note in `CHANGELOG.md` and the docs site.
 
 **Dependencies:** T-12-8-002, T-12-8-003, T-12-8-005  
-**Reference:** Plan Phase 12 Sprint 8; ADR-0008  
+**Reference:** Plan Phase 12 Sprint 8; ADR-0009  
 **Estimated Complexity:** L
 
 ## Sprint exit
