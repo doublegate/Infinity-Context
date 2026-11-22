@@ -106,7 +106,9 @@ NAV = [
 ]
 
 LINK_MD = re.compile(r"(\]\()([^)\s]+)((?:\s+\"[^\"]*\")?\))")
-LINK_HTML = re.compile(r"""((?:src|href|srcset)=")([^"]+)(")""")
+LINK_HTML = re.compile(r"""((?:src|href)=")([^"]+)(")""")
+SRCSET = re.compile(r"""(srcset=")([^"]+)(")""")
+CODE_SPAN = re.compile(r"(`+)(?:(?!\1).)+?\1")
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 
 # Link targets that do not exist in the repository (reported, and the build fails).
@@ -130,6 +132,7 @@ def rewrite_target(target: str, src_repo: str, src_staged: str, out: Path) -> st
         return target
     repo_path = posixpath.normpath(posixpath.join(posixpath.dirname(src_repo), path))
     if repo_path.startswith("../") or repo_path == "..":
+        MISSING.append(f"{src_repo}: {target} (outside the repository)")
         return target
     if not (REPO / repo_path).exists():
         MISSING.append(f"{src_repo}: {target}")
@@ -175,18 +178,50 @@ def rewrite_text(text: str, src_repo: str, src_staged: str, out: Path) -> str:
                     + m.group(3)
                 )
 
-            line = LINK_HTML.sub(fix, LINK_MD.sub(fix, line))
+            def fix_srcset(m: re.Match[str]) -> str:
+                # `a.png 1x, b.png 2x`: rewrite each candidate URL, keep its descriptor.
+                candidates = []
+                for candidate in m.group(2).split(","):
+                    url, _, descriptor = candidate.strip().partition(" ")
+                    url = rewrite_target(url, src_repo, src_staged, out)
+                    candidates.append(f"{url} {descriptor}".strip())
+                return m.group(1) + ", ".join(candidates) + m.group(3)
+
+            def fix_prose(segment: str) -> str:
+                return SRCSET.sub(
+                    fix_srcset, LINK_HTML.sub(fix, LINK_MD.sub(fix, segment))
+                )
+
+            # Links inside inline code spans are examples, not links: leave them as written.
+            parts, last = [], 0
+            for span in CODE_SPAN.finditer(line):
+                parts.append(fix_prose(line[last : span.start()]))
+                parts.append(span.group(0))
+                last = span.end()
+            parts.append(fix_prose(line[last:]))
+            line = "".join(parts)
         lines.append(line)
     return "".join(lines)
 
 
 def vendor_mathjax(out: Path) -> None:
     """Download the pinned MathJax package, verify it, and extract the needed files."""
-    with urllib.request.urlopen(MATHJAX_URL, timeout=60) as response:
-        data = response.read()
-    digest = base64.b64encode(hashlib.sha512(data).digest()).decode()
-    if digest != MATHJAX_SHA512:
-        raise SystemExit(f"MathJax package integrity mismatch: got sha512-{digest}")
+    # A verified copy is cached in .site-cache/ (gitignored) so local previews work offline.
+    cache = REPO / ".site-cache" / MATHJAX_URL.rsplit("/", 1)[1]
+
+    def verified(blob: bytes) -> bool:
+        return (
+            base64.b64encode(hashlib.sha512(blob).digest()).decode() == MATHJAX_SHA512
+        )
+
+    data = cache.read_bytes() if cache.is_file() else b""
+    if not verified(data):
+        with urllib.request.urlopen(MATHJAX_URL, timeout=60) as response:
+            data = response.read()
+        if not verified(data):
+            raise SystemExit("MathJax package integrity mismatch: refusing to use it")
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_bytes(data)
     dest_root = out / "javascripts" / "mathjax"
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
         for member in archive.getmembers():

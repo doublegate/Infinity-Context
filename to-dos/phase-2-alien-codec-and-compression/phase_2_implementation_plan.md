@@ -106,13 +106,13 @@ flowchart LR
   - [skeleton.rs](../../crates/icx-codec/src/skeleton.rs)
 - **Implementation Details:**
   1. **Multi-Language Source AST / Lexical Skeletonizer ([05-structural-ast-skeletonization-and-redaction.md](../../docs/ahtl/05-structural-ast-skeletonization-and-redaction.md) §§1–2):**
-     - **Module & Import Header Folding:** Extract module/package declarations (`pub mod`, `mod`, `package`, `namespace`) into `§mod@L<n>` clauses and collapse contiguous import blocks (`use`, `import`, `from ... import`, `#include`) into a single `§imports:L<start>-<end>(N)` summary clause instead of repeating boilerplate imports.
+     - **Module & Import Header Folding:** Extract module/package declarations (`pub mod `, `mod `, `package `, `namespace `) into `§mod@L<n>` clauses and collapse contiguous import blocks (`use `, `import `, `from ... import`, `#include `) into a single `§imports:L<start>-<end>(N)` summary clause instead of repeating boilerplate imports.
      - **Signature & Exact Line-Span (`L<start>-<end>`) Extraction Across 5 Language Families:**
-       - **Rust:** `pub fn`, `pub async fn`, `pub const fn`, `pub(crate) fn`, `fn`, `const fn`, `async fn`, `pub struct`, `struct`, `pub enum`, `enum`, `pub trait`, `trait`, `impl`, `pub type`, `type`, `macro_rules!`.
-       - **Python:** `def`, `async def`, `class`, `@dataclass`.
-       - **TypeScript / JavaScript:** `export function`, `export async function`, `export default function`, `function`, `export class`, `class`, `export interface`, `interface`, `export type`, `type`.
-       - **Go:** `func`, `type ... struct`, `type ... interface`.
-       - **C / C++:** `struct`, `class`, `enum`, `template<`, and top-level typed function definitions.
+       - **Rust:** `pub fn`, `pub async fn`, `pub const fn`, `pub(crate) fn`, `fn `, `const fn `, `async fn `, `pub struct`, `struct `, `pub enum`, `enum `, `pub trait`, `trait `, `impl`, `pub type `, `type `, `macro_rules!`.
+       - **Python:** `def `, `async def `, `class `, `@dataclass`.
+       - **TypeScript / JavaScript:** `export function`, `export async function`, `export default function`, `function `, `export class`, `class `, `export interface`, `interface `, `export type `, `type `.
+       - **Go:** `func `, `type ... struct`, `type ... interface`.
+       - **C / C++:** `struct `, `class `, `enum `, `template<`, and top-level typed function definitions.
      - **Block Span Resolution (`L<start>-<end>`):** Track brace depth (`{ ... }`) for C-family/Rust/TS/Go and indentation level for Python so elided function/struct/class bodies emit `⊕sig@L<start>-<end>:<signature>` (enabling targeted `icx({ op: "slice", id: "#icx:...", range: [start, end] })` retrieval) and automatically populate `AhtlPacket.line_range` with the span of the extracted definitions.
      - **Semantic Pins:** Extract `INVARIANT`, `PASSKEY`, `SAFETY:`, `TODO`, and `FIXME` annotations as `✓pin@L<n>` clauses.
   2. **Unified `git diff` Skeletonizer (`skeletonize_diff`):**
@@ -126,7 +126,7 @@ flowchart LR
   - [skeleton.rs](../../crates/icx-codec/src/skeleton.rs)
 - **Implementation Details:**
   1. **Multi-Ecosystem Log Detection (`looks_like_test_or_build_log`):**
-     - Detect logs from **Rust** (`running N tests`, `test ... ok`, `test ... FAILED`, `error[E`, `Compiling`, `Finished`), **Python `pytest`** (`=== test session starts ===`, `PASSED`, `FAILED`, `=== FAILURES ===`, `Traceback (most recent call last):`), **TypeScript / JS (`tsc`, `vitest`, `jest`)** (`error TS`, `PASS`, `FAIL`, `Test Files`, `AssertionError`), and **Go (`go test`)** (`=== RUN`, `--- PASS:`, `--- FAIL:`, `FAIL\t`).
+     - Detect logs from **Rust** (`running N tests`, `test ... ok`, `test ... FAILED`, `error[E`, `Compiling `, `Finished `), **Python `pytest`** (`=== test session starts ===`, `PASSED`, `FAILED `, `=== FAILURES ===`, `Traceback (most recent call last):`), **TypeScript / JS (`tsc`, `vitest`, `jest`)** (`error TS`, `PASS `, `FAIL `, `Test Files `, `AssertionError`), and **Go (`go test`)** (`=== RUN`, `--- PASS:`, `--- FAIL:`, `FAIL\t`).
   2. **High-Compression Log Skeletonization (`skeletonize_log`):**
      - **Aggregate Passing Boilerplate:** Collapse all passing tests (`test ... ok`, `PASSED`, `--- PASS:`, `✓`) into a single `✓pass:<count>` clause and overall status `status:PASS|FAIL`.
      - **Pin Failing Tests, Error Codes, Causal Implications & Workspace Stack Frames (`100%` Recall):**

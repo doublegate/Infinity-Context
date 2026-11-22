@@ -83,7 +83,7 @@ the docs build it in strict mode, so a broken internal link fails the check; pus
 also deploy it to GitHub Pages. To build and preview locally (Python 3.11+):
 
 ```bash
-pip install "zensical==0.1.3"
+pip install --require-hashes -r .github/docs-requirements.txt
 python3 scripts/build_docs_site.py
 zensical build --clean --strict -f .site-src/zensical.toml   # output in .site-src/site
 zensical serve -f .site-src/zensical.toml                    # preview on localhost:8000
