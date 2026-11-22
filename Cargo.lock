@@ -197,6 +197,7 @@ dependencies = [
  "icx-core",
  "proptest",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 

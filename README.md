@@ -67,7 +67,8 @@ The inline size reduction depends on the input. In the built-in synthetic benchm
 v1.3.1 hides a value after a sensitive key from its first quote to the end of the line, so secrets
 inside code (`env::var("K").unwrap_or("...")`, `x or "..."`, template and prefixed literals) no
 longer stay visible in icx's stored copy (#29). A call head such as `env::var(` stays visible;
-later text on the line is hidden with the value. It also rejects CLI
+later text on the line is hidden with the value. Complete JSON lines, such as minified API output,
+are parsed instead, so only the sensitive values are hidden. It also rejects CLI
 flags with a missing or flag-shaped value (#28), and aligns hook fail-open replies with each
 adapter's own no-op (#30). Details: [v1.3.1 release notes](docs/releases/v1.3.1/README.md).
 

@@ -32,9 +32,23 @@ field boundary and no key detection, and later text on the same line is hidden w
 `{"password": [REDACTED:CONFIG_SECRET]`, `curl --api-key=[REDACTED:CLI_SECRET]`. Your files are not
 changed; only icx's stored copy is.
 
+**Complete JSON lines are redacted exactly.** Minified API responses and one-line JSON logs would
+lose almost everything under the first-quote rule. In a 7 KB list with `"token"` first, only 0.5%
+of the text survived. So a line that is one complete JSON object or array is parsed by a strict
+RFC 8259 scanner instead:
+
+```text
+{"access_token":"[REDACTED:CONFIG_SECRET]","token_type":"bearer","expires_in":3600,"user":{"login":"octo"}}
+```
+
+The value of a sensitive key, of any type, becomes one marker. Every other string is redacted on
+its own with its key as context. Formatting and key order are kept, and the edited line must still
+parse. A line that is not valid JSON (a trailing comma, a log prefix, deeper than 128 levels) keeps
+the first-quote rule, so a parsing problem can only hide more, never less.
+
 A property test checks the rule over random code shapes. They combine calls, chains, ternaries,
-generics, lifetimes, lambdas, and prefixed and template literals. The corpus also pins every
-bypass found in review.
+generics, lifetimes, lambdas, and prefixed and template literals; a second one generates random
+JSON with sensitive keys at any depth. The corpus also pins every bypass found in review.
 
 ## Other fixes
 
@@ -49,12 +63,16 @@ bypass found in review.
 
 ## Upgrading
 
-Install over v1.3.0; the on-disk format is unchanged. Content that v1.3.0 already stored is not
-re-redacted.
+Install over v1.3.0; the on-disk format is unchanged.
+
+**Stored content is not re-checked.** icx redacts tool output once, when it stores it. Anything
+v1.3.0 or earlier stored before this release, including secrets inside code that the new rules
+would now hide, stays in the workspace as it was and can still be recalled. If that matters for
+a workspace, scan its stored artifacts with the v1.3.1 redactor, or start that workspace afresh.
 
 ## Verification
 
-- 324 workspace tests, line coverage 95.17%; the #29 property test was also run with 20,000 cases.
+- 331 workspace tests, line coverage 95.11%; the #29 property test was also run with 20,000 cases.
 - `cargo clippy -D warnings`, `cargo doc -D warnings`, REUSE 3.3, gitleaks.
 - Exact-commit CI on the merge commit; release assets checked against `SHA256SUMS` and build
   attestations.

@@ -20,6 +20,12 @@ Fixes #28, #29 and #30. Release notes:
   shifted the pairing; redacted key names hid later sensitive keys). So later text on the same
   line is hidden with the value, JSON keys and later CLI flags included. Pinned by a corpus of
   every reported shape and a property test over random code shapes.
+- Redaction (#29): a line that is one complete JSON object or array, such as minified API
+  output, is redacted structurally by a strict RFC 8259 scanner. The value of a sensitive key, of
+  any type, becomes `"[REDACTED:CONFIG_SECRET]"`. Every other string is redacted on its own, with
+  its key as context. Formatting and key order are kept, and the edited line must still parse.
+  Anything that is not valid JSON, or nests deeper than 128 levels, keeps the first-quote rule. A
+  7 KB minified API list with `"token"` first now keeps over 99% of its text instead of 0.5%.
 
 ### Fixed
 

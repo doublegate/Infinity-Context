@@ -99,6 +99,16 @@ impl SecretRedactor {
                     block = None;
                 }
             }
+            // A line that is a complete JSON object or array is redacted structurally (v1.3.1,
+            // #29): the values of sensitive keys are hidden and everything else is kept, instead
+            // of hiding the rest of the line from the first quote.
+            if pending_value.is_none()
+                && let Some(json) = Self::redact_json_line(body)
+            {
+                out.push_str(&json);
+                out.push_str(ending);
+                continue;
+            }
             // Private-key normalization must also pass through pending scalar processing.
             // Otherwise a key banner after a scalar prefix hides that prefix only on the
             // second redaction pass. Keep block state so subsequent key lines stay hidden.
@@ -145,6 +155,42 @@ impl SecretRedactor {
             out.push_str(ending);
         }
         out
+    }
+
+    /// Structural redaction of a line that is exactly one JSON object or array (surrounding
+    /// whitespace allowed), per RFC 8259 (v1.3.1, #29). The value of a sensitive key, of any type,
+    /// becomes `"[REDACTED:CONFIG_SECRET]"`; every other string (keys included) is redacted on its
+    /// own with [`Self::redact`]. Edits are made in place, so formatting and key order are kept.
+    /// Returns `None` when the line is not such JSON, nests deeper than [`MAX_JSON_DEPTH`], or
+    /// an edit would leave invalid JSON. The caller then applies the line rules (fail closed).
+    fn redact_json_line(line: &str) -> Option<String> {
+        let start = line.len() - line.trim_start().len();
+        if !line[start..].starts_with(['{', '[']) {
+            return None;
+        }
+        let mut scan = JsonScan {
+            s: line.as_bytes(),
+            edits: Vec::new(),
+        };
+        let end = scan.value(start, false, 0, None)?;
+        if !line[end..].trim().is_empty() {
+            return None;
+        }
+        if scan.edits.is_empty() {
+            return Some(line.to_owned());
+        }
+        let mut out = line.to_owned();
+        for (a, b, text) in scan.edits.into_iter().rev() {
+            out.replace_range(a..b, &text);
+        }
+        // The edited line must still be one valid JSON value.
+        let mut check = JsonScan {
+            s: out.as_bytes(),
+            edits: Vec::new(),
+        };
+        let check_start = out.len() - out.trim_start().len();
+        let check_end = check.value(check_start, true, 0, None)?;
+        out[check_end..].trim().is_empty().then_some(out)
     }
 
     /// Redacts BEGIN..END private-key spans that start and end on the same line (e.g. a key
@@ -1911,6 +1957,223 @@ fn split_line_ending(segment: &str) -> (&str, &str) {
         (body, "\n")
     } else {
         (segment, "")
+    }
+}
+
+/// Deepest JSON nesting the structural redactor accepts; deeper lines use the line rules.
+const MAX_JSON_DEPTH: usize = 128;
+
+/// A strict RFC 8259 scanner over one line that records redaction edits as byte ranges.
+struct JsonScan<'a> {
+    s: &'a [u8],
+    edits: Vec<(usize, usize, String)>,
+}
+
+impl JsonScan<'_> {
+    fn ws(&self, mut i: usize) -> usize {
+        while i < self.s.len() && matches!(self.s[i], b' ' | b'\t' | b'\r' | b'\n') {
+            i += 1;
+        }
+        i
+    }
+
+    /// Parses one value at `i` and returns its end. In `check` mode nothing is recorded. `key` is
+    /// the member name the value belongs to (for array elements, the array's), which context
+    /// rules such as hex assignment values depend on.
+    fn value(&mut self, i: usize, check: bool, depth: usize, key: Option<&str>) -> Option<usize> {
+        if depth > MAX_JSON_DEPTH {
+            return None;
+        }
+        let i = self.ws(i);
+        match *self.s.get(i)? {
+            b'{' => self.object(i, check, depth),
+            b'[' => self.array(i, check, depth, key),
+            b'"' => {
+                let end = self.string(i)?;
+                if !check {
+                    self.redact_string(i, end, key);
+                }
+                Some(end)
+            }
+            b't' => self.literal(i, b"true"),
+            b'f' => self.literal(i, b"false"),
+            b'n' => self.literal(i, b"null"),
+            _ => self.number(i),
+        }
+    }
+
+    fn literal(&self, i: usize, word: &[u8]) -> Option<usize> {
+        self.s
+            .get(i..i + word.len())
+            .filter(|w| *w == word)
+            .map(|_| i + word.len())
+    }
+
+    fn number(&self, mut i: usize) -> Option<usize> {
+        let digits = |s: &[u8], mut j: usize| {
+            let from = j;
+            while j < s.len() && s[j].is_ascii_digit() {
+                j += 1;
+            }
+            (j > from).then_some(j)
+        };
+        if self.s.get(i) == Some(&b'-') {
+            i += 1;
+        }
+        i = match self.s.get(i) {
+            Some(b'0') => i + 1,
+            Some(b'1'..=b'9') => digits(self.s, i)?,
+            _ => return None,
+        };
+        if self.s.get(i) == Some(&b'.') {
+            i = digits(self.s, i + 1)?;
+        }
+        if matches!(self.s.get(i), Some(b'e' | b'E')) {
+            i += 1;
+            if matches!(self.s.get(i), Some(b'+' | b'-')) {
+                i += 1;
+            }
+            i = digits(self.s, i)?;
+        }
+        Some(i)
+    }
+
+    /// The end (one past the closing quote) of the string starting at `i`.
+    fn string(&self, i: usize) -> Option<usize> {
+        let mut j = i + 1;
+        while j < self.s.len() {
+            match self.s[j] {
+                b'"' => return Some(j + 1),
+                b'\\' => match *self.s.get(j + 1)? {
+                    b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => j += 2,
+                    b'u' => {
+                        let hex = self.s.get(j + 2..j + 6)?;
+                        if !hex.iter().all(u8::is_ascii_hexdigit) {
+                            return None;
+                        }
+                        j += 6;
+                    }
+                    _ => return None,
+                },
+                c if c < 0x20 => return None,
+                _ => j += 1,
+            }
+        }
+        None
+    }
+
+    /// The decoded text of the string at `i..end`; `None` for an unpaired surrogate escape.
+    fn decode(&self, i: usize, end: usize) -> Option<String> {
+        let raw = std::str::from_utf8(&self.s[i + 1..end - 1]).ok()?;
+        let mut out = String::with_capacity(raw.len());
+        let mut chars = raw.chars();
+        while let Some(c) = chars.next() {
+            if c != '\\' {
+                out.push(c);
+                continue;
+            }
+            match chars.next()? {
+                'n' => out.push('\n'),
+                't' => out.push('\t'),
+                'r' => out.push('\r'),
+                'b' => out.push('\u{8}'),
+                'f' => out.push('\u{c}'),
+                'u' => {
+                    let hex: String = chars.by_ref().take(4).collect();
+                    out.push(char::from_u32(u32::from_str_radix(&hex, 16).ok()?)?);
+                }
+                other => out.push(other),
+            }
+        }
+        Some(out)
+    }
+
+    /// Redacts the contents of an ordinary string value or key in place. A value is redacted as
+    /// `key: value`, so the same context rules apply as on a plain line (a hex string assigned to
+    /// a key is hidden; the same hex in a CSV cell is a public digest). If the key prefix does not
+    /// come back unchanged the whole content is hidden (fail closed).
+    fn redact_string(&mut self, i: usize, end: usize, key: Option<&str>) {
+        let Ok(raw) = std::str::from_utf8(&self.s[i + 1..end - 1]) else {
+            return;
+        };
+        let clean = match key {
+            None => SecretRedactor::redact(raw),
+            Some(k) => {
+                let ident: String = k
+                    .chars()
+                    .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                let prefix = format!("{}: ", if ident.is_empty() { "value" } else { &ident });
+                let redacted = SecretRedactor::redact(&format!("{prefix}{raw}"));
+                match redacted.strip_prefix(&prefix) {
+                    Some(v) => v.to_owned(),
+                    None => "[REDACTED:SECRET]".to_owned(),
+                }
+            }
+        };
+        if clean != raw {
+            self.edits.push((i + 1, end - 1, clean));
+        }
+    }
+
+    fn object(&mut self, i: usize, check: bool, depth: usize) -> Option<usize> {
+        let mut j = self.ws(i + 1);
+        if self.s.get(j) == Some(&b'}') {
+            return Some(j + 1);
+        }
+        loop {
+            if self.s.get(j) != Some(&b'"') {
+                return None;
+            }
+            let key_end = self.string(j)?;
+            // An undecodable key is treated as sensitive (fail closed).
+            let sensitive = self
+                .decode(j, key_end)
+                .is_none_or(|k| SecretRedactor::is_sensitive_key_name(&k));
+            let key_text = self.decode(j, key_end);
+            if !check && !sensitive {
+                self.redact_string(j, key_end, None);
+            }
+            j = self.ws(key_end);
+            if self.s.get(j) != Some(&b':') {
+                return None;
+            }
+            let value_start = self.ws(j + 1);
+            let value_end = self.value(
+                value_start,
+                check || sensitive,
+                depth + 1,
+                key_text.as_deref(),
+            )?;
+            if sensitive && !check {
+                const MARKER: &str = "\"[REDACTED:CONFIG_SECRET]\"";
+                if &self.s[value_start..value_end] != MARKER.as_bytes() {
+                    self.edits.push((value_start, value_end, MARKER.to_owned()));
+                }
+            }
+            j = self.ws(value_end);
+            match *self.s.get(j)? {
+                b',' => j = self.ws(j + 1),
+                b'}' => return Some(j + 1),
+                _ => return None,
+            }
+        }
+    }
+
+    fn array(&mut self, i: usize, check: bool, depth: usize, key: Option<&str>) -> Option<usize> {
+        let mut j = self.ws(i + 1);
+        if self.s.get(j) == Some(&b']') {
+            return Some(j + 1);
+        }
+        loop {
+            let end = self.value(j, check, depth + 1, key)?;
+            j = self.ws(end);
+            match *self.s.get(j)? {
+                b',' => j = self.ws(j + 1),
+                b']' => return Some(j + 1),
+                _ => return None,
+            }
+        }
     }
 }
 
