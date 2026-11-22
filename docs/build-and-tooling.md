@@ -67,6 +67,28 @@ cargo +nightly fuzz run ahtl_stream    # also: hdc_snapshot, mcp_jsonrpc, redact
 | `cla.yml`, `antigravity-review.yml` | Contributor-agreement check and PR review automation |
 | `release.yml` | On a `vX.Y.Z` tag push (or a manual run naming an existing tag): requires ancestry on `main` and successful required CI/REUSE jobs for the exact tagged SHA in trusted push runs. Missing, failed, cancelled or incomplete checks block release; ancestry alone is insufficient. It checks manifest/CHANGELOG agreement, tests the immutable SHA, generates third-party notices, builds baseline and x86-64-v3 Linux binaries for static musl and glibc 2.35+ (Ubuntu 22.04), verifies linkage and isolated smoke tests, then packages licenses/notices and provenance. The tag and checks are revalidated before publication. New releases are drafts; existing files are never replaced and checksums are only extended. Policy fixtures live in `.github/scripts/test-release-ci-gate.py`. |
 
+**Selective runs on pull requests.** A `changes` job in `ci.yml` diffs the pull request and gates
+the other jobs:
+
+| Change touches | Jobs that run |
+| :--- | :--- |
+| `crates/`, `fuzz/`, `Cargo.toml`/`Cargo.lock`, `rust-toolchain.toml`, `.cargo/` | main job (all Rust steps), coverage |
+| any Rust input above, a `Cargo.toml`, `Cargo.lock`, `deny.toml`, `.github/about.*` | `deny` |
+| `scripts/`, `.github/scripts/`, `antigravity-review.yml`, `cla.yml`, `release.yml` | main job (self-tests only, no Rust toolchain) |
+| anything, documentation included | secret scan, REUSE |
+| `.github/workflows/ci.yml` | everything |
+
+- **Jobs are skipped with a job-level `if`,** never a workflow `paths` filter. A skipped job counts
+  as passing for required status checks, so the check names listed in the repository ruleset
+  still report on every pull request.
+- **Pushes to `main` and manual runs always execute every job.** The release gate requires every
+  CI job on the tagged commit to conclude `success`, and a skipped job does not.
+- **A weekly scheduled run** executes only `deny`, because new RustSec advisories appear without
+  any change in this repository.
+- **Rust build caches** (`Swatinem/rust-cache`) are saved only from `main`. Pull requests restore
+  them but never write their own, which keeps the repository cache small and the `main` entry
+  warm.
+
 Supply-chain rules (ICX-AUD-040):
 
 - Every GitHub Action is pinned to a full commit SHA, with the release tag as a comment.

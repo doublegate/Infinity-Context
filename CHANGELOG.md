@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Build
+
+- **CI runs only what a pull request needs.** Documentation-only pull requests skip the Rust
+  build, tests, benchmark, coverage and `cargo deny`, while the secret scan and REUSE still run.
+  - Pushes to `main` and manual runs keep the full suite, which the release gate requires.
+  - A weekly scheduled run re-checks advisories.
+  - Rust caches are written only from `main`.
+
 ### Documentation
 
 - **Roadmap for v1.4.0 through v2.0.0.** `to-dos/ROADMAP.md` is rewritten from v1.3.2. Phases 6 to
