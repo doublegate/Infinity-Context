@@ -1968,12 +1968,16 @@ fn json_key_segments(key: &str) -> impl Iterator<Item = &str> {
         .filter(|s| !s.is_empty())
 }
 
-/// Whether a JSON key names a secret: the whole key or any of its segments (`db.password`,
-/// `auth token`, `svc/api_key`), as the line rules classify a key's tail (security review of
-/// PR #31).
+/// Whether a JSON key names a secret: the whole key, any of its segments (`db.password`,
+/// `auth token`, `svc/api_key`) or the segments joined (`api.key`, `api key`), as the line rules
+/// classify a key (security reviews of PR #31).
 fn json_key_is_sensitive(key: &str) -> bool {
+    let segments: Vec<&str> = json_key_segments(key).collect();
     SecretRedactor::is_sensitive_key_name(key)
-        || json_key_segments(key).any(SecretRedactor::is_sensitive_key_name)
+        || segments.iter().any(|s| SecretRedactor::is_sensitive_key_name(s))
+        // Joined forms: `api.key` / `api key` name an API_KEY / APIKEY.
+        || SecretRedactor::is_sensitive_key_name(&segments.join("_"))
+        || SecretRedactor::is_sensitive_key_name(&segments.join(""))
 }
 
 /// Deepest JSON nesting the structural redactor accepts; deeper lines use the line rules.
@@ -2115,10 +2119,10 @@ impl JsonScan<'_> {
         let clean = match key {
             None => SecretRedactor::redact(raw),
             Some(k) => {
-                // The last segment of a separated key (`db.port` -> `port`), as the line rules
-                // see it.
-                let ident = json_key_segments(k).last().unwrap_or("value");
-                let prefix = format!("{ident}: ");
+                // A separated key joined with `_` (`api.key` -> `api_key`), as the line rules
+                // would see it written as an identifier.
+                let ident = json_key_segments(k).collect::<Vec<_>>().join("_");
+                let prefix = format!("{}: ", if ident.is_empty() { "value" } else { &ident });
                 let redacted = SecretRedactor::redact(&format!("{prefix}{raw}"));
                 match redacted.strip_prefix(&prefix) {
                     Some(v) => v.to_owned(),

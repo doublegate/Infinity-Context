@@ -168,6 +168,9 @@ fn separated_keys_and_key_block_banners() {
         r#"{"auth token":"aaaa"}"#,
         r#"{"svc/api_key":"aaaa"}"#,
         r#"{"x-api-key":"aaaa"}"#,
+        r#"{"api.key":"aaaa"}"#,
+        r#"{"api key":"aaaa"}"#,
+        r#"{"client.secret":"aaaa"}"#,
     ] {
         let clean = once(line);
         assert!(!clean.contains("aaaa"), "{line} -> {clean}");
