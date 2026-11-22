@@ -63,5 +63,18 @@ fn worktrees_resolve_to_the_main_repository_and_forgeries_do_not() {
     std::fs::create_dir_all(&junk).unwrap();
     std::fs::write(junk.join(".git"), "not a gitdir line\n").unwrap();
     assert_eq!(project_root(&junk), junk);
+
+    // A relative back-link (`git worktree add --relative-paths`) resolves against the gitdir.
+    let back = main.join(".git/worktrees/wt/gitdir");
+    let absolute = std::fs::read_to_string(&back).unwrap();
+    std::fs::write(&back, "../../../../wt/.git\n").unwrap();
+    assert_eq!(project_root(&wt), main, "relative back-link");
+
+    // A symlinked control file is refused (review of #38; ICX-AUD-018).
+    let copy = base.join("gitdir-copy");
+    std::fs::write(&copy, &absolute).unwrap();
+    std::fs::remove_file(&back).unwrap();
+    std::os::unix::fs::symlink(&copy, &back).unwrap();
+    assert_eq!(project_root(&wt), wt, "symlinked back-link");
     let _ = std::fs::remove_dir_all(&base);
 }

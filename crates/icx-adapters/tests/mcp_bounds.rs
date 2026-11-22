@@ -163,6 +163,8 @@ fn slice_ends_are_clamped_and_grep_replies_are_bounded() {
         json!({"op": "slice", "id": short, "range": [500, 600]}),
     );
     assert!(err, "a start past the end is still an error: {text}");
+    // ...and reports the requested range, not a clamped one (review of #38).
+    assert!(text.contains("500..=600"), "{text}");
     // A short folded branch (a DAG node, not a CAS artifact) clamps too, so the default range
     // `[1, 50]` works on it (review of #38).
     call(&mut mmu, json!({"op": "fold", "q": "begin:clamp"}));
@@ -187,5 +189,11 @@ fn slice_ends_are_clamped_and_grep_replies_are_bounded() {
         text.contains("…[+") && text.contains("more matches omitted"),
         "{}",
         &text[..300]
+    );
+    // A cut reply reports how many matches it shows out of the total.
+    assert!(
+        text.contains("matches=") && text.contains("/100│"),
+        "{}",
+        &text[..200]
     );
 }

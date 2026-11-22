@@ -21,6 +21,8 @@ const GREP_LINE_CHARS: usize = 400;
 const GREP_REPLY_BYTES: usize = 32 * 1024;
 /// Appended to a grep reply cut at `GREP_REPLY_BYTES`.
 const GREP_TRAILER: &str = "\n…[more matches omitted; narrow the pattern or pass `id`]";
+/// Bytes kept for the grep provenance header, which is written after the body is bounded.
+const HEADER_ROOM: usize = 96;
 
 /// Single-tool polymorphic Model Context Protocol (`MCP`) server.
 #[derive(Clone, Debug, Default)]
@@ -447,11 +449,9 @@ impl McpPagerServer {
                         // matched line and the whole reply are bounded (v1.3.2): one minified or
                         // JSON line used to make a reply of hundreds of KB that the client
                         // rejected. The full line stays available through `slice`.
-                        let mut out = format!(
-                            "⟪ICX:PROVENANCE│op=grep│matches={}│trust=untrusted_data⟫",
-                            matches.len()
-                        );
-                        for m in &matches {
+                        let mut body = String::new();
+                        let mut shown = 0usize;
+                        for (n, m) in matches.iter().enumerate() {
                             let line = Self::truncate_chars(&m.line_text, GREP_LINE_CHARS);
                             let entry = format!(
                                 "\n{}#L{}: {}",
@@ -459,14 +459,28 @@ impl McpPagerServer {
                                 m.line_number,
                                 InfinityContextMmu::escape_untrusted_delimiters(&line)
                             );
-                            // The trailer fits inside the budget too.
-                            if out.len() + entry.len() + GREP_TRAILER.len() > GREP_REPLY_BYTES {
-                                out.push_str(GREP_TRAILER);
+                            // Room for the trailer is kept only while more matches follow.
+                            let more = n + 1 < matches.len();
+                            let reserve = if more { GREP_TRAILER.len() } else { 0 };
+                            if HEADER_ROOM + body.len() + entry.len() + reserve > GREP_REPLY_BYTES {
+                                body.push_str(GREP_TRAILER);
                                 break;
                             }
-                            out.push_str(&entry);
+                            body.push_str(&entry);
+                            shown += 1;
                         }
-                        (out, false)
+                        // `matches=<shown>/<total>` when the reply was cut (review of #38).
+                        let count = if shown == matches.len() {
+                            shown.to_string()
+                        } else {
+                            format!("{shown}/{}", matches.len())
+                        };
+                        (
+                            format!(
+                                "⟪ICX:PROVENANCE│op=grep│matches={count}│trust=untrusted_data⟫{body}"
+                            ),
+                            false,
+                        )
                     }
                     Err(e) => (Self::format_error(&e), true),
                 }

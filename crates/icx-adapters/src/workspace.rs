@@ -135,8 +135,9 @@ fn worktree_main_root(root: &Path) -> Option<PathBuf> {
     if !std::fs::symlink_metadata(&dot_git).ok()?.is_file() {
         return None;
     }
+    // `symlink_metadata`: a symlinked control file is refused, as for `.git` (ICX-AUD-018).
     let read_small = |p: &Path| -> Option<String> {
-        let meta = std::fs::metadata(p).ok()?;
+        let meta = std::fs::symlink_metadata(p).ok()?;
         if !meta.is_file() || meta.len() > 4096 {
             return None;
         }
@@ -185,7 +186,7 @@ fn proc_info(pid: u32) -> Option<(u32, u64, String)> {
 const LAUNCHERS: &[&str] = &[
     "sh", "bash", "dash", "zsh", "fish", "ksh", "busybox", "env", "timeout", "nice", "nohup",
     "setsid", "stdbuf", "flock", "icx-hook", "bwrap", "unshare", "firejail", "direnv", "mise",
-    "asdf",
+    "asdf", "npx", "uvx", "pnpm", "bunx",
 ];
 
 /// The agent process this `icx` runs under, as `(pid, start time)`: the nearest ancestor that is

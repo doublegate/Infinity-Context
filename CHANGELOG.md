@@ -26,10 +26,11 @@ and several redactor over-redactions seen in the field are gone.
   Accepted only when git's own back-link (`<main>/.git/worktrees/<name>/gitdir`) points at the
   worktree, so a planted `.git` file cannot redirect a project; submodules are unchanged.
 - **MCP server on the wrong workspace (#34).** `icx hook` records the workspace it used for its
-  ancestor processes in `$XDG_RUNTIME_DIR/icx/agents/` (`0700`, files `0600`, named by PID and
-  process start time, so a reused PID never matches). `icx mcp-serve` resolves its workspace per
-  request from its nearest recorded ancestor; only a workspace under `<state>/workspaces/` is
-  accepted and trust checks still apply. An explicit `--dir`/`ICX_DIR` pins the workspace, and
+  agent (the nearest ancestor process that is not a shell or launcher) in
+  `$XDG_RUNTIME_DIR/icx/agents/` (`0700`, files `0600`, named by PID and process start time, so a
+  reused PID never matches; records of exited agents are pruned). `icx mcp-serve` resolves its
+  workspace per request from its own agent's record; only a private record naming a workspace
+  under `<state>/workspaces/` is accepted, and trust checks still apply. An explicit `--dir`/`ICX_DIR` pins the workspace, and
   `ICX_MCP_FOLLOW_HOOKS=0` disables following. A "not found" error now names the workspace it
   searched.
 - **MCP results stored as one JSON line (#37).** A result made of `text` content blocks is stored

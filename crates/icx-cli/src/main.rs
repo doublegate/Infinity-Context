@@ -220,7 +220,7 @@ Subcommands:",
       carry the install token (base URL http://HOST:PORT/t/<token> or header x-icx-token)
   proxy-transform [--provider <anthropic|openai|gemini>] [--dir <PATH>]
       Transform an outbound Anthropic (`/v1/messages`), OpenAI (`/v1/chat/completions`, `/v1/responses`), or Gemini (`/v1beta/models/*`) JSON request
-  encode-ahtl <FILE> [--dir <PATH>]
+  encode-ahtl <FILE> [--dir <PATH>] [--profile <a|b>]
       Compress a source file, diff, or build log into an AHTL Holographic Packet + BLAKE3 handle
   decode-ahtl <AHTL_STRING>
       Parse and inspect an AHTL Holographic Packet's clauses and Braille-256 sketch

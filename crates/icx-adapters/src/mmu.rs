@@ -1044,23 +1044,34 @@ impl InfinityContextMmu {
         end_line: usize,
     ) -> Result<String, IcxError> {
         // An end past the last line is clamped (v1.3.2), for MCP `slice` and `icx deref --lines`
-        // alike; a start past the end is still an error.
-        let end_line = self
+        // alike. A start past the end is still an error that reports the requested range.
+        let clamp = |total: usize| {
+            if (1..=total).contains(&start_line) {
+                end_line.min(total)
+            } else {
+                end_line
+            }
+        };
+        let end = self
             .cas
             .get_meta(id)
-            .map_or(end_line, |m| end_line.min(m.total_lines.max(start_line)));
-        match self.cas.deref_lines(id, start_line, end_line) {
+            .map_or(end_line, |m| clamp(m.total_lines));
+        match self.cas.deref_lines(id, start_line, end) {
             Ok(text) => Ok(text),
             Err(IcxError::ArtifactNotFound(_)) => {
-                // DAG nodes (turns, folds, epochs) clamp the same way (review of #38).
-                match self.dag.deref_node_lines(id, start_line, end_line) {
-                    Err(IcxError::InvalidLineRange { total, .. })
-                        if start_line >= 1 && start_line <= total && end_line > total =>
-                    {
-                        self.dag.deref_node_lines(id, start_line, total)
-                    }
-                    other => other,
+                // DAG nodes (turns, folds, epochs): one verified reconstruction, sliced here.
+                let full = self.dag.deref_node_text(id)?;
+                let lines: Vec<&str> = full.lines().collect();
+                let total = lines.len();
+                let end = clamp(total);
+                if start_line == 0 || start_line > end || end > total {
+                    return Err(IcxError::InvalidLineRange {
+                        start: start_line,
+                        end: end_line,
+                        total,
+                    });
                 }
+                Ok(lines[start_line - 1..end].join("\n"))
             }
             Err(e) => Err(e),
         }

@@ -16,8 +16,9 @@ existed; it was stored in a different workspace from the one the MCP server read
   project.
 - **Sessions that change directory (#34).** The MCP server chose its workspace once, from the
   directory it was launched in, while hooks follow the agent's current directory. Each hook now
-  records the workspace it used for its ancestor processes (in `$XDG_RUNTIME_DIR/icx/agents/`,
-  owner-only, named by PID and process start time), and `icx mcp-serve` uses the workspace its own
+  records the workspace it used for its agent process, the nearest ancestor that is not a shell or
+  launcher (in `$XDG_RUNTIME_DIR/icx/agents/`, owner-only, named by PID and process start time),
+  and `icx mcp-serve` uses the workspace its own
   agent's hooks recorded. Only workspaces under icx's state directory are accepted, and the usual
   trust checks still run. `--dir`/`ICX_DIR` pin the workspace; `ICX_MCP_FOLLOW_HOOKS=0` turns
   following off. A "not found" error names the workspace it searched.
