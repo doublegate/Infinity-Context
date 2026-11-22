@@ -40,7 +40,7 @@ contract; no live paid-provider acceptance is claimed.
 
 ## 1. Executive Architectural Overview & Memory Tier Matrix
 
-**Infinity-Context (`icx`)** is a cross-agent Virtual Context Memory Management Unit (MMU) for **Claude Code**, **OpenAI Codex CLI**, **Google Antigravity CLI (`agy`)**, **Hermes Agent**, and generic Model Context Protocol (`MCP`) clients.
+**Infinity-Context (`icx`)** is a cross-agent Virtual Context Memory Management Unit (MMU) for **Claude Code**, **OpenAI Codex CLI**, **Google Antigravity CLI (`agy`)**, **Hermes Agent**, **Meta Muse Code** (v1.3.0), and generic Model Context Protocol (`MCP`) clients.
 
 Workstations and CI/CD environments can deploy `icx` in two architectures:
 
@@ -164,7 +164,7 @@ cost on your workspace; the historical write-behind timings in §6.1 do not appl
 icx daemon --idle-exit 900 &
 ```
 
-- `icx daemon [--dir <PATH>] [--idle-exit <SECS>]` keeps the workspace in memory and serves hooks on a private Unix socket `ws-<hash>.sock` in `$XDG_RUNTIME_DIR/icx` (directory mode `0700`). Connections from other uids are rejected (`SO_PEERCRED`). Each dispatched request is saved under the workspace lock before a success response is sent. SQLite WAL uses `synchronous=FULL`; save failure produces a failed response and daemon error exit, rather than losing an acknowledged write-behind queue.
+- `icx daemon [--dir <PATH>] [--idle-exit <SECS>]` keeps the workspace in memory and serves hooks on a private Unix socket `ws-<hash>.sock` in `$XDG_RUNTIME_DIR/icx` (directory mode `0700`). Connections from other uids are rejected (`SO_PEERCRED`). Each dispatched request is saved under the workspace lock before a success response is sent. SQLite WAL uses `synchronous=FULL`; a save failure produces a failed response (never an acknowledgement) and the unsaved state is discarded; the daemon keeps serving and exits only after 5 consecutive save failures (v1.2.2).
 - `icx hook` uses a running daemon automatically and falls back to in-process handling otherwise.
 - `ICX_NO_DAEMON=1` disables the daemon fast path. `ICX_DAEMON_AUTOSTART=1` makes the first hook spawn a daemon in the background (`--idle-exit 900`).
 - Socket paths longer than the 103-byte `sun_path` limit are rejected with an error; set `XDG_RUNTIME_DIR` to a shorter directory if that happens.
@@ -381,6 +381,11 @@ The documented events are `SessionStart`, `PreToolUse`, `PostToolUse`, `PreInvoc
 
 #### `~/.gemini/config/hooks.json` (or `.agents/hooks.json`)
 
+In the global `~/.gemini/config/hooks.json`, agy runs hook commands from `~/.gemini/config`, not
+from the project, so point each `command` at a wrapper that changes to the payload's
+`workspacePaths[0]` (falling back to `cwd`) and then runs `icx hook "$@"`; the plain commands
+below are correct as written only in a project's `.agents/hooks.json`.
+
 ```json
 {
   "infinity-context": {
@@ -465,7 +470,44 @@ A shim should fail open: if `icx` exits non-zero or prints nothing, return the m
 
 ---
 
-### 2.6 Generic MCP Harnesses
+### 2.6 Meta Muse Code Configuration (v1.3.0)
+
+Muse Code runs Claude-Code-style command hooks from `~/.config/muse/settings.json` (keep
+`"schema_version": 1`; Muse refuses to start without it and rejects unknown event names). Hooks
+run in the project directory with your environment, so icx finds the project workspace from the
+working directory. Muse cannot replace tool output, so icx captures it and returns recall and
+recent activity through `additionalContext` (see
+[`agent-adapters-and-interception.md`](agent-adapters-and-interception.md) §6).
+
+Merge these entries into the file's `hooks` object (one group per event, next to any existing
+groups such as ai-memory's):
+
+```json
+{
+  "schema_version": 1,
+  "hooks": {
+    "SessionStart":       [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent muse --event SessionStart", "timeout": 10 }] }],
+    "UserPromptSubmit":   [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent muse --event UserPromptSubmit", "timeout": 10 }] }],
+    "PostToolUse":        [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent muse --event PostToolUse", "timeout": 10 }] }],
+    "PostToolUseFailure": [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent muse --event PostToolUseFailure", "timeout": 10 }] }],
+    "SubagentStart":      [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent muse --event SubagentStart", "timeout": 10 }] }],
+    "SubagentStop":       [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent muse --event SubagentStop", "timeout": 10 }] }],
+    "PreCompact":         [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent muse --event PreCompact", "timeout": 10 }] }],
+    "PostCompact":        [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent muse --event PostCompact", "timeout": 10 }] }],
+    "SessionEnd":         [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent muse --event SessionEnd", "timeout": 10 }] }]
+  }
+}
+```
+
+Register the MCP pager with `muse mcp add icx --user -- icx mcp-serve` (add `-e
+ICX_DAEMON_AUTOSTART=1` to share the resident daemon). Start a new Muse session to load the hooks.
+
+The `muse` command is a launcher that updates the real binary hourly by default
+(`MUSE_UPDATE_INTERVAL_SECONDS`); a later Muse version can change its hook contract, so re-run a
+short `muse exec` after an update and check `icx status` in that project. Upgrade every agent to
+v1.3.0 before wiring Muse: v1.2.x cannot read a workspace that recorded a Muse event.
+
+### 2.7 Generic MCP Harnesses
 
 Any MCP client can connect to the single-tool `icx` stdio server (`icx mcp-serve`) and, optionally, the wire proxy through `ANTHROPIC_BASE_URL` or `OPENAI_BASE_URL` (§2.1.1).
 
@@ -558,8 +600,8 @@ The resulting `mcpServers` entries in `~/.claude.json`:
     },
     "ai-memory": {
       "type": "stdio",
-      "command": "$HOME/.local/lib/ai-memory/ai-memory",
-      "args": ["mcp-bridge"]
+      "command": "/home/<user>/.local/lib/ai-memory/ai-memory",
+      "args": ["mcp-bridge", "--server-url", "<ai-memory-server-url>"]
     }
   }
 }
@@ -845,7 +887,7 @@ that cannot hold it. The persisted policy survives restart and smaller-model swi
 ### 6.1 Historical Measured Numbers (`v1.1.0`)
 
 These historical fixtures do not characterize v1.2.2's durable daemon, hybrid retrieval or
-bounded selection. Current candidate measurements and unresolved SLO failures are recorded in
+bounded selection. Current measurements and unresolved SLO failures are recorded in
 [release evidence](releases/v1.2.0/evidence/) and [performance](performance.md); do not infer a
 current latency guarantee from the older table.
 
@@ -1146,14 +1188,14 @@ Every command that takes `--dir` resolves the workspace as `--dir` > `ICX_DIR` >
 | `icx trust --dir <PATH>` | Adopts an existing workspace you own, such as a v1.0.x `.icx/`: sets mode `0700`, writes `.gitignore` (`*`), writes the `OWNER` seal, and reseals the store (migrating JSON files if present). Warns if the directory is inside a git work tree. Prints `⟪ICX:TRUST│dir=<PATH>│status=SEALED⟫`. |
 | `icx context-budget [--context-tokens <N>] [--completion-reserve <N>] [--external-reserve <N>] [--dir <PATH>]` | Inspects or persists the initialized/trusted workspace's conservative managed-window policy (§5.1.1). Invalid or overflowing reservations and insufficient pinned-head allowance are refused. |
 | `icx daemon [--dir <PATH>] [--idle-exit <SECS>]` | Keeps the workspace resident and serves hooks over a private Unix socket (§2.1, Step 3). |
-| `icx doctor [--dir <PATH>]` | Probes local agent binaries and configs (Claude Code, Codex, agy, Hermes, `curl`, `/dev/shm` writability) and verifies the workspace store and Merkle-DAG. |
+| `icx doctor [--dir <PATH>]` | Probes local agent binaries and configs (Claude Code, Codex, agy, Hermes, Muse, `curl`, `/dev/shm` writability) and verifies the workspace store and Merkle-DAG. |
 | `icx status [--dir <PATH>]` | Prints `⟪ICX:STATUS│cas_artifacts=<N>│redacted_artifacts=<N>│unique_chunks=<N>│dag_nodes=<N>│sealed_epochs=<N>│hdc_entries=<N>│graph_edges=<N>│shm_seq=<N>⟫`. |
 | `icx benchmark [--json]` | Runs the synthetic in-process benchmark suite with strict SLO exits; JSON includes actual 1k/10k scan measurements and compiled build/fixture provenance. |
 | `icx deref <HANDLE> [--lines <START:END>] [--dir <PATH>] [--raw]` | Returns the stored bytes, or an inclusive 1-based line slice, for a 64-bit (`#icx:<16-hex>`) or 48-bit (`#icx:<12-hex>`) handle. By default the output starts with `⟪ICX:PROVENANCE│id=<HANDLE>│trust=untrusted_data⟫` and the body is delimiter-escaped; `--raw` prints the exact stored bytes. |
 | `icx encode-ahtl <FILE> [--dir <PATH>] [--profile <a\|b>]` | Redacts secrets, ingests `<FILE>` into the workspace, updates the indices, and prints a Profile B packet (default) or a Profile A 6-section packet (`--profile a`). |
 | `icx decode-ahtl '<AHTL_PACKET>'` | Parses a Profile A or Profile B packet and prints its fields and clauses. |
-| `icx hook --agent <claude-code\|codex\|agy\|hermes> --event <EVENT> [--dir <PATH>]` | Reads the agent's hook JSON from stdin (bounded) and writes the response JSON to stdout. Uses the daemon if one is running. Always exits 0; on malformed input or internal errors it prints `{}` (or a non-replacing response) so the agent keeps its original behaviour. |
-| `icx mcp-serve [--dir <PATH>]` | Runs the single-tool MCP pager (`icx`) over stdio (§2.6), loading and persisting the workspace under the lock for each operation. |
+| `icx hook --agent <claude-code\|codex\|agy\|hermes\|muse> --event <EVENT> [--dir <PATH>]` | Reads the agent's hook JSON from stdin (bounded) and writes the response JSON to stdout. Uses the daemon if one is running. Always exits 0; on malformed input or internal errors it prints `{}` (or a non-replacing response) so the agent keeps its original behaviour. |
+| `icx mcp-serve [--dir <PATH>]` | Runs the single-tool MCP pager (`icx`) over stdio (§2.7), loading and persisting the workspace under the lock for each operation. |
 | `icx proxy-transform [--provider <anthropic\|openai\|gemini>] [--dir <PATH>]` | Reads an outbound Anthropic (`/v1/messages`), OpenAI (`/v1/chat/completions`, `/v1/responses`), or Gemini (`/v1beta/models/*`) JSON request from stdin and writes the transformed body to stdout. |
 | `icx proxy [--listen <HOST:PORT>] [--provider <anthropic\|openai\|gemini>] [--upstream <URL>] [--dir <PATH>] [--max-requests <N>] [--allow-remote] [--insecure-no-auth]` | Runs the HTTP/1.1 & SSE reverse proxy (default `127.0.0.1:49380` or `ICX_PROXY_BIND`), forwarding transformed requests to `--upstream` / `ICX_UPSTREAM_URL` or the provider's default upstream, and expanding inline `⟪!icx:deref(...)⟫` directives in responses. Loopback-only and token-authenticated by default (§2.1.1). |
 

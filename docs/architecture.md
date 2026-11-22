@@ -39,7 +39,7 @@
 flowchart TD
     CLI["crates/icx-cli (binary: icx; includes the daemon)"]
     PROXY["crates/icx-proxy (HTTP/1.1 & SSE reverse proxy)"]
-    ADAPT["crates/icx-adapters (MMU, SQLite store, workspace trust, Claude/Codex/agy/Hermes, MCP)"]
+    ADAPT["crates/icx-adapters (MMU, SQLite store, workspace trust, Claude/Codex/agy/Hermes/Muse, MCP)"]
     BUS["crates/icx-bus (telepathy ring: in-process seqlock or file-backed)"]
     STORE["crates/icx-store (bi-temporal graph & PPR)"]
     CODEC["crates/icx-codec (AHTL codec, skeletonizer & redactor)"]
@@ -64,7 +64,7 @@ flowchart TD
 | `icx-codec` | L1 Codec | Secret redaction (`SecretRedactor::redact` for storage, `sanitize` for model-facing text), structural skeletonizer (`StructuralSkeletonizer`), and the **AHTL** encoder/decoder. |
 | `icx-store` | L2 Graph | In-memory **bi-temporal knowledge graph** compiled to CSR, and **HippoRAG-style Personalized PageRank** (`PPR`). Persistence is handled by `icx-adapters`. |
 | `icx-bus` | L2 IPC | `SeqlockTelemetryBus`: a 256-slot ring with an in-process atomic seqlock backend and a file-backed backend (positional I/O, writer mutex plus file lock, optimistic readers). See [docs/wire-protocol-and-shm-bus.md](wire-protocol-and-shm-bus.md). |
-| `icx-adapters` | L3 Harnesses | `InfinityContextMmu`; the SQLite workspace store (`store.rs`) and workspace location/trust policy (`workspace.rs`); hook wire translators for **Claude Code**, **OpenAI Codex**, **Antigravity CLI (`agy`)** and **Hermes Agent** (logic only; Hermes needs a Python `ContextEngine` shim that calls `icx hook --agent hermes`); and the single-tool MCP pager. |
+| `icx-adapters` | L3 Harnesses | `InfinityContextMmu`; the SQLite workspace store (`store.rs`) and workspace location/trust policy (`workspace.rs`); hook wire translators for **Claude Code**, **OpenAI Codex**, **Antigravity CLI (`agy`)**, **Meta Muse Code** (capture and context, v1.3.0) and **Hermes Agent** (logic only; Hermes needs a Python `ContextEngine` shim that calls `icx hook --agent hermes`); and the single-tool MCP pager. |
 | `icx-proxy` | L3 Wire Plane | Local HTTP/1.1 reverse proxy with SSE for Anthropic, OpenAI and Gemini request formats: token authentication, cache-breakpoint placement, forged-marker escaping and streaming deref expansion. Upstream requests are sent with `curl`. |
 | `icx-cli` | L4 Entrypoint | The `icx` binary: `init`, `trust`, `context-budget`, `daemon`, `hook`, `mcp-serve`, `proxy`, `proxy-transform`, `encode-ahtl`, `decode-ahtl`, `deref`, `status`, `doctor`, `benchmark`. |
 

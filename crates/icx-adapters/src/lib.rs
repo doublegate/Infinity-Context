@@ -8,6 +8,7 @@ pub mod codex;
 pub mod hermes;
 pub mod mcp;
 pub mod mmu;
+pub mod muse;
 pub mod store;
 pub mod workspace;
 
@@ -19,6 +20,7 @@ pub use mcp::McpPagerServer;
 pub use mmu::{
     DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES, ICX_AHTL_LEGEND, InfinityContextMmu, IngestResult,
 };
+pub use muse::MuseAdapter;
 
 use icx_core::{AgentKind, IcxError};
 use thiserror::Error;

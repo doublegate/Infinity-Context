@@ -3,7 +3,7 @@
 use icx_adapters::workspace::{self, WorkspaceRoots};
 use icx_adapters::{
     AntigravityAdapter, ClaudeCodeAdapter, CodexAdapter, HermesAdapter, InfinityContextMmu,
-    McpPagerServer,
+    McpPagerServer, MuseAdapter,
 };
 use icx_codec::{AhtlPacket, StructuralSkeletonizer, WirePacket};
 use icx_core::epoch::{CacheEpochController, EpochControllerConfig};
@@ -35,11 +35,39 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
     let tail = if args.len() >= 2 { &args[2..] } else { &[] };
     // A repeated `--dir` is ambiguous; every subcommand rejects it rather than silently using
     // the last one (v1.2.2, issue #24). Hooks still fail open so the agent keeps its behaviour.
-    if tail.iter().filter(|a| a.as_str() == "--dir").count() > 1 {
-        let err = format!("icx {subcmd}: --dir given more than once");
+    // A valueless trailing `--dir` would otherwise fall back to the default workspace (v1.3.0).
+    // A `--dir` followed by another flag (`--dir --raw`) has no value either.
+    // An empty or whitespace value (`--dir "$UNSET"`) would also fall back silently.
+    let dir_missing_value = tail.iter().enumerate().any(|(i, a)| {
+        a == "--dir"
+            && tail
+                .get(i + 1)
+                .is_none_or(|next| next.starts_with('-') || next.trim().is_empty())
+    });
+    // The hook's agent and event (last occurrence, as `execute_hook` parses them), for the
+    // agent's own no-op reply on every `icx hook` fail-open path.
+    let flag_value = |flag: &str| {
+        // The last occurrence that has a value, as `execute_hook` keeps it.
+        tail.windows(2)
+            .rev()
+            .find(|w| w[0] == flag && !w[1].starts_with('-'))
+            .map(|w| w[1].as_str())
+    };
+    let hook_agent = flag_value("--agent").map_or(AgentKind::ClaudeCode, AgentKind::parse_agent);
+    let hook_event = flag_value("--event").unwrap_or("SessionStart");
+    let dir_error = if tail.iter().filter(|a| a.as_str() == "--dir").count() > 1 {
+        Some("--dir given more than once")
+    } else if dir_missing_value {
+        Some("--dir requires a value")
+    } else {
+        None
+    };
+    if let Some(reason) = dir_error {
+        let err = format!("icx {subcmd}: {reason}");
         if subcmd == "hook" {
+            // Fail open with the agent's own no-op reply.
             eprintln!("icx hook error: {err}");
-            println!("{{}}");
+            println!("{}", non_replacing_hook_response(hook_agent, hook_event));
             return Ok(());
         }
         return Err(err);
@@ -59,7 +87,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
                     // Fail open: the agent keeps its original output; nothing is buffered past
                     // the bound (ICX-AUD-014).
                     eprintln!("icx hook error: {e}");
-                    println!("{{}}");
+                    println!("{}", non_replacing_hook_response(hook_agent, hook_event));
                     return Ok(());
                 }
             };
@@ -67,7 +95,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
                 Ok(json_out) => println!("{json_out}"),
                 Err(e) => {
                     eprintln!("icx hook error: {e}");
-                    println!("{{}}");
+                    println!("{}", non_replacing_hook_response(hook_agent, hook_event));
                 }
             }
             Ok(())
@@ -182,7 +210,7 @@ Subcommands:",
   deref <HANDLE> [--lines <START:END>] [--dir <PATH>] [--raw]
       Dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle; output is framed as
       untrusted data and delimiter-escaped unless --raw (byte-exact) is given
-  hook --agent <claude-code|codex|agy|hermes> --event <EVENT> [--dir <PATH>]
+  hook --agent <claude-code|codex|agy|hermes|muse> --event <EVENT> [--dir <PATH>]
       Execute synchronous <500us lifecycle hook (reads JSON from stdin, writes JSON to stdout)
   mcp-serve [--dir <PATH>]
       Run the Single-Tool Polymorphic MCP Virtual Pager (`icx`) over stdio (JSON-RPC 2.0)
@@ -199,7 +227,7 @@ Subcommands:",
   status [--dir <PATH>]
       Print Infinity-Context MMU status and schema overview
   doctor [--dir <PATH>]
-      Inspect local agent installations (claude, codex, agy, hermes), /dev/shm, and workspace integrity
+      Inspect local agent installations (claude, codex, agy, hermes, muse), /dev/shm, and workspace integrity
   benchmark [--json]
       Execute the end-to-end 9-SLO benchmark suite (HDC, Fractal, PPR, AHTL, FastCDC, Seqlock, Hook, NIH)"
     );
@@ -642,13 +670,25 @@ fn dispatch_agent_hook(
         AgentKind::Codex => CodexAdapter::handle_hook(event_str, stdin_buf, mmu),
         AgentKind::AntigravityCli => AntigravityAdapter::handle_hook(event_str, stdin_buf, mmu),
         AgentKind::Hermes => HermesAdapter::handle_hook(event_str, stdin_buf, mmu),
+        AgentKind::Muse => MuseAdapter::handle_hook(event_str, stdin_buf, mmu),
         _ => ClaudeCodeAdapter::handle_hook(event_str, stdin_buf, mmu),
     }
 }
 
-fn non_replacing_hook_response(agent: AgentKind) -> String {
+fn non_replacing_hook_response(agent: AgentKind, event: &str) -> String {
     match agent {
-        AgentKind::AntigravityCli => r#"{"injectSteps":[],"terminationBehavior":""}"#.to_owned(),
+        // agy's no-op depends on the event (AntigravityAdapter's replies).
+        // Event names are matched ignoring case and `-`/`_` (`STOP`, `pre_tool_use`).
+        AgentKind::AntigravityCli => {
+            match event.to_ascii_lowercase().replace(['-', '_'], "").as_str() {
+                "pretooluse" => r#"{"decision":"allow"}"#.to_owned(),
+                "stop" => r#"{"decision":"stop"}"#.to_owned(),
+                "posttooluse" | "sessionend" => "{}".to_owned(),
+                _ => r#"{"injectSteps":[],"terminationBehavior":""}"#.to_owned(),
+            }
+        }
+        // Muse validates hook replies strictly; an empty object is always accepted.
+        AgentKind::Muse => "{}".to_owned(),
         _ => r#"{"continue":true}"#.to_owned(),
     }
 }
@@ -660,11 +700,12 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--agent" if i + 1 < args.len() => {
+            // A following flag is not a value (`--agent --event Stop`), as on the fail-open path.
+            "--agent" if args.get(i + 1).is_some_and(|v| !v.starts_with('-')) => {
                 agent_str = &args[i + 1];
                 i += 2;
             }
-            "--event" if i + 1 < args.len() => {
+            "--event" if args.get(i + 1).is_some_and(|v| !v.starts_with('-')) => {
                 event_str = &args[i + 1];
                 i += 2;
             }
@@ -700,7 +741,7 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
             return if is_session_start {
                 dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)
             } else {
-                Ok(non_replacing_hook_response(agent))
+                Ok(non_replacing_hook_response(agent, event_str))
             };
         };
         if let Err(err) = mmu.load_workspace_dir_unlocked(&ws_dir) {
@@ -712,7 +753,7 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
             return if is_session_start {
                 dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)
             } else {
-                Ok(non_replacing_hook_response(agent))
+                Ok(non_replacing_hook_response(agent, event_str))
             };
         }
         let out = dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)?;
@@ -725,7 +766,7 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
             return if is_session_start {
                 Ok(out)
             } else {
-                Ok(non_replacing_hook_response(agent))
+                Ok(non_replacing_hook_response(agent, event_str))
             };
         }
         drop(lock_guard);
@@ -734,7 +775,7 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
     if is_session_start {
         dispatch_agent_hook(agent, event_str, stdin_buf, &mut mmu)
     } else {
-        Ok(non_replacing_hook_response(agent))
+        Ok(non_replacing_hook_response(agent, event_str))
     }
 }
 
@@ -1275,6 +1316,22 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         (
             "Hermes Agent Source",
             format!("{home}/.hermes/hermes-agent/agent/context_engine.py"),
+            false,
+        ),
+        (
+            "Meta Muse Code (muse)",
+            resolve_bin(".local/bin/muse", "muse"),
+            true,
+        ),
+        (
+            "Muse Settings (hooks)",
+            std::env::var("XDG_CONFIG_HOME")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+                .map_or_else(
+                    || format!("{home}/.config/muse/settings.json"),
+                    |xdg| format!("{xdg}/muse/settings.json"),
+                ),
             false,
         ),
         (
@@ -2655,8 +2712,8 @@ mod tests {
             .is_err()
         );
 
-        // Test hook dispatch for claude-code, codex, agy, hermes, and malformed JSON
-        for agent in ["claude-code", "codex", "agy", "hermes"] {
+        // Test hook dispatch for claude-code, codex, agy, hermes, muse, and malformed JSON
+        for agent in ["claude-code", "codex", "agy", "hermes", "muse"] {
             dispatch_cli_args(
                 &[
                     "icx".into(),
@@ -2895,10 +2952,8 @@ mod tests {
             r#"{"toolName":"bash","toolOutput":"big output"}"#,
         )
         .unwrap();
-        assert_eq!(
-            corrupt_agy_post_tool,
-            r#"{"injectSteps":[],"terminationBehavior":""}"#
-        );
+        // agy's own PostToolUse no-op (the adapter's reply for that event), v1.3.0.
+        assert_eq!(corrupt_agy_post_tool, "{}");
 
         // Test acquire_workspace_lock error when cas_store.lock is a directory
         let lock_dir_ws = tmp_dir.join("bad_lock_ws");

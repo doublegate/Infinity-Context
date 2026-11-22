@@ -41,7 +41,7 @@ the file-backed telepathy ring (`icx-fabric-v1.shm`).
 
 | Boundary | Trust level | Notes |
 | :--- | :--- | :--- |
-| **Agent processes** (Claude Code, Codex, `agy`, Hermes, MCP clients) | Trusted to send well-formed hook JSON; their *content* is untrusted | Hook stdin is written by the agent itself, but it carries tool output and file content the agent read. |
+| **Agent processes** (Claude Code, Codex, `agy`, Hermes, Muse, MCP clients) | Trusted to send well-formed hook JSON; their *content* is untrusted | Hook stdin is written by the agent itself, but it carries tool output and file content the agent read. |
 | **Repository content**, including cloned third-party repositories | Untrusted | A repository can ship files intended to be read by `icx`, including a prepared `.icx/` directory. |
 | **Tool output** (shell commands, file reads, web fetches, logs) | Untrusted | May contain secrets, and may contain text that imitates `icx` packet delimiters (`⟦ ⟧ ⟪ ⟫`) or instructions. |
 | **Network peers** of the proxy | Untrusted | Any process or host that can reach the proxy port. |

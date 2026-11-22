@@ -147,7 +147,7 @@ dependencies = [
 
 [[package]]
 name = "icx-adapters"
-version = "1.2.2"
+version = "1.3.0"
 dependencies = [
  "blake3",
  "icx-bus",
@@ -164,7 +164,7 @@ dependencies = [
 
 [[package]]
 name = "icx-bus"
-version = "1.2.2"
+version = "1.3.0"
 dependencies = [
  "icx-core",
  "rustix",
@@ -174,7 +174,7 @@ dependencies = [
 
 [[package]]
 name = "icx-cli"
-version = "1.2.2"
+version = "1.3.0"
 dependencies = [
  "blake3",
  "icx-adapters",
@@ -192,7 +192,7 @@ dependencies = [
 
 [[package]]
 name = "icx-codec"
-version = "1.2.2"
+version = "1.3.0"
 dependencies = [
  "icx-core",
  "proptest",
@@ -202,7 +202,7 @@ dependencies = [
 
 [[package]]
 name = "icx-core"
-version = "1.2.2"
+version = "1.3.0"
 dependencies = [
  "blake3",
  "serde",
@@ -212,7 +212,7 @@ dependencies = [
 
 [[package]]
 name = "icx-hdc"
-version = "1.2.2"
+version = "1.3.0"
 dependencies = [
  "blake3",
  "icx-core",
@@ -222,7 +222,7 @@ dependencies = [
 
 [[package]]
 name = "icx-proxy"
-version = "1.2.2"
+version = "1.3.0"
 dependencies = [
  "blake3",
  "icx-adapters",
@@ -233,7 +233,7 @@ dependencies = [
 
 [[package]]
 name = "icx-store"
-version = "1.2.2"
+version = "1.3.0"
 dependencies = [
  "icx-core",
  "serde",

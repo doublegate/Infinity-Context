@@ -172,10 +172,45 @@ pub enum AgentKind {
     GeminiCli = 5,
     OpenCode = 6,
     Cursor = 7,
+    /// Meta Muse Code (v1.3.0).
+    Muse = 8,
+    /// Generic MCP clients. An unknown agent name in persisted state is rejected, not mapped
+    /// here: DAG digests hash the original discriminant, so remapping would fail verification
+    /// and a later save would rewrite the node (review of #27).
     GenericMcp = 255,
 }
 
 impl AgentKind {
+    /// Every variant, for exhaustive tests of the `u8` wire representation.
+    pub const ALL: [Self; 9] = [
+        Self::ClaudeCode,
+        Self::Codex,
+        Self::AntigravityCli,
+        Self::Hermes,
+        Self::GeminiCli,
+        Self::OpenCode,
+        Self::Cursor,
+        Self::Muse,
+        Self::GenericMcp,
+    ];
+
+    /// Decodes the `u8` representation used on the telemetry bus; unknown values are
+    /// `GenericMcp`. The single decoder for that representation (PR #27 review: a second,
+    /// hand-maintained table decoded `Muse` as `GenericMcp`).
+    pub const fn from_repr(byte: u8) -> Self {
+        match byte {
+            1 => Self::ClaudeCode,
+            2 => Self::Codex,
+            3 => Self::AntigravityCli,
+            4 => Self::Hermes,
+            5 => Self::GeminiCli,
+            6 => Self::OpenCode,
+            7 => Self::Cursor,
+            8 => Self::Muse,
+            _ => Self::GenericMcp,
+        }
+    }
+
     /// Parses an agent identifier from CLI arguments or hook metadata.
     pub fn parse_agent(s: &str) -> Self {
         match s.trim().to_ascii_lowercase().as_str() {
@@ -186,6 +221,7 @@ impl AgentKind {
             "gemini" | "gemini-cli" => Self::GeminiCli,
             "opencode" | "open-code" => Self::OpenCode,
             "cursor" => Self::Cursor,
+            "muse" | "muse-code" | "meta-muse" => Self::Muse,
             _ => Self::GenericMcp,
         }
     }
@@ -200,6 +236,7 @@ impl AgentKind {
             Self::GeminiCli => "gemini-cli",
             Self::OpenCode => "open-code",
             Self::Cursor => "cursor",
+            Self::Muse => "muse",
             Self::GenericMcp => "mcp",
         }
     }

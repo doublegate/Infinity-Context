@@ -313,16 +313,7 @@ fn unpack_fractal_q15(words: [u64; 4]) -> [i16; 16] {
 
 #[inline]
 fn decode_agent_kind(ag_byte: u8) -> AgentKind {
-    match ag_byte {
-        1 => AgentKind::ClaudeCode,
-        2 => AgentKind::Codex,
-        3 => AgentKind::AntigravityCli,
-        4 => AgentKind::Hermes,
-        5 => AgentKind::GeminiCli,
-        6 => AgentKind::OpenCode,
-        7 => AgentKind::Cursor,
-        _ => AgentKind::GenericMcp,
-    }
+    AgentKind::from_repr(ag_byte)
 }
 
 impl SeqlockTelemetryBus {
