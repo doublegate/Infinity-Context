@@ -104,14 +104,10 @@ impl SecretRedactor {
             // of hiding the rest of the line from the first quote.
             // A line opening a private-key block keeps the key-block handling below.
             if pending_value.is_none()
-                // Every key block on the line must also end on it (typed PEM/PGP banners), so no
-                // block state is owed to the following lines.
-                && KeyBlock::begins(
-                    Self::redact_inline_key_blocks(body)
-                        .as_deref()
-                        .unwrap_or(body),
-                )
-                .is_none()
+                // Every key block on the line must end on it inside one JSON string (typed
+                // PEM/PGP banners, no quote between BEGIN and END), so the structural path sees
+                // the whole block and no block state is owed to the following lines.
+                && key_blocks_within_strings(body)
                 && let Some(json) = Self::redact_json_line(body)
             {
                 out.push_str(&json);
@@ -2015,6 +2011,49 @@ fn json_key_is_sensitive(key: &str) -> bool {
         || SecretRedactor::is_sensitive_key_name(&segments.join(""))
 }
 
+/// True when every PEM/PGP key block on `line` begins and ends on it with no quote between its
+/// banners (so it lies inside one JSON string token), or the line holds none (review of #31).
+fn key_blocks_within_strings(line: &str) -> bool {
+    [KeyBlock::Pem, KeyBlock::Pgp].into_iter().all(|kind| {
+        let mut from = 0;
+        while let Some(rel) = kind.begin_index(&line[from..]) {
+            let start = from + rel;
+            match kind.end_index_after(line, start) {
+                Some(end) if end > start && !line[start..end].contains('"') => from = end,
+                _ => return false,
+            }
+        }
+        true
+    })
+}
+
+/// True when `line` holds at least one digest-length hex token (40+ hex digits) and every such
+/// token sits in a recognised public digest context (`<sha256>  file`, `sha256:<hex>`, ...).
+fn hex_tokens_all_digests(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    let mut found = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        if !bytes[i].is_ascii_hexdigit() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < bytes.len() && bytes[i].is_ascii_alphanumeric() {
+            i += 1;
+        }
+        let token = &line[start..i];
+        let bounded = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
+        if bounded && token.len() >= 40 && token.bytes().all(|b| b.is_ascii_hexdigit()) {
+            if !SecretRedactor::is_digest_context(&line[..start], &line[i..]) {
+                return false;
+            }
+            found = true;
+        }
+    }
+    found
+}
+
 /// Whether `text` holds a quote of any kind: such a value is never exempt from redaction.
 fn has_quote(text: &str) -> bool {
     text.contains(['"', '\'', '`'])
@@ -2208,23 +2247,22 @@ impl JsonScan<'_> {
                 None => "[REDACTED:SECRET]".to_owned(),
             }
         };
-        // The text is redacted as plain text first, so embedded JSON and digest lines
-        // (`<sha256>  file`) keep their own context. A line that is a single bare value is then
-        // redacted again with the key as context (a hex value under a key is hidden, as on a
-        // plain `key: value` line; review of PR #31).
-        let bare = |line: &str| {
-            !line.is_empty() && !line.contains(char::is_whitespace) && !line.starts_with(['{', '['])
-        };
+        // The text is redacted as plain text first; then each line again with the key as
+        // context (a hex value under a key is hidden, as on a plain `key: value` line). The plain
+        // result is kept only for embedded JSON, which has its own keys, and for a line whose
+        // long hex tokens all sit in a public digest context (`<sha256>  file`); review of #31.
+        let keep_plain =
+            |line: &str| line.trim_start().starts_with(['{', '[']) || hex_tokens_all_digests(line);
         let clean = match key {
             None => SecretRedactor::redact(raw),
             // As text first (a line that is just `password:` arms the multi-line value rule).
             Some(k) => SecretRedactor::redact(raw)
                 .split('\n')
                 .map(|line| {
-                    if bare(line) {
-                        with_key(line, k)
-                    } else {
+                    if keep_plain(line) {
                         line.to_owned()
+                    } else {
+                        with_key(line, k)
                     }
                 })
                 .collect::<Vec<_>>()

@@ -46,8 +46,8 @@ full-request bound is claimed.
 | --- | --- | --- |
 | Current release | v1.3.1 (PR #31; v1.3.0 at 02daaaa, v1.2.2 at dafc9b0) | git tags |
 | Audit findings | 19: 1 High/10 Medium/8 Low | `docs/codex/10-findings-register.md` |
-| Workspace tests | 337 pass, 0 fail (2 ignored: long-horizon qualification, daemon child scenario) | `cargo test --workspace`, v1.3.1 |
-| Line coverage | 95.18% at v1.3.1; floor 95% | `cargo llvm-cov` |
+| Workspace tests | 338 pass, 0 fail (2 ignored: long-horizon qualification, daemon child scenario) | `cargo test --workspace`, v1.3.1 |
+| Line coverage | 95.21% at v1.3.1; floor 95% | `cargo llvm-cov` |
 | Benchmark | 10/10 quiet-host runs pass all gates | `docs/performance.md`, evidence `benchmark-native-final-series.json` |
 | Saturated window prefix reuse | 0.94 (was 0.01) | `crates/icx-core/tests/window_eviction_v120.rs` |
 | Frozen retrieval matrix | 27 rows, recall@1/@5 = 100% | synthetic identifiers, not general model recall |

@@ -72,7 +72,7 @@ a workspace, scan its stored artifacts with the v1.3.1 redactor, or start that w
 
 ## Verification
 
-- 337 workspace tests, line coverage 95.18%; the #29 property test was also run with 20,000 cases.
+- 338 workspace tests, line coverage 95.21%; the #29 property test was also run with 20,000 cases.
 - `cargo clippy -D warnings`, `cargo doc -D warnings`, REUSE 3.3, gitleaks.
 - Exact-commit CI on the merge commit; release assets checked against `SHA256SUMS` and build
   attestations.

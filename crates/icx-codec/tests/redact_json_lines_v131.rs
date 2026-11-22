@@ -318,3 +318,35 @@ fn embedded_structure_keeps_its_context() {
         "{clean}"
     );
 }
+
+/// Security review of #31: a key block split over several JSON strings is removed as a whole by
+/// the line rules, and long hex inside prose under a non-sensitive key is still hidden (only
+/// recognised digest lines keep their hex).
+#[test]
+fn split_key_blocks_and_hex_in_prose() {
+    let clean = SecretRedactor::redact(&banners(
+        "{\"a\":\"<B>PRIVATE KEY-----\",\"b\":\"MIIaaaa\",\"c\":\"<E>PRIVATE KEY-----\"}\nafter\n",
+    ));
+    assert!(
+        !clean.contains("MIIaaaa") && clean.contains("after"),
+        "{clean:?}"
+    );
+    let sha = "e8ab57722d7d794fbffd585ad1499391b7707ea68f848aa9b20ad189605e26e0";
+    for line in [
+        format!(r#"{{"stdout":"token {sha} ok"}}"#),
+        format!(r#"{{"stdout":"value {sha}"}}"#),
+    ] {
+        let clean = once(&line);
+        assert!(!clean.contains(sha), "{line} -> {clean}");
+    }
+    for line in [
+        format!(r#"{{"stdout":"{sha}  file.tar.gz"}}"#),
+        format!(r#"{{"stdout":"digest: sha256:{sha}"}}"#),
+    ] {
+        let clean = once(&line);
+        assert!(
+            clean.contains(sha),
+            "public digest hidden: {line} -> {clean}"
+        );
+    }
+}
