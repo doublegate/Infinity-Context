@@ -23,8 +23,9 @@ request; the release is cut at the phase close.
    - **Claude Code:** `PreCompact` instructions keep the handles, and the packet goes in the
      following `SessionStart`.
    - **Codex:** the packet goes in the first context-carrying hook after compaction.
-   - **Hermes:** `on_session_start` then `select_context`. Add agent-directed, typed eviction through `fold`, following the T-64-008
-   decision.
+   - **Hermes:** `on_session_start` then `select_context`.
+
+   Add agent-directed, typed eviction through `fold`, following the T-64-008 decision.
 4. **Sprint 4 — Redaction.** Ship `icx rescan` (dry-run default). Write the structural redactor
    ADR, then implement it with property tests and a field corpus. Close the mutation gaps in
    `redact.rs`.
