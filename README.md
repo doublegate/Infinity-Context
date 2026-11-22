@@ -72,8 +72,9 @@ The inline size reduction depends on the input. In the built-in synthetic benchm
 
 ## Latest Release
 
-**v1.3.1** fixes secret redaction inside code and one-line JSON, CLI flag values and fail-open hook
-replies. See the [v1.3.1 release notes](docs/releases/v1.3.1/README.md) and
+**v1.3.2** fixes stubs that could not be dereferenced (agents in git worktrees, and sessions that
+change directory), stores MCP docs results as real lines, leaves small outputs inline and removes
+field over-redactions. See the [v1.3.2 release notes](docs/releases/v1.3.2/README.md) and
 [`CHANGELOG.md`](CHANGELOG.md) for every release; upgrade notes are in each release's notes.
 
 ---

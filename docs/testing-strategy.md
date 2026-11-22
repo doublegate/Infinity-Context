@@ -37,7 +37,12 @@
    | `crates/icx-codec/tests/redact_json_lines.rs` | Structural redaction of complete JSON lines: sensitive values of any type, separated and joined keys, key-block banners, strict-grammar fallbacks; property test over random JSON (valid output, idempotent) |
    | `crates/icx-adapters/tests/muse_adapter.rs` | Muse hook contract: tail slot, Bash JSON unwrapping (string or object, `exitCode`, empty `output`), failures, subagents, compaction |
    | `crates/icx-adapters/tests/fail_open_reply.rs` | Fail-open replies match each adapter's own no-op shape (agy per event) |
-   | `crates/icx-cli/tests/flag_values.rs` | Every value-taking flag rejects a missing, flag-shaped or blank value; `icx hook` fails open |
+   | `crates/icx-cli/tests/flag_values.rs` | Every value-taking flag rejects a missing, flag-shaped, blank or repeated value; `deref`/`encode-ahtl` positionals are found anywhere; `icx hook` fails open |
+   | `crates/icx-cli/tests/workspace_follow.rs` | In a real git worktree: hook output lands in the main project's workspace, an MCP server launched elsewhere follows its agent's hooks, a pinned one names the workspace it searched |
+   | `crates/icx-cli/tests/stub_threshold.rs` | Outputs under the 2 KiB floor stay inline; `ICX_STUB_MIN_BYTES` adjusts it |
+   | `crates/icx-adapters/tests/worktree_root.rs` | Worktrees resolve to the main repository; forged `.git` files, submodules and junk do not redirect |
+   | `crates/icx-adapters/tests/mcp_text_content.rs` | MCP text content stored as lines (`slice` addresses them); non-text blocks keep JSON |
+   | `crates/icx-codec/tests/redact_review_followups.rs` | Counter keys, multi-line quoted values, swallowed block headers, CRLF in JSON strings, prefixes inside words, word slugs |
    | `crates/icx-hdc/tests/recall_gate.rs` | Associative recall gate: recall@5 `>= 95%` at n = 300 |
    | `crates/icx-proxy/tests/proxy_auth.rs` | Every route requires the install token |
    | `crates/icx-proxy/tests/cache_placement.rs` | Anthropic breakpoint on a content block, client breakpoints kept within the 4-breakpoint limit, 1h TTL inheritance, byte-stable folded history, forged-marker neutralization |
