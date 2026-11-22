@@ -31,6 +31,7 @@ import re
 import shutil
 import sys
 import tarfile
+import time
 import urllib.request
 from pathlib import Path
 
@@ -138,13 +139,13 @@ def rewrite_target(target: str, src_repo: str, src_staged: str, out: Path) -> st
         MISSING.append(f"{src_repo}: {target}")
         return target
     staged = staged_page(repo_path)
-    # A directory without an index page has no page on the site: show it on GitHub.
-    if (
-        staged is not None
-        and (REPO / repo_path).is_dir()
-        and not any((REPO / repo_path / n).is_file() for n in ("README.md", "index.md"))
-    ):
-        staged = None
+    # A directory links to its index page on the site (#36), or to GitHub when it has none.
+    if staged is not None and (REPO / repo_path).is_dir():
+        index = next(
+            (n for n in ("index.md", "README.md") if (REPO / repo_path / n).is_file()),
+            None,
+        )
+        staged = posixpath.join(staged, index) if index else None
     if (
         staged is None
         and (REPO / repo_path).is_file()
@@ -222,8 +223,16 @@ def vendor_mathjax(out: Path) -> None:
 
     data = cache.read_bytes() if cache.is_file() else b""
     if not verified(data):
-        with urllib.request.urlopen(MATHJAX_URL, timeout=60) as response:
-            data = response.read()
+        # The docs check runs on most pull requests: retry a transient registry error (#36).
+        for attempt in range(4):
+            try:
+                with urllib.request.urlopen(MATHJAX_URL, timeout=60) as response:
+                    data = response.read()
+                break
+            except OSError as err:
+                if attempt == 3:
+                    raise SystemExit(f"MathJax download failed: {err}") from err
+                time.sleep(2**attempt)
         if not verified(data):
             raise SystemExit("MathJax package integrity mismatch: refusing to use it")
         cache.parent.mkdir(parents=True, exist_ok=True)
@@ -333,11 +342,15 @@ def main() -> int:
     docs = out / "docs"
     pages = stage(docs)
     config = (REPO / args.config).read_text(encoding="utf-8")
-    header = "[project]\n"
-    if header not in config:
+    # Line-ending agnostic, so a CRLF checkout works too (#36).
+    header = re.compile(r"(?m)^\[project\][ \t]*\r?$\n?")
+    if not header.search(config):
         print(f"{args.config}: no [project] table", file=sys.stderr)
         return 2
-    config = config.replace(header, header + toml_nav(nav_entries(pages)), 1)
+    nav = toml_nav(nav_entries(pages))
+    config = header.sub(
+        lambda m: m.group(0).rstrip("\r\n") + "\n" + nav, config, count=1
+    )
     config = re.sub(r"(?m)^docs_dir\s*=.*$", 'docs_dir = "docs"', config)
     config = re.sub(r"(?m)^site_dir\s*=.*$", 'site_dir = "site"', config)
     (out / "zensical.toml").write_text(config, encoding="utf-8")
