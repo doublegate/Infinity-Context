@@ -36,6 +36,36 @@ fn intact_fixture_ingests_every_record() {
     let _ = std::fs::remove_dir_all(d);
 }
 
+#[test]
+fn a_corrupted_frame_checksum_is_refused() {
+    // The fixture ends with its 4-byte XXH64 content checksum; the decoded bytes are intact, so
+    // only an explicit checksum comparison can catch this.
+    let d = scratch("checksum");
+    let mut bytes = fixture();
+    let last = bytes.len() - 1;
+    bytes[last] ^= 0x01;
+    let p = d.join("rollout-badsum.jsonl.zst");
+    std::fs::write(&p, &bytes).unwrap();
+    let mut mmu = InfinityContextMmu::default();
+    let err = ingest_rollout(&p, None, &mut mmu).unwrap_err();
+    assert!(err.to_string().contains("checksum"), "{err}");
+    assert_eq!(mmu.cas.artifact_count(), 0, "nothing is ingested");
+    let _ = std::fs::remove_dir_all(d);
+}
+
+#[test]
+fn bytes_after_the_frame_are_refused() {
+    let d = scratch("trailing");
+    let mut bytes = fixture();
+    bytes.extend_from_slice(b"trailing junk");
+    let p = d.join("rollout-trailing.jsonl.zst");
+    std::fs::write(&p, &bytes).unwrap();
+    let mut mmu = InfinityContextMmu::default();
+    assert!(ingest_rollout(&p, None, &mut mmu).is_err());
+    assert_eq!(mmu.cas.artifact_count(), 0, "nothing is ingested");
+    let _ = std::fs::remove_dir_all(d);
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(96))]
 

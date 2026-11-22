@@ -7,10 +7,11 @@
 //! ingestion resumes at the same logical offset whichever form the file is in, and a replaced
 //! file starts again from the beginning.
 //!
-//! Compressed input is decoded by a pure-Rust decoder with frame-checksum verification. Its
-//! decompressed size is measured in a first pass and refused above
+//! Compressed input is decoded by a pure-Rust decoder. At end of stream the frame's content
+//! checksum is compared when the frame carries one (Codex's frames do not), and bytes after the
+//! frame are refused. The decompressed size is measured in a first pass and refused above
 //! [`MAX_DECOMPRESSED_ROLLOUT_BYTES`] before anything is ingested, so a decompression bomb or a
-//! corrupt frame ingests nothing.
+//! frame that fails to decode ingests nothing.
 
 use crate::codex::CodexRolloutTailer;
 use crate::mmu::InfinityContextMmu;
@@ -164,8 +165,51 @@ fn mtime_nanos(meta: &std::fs::Metadata) -> Option<u64> {
 }
 
 fn zstd_reader(file: File) -> Result<impl Read, RolloutIngestError> {
-    ruzstd::decoding::StreamingDecoder::new(BufReader::new(file))
-        .map_err(|e| RolloutIngestError::Decode(e.to_string()))
+    let decoder = ruzstd::decoding::StreamingDecoder::new(BufReader::new(file))
+        .map_err(|e| RolloutIngestError::Decode(e.to_string()))?;
+    Ok(VerifiedZstd {
+        decoder,
+        finished: false,
+    })
+}
+
+/// A single-frame zstd stream that is checked when it ends. `ruzstd` 0.9.1 reads the frame's
+/// XXH64 content checksum but never compares it with the one it computes, and stops after the
+/// first frame. At end of stream this reader compares the two checksums whenever the frame
+/// carries one, and refuses any bytes after the frame (Codex writes exactly one frame). Either
+/// failure is an `InvalidData` error, so a corrupt file is refused before anything is ingested.
+struct VerifiedZstd {
+    decoder: ruzstd::decoding::StreamingDecoder<BufReader<File>, ruzstd::decoding::FrameDecoder>,
+    finished: bool,
+}
+
+impl Read for VerifiedZstd {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.finished || buf.is_empty() {
+            return self.decoder.read(buf);
+        }
+        let n = self.decoder.read(buf)?;
+        if n == 0 {
+            self.finished = true;
+            let frame = &self.decoder.decoder;
+            if let Some(expected) = frame.get_checksum_from_data()
+                && frame.get_calculated_checksum() != Some(expected)
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "zstd frame checksum mismatch",
+                ));
+            }
+            let mut extra = [0u8; 1];
+            if self.decoder.get_mut().read(&mut extra)? != 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "unexpected data after the zstd frame",
+                ));
+            }
+        }
+        Ok(n)
+    }
 }
 
 fn map_decode(e: io::Error) -> RolloutIngestError {

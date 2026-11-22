@@ -62,8 +62,11 @@ section and decision table). Source at `rust-v0.171.0`; the installed binary mat
 **2026-11-22, research gate for T-62-003, T-62-004 and T-62-006:**
 
 - **zstd decoder:** `ruzstd` 0.9.1 (MIT, pure Rust, one dependency `twox-hash`, MIT). Its default
-  `hash` feature verifies frame checksums. It needs no C toolchain, so static musl release builds
-  are unchanged. `cargo deny check`: advisories, bans, licences and sources all pass.
+  `hash` feature computes the XXH64 content checksum. 0.9.1 never compares it with the frame's
+  checksum (found in PR #86 review), so `codex_ingest` does the comparison at end of stream and
+  also refuses bytes after the frame. Codex's own files carry no checksum: all 518 local `.zst`
+  rollouts lack one and pass `zstd -t`. For them, corruption that still decodes cannot be
+  detected. It needs no C toolchain, so static musl release builds are unchanged. `cargo deny check`: advisories, bans, licences and sources all pass.
   - The C-binding `zstd` crate was rejected: it needs a C build.
   - `structured-zstd` was rejected: it adds a compressor icx does not need.
 - **Codex rollout form on this machine:**
