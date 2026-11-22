@@ -79,6 +79,10 @@ fn prefixes_inside_words_and_word_slugs_are_kept() {
         "key sk-proj-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
         "token aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY-aB3dE5fG7hJ9-kL1mN3pQ5r\n",
         "x Ab9xQ-zzzq-Kp7Lm2Nq8Rs4Tv6Wx0Yz3\n",
+        // Distinctive prefixes are redacted even when glued to a letter or digit (security
+        // review of #38): a URL-encoded `=` and a literal escaped newline.
+        "https://example.invalid/cb?t%3Dghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+        "{\"log\":\"x\\nAKIAAAAAAAAAAAAAAAAA\"}\n",
     ] {
         assert!(once(line).contains("[REDACTED:"), "{line}");
     }

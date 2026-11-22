@@ -610,9 +610,12 @@ impl SecretRedactor {
                     break;
                 };
                 let start = search_pos + rel_idx;
-                // A prefix inside a word is not a token start (`autodesk-...`, `disk-by...`
-                // matched `sk-` in the field; v1.3.2). Such text still meets the entropy gate.
-                if start > 0 && current.as_bytes()[start - 1].is_ascii_alphanumeric() {
+                // The generic `sk-` inside an ordinary word is not a token start (`autodesk-...`,
+                // `disk-by...` matched in the field; v1.3.2): only when 3+ letters (no digits)
+                // end in it, such as `autode|sk-`. Every distinctive prefix (`ghp_`, `AKIA`,
+                // `sk-ant-`, ...) is redacted wherever it appears, so `%3Dghp_...` or a literal
+                // `\nAKIA...` is still caught (security review of #38).
+                if prefix == "sk-" && Self::ends_an_ordinary_word(&current[..start]) {
                     search_pos = start + prefix.len();
                     continue;
                 }
@@ -1612,6 +1615,17 @@ impl SecretRedactor {
             && lead.ends_with(',')
             && (tail.is_empty() || tail.starts_with(','));
         labelled || sha256sum_line || commit_line || table_cell || csv_cell
+    }
+
+    /// Whether `before` ends in a run of 3+ ASCII letters that starts at a word boundary, with
+    /// no digit in the run (`autode` in `autodesk-`, not `n` in a literal `\nAKIA`).
+    fn ends_an_ordinary_word(before: &str) -> bool {
+        let run = before
+            .bytes()
+            .rev()
+            .take_while(u8::is_ascii_alphanumeric)
+            .collect::<Vec<u8>>();
+        run.len() >= 3 && run.iter().all(u8::is_ascii_alphabetic)
     }
 
     /// At least three `-`-separated parts, at least two (and a third) of them natural words.
