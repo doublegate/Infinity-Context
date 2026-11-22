@@ -263,11 +263,12 @@ fn json_string_values_are_decoded_before_redaction() {
     );
 }
 
-/// Key banners built at run time (`<B>` / `<E>`), so the source never holds a whole
+/// Key banners built at run time (`<B>`, `<E>`, `<D>`), so the source never holds a whole
 /// BEGIN/END pair for secret scanners to flag.
 fn banners(text: &str) -> String {
     text.replace("<B>", concat!("-----BEG", "IN "))
         .replace("<E>", concat!("-----EN", "D "))
+        .replace("<D>", "-----")
 }
 
 /// Review of #31 (05:18 UTC): structure inside a string value keeps its own context, so
@@ -283,13 +284,13 @@ fn embedded_structure_keeps_its_context() {
     let clean = once(&format!(r#"{{"stdout":"\n{sha}"}}"#));
     assert!(!clean.contains(sha), "bare hex under a key kept: {clean}");
     let clean = once(&banners(
-        r#"{"key_pem":"<B>PRIVATE KEY-----\nMIIaaaa\n<E>PRIVATE KEY-----","password":"aaaa","user":"octo"}"#,
+        r#"{"key_pem":"<B>PRIVATE KEY<D>\nMIIaaaa\n<E>PRIVATE KEY<D>","password":"aaaa","user":"octo"}"#,
     ));
     assert!(!clean.contains("aaaa") && clean.contains("octo"), "{clean}");
     // An unrelated END before an unterminated BEGIN does not skip the key-block state: the key
     // body on the following lines is still removed.
     let clean = SecretRedactor::redact(&banners(
-        "{\"note\":\"<E>X-----\",\"k\":\"<B>PRIVATE KEY-----\"}\nMIIaaaa\n<E>PRIVATE KEY-----\nafter\n",
+        "{\"note\":\"<E>X-----\",\"k\":\"<B>PRIVATE KEY<D>\"}\nMIIaaaa\n<E>PRIVATE KEY<D>\nafter\n",
     ));
     assert!(
         !clean.contains("MIIaaaa") && clean.contains("after"),
@@ -297,7 +298,7 @@ fn embedded_structure_keeps_its_context() {
     );
     // A later certificate BEGIN/END pair does not mask an unterminated private key.
     let clean = SecretRedactor::redact(&banners(
-        "{\"k\":\"<B>PRIVATE KEY-----\",\"c\":\"<B>CERTIFICATE-----x<E>CERTIFICATE-----\"}\nMIIaaaa\n<E>PRIVATE KEY-----\nafter\n",
+        "{\"k\":\"<B>PRIVATE KEY<D>\",\"c\":\"<B>CERTIFICATE-----x<E>CERTIFICATE-----\"}\nMIIaaaa\n<E>PRIVATE KEY<D>\nafter\n",
     ));
     assert!(
         !clean.contains("MIIaaaa") && clean.contains("after"),
@@ -305,7 +306,7 @@ fn embedded_structure_keeps_its_context() {
     );
     // An unrelated END after an unterminated BEGIN does not close it either.
     let clean = SecretRedactor::redact(&banners(
-        "{\"k\":\"<B>PRIVATE KEY-----\",\"n\":\"<E>X-----\"}\nMIIaaaa\n<E>PRIVATE KEY-----\nafter\n",
+        "{\"k\":\"<B>PRIVATE KEY<D>\",\"n\":\"<E>X-----\"}\nMIIaaaa\n<E>PRIVATE KEY<D>\nafter\n",
     ));
     assert!(
         !clean.contains("MIIaaaa") && clean.contains("after"),
@@ -325,7 +326,7 @@ fn embedded_structure_keeps_its_context() {
 #[test]
 fn split_key_blocks_and_hex_in_prose() {
     let clean = SecretRedactor::redact(&banners(
-        "{\"a\":\"<B>PRIVATE KEY-----\",\"b\":\"MIIaaaa\",\"c\":\"<E>PRIVATE KEY-----\"}\nafter\n",
+        "{\"a\":\"<B>PRIVATE KEY<D>\",\"b\":\"MIIaaaa\",\"c\":\"<E>PRIVATE KEY<D>\"}\nafter\n",
     ));
     assert!(
         !clean.contains("MIIaaaa") && clean.contains("after"),
@@ -338,6 +339,8 @@ fn split_key_blocks_and_hex_in_prose() {
         // Prose that only starts like JSON is not JSON (security review of d4b3e77).
         format!(r#"{{"stdout":"[info] token {sha}"}}"#),
         format!(r#"{{"stdout":"{{ value {sha}"}}"#),
+        // A non-digest-length hex token beside a real digest line (review of #31, 06:08 UTC).
+        format!(r#"{{"stdout":"{sha}  {}"}}"#, &sha[..32]),
     ] {
         let clean = once(&line);
         assert!(!clean.contains(sha), "{line} -> {clean}");
@@ -351,5 +354,18 @@ fn split_key_blocks_and_hex_in_prose() {
             clean.contains(sha),
             "public digest hidden: {line} -> {clean}"
         );
+    }
+}
+
+/// Review of #31 (06:08 UTC): a key that holds its own secret is redacted as a string too.
+#[test]
+fn secrets_inside_keys_are_hidden() {
+    for line in [
+        r#"{"password=aaaa": 1}"#,
+        r#"{"--api-key=aaaa": 1, "user": "octo"}"#,
+        r#"{"token: aaaa": 1}"#,
+    ] {
+        let clean = once(line);
+        assert!(!clean.contains("aaaa"), "{line} -> {clean}");
     }
 }

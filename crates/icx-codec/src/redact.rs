@@ -2027,8 +2027,8 @@ fn key_blocks_within_strings(line: &str) -> bool {
     })
 }
 
-/// True when `line` holds at least one digest-length hex token (40+ hex digits) and every such
-/// token sits in a recognised public digest context (`<sha256>  file`, `sha256:<hex>`, ...).
+/// True when `line` holds at least one long hex token (32+ hex digits) and every such token is
+/// digest-length (40, 64 or 128) in a recognised public digest context (`<sha256>  file`, ...).
 fn hex_tokens_all_digests(line: &str) -> bool {
     let bytes = line.as_bytes();
     let mut found = false;
@@ -2044,8 +2044,11 @@ fn hex_tokens_all_digests(line: &str) -> bool {
         }
         let token = &line[start..i];
         let bounded = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
-        if bounded && token.len() >= 40 && token.bytes().all(|b| b.is_ascii_hexdigit()) {
-            if !SecretRedactor::is_digest_context(&line[..start], &line[i..]) {
+        if bounded && token.len() >= 32 && token.bytes().all(|b| b.is_ascii_hexdigit()) {
+            // Only exact digest lengths can be public digests (as in the entropy gate).
+            if !matches!(token.len(), 40 | 64 | 128)
+                || !SecretRedactor::is_digest_context(&line[..start], &line[i..])
+            {
                 return false;
             }
             found = true;
@@ -2205,7 +2208,7 @@ impl JsonScan<'_> {
                     };
                     let high = unit(&mut chars)?;
                     let code = if (0xD800..0xDC00).contains(&high) {
-                        // A UTF-16 surrogate pair (RFC 8259 §7): `😀`.
+                        // A UTF-16 surrogate pair (RFC 8259 §7), e.g. U+1F600 escaped as two units.
                         if chars.next()? != '\\' || chars.next()? != 'u' {
                             return None;
                         }
@@ -2289,7 +2292,9 @@ impl JsonScan<'_> {
                 .decode(j, key_end)
                 .is_none_or(|k| json_key_is_sensitive(&k));
             let key_text = self.decode(j, key_end);
-            if !check && !sensitive {
+            // The key text itself is always redacted: a key can hold a secret of its own
+            // (`{"password=x": 1}`), and an undecodable key is hidden whole (review of #31).
+            if !check {
                 self.redact_string(j, key_end, None);
             }
             j = self.ws(key_end);
