@@ -595,7 +595,11 @@ impl SecretRedactor {
         replacement: &str,
     ) -> Option<usize> {
         let rest = out.get(val_start..)?;
-        if !rest.as_bytes().first().is_some_and(u8::is_ascii_alphabetic) {
+        if !rest
+            .as_bytes()
+            .first()
+            .is_some_and(|c| c.is_ascii_alphabetic() || *c == b'_')
+        {
             return None;
         }
         let name_len = rest
@@ -613,6 +617,9 @@ impl SecretRedactor {
         let bytes = rest.as_bytes();
         let mut quote: Option<u8> = None;
         let mut saw_quote = false;
+        // Open brackets: a `key=` inside them is an argument, not a new field. An unclosed
+        // bracket keeps the value open to the end of the line (fail closed).
+        let mut depth = 0usize;
         let mut i = name_len;
         while i < bytes.len() && bytes[i] != b'\n' {
             let b = bytes[i];
@@ -624,7 +631,14 @@ impl SecretRedactor {
                     quote = Some(b);
                     saw_quote = true;
                 }
-                None if (b == b' ' || b == b'\t') && Self::starts_new_field(&rest[i..]) => break,
+                None if matches!(b, b'(' | b'[' | b'{') => depth += 1,
+                None if matches!(b, b')' | b']' | b'}') => depth = depth.saturating_sub(1),
+                None if depth == 0
+                    && (b == b' ' || b == b'\t')
+                    && Self::starts_new_field(&rest[i..]) =>
+                {
+                    break;
+                }
                 _ => {}
             }
             i += 1;

@@ -329,3 +329,19 @@ fn code_values_are_hidden_whole_up_to_the_next_field() {
     let r = SecretRedactor::redact("password=SecretStr(\"aaaa\") user=\"admin\"\n");
     assert!(r.contains("user=\"admin\""), "{r:?}");
 }
+
+/// Security review of 93e8bb1: a `key=` inside the value's own brackets is not a new field.
+#[test]
+fn keyword_arguments_inside_brackets_do_not_end_the_value() {
+    for line in [
+        "password = SecretStr(x, user=\"a\", \"aaaa\")\n",
+        "api_key = Client(timeout=3 key=\"aaaa\")\n",
+        "token = f([x, y: \"aaaa\"])\n",
+        "password = f(open token=\"aaaa\"\n",
+        "password = _get_secret(\"aaaa\")\n",
+        "api_key = _DEFAULT or \"aaaa\"\n",
+    ] {
+        let clean = SecretRedactor::redact(line);
+        assert!(!clean.contains("aaaa"), "{line:?} -> {clean:?}");
+    }
+}

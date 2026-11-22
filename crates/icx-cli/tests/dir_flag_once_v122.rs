@@ -121,6 +121,14 @@ fn trailing_valueless_dir_is_rejected() {
         r#"{"continue":true}"#,
         "{noagent:?}"
     );
+    // A trailing valueless `--agent` keeps the earlier valid value.
+    let dup = run(&[
+        "hook", "--agent", "agy", "--event", "Stop", "--agent", "--dir",
+    ]);
+    assert!(
+        String::from_utf8_lossy(&dup.stdout).contains(r#""decision":"stop""#),
+        "{dup:?}"
+    );
     let hook = run(&["hook", "--agent", "agy", "--event", "SessionStart", "--dir"]);
     assert!(hook.status.success());
     assert!(

@@ -47,11 +47,11 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
     // The hook's agent and event (last occurrence, as `execute_hook` parses them), for the
     // agent's own no-op reply on every `icx hook` fail-open path.
     let flag_value = |flag: &str| {
-        tail.iter()
-            .rposition(|a| a == flag)
-            .and_then(|i| tail.get(i + 1))
-            .map(String::as_str)
-            .filter(|v| !v.starts_with('-'))
+        // The last occurrence that has a value, as `execute_hook` keeps it.
+        tail.windows(2)
+            .rev()
+            .find(|w| w[0] == flag && !w[1].starts_with('-'))
+            .map(|w| w[1].as_str())
     };
     let hook_agent = flag_value("--agent").map_or(AgentKind::ClaudeCode, AgentKind::parse_agent);
     let hook_event = flag_value("--event").unwrap_or("SessionStart");
