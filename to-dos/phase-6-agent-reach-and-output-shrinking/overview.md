@@ -41,7 +41,8 @@ Implementation approach, risks and verification:
   breaking older agent versions.
 - **`ref-docs/agent-internals/`** (`rea-binary-and-sqlite-forensics.md`,
   `cross-agent-hook-and-wire-matrix.md`) is the Sprint 1 baseline. That corpus is immutable;
-  new findings go in a new dated file.
+  new findings go in a new dated file. The one exception is ADR-0008: the 2026-11-16 survey
+  became a public summary, and its detail is kept privately.
 
 ## Standing Sources to Watch
 

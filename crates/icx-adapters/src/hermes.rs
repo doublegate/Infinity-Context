@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 /// Fail-closed pre-compression evidence handoff checkpoint contract version
-/// (`ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md` §2.4).
+/// (`docs/agent-adapters-and-interception.md`, Hermes section; the 2026-11-16 survey's detail is
+/// kept privately under ADR-0008).
 pub const PRE_COMPRESS_CHECKPOINT_API_VERSION: u32 = 2;
 
 fn deserialize_hermes_content<'de, D>(deserializer: D) -> Result<String, D::Error>

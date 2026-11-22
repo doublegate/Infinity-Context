@@ -268,6 +268,15 @@ impl InfinityContextMmu {
         self.ingest_payload_for_subagent(agent, subject, raw_text, exit_code, force_anomaly, None)
     }
 
+    /// Whether the store already holds exactly the artifact that ingesting `raw_text` would
+    /// create, after the same bounding and redaction. Used to skip a copy of an output that a hook
+    /// already ingested, so recall does not index it twice.
+    pub fn holds_ingested(&self, raw_text: &str) -> bool {
+        let (sanitized, _) = Self::bound_and_sanitize_raw(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
+        let (id, _) = ArtifactId::hash_bytes(sanitized.as_bytes());
+        self.cas.get_meta(id).is_some()
+    }
+
     /// Bounds `raw_text` to `max_bytes` (backing up to a valid UTF-8 and newline boundary when
     /// possible), applies `SecretRedactor::sanitize`, and re-bounds post-sanitization output.
     pub fn bound_and_sanitize_raw(raw_text: &str, max_bytes: usize) -> (String, bool) {

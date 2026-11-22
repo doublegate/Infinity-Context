@@ -5,6 +5,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **`icx codex-ingest`** (T-62-003, T-62-004) reads Codex rollouts into the workspace.
+  - It reads both plain `rollout-*.jsonl` files and the zstd-compressed `.jsonl.zst` files Codex
+    writes for rollouts older than 7 days.
+  - By default it reads only sessions that ran in the current project; `--all-projects`,
+    `--project` and `--sessions` change that.
+  - Each rollout's position is saved in the workspace (`codex-rollouts.json`), so a later run
+    ingests only new records, including after Codex recompresses or decompresses a file.
+  - Compressed files are decoded by the pure-Rust `ruzstd` decoder.
+    - A frame's content checksum is compared when the frame carries one. Codex's frames don't, so
+      corruption that still decodes cannot be detected in them.
+    - Bytes after the frame are refused.
+    - A file over 1 GiB decompressed, a file that fails to decode, and a symlink are each skipped
+      and named, and nothing from them is ingested.
+  - A record whose output the store already holds, usually the copy icx's Codex hook captured,
+    is skipped and counted as "already stored", so recall does not index it twice.
+
+### Changed
+
+- **Codex `additionalContext` is bounded to 10,000 bytes** (T-62-006). That is Codex's default
+  `additionalContextLimit` of 2,500 tokens, above which Codex spills the text to a file. The tail
+  slot already fits; a larger value would be replaced whole by a diagnostic, never cut.
+
 ### Security
 
 - **Reverse-engineering output stays private** (ADR-0008).

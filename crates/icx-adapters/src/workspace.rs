@@ -389,7 +389,7 @@ fn private_dir(dir: &Path) -> Result<(), TrustError> {
 /// Per-process sequence for unique temp file names (`write_private_file`, `install_key`).
 static TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), TrustError> {
+pub(crate) fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), TrustError> {
     // Unique per call (PR #20 review): concurrent writers in one process must not share a temp.
     let tmp = path.with_extension(format!(
         "tmp.{}.{}",

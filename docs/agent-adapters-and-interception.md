@@ -103,6 +103,7 @@ Upstream reference: the Codex hooks documentation (developers.openai.com/codex/h
 
 1. **`SessionStart`, `UserPromptSubmit` & `SubagentStart`:**
    - Return `{"continue": true, "hookSpecificOutput": {"hookEventName": ..., "additionalContext": ...}, ...}` with the legend and/or tail slot.
+   - Each `additionalContext` is kept within 10,000 UTF-8 bytes (`CODEX_INLINE_CONTEXT_MAX_BYTES`, v1.4.0). That is Codex's default per-handler `additionalContextLimit` of 2,500 tokens, which Codex estimates as bytes / 4. Above the limit, Codex writes the context to a file and gives the model only a preview. The tail slot is already far smaller; a larger value would be replaced whole by a diagnostic, so no `#icx:` handle is cut.
 2. **`PostToolUse`:**
    - Ingests the tool output (store, index, bus) in every case.
    - Returns a non-replacing response (`continue:true` and `hookSpecificOutput.hookEventName`
@@ -110,11 +111,27 @@ Upstream reference: the Codex hooks documentation (developers.openai.com/codex/h
      `CodexAdapter::SUPPORTS_TOOL_OUTPUT_REPLACEMENT` is `false`. v1.1.0 emitted the unsupported
      MCP replacement field; v1.2.0 removes it rather than claiming replacement succeeded.
    - **Net effect:** through hooks alone, icx does not shrink tool output in Codex; the model still sees the full native output. Use the wire proxy (§6) to reduce what Codex resends.
+   - **Live-verified on Codex 0.171.0 (2026-11-22, T-62-001):** neither documented reply substitutes a result. Every model available to this install (`tool_mode: code_mode_only`) runs tools inside a Code Mode script, and Code Mode hands the script the original result.
+     - `continue:false` plus a reason changes nothing the model sees, for shell and MCP tools alike.
+     - `decision:"block"` reaches the model as a failed tool call carrying the reason.
+     - icx therefore keeps the non-replacing reply.
 3. **`PreToolUse`:** returns `continue: true` with no decision and no input change.
 4. **`SubagentStop`:** reads `last_assistant_message` and folds the subagent branch; the fold frame is returned in `systemMessage`.
 5. **`PreCompact`, `PostCompact` & `SessionEnd`:** seal the epoch and return `{"continue": true, "systemMessage": "<deterministic prefix>"}`.
 6. **`PreModelRequest` / `PostModelRequest`:** not used. Upstream defines them as diagnostic only; they cannot change the request.
-7. **Rollout tailer (`CodexRolloutTailer`):** a bounded JSONL reader for `~/.codex/sessions/**/rollout-*.jsonl`. **Known limitations:** it is not wired into the `icx` CLI in this candidate (only the library and tests use it), and it does not read zstd-compressed `.jsonl.zst` rollouts, which current Codex versions write.
+7. **Rollout ingestion (`icx codex-ingest`, v1.4.0; `codex_ingest` module):**
+   - **What it reads:** the rollouts under `$CODEX_HOME/sessions` (default `~/.codex/sessions`) whose `session_meta.cwd` is the project or lies beneath it, as recorded or once symlinks are resolved, including a linked git worktree of the project. `--all-projects` drops the filter. Only a bounded prefix (4 MiB) of each file is decoded to find the `cwd`.
+   - **Both forms:** plain `rollout-*.jsonl` and the zstd-compressed `rollout-*.jsonl.zst` files that Codex writes for rollouts older than 7 days. When both forms of one rollout exist, only the plain file, which Codex appends to, is read.
+   - **Compressed files** are decoded by a pure-Rust decoder.
+     - **Checks at end of stream:** the frame's content checksum is compared when the frame carries one, and bytes after the frame are refused. `ruzstd` 0.9.1 itself does neither.
+     - **Codex's files carry no checksum** (all 518 checked locally). For them, corruption that still decodes cannot be detected.
+     - **Size bound:** files are measured before anything is ingested and refused above 1 GiB decompressed, so a decompression bomb or a frame that fails to decode ingests nothing.
+   - **Bookmarks:** each rollout's read position is saved in `codex-rollouts.json` in the workspace, keyed by its path without `.zst` and checked against a hash of its first 64 KiB. Ingestion resumes where it stopped when Codex recompresses a file or decompresses it again on append, and starts from the beginning for a replaced file. An incomplete trailing line is left for the next run.
+   - **No double indexing:** a rollout record whose redacted output the store already holds is skipped and counted as "already stored". Usually that is the copy icx's Codex hook ingested when the tool ran. Measured on this project's live workspace: 1,403 of 1,583 rollout tool outputs were already stored. Messages and turn context, which hooks never see, are ingested as new. Copies that differ in formatting are not recognised.
+   - **Safety:** symlinks and special files are refused.
+   - **Locking:** rollouts are selected before the workspace lock is taken. Ingestion then runs in batches of about 1.5 s: each batch takes the lock, reloads the store, ingests, saves records and bookmarks, and releases it. Live hooks and the daemon are never locked out for the whole scan.
+   - **Not automatic:** run `icx codex-ingest` on demand or on a schedule; hooks do not call it.
+   - `CodexRolloutTailer` remains the in-process tailer for plain files.
 
 ---
 
