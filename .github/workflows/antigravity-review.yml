@@ -23,6 +23,16 @@ permissions:
   # pull-requests alone is enough, so `issues: write` is not granted (least privilege).
   pull-requests: write
 
+# One review at a time per PR, and only the newest pending push waits: a burst of pushes reviews
+# the running round plus the latest head, not every intermediate commit. A running review is never
+# cancelled (it may be mid-edit of the PR comment). Comment-triggered runs get a group of their own,
+# so an ordinary comment (whose run skips itself) can never displace a pending push review.
+concurrency:
+  group: >-
+    agy-review-${{ github.event_name == 'pull_request'
+    && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: false
+
 jobs:
   review:
     # SECURITY GATE (a self-hosted runner on a PUBLIC repo executes on real hardware
