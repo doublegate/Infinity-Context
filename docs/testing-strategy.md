@@ -33,6 +33,11 @@
    | `crates/icx-bus/tests/loss_signalling.rs` | `SlotLapped`/`SlotContended`, `dropped_publishes`, `poll_since_with_loss`, two-handle file-backed propagation latency |
    | `crates/icx-codec/tests/codec_v110.rs` | Hex epoch ids, `SliceMap` validation, bounded clause chains |
    | `crates/icx-codec/tests/redact_v110.rs` | Redaction recall fixtures and losslessness |
+   | `crates/icx-codec/tests/redact_line_literals_v131.rs` | Values after a sensitive key hidden from the first quote to the end of the line (call heads kept); every bypass shape reported on #29 and PR #31; property test over random code shapes |
+   | `crates/icx-codec/tests/redact_json_lines_v131.rs` | Structural redaction of complete JSON lines: sensitive values of any type, separated and joined keys, key-block banners, strict-grammar fallbacks; property test over random JSON (valid output, idempotent) |
+   | `crates/icx-adapters/tests/muse_adapter_v130.rs` | Muse hook contract: tail slot, Bash JSON unwrapping (string or object, `exitCode`, empty `output`), failures, subagents, compaction |
+   | `crates/icx-adapters/tests/fail_open_reply_v131.rs` | Fail-open replies match each adapter's own no-op shape (agy per event) |
+   | `crates/icx-cli/tests/flag_values_v131.rs` | Every value-taking flag rejects a missing, flag-shaped or blank value; `icx hook` fails open |
    | `crates/icx-hdc/tests/recall_v110.rs` | Associative recall gate: recall@5 `>= 95%` at n = 300 |
    | `crates/icx-proxy/tests/proxy_auth.rs` | Every route requires the install token |
    | `crates/icx-proxy/tests/cache_placement.rs` | Anthropic breakpoint on a content block, client breakpoints kept within the 4-breakpoint limit, 1h TTL inheritance, byte-stable folded history, forged-marker neutralization |

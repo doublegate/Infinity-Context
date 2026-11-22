@@ -106,10 +106,12 @@ fn adjacent_sendgrid_credentials_are_removed_on_the_first_pass() {
 
 #[test]
 fn quoted_inline_values_cannot_turn_prose_into_pending_secret_headers() {
+    // Since v1.3.1 (#29) everything from the value's first quote to the end of the line is one
+    // marker; the next line is still not taken for a pending secret header.
     let input = "TOKEN:' '_TOKEN:\n:";
     assert_eq!(
         SecretRedactor::redact(input),
-        "TOKEN:'[REDACTED:CONFIG_SECRET]'_TOKEN:\n:"
+        "TOKEN:[REDACTED:CONFIG_SECRET]\n:"
     );
     let once = SecretRedactor::redact(input);
     assert_eq!(SecretRedactor::redact(&once), once);
@@ -126,7 +128,8 @@ fn low_entropy_jwt_and_escaped_quoted_cli_secrets_are_recognized() {
     let clean = SecretRedactor::redact(command);
     assert!(!clean.contains("firstpiece"));
     assert!(!clean.contains("secondpiece"));
-    assert!(clean.ends_with("--public keep"));
+    // Since v1.3.1 (#29) later text on the line is hidden with the quoted value.
+    assert!(clean.starts_with("run --password="), "{clean}");
     assert_eq!(SecretRedactor::redact(&clean), clean);
 }
 
@@ -157,13 +160,15 @@ fn adjacent_jwt_credentials_do_not_require_a_second_redaction_pass() {
 #[test]
 fn mixed_escaped_quotes_keep_following_unicode_on_a_character_boundary() {
     for (input, expected) in [
+        // Since v1.3.1 (#29): one marker from the first (escaped) quote to the end of the line, cut
+        // on a character boundary.
         (
             "token:\\'secret'\u{1D538}:public",
-            "token:\\'[REDACTED:CONFIG_SECRET]'\u{1D538}:public",
+            "token:[REDACTED:CONFIG_SECRET]",
         ),
         (
             "TOKEN=\\'secret'\u{1D538} public",
-            "TOKEN=\\'[REDACTED:ENV_SECRET]'\u{1D538} public",
+            "TOKEN=[REDACTED:ENV_SECRET]",
         ),
     ] {
         let clean = SecretRedactor::redact(input);

@@ -22,6 +22,32 @@ pub use mmu::{
 };
 pub use muse::MuseAdapter;
 
+/// The reply an agent's hook gets when icx fails open (a bad flag, unreadable stdin, a workspace
+/// error): the same shape the agent's adapter returns as its no-op for that event, so the agent
+/// keeps its normal behaviour (v1.3.1, #30). agy event names are matched ignoring case and
+/// `-`/`_`; agy's own replies are pinned against these by `fail_open_reply_matches_agy_shapes`.
+#[must_use]
+pub fn fail_open_reply(agent: icx_core::AgentKind, event: &str) -> String {
+    use icx_core::AgentKind;
+    match agent {
+        AgentKind::AntigravityCli => {
+            match event.to_ascii_lowercase().replace(['-', '_'], "").as_str() {
+                "sessionstart" | "preinvocation" | "postinvocation" => {
+                    r#"{"injectSteps":[],"terminationBehavior":""}"#.to_owned()
+                }
+                "subagentstart" | "subagentstop" => r#"{"injectSteps":[]}"#.to_owned(),
+                "pretooluse" => r#"{"decision":"allow"}"#.to_owned(),
+                "stop" => r#"{"decision":"stop"}"#.to_owned(),
+                _ => "{}".to_owned(),
+            }
+        }
+        // Hermes's plugin treats an empty object as "nothing to do"; Muse validates hook replies
+        // strictly and always accepts one.
+        AgentKind::Hermes | AgentKind::Muse => "{}".to_owned(),
+        _ => r#"{"continue":true}"#.to_owned(),
+    }
+}
+
 use icx_core::{AgentKind, IcxError};
 use thiserror::Error;
 

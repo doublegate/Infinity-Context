@@ -50,7 +50,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
         // The last occurrence that has a value, as `execute_hook` keeps it.
         tail.windows(2)
             .rev()
-            .find(|w| w[0] == flag && !w[1].starts_with('-'))
+            .find(|w| w[0] == flag && !w[1].starts_with('-') && !w[1].trim().is_empty())
             .map(|w| w[1].as_str())
     };
     let hook_agent = flag_value("--agent").map_or(AgentKind::ClaudeCode, AgentKind::parse_agent);
@@ -289,9 +289,7 @@ fn run_context_budget(args: &[String]) -> Result<(), String> {
             );
             return Ok(());
         }
-        let value = args
-            .get(i + 1)
-            .ok_or_else(|| format!("context-budget: missing value for {flag}"))?;
+        let value = flag_value_at(args, i, "icx context-budget")?;
         let number = || {
             value
                 .parse::<usize>()
@@ -305,7 +303,7 @@ fn run_context_budget(args: &[String]) -> Result<(), String> {
             "--external-reserve" => {
                 set_option_once(&mut external, "context-budget", flag, number()?)?;
             }
-            "--dir" => set_option_once(&mut dir_arg, "context-budget", flag, value.as_str())?,
+            "--dir" => set_option_once(&mut dir_arg, "context-budget", flag, value)?,
             _ => return Err(format!("context-budget: unknown option {flag}")),
         }
         i += 2;
@@ -432,16 +430,18 @@ fn run_daemon(args: &[String]) -> Result<(), String> {
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--idle-exit" if i + 1 < args.len() => {
-                let secs: u64 = args[i + 1]
+            "--idle-exit" => {
+                let value = flag_value_at(args, i, "icx daemon")?;
+                let secs: u64 = value
                     .parse()
                     .map_err(|e| format!("icx daemon error: invalid --idle-exit: {e}"))?;
                 opts.idle_exit = Some(std::time::Duration::from_secs(secs));
                 i += 2;
             }
-            "--max-requests" if i + 1 < args.len() => {
+            "--max-requests" => {
+                let value = flag_value_at(args, i, "icx daemon")?;
                 opts.max_requests = Some(
-                    args[i + 1]
+                    value
                         .parse()
                         .map_err(|e| format!("icx daemon error: invalid --max-requests: {e}"))?,
                 );
@@ -625,13 +625,15 @@ fn run_deref(args: &[String]) -> Result<(), String> {
                 raw = true;
                 i += 1;
             }
-            "--dir" if i + 1 < args.len() => {
-                dir_str = Some(args[i + 1].as_str());
+            "--dir" => {
+                let value = flag_value_at(args, i, "icx deref")?;
+                dir_str = Some(value);
                 i += 2;
             }
-            "--lines" if i + 1 < args.len() => {
-                let range = parse_line_range_arg(&args[i + 1])
-                    .map_err(|e| format!("icx deref error: {e}"))?;
+            "--lines" => {
+                let value = flag_value_at(args, i, "icx deref")?;
+                let range =
+                    parse_line_range_arg(value).map_err(|e| format!("icx deref error: {e}"))?;
                 line_range = Some(range);
                 i += 2;
             }
@@ -675,22 +677,20 @@ fn dispatch_agent_hook(
     }
 }
 
-fn non_replacing_hook_response(agent: AgentKind, event: &str) -> String {
-    match agent {
-        // agy's no-op depends on the event (AntigravityAdapter's replies).
-        // Event names are matched ignoring case and `-`/`_` (`STOP`, `pre_tool_use`).
-        AgentKind::AntigravityCli => {
-            match event.to_ascii_lowercase().replace(['-', '_'], "").as_str() {
-                "pretooluse" => r#"{"decision":"allow"}"#.to_owned(),
-                "stop" => r#"{"decision":"stop"}"#.to_owned(),
-                "posttooluse" | "sessionend" => "{}".to_owned(),
-                _ => r#"{"injectSteps":[],"terminationBehavior":""}"#.to_owned(),
-            }
-        }
-        // Muse validates hook replies strictly; an empty object is always accepted.
-        AgentKind::Muse => "{}".to_owned(),
-        _ => r#"{"continue":true}"#.to_owned(),
+/// The value of the value-taking flag at `args[i]` (v1.3.1, #28). A missing value, a flag-shaped
+/// value (`--dir`, `-h`) or a blank one (`--dir "$UNSET"`) is an error rather than a silent
+/// fallback to a default or to the next flag.
+fn flag_value_at<'a>(args: &'a [String], i: usize, cmd: &str) -> Result<&'a str, String> {
+    let flag = args.get(i).map_or("", String::as_str);
+    match args.get(i + 1) {
+        Some(v) if !v.starts_with('-') && !v.trim().is_empty() => Ok(v.as_str()),
+        Some(v) => Err(format!("{cmd} error: {flag} requires a value, got {v:?}")),
+        None => Err(format!("{cmd} error: {flag} requires a value")),
     }
+}
+
+fn non_replacing_hook_response(agent: AgentKind, event: &str) -> String {
+    icx_adapters::fail_open_reply(agent, event)
 }
 
 fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::Error> {
@@ -701,16 +701,22 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
     while i < args.len() {
         match args[i].as_str() {
             // A following flag is not a value (`--agent --event Stop`), as on the fail-open path.
-            "--agent" if args.get(i + 1).is_some_and(|v| !v.starts_with('-')) => {
-                agent_str = &args[i + 1];
+            "--agent" => {
+                let value = flag_value_at(args, i, "icx hook")
+                    .map_err(<serde_json::Error as serde::de::Error>::custom)?;
+                agent_str = value;
                 i += 2;
             }
-            "--event" if args.get(i + 1).is_some_and(|v| !v.starts_with('-')) => {
-                event_str = &args[i + 1];
+            "--event" => {
+                let value = flag_value_at(args, i, "icx hook")
+                    .map_err(<serde_json::Error as serde::de::Error>::custom)?;
+                event_str = value;
                 i += 2;
             }
-            "--dir" if i + 1 < args.len() => {
-                dir_str = Some(args[i + 1].as_str());
+            "--dir" => {
+                let value = flag_value_at(args, i, "icx hook")
+                    .map_err(<serde_json::Error as serde::de::Error>::custom)?;
+                dir_str = Some(value);
                 i += 2;
             }
             _ => i += 1,
@@ -903,12 +909,14 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
                 no_auth = true;
                 i += 1;
             }
-            "--listen" if i + 1 < args.len() => {
-                listen_addr = &args[i + 1];
+            "--listen" => {
+                let value = flag_value_at(args, i, "icx proxy")?;
+                listen_addr = value;
                 i += 2;
             }
-            "--provider" if i + 1 < args.len() => {
-                let raw = &args[i + 1];
+            "--provider" => {
+                let value = flag_value_at(args, i, "icx proxy")?;
+                let raw = value;
                 provider = Some(ProviderFormat::parse_provider(raw).ok_or_else(|| {
                     format!(
                         "proxy error: unknown --provider `{raw}` (expected anthropic, openai, or gemini)"
@@ -916,17 +924,20 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
                 })?);
                 i += 2;
             }
-            "--upstream" if i + 1 < args.len() => {
-                upstream_str = Some(args[i + 1].as_str());
+            "--upstream" => {
+                let value = flag_value_at(args, i, "icx proxy")?;
+                upstream_str = Some(value);
                 i += 2;
             }
-            "--dir" if i + 1 < args.len() => {
-                dir_str = Some(args[i + 1].as_str());
+            "--dir" => {
+                let value = flag_value_at(args, i, "icx proxy")?;
+                dir_str = Some(value);
                 i += 2;
             }
-            "--max-requests" if i + 1 < args.len() => {
+            "--max-requests" => {
+                let value = flag_value_at(args, i, "icx proxy")?;
                 max_requests = Some(
-                    args[i + 1]
+                    value
                         .parse::<usize>()
                         .map_err(|e| format!("proxy error: invalid --max-requests: {e}"))?,
                 );
@@ -994,16 +1005,16 @@ fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, S
     let mut dir_str: Option<&str> = None;
     let mut i = 0;
     while i < args.len() {
-        if args[i] == "--provider" && i + 1 < args.len() {
-            let raw = args[i + 1].as_str();
+        if args[i] == "--provider" {
+            let raw = flag_value_at(args, i, "icx proxy-transform")?;
             provider = Some(ProviderFormat::parse_provider(raw).ok_or_else(|| {
                 format!(
                     "proxy-transform error: unknown --provider `{raw}` (expected anthropic, openai, or gemini)"
                 )
             })?);
             i += 2;
-        } else if args[i] == "--dir" && i + 1 < args.len() {
-            dir_str = Some(args[i + 1].as_str());
+        } else if args[i] == "--dir" {
+            dir_str = Some(flag_value_at(args, i, "icx proxy-transform")?);
             i += 2;
         } else {
             i += 1;
@@ -1102,20 +1113,14 @@ fn run_encode_ahtl(args: &[String]) -> Result<(), String> {
     while i < args.len() {
         match args[i].as_str() {
             "--dir" => {
-                if i + 1 >= args.len() {
-                    return Err("icx encode-ahtl error: missing value for --dir".into());
-                }
-                dir_str = Some(args[i + 1].as_str());
+                dir_str = Some(flag_value_at(args, i, "icx encode-ahtl")?);
                 i += 2;
             }
             "--profile" => {
-                if i + 1 >= args.len() {
-                    return Err(
-                        "icx encode-ahtl error: missing value for --profile (expected `a` or `b`)"
-                            .into(),
-                    );
-                }
-                match args[i + 1].to_ascii_lowercase().as_str() {
+                match flag_value_at(args, i, "icx encode-ahtl")?
+                    .to_ascii_lowercase()
+                    .as_str()
+                {
                     "a" => profile_a = true,
                     "b" => profile_a = false,
                     other => {
@@ -1250,10 +1255,7 @@ fn parse_doctor_dir_flag(args: &[String]) -> Result<Option<&str>, String> {
     while i < args.len() {
         match args[i].as_str() {
             "--dir" => {
-                if i + 1 >= args.len() {
-                    return Err("icx doctor error: missing value for --dir".into());
-                }
-                dir_str = Some(args[i + 1].as_str());
+                dir_str = Some(flag_value_at(args, i, "icx doctor")?);
                 i += 2;
             }
             unknown => {

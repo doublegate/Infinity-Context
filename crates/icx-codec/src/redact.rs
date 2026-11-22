@@ -99,6 +99,21 @@ impl SecretRedactor {
                     block = None;
                 }
             }
+            // A line that is a complete JSON object or array is redacted structurally (v1.3.1,
+            // #29): the values of sensitive keys are hidden and everything else is kept, instead
+            // of hiding the rest of the line from the first quote.
+            // A line opening a private-key block keeps the key-block handling below.
+            if pending_value.is_none()
+                // Every key block on the line must end on it inside one JSON string (typed
+                // PEM/PGP banners, no quote between BEGIN and END), so the structural path sees
+                // the whole block and no block state is owed to the following lines.
+                && key_blocks_within_strings(body)
+                && let Some(json) = Self::redact_json_line(body)
+            {
+                out.push_str(&json);
+                out.push_str(ending);
+                continue;
+            }
             // Private-key normalization must also pass through pending scalar processing.
             // Otherwise a key banner after a scalar prefix hides that prefix only on the
             // second redaction pass. Keep block state so subsequent key lines stay hidden.
@@ -145,6 +160,42 @@ impl SecretRedactor {
             out.push_str(ending);
         }
         out
+    }
+
+    /// Structural redaction of a line that is exactly one JSON object or array (surrounding
+    /// whitespace allowed), per RFC 8259 (v1.3.1, #29). The value of a sensitive key, of any type,
+    /// becomes `"[REDACTED:CONFIG_SECRET]"`; every other string (keys included) is redacted on its
+    /// own with [`Self::redact`]. Edits are made in place, so formatting and key order are kept.
+    /// Returns `None` when the line is not such JSON, nests deeper than [`MAX_JSON_DEPTH`], or
+    /// an edit would leave invalid JSON. The caller then applies the line rules (fail closed).
+    fn redact_json_line(line: &str) -> Option<String> {
+        let start = line.len() - line.trim_start().len();
+        if !line[start..].starts_with(['{', '[']) {
+            return None;
+        }
+        let mut scan = JsonScan {
+            s: line.as_bytes(),
+            edits: Vec::new(),
+        };
+        let end = scan.value(start, false, 0, None)?;
+        if !line[end..].trim().is_empty() {
+            return None;
+        }
+        if scan.edits.is_empty() {
+            return Some(line.to_owned());
+        }
+        let mut out = line.to_owned();
+        for (a, b, text) in scan.edits.into_iter().rev() {
+            out.replace_range(a..b, &text);
+        }
+        // The edited line must still be one valid JSON value.
+        let mut check = JsonScan {
+            s: out.as_bytes(),
+            edits: Vec::new(),
+        };
+        let check_start = out.len() - out.trim_start().len();
+        let check_end = check.value(check_start, true, 0, None)?;
+        out[check_end..].trim().is_empty().then_some(out)
     }
 
     /// Redacts BEGIN..END private-key spans that start and end on the same line (e.g. a key
@@ -668,12 +719,68 @@ impl SecretRedactor {
             })
     }
 
+    /// Under a sensitive key, a value whose line holds any quote (`"`, `'`, a backtick, or an
+    /// escaped `\"`) is replaced from its first quote to the end of the line by one marker
+    /// (v1.3.1, #29). A call head directly before that quote stays visible
+    /// (`env::var([REDACTED]`), since it is an identifier path ending in `(` or `[`. Any other head
+    /// could itself be the secret (`hunter2 "note"`, `x or "..."`), so the value is replaced from
+    /// its start. Owner decisions on PR #31: there is deliberately no quote pairing, no field
+    /// boundary and no key detection. Each of those was bypassed in review: a stray quote shifted
+    /// the pairing, and redacted key names hid later sensitive keys. Later text on the same line is
+    /// hidden with the value. Returns the end of the replacement, or `None` when the value's line
+    /// holds no quote, or holds nothing but a call head and an existing marker (idempotent).
+    fn redact_from_first_quote(
+        out: &mut String,
+        val_start: usize,
+        replacement: &str,
+    ) -> Option<usize> {
+        let rest = out.get(val_start..)?;
+        let line_end = rest.find('\n').unwrap_or(rest.len());
+        let line = rest[..line_end].trim_end_matches('\r');
+        // Already done by an earlier pass: a call head (or nothing) followed by one marker.
+        if let Some(m) = line.find("[REDACTED:")
+            && (m == 0 || Self::is_call_head(&line[..m]))
+            && Self::is_redaction_marker(&line[m..])
+        {
+            return Some(val_start + line.len());
+        }
+        let quote = line.find(['"', '\'', '`'])?;
+        // An escaped quote (`\"`) starts at its backslash.
+        let quote = if quote > 0 && line.as_bytes()[quote - 1] == b'\\' {
+            quote - 1
+        } else {
+            quote
+        };
+        let head = &line[..quote];
+        let from = if Self::is_call_head(head) { quote } else { 0 };
+        let len = line.len();
+        out.replace_range(val_start + from..val_start + len, replacement);
+        Some(val_start + from + replacement.len())
+    }
+
+    /// `env::var(`, `os.getenv(`, `SecretStr(`, `cfg[`: an identifier path ending in `(` or `[`.
+    fn is_call_head(head: &str) -> bool {
+        head.ends_with(['(', '['])
+            && head
+                .as_bytes()
+                .first()
+                .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
+            && head[..head.len() - 1]
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b':' | b'.'))
+    }
+
     fn redact_value_span(
         out: &mut String,
         val_start: usize,
         replacement: &str,
         stop_at_comma: bool,
     ) -> Option<usize> {
+        // A value with any quote is hidden from its first quote to the end of the line (v1.3.1,
+        // #29, owner decision on PR #31).
+        if let Some(end) = Self::redact_from_first_quote(out, val_start, replacement) {
+            return Some(end);
+        }
         if let Some(end) = Self::redact_call_wrapped_literals(out, val_start, replacement) {
             return Some(end);
         }
@@ -790,9 +897,12 @@ impl SecretRedactor {
         let rest = &out[val_start..];
         let mut val_len = rest.len();
         for (idx, ch) in rest.char_indices() {
+            // A backtick or an existing marker ends the token too, so a marker the literal pass
+            // wrote is never cut in half (idempotence, v1.3.1).
             if ch.is_whitespace()
-                || matches!(ch, '"' | '\'' | ';' | '&' | '|' | ')' | ']' | '}')
+                || matches!(ch, '"' | '\'' | '`' | ';' | '&' | '|' | ')' | ']' | '}')
                 || (stop_at_comma && ch == ',')
+                || (idx > 0 && rest[idx..].starts_with("[REDACTED:"))
             {
                 val_len = idx;
                 break;
@@ -855,7 +965,9 @@ impl SecretRedactor {
             let rhs = out[eq_idx + 1..].trim_start_matches([' ', '\t']);
             if !key_name.is_empty()
                 && Self::is_sensitive_key_name(key_name)
-                && !(Self::is_code_binding(&out[..key_start]) && Self::is_code_expression(rhs))
+                && !(Self::is_code_binding(&out[..key_start])
+                    && Self::is_code_expression(rhs)
+                    && !has_quote(rhs))
             {
                 let mut val_start = eq_idx + 1;
                 while val_start < bytes.len()
@@ -863,7 +975,9 @@ impl SecretRedactor {
                 {
                     val_start += 1;
                 }
-                if Self::is_counter_value(key_name, &out[val_start..]) {
+                if Self::is_counter_value(key_name, &out[val_start..])
+                    && !has_quote(&out[val_start..])
+                {
                     search_pos = eq_idx + 1;
                     continue;
                 }
@@ -888,7 +1002,11 @@ impl SecretRedactor {
         // Preserve the trailing block header itself (its indented content is removed by
         // `redact`), but still redact every earlier assignment on the same line, e.g.
         // `{api_key: x, password: |`.
-        if Self::sensitive_continuation(line).is_some_and(|pending| pending.block) {
+        // A quote in the header's comment (`password: | # "x"`) is hidden like any other value
+        // (review of PR #31); the block's indented content is still removed by `redact`.
+        if Self::sensitive_continuation(line).is_some_and(|pending| pending.block)
+            && !Self::declaration_colon(line).is_some_and(|colon| has_quote(&line[colon..]))
+        {
             let Some(colon) = Self::declaration_colon(line) else {
                 return line.to_owned();
             };
@@ -953,7 +1071,9 @@ impl SecretRedactor {
                 {
                     val_start += 1;
                 }
-                if Self::is_counter_value(key_name, &out[val_start..]) {
+                if Self::is_counter_value(key_name, &out[val_start..])
+                    && !has_quote(&out[val_start..])
+                {
                     search_pos = colon_idx + 1;
                     continue;
                 }
@@ -988,13 +1108,31 @@ impl SecretRedactor {
                         - tail[1.min(tail.len())..]
                             .trim_start_matches([' ', '\t'])
                             .len();
+                    // The exemptions (code expression, null default, counter) apply only when no
+                    // quote follows; a later quote is always hidden (review of PR #31).
+                    let rhs_quoted = has_quote(&out[rhs_start.min(out.len())..]);
                     if assigned
-                        && !Self::is_code_expression(&out[rhs_start..])
-                        && !rhs_is_null(&out[rhs_start..])
-                        && !Self::is_counter_value(key_name, &out[rhs_start..])
+                        && (rhs_quoted
+                            || (!Self::is_code_expression(&out[rhs_start..])
+                                && !rhs_is_null(&out[rhs_start..])
+                                && !Self::is_counter_value(key_name, &out[rhs_start..])))
                         && let Some(next_pos) = Self::redact_value_span(
                             &mut out,
                             rhs_start,
+                            "[REDACTED:CONFIG_SECRET]",
+                            true,
+                        )
+                    {
+                        search_pos = next_pos;
+                        continue;
+                    }
+                    // An annotation without a default (`password: str, "x"`): a later quote hides
+                    // the rest of the value from the annotation on.
+                    if !assigned
+                        && has_quote(&out[after..])
+                        && let Some(next_pos) = Self::redact_value_span(
+                            &mut out,
+                            val_start,
                             "[REDACTED:CONFIG_SECRET]",
                             true,
                         )
@@ -1173,7 +1311,7 @@ impl SecretRedactor {
                             break;
                         }
                     }
-                    '"' | '\'' | '\n' | '=' => return None,
+                    '"' | '\'' | '`' | '\n' | '=' => return None,
                     ':' if !(inner[i + 1..].starts_with(':') || inner[..i].ends_with(':')) => {
                         return None;
                     }
@@ -1855,6 +1993,353 @@ fn split_line_ending(segment: &str) -> (&str, &str) {
     }
 }
 
+/// The `[A-Za-z0-9_-]` segments of a JSON key (`db.password` -> `db`, `password`).
+fn json_key_segments(key: &str) -> impl Iterator<Item = &str> {
+    key.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+        .filter(|s| !s.is_empty())
+}
+
+/// Whether a JSON key names a secret: the whole key, any of its segments (`db.password`,
+/// `auth token`, `svc/api_key`) or the segments joined (`api.key`, `api key`), as the line rules
+/// classify a key (security reviews of PR #31).
+fn json_key_is_sensitive(key: &str) -> bool {
+    let segments: Vec<&str> = json_key_segments(key).collect();
+    SecretRedactor::is_sensitive_key_name(key)
+        || segments.iter().any(|s| SecretRedactor::is_sensitive_key_name(s))
+        // Joined forms: `api.key` / `api key` name an API_KEY / APIKEY.
+        || SecretRedactor::is_sensitive_key_name(&segments.join("_"))
+        || SecretRedactor::is_sensitive_key_name(&segments.join(""))
+}
+
+/// True when every PEM/PGP key block on `line` begins and ends on it with no quote between its
+/// banners (so it lies inside one JSON string token), or the line holds none (review of #31).
+fn key_blocks_within_strings(line: &str) -> bool {
+    [KeyBlock::Pem, KeyBlock::Pgp].into_iter().all(|kind| {
+        let mut from = 0;
+        while let Some(rel) = kind.begin_index(&line[from..]) {
+            let start = from + rel;
+            match kind.end_index_after(line, start) {
+                Some(end) if end > start && !line[start..end].contains('"') => from = end,
+                _ => return false,
+            }
+        }
+        true
+    })
+}
+
+/// True when `line` holds at least one long hex token (32+ hex digits) and every such token is
+/// digest-length (40, 64 or 128) in a recognised public digest context (`<sha256>  file`, ...).
+fn hex_tokens_all_digests(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    let mut found = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        if !bytes[i].is_ascii_hexdigit() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < bytes.len() && bytes[i].is_ascii_alphanumeric() {
+            i += 1;
+        }
+        let token = &line[start..i];
+        let bounded = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
+        if bounded && token.len() >= 32 && token.bytes().all(|b| b.is_ascii_hexdigit()) {
+            // Only exact digest lengths can be public digests (as in the entropy gate).
+            if !matches!(token.len(), 40 | 64 | 128)
+                || !SecretRedactor::is_digest_context(&line[..start], &line[i..])
+            {
+                return false;
+            }
+            found = true;
+        }
+    }
+    found
+}
+
+/// Whether `text` holds a quote of any kind: such a value is never exempt from redaction.
+fn has_quote(text: &str) -> bool {
+    text.contains(['"', '\'', '`'])
+}
+
+/// The body of a JSON string literal for `text` (RFC 8259 escapes; other characters kept).
+fn json_escape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 8);
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            c if u32::from(c) < 0x20 => out.push_str(&format!("\\u{:04x}", u32::from(c))),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Deepest JSON nesting the structural redactor accepts; deeper lines use the line rules.
+const MAX_JSON_DEPTH: usize = 128;
+
+/// A strict RFC 8259 scanner over one line that records redaction edits as byte ranges.
+struct JsonScan<'a> {
+    s: &'a [u8],
+    edits: Vec<(usize, usize, String)>,
+}
+
+impl JsonScan<'_> {
+    fn ws(&self, mut i: usize) -> usize {
+        while i < self.s.len() && matches!(self.s[i], b' ' | b'\t' | b'\r' | b'\n') {
+            i += 1;
+        }
+        i
+    }
+
+    /// Parses one value at `i` and returns its end. In `check` mode nothing is recorded. `key` is
+    /// the member name the value belongs to (for array elements, the array's), which context
+    /// rules such as hex assignment values depend on.
+    fn value(&mut self, i: usize, check: bool, depth: usize, key: Option<&str>) -> Option<usize> {
+        if depth > MAX_JSON_DEPTH {
+            return None;
+        }
+        let i = self.ws(i);
+        match *self.s.get(i)? {
+            b'{' => self.object(i, check, depth),
+            b'[' => self.array(i, check, depth, key),
+            b'"' => {
+                let end = self.string(i)?;
+                if !check {
+                    self.redact_string(i, end, key);
+                }
+                Some(end)
+            }
+            b't' => self.literal(i, b"true"),
+            b'f' => self.literal(i, b"false"),
+            b'n' => self.literal(i, b"null"),
+            _ => self.number(i),
+        }
+    }
+
+    fn literal(&self, i: usize, word: &[u8]) -> Option<usize> {
+        self.s
+            .get(i..i + word.len())
+            .filter(|w| *w == word)
+            .map(|_| i + word.len())
+    }
+
+    fn number(&self, mut i: usize) -> Option<usize> {
+        let digits = |s: &[u8], mut j: usize| {
+            let from = j;
+            while j < s.len() && s[j].is_ascii_digit() {
+                j += 1;
+            }
+            (j > from).then_some(j)
+        };
+        if self.s.get(i) == Some(&b'-') {
+            i += 1;
+        }
+        i = match self.s.get(i) {
+            Some(b'0') => i + 1,
+            Some(b'1'..=b'9') => digits(self.s, i)?,
+            _ => return None,
+        };
+        if self.s.get(i) == Some(&b'.') {
+            i = digits(self.s, i + 1)?;
+        }
+        if matches!(self.s.get(i), Some(b'e' | b'E')) {
+            i += 1;
+            if matches!(self.s.get(i), Some(b'+' | b'-')) {
+                i += 1;
+            }
+            i = digits(self.s, i)?;
+        }
+        Some(i)
+    }
+
+    /// The end (one past the closing quote) of the string starting at `i`.
+    fn string(&self, i: usize) -> Option<usize> {
+        let mut j = i + 1;
+        while j < self.s.len() {
+            match self.s[j] {
+                b'"' => return Some(j + 1),
+                b'\\' => match *self.s.get(j + 1)? {
+                    b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => j += 2,
+                    b'u' => {
+                        let hex = self.s.get(j + 2..j + 6)?;
+                        if !hex.iter().all(u8::is_ascii_hexdigit) {
+                            return None;
+                        }
+                        j += 6;
+                    }
+                    _ => return None,
+                },
+                c if c < 0x20 => return None,
+                _ => j += 1,
+            }
+        }
+        None
+    }
+
+    /// The decoded text of the string at `i..end`; `None` for an unpaired surrogate escape.
+    fn decode(&self, i: usize, end: usize) -> Option<String> {
+        let raw = std::str::from_utf8(&self.s[i + 1..end - 1]).ok()?;
+        let mut out = String::with_capacity(raw.len());
+        let mut chars = raw.chars();
+        while let Some(c) = chars.next() {
+            if c != '\\' {
+                out.push(c);
+                continue;
+            }
+            match chars.next()? {
+                'n' => out.push('\n'),
+                't' => out.push('\t'),
+                'r' => out.push('\r'),
+                'b' => out.push('\u{8}'),
+                'f' => out.push('\u{c}'),
+                'u' => {
+                    let unit = |chars: &mut std::str::Chars<'_>| {
+                        let hex: String = chars.take(4).collect();
+                        u32::from_str_radix(&hex, 16)
+                            .ok()
+                            .filter(|_| hex.len() == 4)
+                    };
+                    let high = unit(&mut chars)?;
+                    let code = if (0xD800..0xDC00).contains(&high) {
+                        // A UTF-16 surrogate pair (RFC 8259 §7), e.g. U+1F600 escaped as two units.
+                        if chars.next()? != '\\' || chars.next()? != 'u' {
+                            return None;
+                        }
+                        let low = unit(&mut chars).filter(|low| (0xDC00..0xE000).contains(low))?;
+                        0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00)
+                    } else {
+                        high
+                    };
+                    out.push(char::from_u32(code)?);
+                }
+                other => out.push(other),
+            }
+        }
+        Some(out)
+    }
+
+    /// Redacts the contents of an ordinary string value or key in place. The JSON escapes are
+    /// decoded first (`\\n`, `\\t`, `\\uXXXX`), so an escaped newline cannot glue onto a key name
+    /// and multi-line content is redacted line by line (review of PR #31). A value is redacted as
+    /// `key: value`, so the same context rules apply as on a plain line (a hex string assigned to
+    /// a key is hidden; the same hex in a CSV cell is a public digest). Only a changed string is
+    /// re-encoded, so untouched strings keep their exact escapes. A string that cannot be decoded,
+    /// or whose key prefix does not come back unchanged, is hidden whole (fail closed).
+    fn redact_string(&mut self, i: usize, end: usize, key: Option<&str>) {
+        let Some(text) = self.decode(i, end) else {
+            self.edits
+                .push((i + 1, end - 1, "[REDACTED:SECRET]".to_owned()));
+            return;
+        };
+        let raw = text.as_str();
+        let with_key = |text: &str, k: &str| {
+            // A separated key joined with `_` (`api.key` -> `api_key`), as the line rules
+            // would see it written as an identifier.
+            let ident = json_key_segments(k).collect::<Vec<_>>().join("_");
+            let prefix = format!("{}: ", if ident.is_empty() { "value" } else { &ident });
+            let redacted = SecretRedactor::redact(&format!("{prefix}{text}"));
+            match redacted.strip_prefix(&prefix) {
+                Some(v) => v.to_owned(),
+                None => "[REDACTED:SECRET]".to_owned(),
+            }
+        };
+        // The text is redacted as plain text first; then each line again with the key as
+        // context (a hex value under a key is hidden, as on a plain `key: value` line). The plain
+        // result is kept only for a line that parses as JSON (it has its own keys), and for a line whose
+        // long hex tokens all sit in a public digest context (`<sha256>  file`); review of #31.
+        let keep_plain = |line: &str| {
+            SecretRedactor::redact_json_line(line).is_some() || hex_tokens_all_digests(line)
+        };
+        let clean = match key {
+            None => SecretRedactor::redact(raw),
+            // As text first (a line that is just `password:` arms the multi-line value rule).
+            Some(k) => SecretRedactor::redact(raw)
+                .split('\n')
+                .map(|line| {
+                    if keep_plain(line) {
+                        line.to_owned()
+                    } else {
+                        with_key(line, k)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        };
+        if clean != raw {
+            self.edits.push((i + 1, end - 1, json_escape(&clean)));
+        }
+    }
+
+    fn object(&mut self, i: usize, check: bool, depth: usize) -> Option<usize> {
+        let mut j = self.ws(i + 1);
+        if self.s.get(j) == Some(&b'}') {
+            return Some(j + 1);
+        }
+        loop {
+            if self.s.get(j) != Some(&b'"') {
+                return None;
+            }
+            let key_end = self.string(j)?;
+            // An undecodable key is treated as sensitive (fail closed).
+            let sensitive = self
+                .decode(j, key_end)
+                .is_none_or(|k| json_key_is_sensitive(&k));
+            let key_text = self.decode(j, key_end);
+            // The key text itself is always redacted: a key can hold a secret of its own
+            // (`{"password=x": 1}`), and an undecodable key is hidden whole (review of #31).
+            if !check {
+                self.redact_string(j, key_end, None);
+            }
+            j = self.ws(key_end);
+            if self.s.get(j) != Some(&b':') {
+                return None;
+            }
+            let value_start = self.ws(j + 1);
+            let value_end = self.value(
+                value_start,
+                check || sensitive,
+                depth + 1,
+                key_text.as_deref(),
+            )?;
+            if sensitive && !check {
+                const MARKER: &str = "\"[REDACTED:CONFIG_SECRET]\"";
+                if &self.s[value_start..value_end] != MARKER.as_bytes() {
+                    self.edits.push((value_start, value_end, MARKER.to_owned()));
+                }
+            }
+            j = self.ws(value_end);
+            match *self.s.get(j)? {
+                b',' => j = self.ws(j + 1),
+                b'}' => return Some(j + 1),
+                _ => return None,
+            }
+        }
+    }
+
+    fn array(&mut self, i: usize, check: bool, depth: usize, key: Option<&str>) -> Option<usize> {
+        let mut j = self.ws(i + 1);
+        if self.s.get(j) == Some(&b']') {
+            return Some(j + 1);
+        }
+        loop {
+            let end = self.value(j, check, depth + 1, key)?;
+            j = self.ws(end);
+            match *self.s.get(j)? {
+                b',' => j = self.ws(j + 1),
+                b']' => return Some(j + 1),
+                _ => return None,
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1965,7 +2450,10 @@ lQOYBGV1234BCADK...
         assert!(!clean.contains('⟫'));
 
         // Verify multi-key single-line JSON, multi-URL lines, quoted env assignments, and prose safety
-        let multi = r#"{"tool":"Bash","api_key":"json_secret_123","password":"json_pw_456","nested":{"token":"nested_tok_789"},"prose":"Apply basic configuration and nonbasic settings"}
+        // The prose field comes before the sensitive keys: since v1.3.1 every quoted string after a
+        // sensitive key is hidden to the end of the line (#29), and this checks that "basic" in prose
+        // is not taken for a `Basic` auth header.
+        let multi = r#"{"tool":"Bash","prose":"Apply basic configuration and nonbasic settings","api_key":"json_secret_123","password":"json_pw_456","nested":{"token":"nested_tok_789"}}
 FOO=1 AWS_SECRET_ACCESS_KEY="quoted_aws_secret" BAR=2
 urls: postgres://localhost:5432/dev postgres://admin:p@ssw0rd!@prod.db:5432/main"#;
         let clean_multi = SecretRedactor::sanitize(multi);
@@ -1974,9 +2462,8 @@ urls: postgres://localhost:5432/dev postgres://admin:p@ssw0rd!@prod.db:5432/main
         assert!(!clean_multi.contains("nested_tok_789"));
         assert!(clean_multi.contains("Apply basic configuration and nonbasic settings"));
         assert!(!clean_multi.contains("quoted_aws_secret"));
-        assert!(
-            clean_multi.contains("FOO=1 AWS_SECRET_ACCESS_KEY=\"[REDACTED:ENV_SECRET]\" BAR=2")
-        );
+        // Since v1.3.1 (#29) the rest of the line after the quoted value is hidden with it.
+        assert!(clean_multi.contains("FOO=1 AWS_SECRET_ACCESS_KEY=[REDACTED:ENV_SECRET]\n"));
         assert!(!clean_multi.contains("p@ssw0rd!"));
         assert!(clean_multi.contains("postgres://localhost:5432/dev"));
         assert!(clean_multi.contains("postgres://admin:[REDACTED:URL_PASSWORD]@prod.db:5432/main"));
@@ -2007,10 +2494,17 @@ path: C:\\Users\\dev\\file.rs root={high_entropy_hex}
         assert!(!clean_edges.contains("édefghijkl"));
         assert!(clean_edges.contains("SECRET_KEY=[REDACTED:ENV_SECRET]"));
         assert!(!clean_edges.contains(",defghijkl"));
-        assert!(clean_edges.contains("--api-key=\"[REDACTED:CLI_SECRET]\""));
-        assert!(clean_edges.contains("--private-key='[REDACTED:CLI_SECRET]'"));
-        assert!(clean_edges.contains("--refresh-token [REDACTED:CLI_SECRET]"));
-        assert!(clean_edges.contains("--secret=\\\"[REDACTED:CLI_SECRET]\\\""));
+        // Since v1.3.1 (#29) everything from the first quoted value to the end of the line is one
+        // marker, so the later flags on this line go with it.
+        assert!(clean_edges.contains("curl --api-key=[REDACTED:CLI_SECRET]\n"));
+        for leaked in [
+            "quoted_cli_secret_123",
+            "priv_cli_456",
+            "space_cli_789",
+            "esc_cli_000",
+        ] {
+            assert!(!clean_edges.contains(leaked), "{leaked}");
+        }
         assert!(clean_edges.contains("postgres://api_key:[REDACTED:URL_PASSWORD]@host:5432/db"));
         assert!(clean_edges.contains("redis://token:[REDACTED:URL_PASSWORD]@host:6379"));
         assert!(clean_edges.contains(&format!("root={high_entropy_hex}")));

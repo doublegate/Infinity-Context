@@ -113,6 +113,10 @@ Tiers:
   scheme, CLI secret flags (`--api-key=`, `--token=`, `--password=`, `--secret=`), `Bearer` and
   `Basic` headers, and `.env`/JSON/YAML assignments to sensitive key names (including multi-line
   JSON/YAML values after a sensitive key) (ICX-AUD-015).
+  After a sensitive key, a value holding any quote is hidden from its first quote to the end of
+  the line; only a call head right before that quote stays visible (v1.3.1, #29). A line that is
+  one complete JSON object or array is redacted structurally instead: only the values of sensitive
+  keys are replaced, and other strings are redacted with their key as context.
 - **Tier 3 (entropy gate):** unprefixed high-entropy Base64 tokens ($|S| \ge 24$,
   $H(S) > 4.35$ bits/char) and hex assignment values ($|S| \ge 32$, $H(S) > 3.50$ bits/char).
 

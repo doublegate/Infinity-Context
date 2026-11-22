@@ -502,6 +502,12 @@ groups such as ai-memory's):
 Register the MCP pager with `muse mcp add icx --user -- icx mcp-serve` (add `-e
 ICX_DAEMON_AUTOSTART=1` to share the resident daemon). Start a new Muse session to load the hooks.
 
+**Trust the workspace.** In an untrusted workspace Muse 1.4.25 loads no MCP servers at all,
+user-scope ones included (`icx`, `ai-memory`), while its hooks still run. The tail slot and
+output capture then work, but the `icx` tool is missing. Trust the project in Muse, or pass
+`muse exec --trust-workspace` for a headless run (verified on 1.4.25: recall then finds the
+command at similarity 1.00).
+
 The `muse` command is a launcher that updates the real binary hourly by default
 (`MUSE_UPDATE_INTERVAL_SECONDS`); a later Muse version can change its hook contract, so re-run a
 short `muse exec` after an update and check `icx status` in that project. Upgrade every agent to

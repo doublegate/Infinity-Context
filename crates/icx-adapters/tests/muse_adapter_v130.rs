@@ -435,3 +435,34 @@ fn bash_streams_and_array_errors() {
     let stored = String::from_utf8(mmu.cas.deref_bytes(id).unwrap()).unwrap();
     assert!(stored.contains("eacces"), "{stored:?}");
 }
+
+/// v1.3.1 (#30): an empty `output` string falls through to `stdout`/`stderr`.
+#[test]
+fn empty_output_falls_back_to_streams() {
+    let mut mmu = InfinityContextMmu::default();
+    let mut p = base("PostToolUseFailure");
+    p["tool_name"] = json!("bash");
+    p["tool_input"] = json!({"command": "make"});
+    p["tool_response"] = json!(r#"{"output":"","stderr":"compile-error-x","exit_code":2}"#);
+    let _ = reply(&mut mmu, "PostToolUseFailure", &p);
+    let id = mmu.hdc_index.latest_entry().expect("indexed").artifact_id;
+    let stored = String::from_utf8(mmu.cas.deref_bytes(id).unwrap()).unwrap();
+    assert!(
+        stored.contains("compile-error-x") && !stored.contains("exit_code"),
+        "{stored:?}"
+    );
+}
+
+/// Review of #31: `{"output": ""}` with nothing else is empty text, not the raw JSON envelope.
+#[test]
+fn empty_output_envelope_is_not_stored_raw() {
+    let mut mmu = InfinityContextMmu::default();
+    let mut p = base("PostToolUseFailure");
+    p["tool_name"] = json!("bash");
+    p["tool_input"] = json!({"command": "true"});
+    p["tool_response"] = json!(r#"{"output":""}"#);
+    let _ = reply(&mut mmu, "PostToolUseFailure", &p);
+    let id = mmu.hdc_index.latest_entry().expect("indexed").artifact_id;
+    let stored = String::from_utf8(mmu.cas.deref_bytes(id).unwrap()).unwrap();
+    assert!(!stored.contains("\"output\""), "{stored:?}");
+}
