@@ -5,6 +5,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-22
+
+Fixes #28, #29 and #30. Release notes:
+[`docs/releases/v1.3.1/`](docs/releases/v1.3.1/README.md).
+
+### Changed
+
+- Redaction (#29): after a sensitive key, every quoted string on the rest of the line is hidden,
+  and the code around it stays visible (`env::var("[REDACTED]").unwrap_or("[REDACTED]")`).
+  This covers chained calls, operator chains (`or`, `??`, `+`, ternaries), prefixed and template
+  literals (`b"..."`, `f"..."`, backticks), keyword-led and lambda values, and Rust generics.
+  There are no stopping points by design: later quoted text on the same line is hidden too, JSON
+  keys included. Ambiguous quoting (an apostrophe after a word character or `&`/`<`, a backslash
+  outside a literal, an unterminated literal) hides everything from there to the end of the
+  line. Pinned by a property test over random code shapes.
+
+### Fixed
+
+- CLI (#28): every value-taking flag (`--dir`, `--lines`, `--idle-exit`, `--max-requests`,
+  `--listen`, `--provider`, `--upstream`, `--profile`, `--context-tokens`, ...) rejects a missing,
+  flag-shaped (`--dir --raw`, `-h`) or blank value instead of taking the next flag or falling back
+  to a default. `icx hook` still fails open.
+- Hook fail-open replies (#30) come from one function in `icx-adapters`. They have the shape of
+  each adapter's own no-op, pinned by a test against `AntigravityAdapter`: agy unknown events
+  return `{}`, and agy Subagent events return `injectSteps` without `terminationBehavior`. Hermes
+  gets `{}`. Blank `--agent` / `--event` values are rejected.
+- Muse (#30): a Bash result with an empty `output` falls back to `stdout` / `stderr`.
+
+### Documentation
+
+- Muse loads MCP servers only in a trusted workspace; hooks run either way (deployment guide §2.6,
+  adapter spec §6).
+
 ## [1.3.0] - 2026-11-21
 
 Adds Meta Muse Code as a fifth agent. Release notes:

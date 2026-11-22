@@ -668,12 +668,109 @@ impl SecretRedactor {
             })
     }
 
+    /// Under a sensitive key, replaces every quoted literal from `val_start` to the end of the line
+    /// (v1.3.1, #29): `env::var("[REDACTED]").unwrap_or("[REDACTED]")`. The code outside quotes
+    /// stays visible. There are deliberately no stopping points (owner decision): any rule for
+    /// where a "next field" starts inside arbitrary code can be bypassed, so later quoted text on
+    /// the same line is hidden too, JSON keys included. Ambiguous quoting fails closed: a `'` after a
+    /// word character or `&`/`<` (prose apostrophe, string prefix, Rust lifetime), a `\` outside a
+    /// literal, or an unterminated literal hides everything from there to the end of the line.
+    /// Empty literals and exact redactor markers are left alone (idempotent).
+    fn redact_line_literals(out: &mut String, val_start: usize, replacement: &str) {
+        let Some(rest) = out.get(val_start..) else {
+            return;
+        };
+        let bytes = rest.as_bytes();
+        let line_end = bytes
+            .iter()
+            .position(|&b| b == b'\n')
+            .unwrap_or(bytes.len());
+        // Spans relative to `rest`, in order; `tail` hides `[from, line_end)` when quoting turns
+        // ambiguous.
+        let mut spans: Vec<(usize, usize)> = Vec::new();
+        let mut tail: Option<usize> = None;
+        let mut i = 0usize;
+        while i < line_end {
+            let b = bytes[i];
+            match b {
+                b'"' | b'\'' | b'`' => {
+                    let ambiguous = b == b'\''
+                        && i > 0
+                        && (bytes[i - 1].is_ascii_alphanumeric()
+                            || matches!(bytes[i - 1], b'_' | b'&' | b'<'));
+                    if ambiguous {
+                        tail = Some(i);
+                        break;
+                    }
+                    // Find the closing quote (backslash escapes honoured).
+                    let mut j = i + 1;
+                    let mut closed = None;
+                    while j < line_end {
+                        match bytes[j] {
+                            b'\\' => j += 1,
+                            c if c == b => {
+                                closed = Some(j);
+                                break;
+                            }
+                            _ => {}
+                        }
+                        j += 1;
+                    }
+                    let Some(close) = closed else {
+                        tail = Some(i + 1);
+                        break;
+                    };
+                    let inner = &rest[i + 1..close];
+                    if !inner.is_empty() && !Self::is_redaction_marker(inner) {
+                        spans.push((i + 1, close));
+                    }
+                    i = close + 1;
+                    continue;
+                }
+                b'\\' => {
+                    tail = Some(i);
+                    break;
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        if let Some(from) = tail {
+            let hidden = rest[from..line_end].trim_end_matches(['\r']);
+            if !hidden.is_empty() && !Self::is_redaction_marker(hidden) {
+                spans.push((from, from + hidden.len()));
+            }
+        }
+        for &(a, b) in spans.iter().rev() {
+            out.replace_range(val_start + a..val_start + b, replacement);
+        }
+    }
+
     fn redact_value_span(
         out: &mut String,
         val_start: usize,
         replacement: &str,
         stop_at_comma: bool,
     ) -> Option<usize> {
+        // Every quoted literal on the rest of the line first (v1.3.1, #29); the rules below then
+        // see redaction markers where the literals were and handle the value's head.
+        if out.as_bytes().get(val_start).is_none_or(|b| *b != b'\\') {
+            Self::redact_line_literals(out, val_start, replacement);
+        }
+        // A value that is now one quoted marker (`"[REDACTED:...]"`, also backtick-quoted) is done.
+        if let Some(q) = out
+            .as_bytes()
+            .get(val_start)
+            .copied()
+            .filter(|q| matches!(q, b'"' | b'\'' | b'`'))
+        {
+            let inner = &out[val_start + 1..];
+            if let Some(close) = inner.find(q as char)
+                && Self::is_redaction_marker(&inner[..close])
+            {
+                return Some(val_start + 1 + close + 1);
+            }
+        }
         if let Some(end) = Self::redact_call_wrapped_literals(out, val_start, replacement) {
             return Some(end);
         }
@@ -790,9 +887,12 @@ impl SecretRedactor {
         let rest = &out[val_start..];
         let mut val_len = rest.len();
         for (idx, ch) in rest.char_indices() {
+            // A backtick or an existing marker ends the token too, so a marker the literal pass
+            // wrote is never cut in half (idempotence, v1.3.1).
             if ch.is_whitespace()
-                || matches!(ch, '"' | '\'' | ';' | '&' | '|' | ')' | ']' | '}')
+                || matches!(ch, '"' | '\'' | '`' | ';' | '&' | '|' | ')' | ']' | '}')
                 || (stop_at_comma && ch == ',')
+                || (idx > 0 && rest[idx..].starts_with("[REDACTED:"))
             {
                 val_len = idx;
                 break;
@@ -1965,7 +2065,10 @@ lQOYBGV1234BCADK...
         assert!(!clean.contains('⟫'));
 
         // Verify multi-key single-line JSON, multi-URL lines, quoted env assignments, and prose safety
-        let multi = r#"{"tool":"Bash","api_key":"json_secret_123","password":"json_pw_456","nested":{"token":"nested_tok_789"},"prose":"Apply basic configuration and nonbasic settings"}
+        // The prose field comes before the sensitive keys: since v1.3.1 every quoted string after a
+        // sensitive key is hidden to the end of the line (#29), and this checks that "basic" in prose
+        // is not taken for a `Basic` auth header.
+        let multi = r#"{"tool":"Bash","prose":"Apply basic configuration and nonbasic settings","api_key":"json_secret_123","password":"json_pw_456","nested":{"token":"nested_tok_789"}}
 FOO=1 AWS_SECRET_ACCESS_KEY="quoted_aws_secret" BAR=2
 urls: postgres://localhost:5432/dev postgres://admin:p@ssw0rd!@prod.db:5432/main"#;
         let clean_multi = SecretRedactor::sanitize(multi);
@@ -2010,7 +2113,8 @@ path: C:\\Users\\dev\\file.rs root={high_entropy_hex}
         assert!(clean_edges.contains("--api-key=\"[REDACTED:CLI_SECRET]\""));
         assert!(clean_edges.contains("--private-key='[REDACTED:CLI_SECRET]'"));
         assert!(clean_edges.contains("--refresh-token [REDACTED:CLI_SECRET]"));
-        assert!(clean_edges.contains("--secret=\\\"[REDACTED:CLI_SECRET]\\\""));
+        // Hidden by the strict pass from the earlier `--api-key` (v1.3.1, #29), escapes included.
+        assert!(clean_edges.contains("--secret=") && !clean_edges.contains("esc_cli_000"));
         assert!(clean_edges.contains("postgres://api_key:[REDACTED:URL_PASSWORD]@host:5432/db"));
         assert!(clean_edges.contains("redis://token:[REDACTED:URL_PASSWORD]@host:6379"));
         assert!(clean_edges.contains(&format!("root={high_entropy_hex}")));

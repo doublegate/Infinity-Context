@@ -24,7 +24,7 @@
   <a href="LICENSING.md"><img src="https://img.shields.io/badge/specs-CC--BY--NC--ND--4.0-blueviolet.svg" alt="Specs: CC-BY-NC-ND-4.0"></a>
   <a href="PATENTS.md"><img src="https://img.shields.io/badge/patents-5%20Pending%20Families-d97706.svg" alt="Patents: 5 Pending Families"></a>
   <a href="COMMERCIAL.md"><img src="https://img.shields.io/badge/commercial%20license-available-ea580c.svg" alt="Commercial License Available"></a><br/>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v1.3.0-2563eb.svg" alt="Release: v1.3.0"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v1.3.1-2563eb.svg" alt="Release: v1.3.1"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.100%2B%20(Edition%202024)-f97316.svg?logo=rust" alt="Rust: 1.100+ (Edition 2024)"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/unsafe_code-forbid-16a34a.svg" alt="unsafe_code: forbid"></a>
   <a href="#cross-agent-interception-matrix"><img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Antigravity%20(agy)%20%7C%20Hermes%20%7C%20Muse%20%7C%20MCP-475569.svg" alt="Supported Agents"></a><br/>
@@ -61,6 +61,14 @@ An `AHTL` packet replaces a bulky tool log, unified `git diff`, or source file w
 The inline size reduction depends on the input. In the built-in synthetic benchmark it is 214.0x on a repetitive 1,200-line test log and 159.8x on a varied log. Every quantitative claim the project makes, with its fixture and source, is collected in [`docs/numbers.md`](docs/numbers.md).
 
 ---
+
+## What Changed in v1.3.1
+
+v1.3.1 hides every quoted string after a sensitive key to the end of the line, so secrets inside
+code (`env::var("K").unwrap_or("...")`, `x or "..."`, template and prefixed literals) no longer stay
+visible in icx's stored copy (#29). The code around the strings stays visible. It also rejects CLI
+flags with a missing or flag-shaped value (#28), and aligns hook fail-open replies with each
+adapter's own no-op (#30). Details: [v1.3.1 release notes](docs/releases/v1.3.1/README.md).
 
 ## What Changed in v1.3.0
 
@@ -121,6 +129,7 @@ v1.1.0 is a remediation release that follows an internal audit of v1.0.0 (findin
 
 ## Contents
 
+- [What Changed in v1.3.1](#what-changed-in-v131)
 - [What Changed in v1.3.0](#what-changed-in-v130)
 - [What Changed in v1.2.2](#what-changed-in-v122)
 - [What Changed in v1.2.0](#what-changed-in-v120)

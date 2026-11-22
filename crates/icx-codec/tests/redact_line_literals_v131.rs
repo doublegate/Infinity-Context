@@ -1,0 +1,158 @@
+//! v1.3.1 (#29): after a sensitive key, every quoted literal on the rest of the line is redacted,
+//! the code around it stays visible, ambiguous quoting fails closed to the end of the line, and
+//! structural boundaries (`, "key":`, a closing bracket, a CLI `--flag`) end the pass so JSON keys
+//! and later arguments survive. Placeholders are low-entropy on purpose (gitleaks).
+use icx_codec::SecretRedactor;
+
+const S: &str = "aaaa";
+
+fn hidden(line: &str) -> String {
+    let clean = SecretRedactor::redact(line);
+    assert!(!clean.contains(S), "{line:?} -> {clean:?}");
+    assert_eq!(
+        SecretRedactor::redact(&clean),
+        clean,
+        "not idempotent: {clean:?}"
+    );
+    clean
+}
+
+/// Every shape listed on #29.
+#[test]
+fn reported_code_shapes_hide_their_literals() {
+    for line in [
+        "password = env::var(\"K\").unwrap_or(\"aaaa\")\n",
+        "api_key = os.getenv(\"K\") or SecretStr(\"aaaa\")\n",
+        "api_key = settings.key or \"aaaa\"\n",
+        "const token = config.token ?? \"aaaa\";\n",
+        "api_key = base + \"aaaa\"\n",
+        "token = c ? \"aaaa\" : \"aaaa\";\n",
+        "token = cond ? x: \"aaaa\"\n",
+        "password = x if y else \"aaaa\"\n",
+        "secret = b\"aaaa\"\n",
+        "api_key = f\"prefix_{x}_aaaa\"\n",
+        "api_key = r#\"aaaa\"#\n",
+        "const password = `prefix_${x}_aaaa`;\n",
+        "password = new Secret(\"aaaa\")\n",
+        "token = await get_token() ?? \"aaaa\"\n",
+        "password = not disabled and \"aaaa\"\n",
+        "token = !c ? \"aaaa\" : \"aaaa\";\n",
+        "password = lambda x: \"aaaa\"\n",
+        "password = parse::<&str, String>(\"aaaa\")\n",
+        "password = f::<&'a str>('aaaa')\n",
+        "password = f::<&'a str>('v1 --aaaa')\n",
+        "api_key = \"prefix_\" + \"aaaa\"\n",
+        "password = \"{}\".format(\"aaaa\")\n",
+        "api_key = \"prefix_\" \"aaaa\"\n",
+        "password = SecretStr(x, user=\"a\", \"aaaa\")\n",
+        "password: my_secret(1) # don't aaaa\n",
+    ] {
+        hidden(line);
+    }
+}
+
+/// The code around the literals stays visible.
+#[test]
+fn surrounding_code_stays_visible() {
+    let c = hidden("password = env::var(\"DB_PASSWORD\").unwrap_or(\"aaaa\")\n");
+    assert!(
+        c.contains("env::var(") && c.contains(").unwrap_or("),
+        "{c:?}"
+    );
+    let c = hidden("api_key = os.getenv(\"K\") or SecretStr(\"aaaa\")\n");
+    assert!(
+        c.contains("os.getenv(") && c.contains(" or SecretStr("),
+        "{c:?}"
+    );
+}
+
+/// No stopping points (owner decision): later quoted text on the line is hidden too, JSON keys
+/// included, so nothing can slip past a guessed field boundary. Code outside quotes and the JSON
+/// structure stay. The three bypasses found against the earlier stopping points are pinned here.
+#[test]
+fn later_literals_on_the_line_are_hidden_too() {
+    let c = hidden("{\"password\": \"aaaa\", \"user\": \"aaaa\"}\n");
+    assert!(
+        c.starts_with("{\"password\": \"[REDACTED:") && c.contains(", \"[REDACTED:"),
+        "{c:?}"
+    );
+    hidden("password: SecretStr(\"aaaa\"), user: \"aaaa\"\n");
+    hidden("curl --api-key=\"aaaa\" --user \"aaaa\"\n");
+    // Bypasses of the stopping points tried before the owner chose the strict rule.
+    hidden("password = f(x)) + \"aaaa\"\n");
+    hidden("password = {\"aaaa\": 1}\n");
+    hidden("api_key = x --  \"aaaa\"\n");
+    hidden("password = f(x), user: \"aaaa\"\n");
+    hidden("token = [a], \"b\": \"aaaa\"\n");
+}
+
+/// Ambiguity fails closed: everything after an ambiguous quote on the line is hidden.
+#[test]
+fn ambiguous_quotes_fail_closed() {
+    hidden("password = f(&'a x) + \"aaaa\" --flag \"aaaa\"\n");
+    hidden("token = \"unterminated aaaa\n");
+}
+
+/// Lines without a sensitive key are untouched.
+#[test]
+fn unrelated_lines_are_untouched() {
+    for line in [
+        "let name = env::var(\"HOME\").unwrap_or(\"x\");\n",
+        "user = \"admin\" + \"suffix\"\n",
+    ] {
+        assert_eq!(SecretRedactor::redact(line), line);
+    }
+}
+
+mod properties {
+    use icx_codec::SecretRedactor;
+    use proptest::prelude::*;
+
+    /// A quoted literal whose contents are a recognisable placeholder.
+    fn literal() -> impl Strategy<Value = String> {
+        (prop_oneof![Just('"'), Just('`'), Just('\'')], "[a-z]{0,6}")
+            .prop_map(|(q, pad)| format!("{q}qqzz{pad}{q}"))
+    }
+
+    /// One balanced unit of code: identifiers, operators, calls, chains, indexes, generics,
+    /// prefixed literals and plain literals.
+    fn unit() -> impl Strategy<Value = String> {
+        prop_oneof![
+            literal(),
+            literal().prop_map(|l| format!("f({l})")),
+            literal().prop_map(|l| format!("env::var(x, {l})")),
+            literal().prop_map(|l| format!(".unwrap_or({l})")),
+            literal().prop_map(|l| format!("[{l}]")),
+            literal().prop_map(|l| format!("parse::<A, B>({l})")),
+            literal().prop_map(|l| format!("b{l}")),
+            literal().prop_map(|l| format!("f{l}")),
+            Just("x".to_owned()),
+            Just("cfg.key".to_owned()),
+            Just(" or ".to_owned()),
+            Just(" ?? ".to_owned()),
+            Just(" + ".to_owned()),
+            Just(" ? ".to_owned()),
+            Just(" : ".to_owned()),
+            Just(" if y else ".to_owned()),
+            Just("!".to_owned()),
+            Just("lambda v: ".to_owned()),
+            Just("new ".to_owned()),
+            Just("&'a ".to_owned()),
+        ]
+    }
+
+    proptest! {
+        /// No literal under a sensitive key keeps its contents, whatever code surrounds it.
+        #[test]
+        fn no_literal_survives_after_a_sensitive_key(
+            key in prop_oneof![Just("password"), Just("api_key"), Just("token"), Just("secret")],
+            sep in prop_oneof![Just(" = "), Just("="), Just(": ")],
+            units in proptest::collection::vec(unit(), 1..8),
+        ) {
+            let line = format!("{key}{sep}{}\n", units.concat());
+            let clean = SecretRedactor::redact(&line);
+            prop_assert!(!clean.contains("qqzz"), "{:?} -> {:?}", line, clean);
+            prop_assert_eq!(SecretRedactor::redact(&clean), clean);
+        }
+    }
+}

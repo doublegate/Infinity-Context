@@ -216,6 +216,9 @@ output and feeds recent activity and recall back into the conversation, like Cod
 shrink tool output in Muse's own context. No reply carries a JSON `null`, and malformed stdin
 fails open with `{}`.
 
+**Workspace trust.** Muse loads MCP servers, the `icx` pager included, only in a trusted
+workspace; hooks run either way. See the deployment guide §2.6 (#30).
+
 **Compatibility.** `AgentKind::Muse` (value 8) is new in v1.3.0. A v1.2.x binary cannot read a
 workspace in which a Muse event was recorded, so upgrade every agent's `icx` before wiring Muse.
 

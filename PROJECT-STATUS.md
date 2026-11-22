@@ -2,7 +2,7 @@
 
 ## Executive summary
 
-v1.3.0 is the current release (2026-11-21): it adds the Meta Muse Code adapter on top of v1.2.2.
+v1.3.1 is the current release (2026-11-22): it fixes #28, #29 and #30 on top of v1.3.0, which added the Meta Muse Code adapter.
 
 v1.2.2 (2026-11-21, pull requests #23 and #25) followed up v1.2.0
 with the open review suggestions, two post-upgrade regressions (command recall, token-count
@@ -60,6 +60,7 @@ full-request bound is claimed.
 - 2026-11-21: v1.2.1 follow-up (#23) tagged; held unpublished after a redactor panic was found.
 - 2026-11-21: v1.2.2 (#25) released: panic fix, issue #24, all v1.2.1 changes.
 - 2026-11-21: v1.3.0 released: Meta Muse Code adapter (fifth agent).
+- 2026-11-22: v1.3.1 released: strict redaction of quoted strings after sensitive keys (#29), CLI flag values (#28), fail-open replies and Muse fixes (#30).
 
 ## Known issues and remaining work
 

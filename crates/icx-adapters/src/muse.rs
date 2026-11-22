@@ -63,8 +63,9 @@ fn unwrap_muse_tool_response(tool_name: &str, response: Option<&Value>) -> (Stri
                 .and_then(Value::as_i64)
                 .and_then(|n| i32::try_from(n).ok());
             match obj.get("output") {
-                Some(Value::String(output)) => return (output.clone(), code),
-                None | Some(Value::Null) => {
+                Some(Value::String(output)) if !output.is_empty() => return (output.clone(), code),
+                // Missing, null or empty `output`: `stdout` / `stderr` in its place (#30).
+                None | Some(Value::Null | Value::String(_)) => {
                     // `stdout` / `stderr` in place of `output`.
                     let streams: Vec<&str> = ["stdout", "stderr"]
                         .into_iter()
