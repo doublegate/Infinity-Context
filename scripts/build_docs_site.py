@@ -167,7 +167,13 @@ def rewrite_text(text: str, src_repo: str, src_staged: str, out: Path) -> str:
         m = FENCE.match(line)
         if m and not fence:
             fence = m.group(1)
-        elif m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence):
+        elif (
+            m
+            and m.group(1)[0] == fence[0]
+            and len(m.group(1)) >= len(fence)
+            and not line[m.end() :].strip()
+        ):
+            # A closing fence carries no info string (CommonMark).
             fence = ""
         elif not fence:
 

@@ -27,8 +27,11 @@ the median, so the bus is roughly 1% of a hook, and agents work on a scale of se
 Add an **opt-in** crate, `icx-shm`, that implements the cross-process bus as a memory-mapped
 seqlock ring behind a Cargo feature (for example `shm-bus`) that is off by default:
 
-1. `icx-shm` is the only crate allowed to use `unsafe` (`#![allow(unsafe_code)]` with a
-   `// SAFETY:` comment on every block). Every other crate keeps `forbid`.
+1. `icx-shm` is the only crate allowed to use `unsafe`, with a `// SAFETY:` comment on every
+   block. Every other crate keeps `forbid`. Because a crate attribute cannot relax an inherited
+   `forbid` (E0453), `crates/icx-shm/Cargo.toml` declares its own `[lints.rust]` table
+   (`unsafe_code = "deny"`, allowed only on the audited items) instead of
+   `[lints] workspace = true`, and CI checks that no other crate drops the workspace lints.
 2. The ring keeps a sequence number per slot, odd while it is being written. Every data word is
    read and written as an atomic: plain copies of concurrently written memory would be data
    races, and so undefined behaviour in Rust's memory model. A reader retries when the sequence
