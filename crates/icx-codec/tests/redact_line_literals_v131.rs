@@ -202,3 +202,21 @@ fn exemptions_never_skip_a_later_quote() {
         assert_eq!(icx_codec::SecretRedactor::redact(line), line);
     }
 }
+
+/// Review of #31 (05:18 UTC): a backtick inside a type annotation and a quote in a YAML block
+/// header's comment are hidden too.
+#[test]
+fn backticks_in_annotations_and_quoted_block_header_comments() {
+    for line in [
+        "password: Option<`aaaa`>\n",
+        "token: Vec<`aaaa`>\n",
+        "api_key: HashMap<String, `aaaa`>\n",
+        "password: | # \"aaaa\"\n",
+        "api_key: |- # 'aaaa'\n",
+    ] {
+        hidden(line);
+    }
+    // The block's content is still removed.
+    let clean = hidden("password: | # \"aaaa\"\n  aaaa\nnext: ok\n");
+    assert!(clean.contains("next: ok"), "{clean:?}");
+}

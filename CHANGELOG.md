@@ -37,8 +37,11 @@ adapter's own no-op (#30). Details: [v1.3.1 release notes](docs/releases/v1.3.1/
   any type, becomes `"[REDACTED:CONFIG_SECRET]"`. Every other string is redacted on its own, with
   its key as context. Formatting and key order are kept, and the edited line must still parse.
   Anything that is not valid JSON, or nests deeper than 128 levels, keeps the first-quote rule.
-  String values are decoded before redaction, so escaped newlines and `\uXXXX` escapes cannot hide
-  a key, and multi-line string content is redacted line by line. A
+  String values are decoded before redaction (UTF-16 surrogate pairs included), so escaped
+  newlines and `\uXXXX` escapes cannot hide a key; embedded JSON and digest lines inside a string
+  keep their own context, and a line with a complete inline key block stays on the JSON path.
+- Redaction (#29): a backtick inside a type annotation, or a quote in a YAML block header's
+  comment (`password: | # "..."`), is hidden too. A
   7 KB minified API list with `"token"` first now keeps over 99% of its text instead of 0.5%.
 
 ### Fixed

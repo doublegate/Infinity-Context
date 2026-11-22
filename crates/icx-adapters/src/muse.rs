@@ -74,7 +74,12 @@ fn unwrap_muse_tool_response(tool_name: &str, response: Option<&Value>) -> (Stri
                         .collect();
                     // An `output` key (even empty) means this is Bash's own envelope: never store
                     // the raw JSON for it.
-                    if !streams.is_empty() || code.is_some() || obj.contains_key("output") {
+                    if !streams.is_empty()
+                        || code.is_some()
+                        || ["output", "stdout", "stderr"]
+                            .iter()
+                            .any(|k| obj.contains_key(*k))
+                    {
                         return (streams.join("\n"), code);
                     }
                 }

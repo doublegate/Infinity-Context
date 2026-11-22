@@ -104,7 +104,14 @@ impl SecretRedactor {
             // of hiding the rest of the line from the first quote.
             // A line opening a private-key block keeps the key-block handling below.
             if pending_value.is_none()
-                && KeyBlock::begins(body).is_none()
+                // Every key block on the line must also end on it (typed PEM/PGP banners), so no
+                // block state is owed to the following lines.
+                && KeyBlock::begins(
+                    Self::redact_inline_key_blocks(body)
+                        .as_deref()
+                        .unwrap_or(body),
+                )
+                .is_none()
                 && let Some(json) = Self::redact_json_line(body)
             {
                 out.push_str(&json);
@@ -999,7 +1006,11 @@ impl SecretRedactor {
         // Preserve the trailing block header itself (its indented content is removed by
         // `redact`), but still redact every earlier assignment on the same line, e.g.
         // `{api_key: x, password: |`.
-        if Self::sensitive_continuation(line).is_some_and(|pending| pending.block) {
+        // A quote in the header's comment (`password: | # "x"`) is hidden like any other value
+        // (review of PR #31); the block's indented content is still removed by `redact`.
+        if Self::sensitive_continuation(line).is_some_and(|pending| pending.block)
+            && !Self::declaration_colon(line).is_some_and(|colon| has_quote(&line[colon..]))
+        {
             let Some(colon) = Self::declaration_colon(line) else {
                 return line.to_owned();
             };
@@ -1304,7 +1315,7 @@ impl SecretRedactor {
                             break;
                         }
                     }
-                    '"' | '\'' | '\n' | '=' => return None,
+                    '"' | '\'' | '`' | '\n' | '=' => return None,
                     ':' if !(inner[i + 1..].starts_with(':') || inner[..i].ends_with(':')) => {
                         return None;
                     }
@@ -2147,8 +2158,24 @@ impl JsonScan<'_> {
                 'b' => out.push('\u{8}'),
                 'f' => out.push('\u{c}'),
                 'u' => {
-                    let hex: String = chars.by_ref().take(4).collect();
-                    out.push(char::from_u32(u32::from_str_radix(&hex, 16).ok()?)?);
+                    let unit = |chars: &mut std::str::Chars<'_>| {
+                        let hex: String = chars.take(4).collect();
+                        u32::from_str_radix(&hex, 16)
+                            .ok()
+                            .filter(|_| hex.len() == 4)
+                    };
+                    let high = unit(&mut chars)?;
+                    let code = if (0xD800..0xDC00).contains(&high) {
+                        // A UTF-16 surrogate pair (RFC 8259 §7): `😀`.
+                        if chars.next()? != '\\' || chars.next()? != 'u' {
+                            return None;
+                        }
+                        let low = unit(&mut chars).filter(|low| (0xDC00..0xE000).contains(low))?;
+                        0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00)
+                    } else {
+                        high
+                    };
+                    out.push(char::from_u32(code)?);
                 }
                 other => out.push(other),
             }
@@ -2181,15 +2208,25 @@ impl JsonScan<'_> {
                 None => "[REDACTED:SECRET]".to_owned(),
             }
         };
+        // The text is redacted as plain text first, so embedded JSON and digest lines
+        // (`<sha256>  file`) keep their own context. A line that is a single bare value is then
+        // redacted again with the key as context (a hex value under a key is hidden, as on a
+        // plain `key: value` line; review of PR #31).
+        let bare = |line: &str| {
+            !line.is_empty() && !line.contains(char::is_whitespace) && !line.starts_with(['{', '['])
+        };
         let clean = match key {
             None => SecretRedactor::redact(raw),
-            Some(k) if !raw.contains('\n') => with_key(raw, k),
-            // Multi-line content: first as text, so a line that is just a sensitive key
-            // (`password:`) arms the multi-line value rule; then every line again with the key
-            // as context (a hex line under a key is hidden, as on a plain line).
+            // As text first (a line that is just `password:` arms the multi-line value rule).
             Some(k) => SecretRedactor::redact(raw)
                 .split('\n')
-                .map(|line| with_key(line, k))
+                .map(|line| {
+                    if bare(line) {
+                        with_key(line, k)
+                    } else {
+                        line.to_owned()
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join("\n"),
         };
