@@ -271,6 +271,19 @@ pub(crate) fn tool_output_text(response: Option<&Value>) -> String {
 /// become the stub; Bash-like objects get `stdout` = stub and an emptied `stderr`; any other
 /// object or array has its largest string leaf replaced, keeping every other field.
 pub(crate) fn shape_preserving_replacement(original: Option<&Value>, stub: &str) -> Value {
+    // A text-only MCP result was stored as all of its blocks joined, so every block is replaced
+    // by one stub block, matching `updatedMCPToolOutput` and the stored artifact (review of #38).
+    if let Some(v) = original.filter(|v| mcp_text_content(v).is_some()) {
+        let block = serde_json::json!([{"type": "text", "text": stub}]);
+        return match v {
+            Value::Object(map) => {
+                let mut out = map.clone();
+                out.insert("content".to_owned(), block);
+                Value::Object(out)
+            }
+            _ => block,
+        };
+    }
     match original {
         Some(Value::Object(map)) if map.get("stdout").is_some_and(Value::is_string) => {
             let mut out = map.clone();

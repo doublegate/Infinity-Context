@@ -97,3 +97,28 @@ fn structured_content_is_not_dropped() {
         "{full}"
     );
 }
+
+/// Review of #38: a multi-block text result is replaced by one stub block in
+/// `updatedToolOutput`, so no original block stays inline next to the stub.
+#[test]
+fn multi_block_text_results_collapse_to_one_stub_block() {
+    let mut mmu = InfinityContextMmu::default();
+    let response = json!([
+        {"type": "text", "text": docs(20)},
+        {"type": "text", "text": "small trailing block marker-4471"}
+    ]);
+    let payload = json!({
+        "hook_event_name": "PostToolUse",
+        "tool_name": "mcp__claude_ai_Context7__query-docs",
+        "tool_input": {"libraryId": "/serde-rs/json", "query": "from_str"},
+        "tool_response": response
+    });
+    let out =
+        ClaudeCodeAdapter::handle_hook("PostToolUse", &payload.to_string(), &mut mmu).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let replaced = &v["hookSpecificOutput"]["updatedToolOutput"];
+    let blocks = replaced.as_array().expect("content array kept");
+    assert_eq!(blocks.len(), 1, "{replaced}");
+    assert!(blocks[0]["text"].as_str().unwrap().contains("#icx:"));
+    assert!(!out.contains("marker-4471"), "{out}");
+}
