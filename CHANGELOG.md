@@ -10,6 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Fixes #28, #29 and #30. Release notes:
 [`docs/releases/v1.3.1/`](docs/releases/v1.3.1/README.md).
 
+### Highlights
+
+v1.3.1 hides a value after a sensitive key from its first quote to the end of the line, so secrets
+inside code (`env::var("K").unwrap_or("...")`, `x or "..."`, template and prefixed literals) no
+longer stay visible in icx's stored copy (#29). A call head such as `env::var(` stays visible;
+later text on the line is hidden with the value. Complete JSON lines, such as minified API output,
+are parsed instead, so only the sensitive values are hidden. It also rejects CLI
+flags with a missing or flag-shaped value (#28), and aligns hook fail-open replies with each
+adapter's own no-op (#30). Details: [v1.3.1 release notes](docs/releases/v1.3.1/README.md).
+
 ### Changed
 
 - Redaction (#29): after a sensitive key, a value that holds any quote is hidden from its first
@@ -43,8 +53,13 @@ Fixes #28, #29 and #30. Release notes:
 
 - Muse loads MCP servers only in a trusted workspace; hooks run either way (deployment guide §2.6,
   adapter spec §6).
-- README badges grouped in a table by topic (build and quality, release and agents, licensing,
-  benchmarks and guarantees), sized to fit GitHub's README width.
+- README reworked as a user-facing landing page: a Getting Started section (verified release-binary
+  install, per-agent setup links, first steps), a CLI Usage section, ADR-0006, the v1.2.0 audit
+  and release notes in the documentation lists, and badges grouped in a titled table by topic.
+  The per-release "What Changed" summaries and the phase-by-phase roadmap history moved into this
+  changelog as "Highlights" under each version.
+- `.gitignore`: an in-repo workspace store (`icx.sqlite3` and its WAL/SHM files), `install.key`,
+  and local agent and environment files.
 - Release notes state that stored content is not re-checked after an upgrade.
 
 ### Build
@@ -56,6 +71,17 @@ Fixes #28, #29 and #30. Release notes:
 
 Adds Meta Muse Code as a fifth agent. Release notes:
 [`docs/releases/v1.3.0/`](docs/releases/v1.3.0/README.md).
+
+### Highlights
+
+v1.3.0 adds **Meta Muse Code** as a fifth agent (`icx hook --agent muse`). The adapter follows the
+hook contract observed on Muse 1.4.25: session start and each prompt receive icx's tail slot and
+recall, and every tool output is captured for recall and `deref`. Muse does not let hooks replace
+tool output, so icx does not shrink output inside Muse; its value there is the shared working
+context across agents. It also hides more quoted text inside function calls under secret-looking
+keys and rejects `--dir` without a folder. Upgrade every agent to v1.3.0 before wiring Muse. Details:
+[v1.3.0 release notes](docs/releases/v1.3.0/README.md), setup in the
+[deployment guide](docs/deployment-and-agent-integration-guide.md) §2.6.
 
 ### Added
 
@@ -102,6 +128,16 @@ Adds Meta Muse Code as a fifth agent. Release notes:
 Supersedes v1.2.1, which was tagged but never published: a redactor panic was found after
 tagging. v1.2.2 contains every v1.2.1 change below plus these fixes (issue #24).
 Release notes: [`docs/releases/v1.2.2/`](docs/releases/v1.2.2/README.md).
+
+### Highlights
+
+v1.2.2 is a follow-up to v1.2.0 and supersedes v1.2.1, which was tagged but not published
+after a redactor crash was found (fixed here, with an exhaustive no-panic test). Commands and paths are now indexed by component, so searching
+for `seq 1 400` finds the output of `Bash:seq 1 400`; the index format is `ICXHDC05` and existing
+indexes are rebuilt on first load. Token counts (`max_tokens: 4096`) and code type annotations
+(`token: String`) are no longer hidden as secrets. The daemon survives a transient save failure
+without acknowledging it, and history eviction never empties the window when keeping some fits.
+Details: [v1.2.2 release notes](docs/releases/v1.2.2/README.md).
 
 ### Fixed
 
@@ -178,6 +214,33 @@ re-checking the real v1.1.0 workspaces on this release's own machine after the u
 Remediation and bounded-context release candidate for the independent audit in `docs/codex/`.
 Qualification results and remaining release decisions are tracked in
 [`docs/releases/v1.2.0/`](docs/releases/v1.2.0/README.md).
+
+### Highlights
+
+v1.2.0 remediates the independent audit of v1.1.0 in [`docs/codex/`](docs/codex/README.md)
+(findings `ICX-CODEX-001` .. `ICX-CODEX-102`) plus the defects found in its pre-release review.
+Measured results, compatibility and open items are in the
+[v1.2.0 release notes](docs/releases/v1.2.0/README.md); current contracts are defined by
+[ADR 0006](docs/adr/0006-v1-2-0-context-and-compatibility.md).
+
+- **Bounded context:** the icx-managed window now has a total budget (`icx context-budget`).
+  At saturation old history is evicted in large steps behind one stable
+  `ICX:HISTORY_OMITTED` frame, so the prompt prefix stays byte-stable between steps; omitted
+  history stays dereferenceable.
+- **Recall:** exact lexical postings back the HDC/fractal recall, ranked by inverse document
+  frequency, so a unique identifier is never filtered out and outranks common words.
+- **Redaction:** YAML block, multi-line and flow-sequence secrets are hidden, redaction is
+  idempotent, and public digests (checksums, commit ids) are no longer over-redacted.
+- **Durability:** the daemon replies only after the store save succeeds, survives lock
+  contention, and no longer holds the workspace lock while reading a request.
+- **Integrations:** strict MCP request validation; Codex hook replies carry no
+  unsupported output field and no JSON nulls.
+- **Releases:** binaries are built by CI from the tag for static musl and glibc 2.35+, with
+  `SHA256SUMS`, build provenance and third-party notices.
+- **Upgrade:** v1.2.0 rebuilds workspaces into the ICXHDC04 snapshot format on first use.
+  v1.1.0 cannot read an upgraded workspace (it fails closed and loses nothing), so upgrade the
+  single `icx` binary used by all agents and keep a backup if you may downgrade. See
+  [`UPGRADING.md`](docs/releases/v1.2.0/UPGRADING.md).
 
 ### Migration
 
@@ -314,6 +377,10 @@ Remediation release for the adversarial audit of v1.0.0 in [`docs/claude/`](docs
 Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
 [`docs/claude/12-v1.1.0-remediation-status.md`](docs/claude/12-v1.1.0-remediation-status.md).
 
+### Highlights
+
+v1.1.0 is a remediation release that follows an internal audit of v1.0.0 (findings `ICX-AUD-001` through `ICX-AUD-055`, in [`docs/claude/`](docs/claude/README.md)). Workspaces now default to a private per-project directory under `$XDG_STATE_HOME/icx/workspaces/` and are stored in a single owner-sealed SQLite file. A repository-local `.icx/` from v1.0.x is no longer loaded implicitly and must be adopted with `icx trust`. Hook cost no longer grows with workspace size: on a 338-artifact workspace an in-process hook fell from 940 ms to 14 ms, and with the new resident `icx daemon` the median on a workspace of about 2,000 artifacts is 3.1 ms. The proxy now requires a per-install token. Hook outputs were aligned with the current Claude Code, Codex, Antigravity (`agy`) and MCP contracts. The cache figure was renamed to what it measures, a byte-weighted prefix-reuse proxy. The bus reports dropped publishes instead of reporting success. Ten arXiv PDFs that may not be redistributed were removed. The full list follows below; corrections to the research corpus are in [`ref-docs/corrections-2026-11-18.md`](ref-docs/corrections-2026-11-18.md).
+
 ### Migration
 
 - Workspaces now live under `$XDG_STATE_HOME/icx/workspaces/<project-hash>/` in a single
@@ -447,6 +514,12 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
 
 ## [1.0.0] - 2026-11-18
 
+### Highlights
+
+Phase 5: Long-Horizon Verification, 9-SLO Benchmark Suite, AHTL Exactness Closure & Production Release ([Overview (`Sprints 5.1–5.2`)](to-dos/phase-5-verification-benchmarks-and-release/overview.md)).
+
+500-turn (`> 8.4 MB` / `> 2.1M` raw tokens) Needle-in-a-Haystack / OOLONG & prefix-cache simulator with passkey recall, 4-agent shared-file bus verification across Claude Code, Antigravity CLI, Codex, and Hermes, full 256-bit `Blake3Digest` collision guards in `CasStore::put_bytes_checked`, adaptive Stage-1 `HdcAssociativeIndex` candidate scaling (`(entries.len() / 64).clamp(16, 512)`), bijective `AhtlClause` key/value escaping, enhanced `icx doctor [--dir <PATH>]` (`verify_all_integrity` + `verify_all_merkle_integrity_with_cas`), and 9-SLO `icx benchmark` scorecard.
+
 ### Added
 
 - **Phase 5 Sprint 2 — Bijective `AhtlClause` Escaping, Enhanced `icx doctor` Workspace Integrity Verifier, 9-SLO `icx benchmark` Suite & `v1.0.0` Production Release (`crates/icx-codec`, `crates/icx-core`, `crates/icx-adapters`, `crates/icx-cli`, `docs/`, `ref-docs/`):**
@@ -464,6 +537,12 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
 
 ## [0.5.0] - 2026-11-18
 
+### Highlights
+
+Phase 4: Cross-Agent Adapters, Polymorphic MCP Pager & Cache-Epoch Wire Proxy ([Overview (`Sprints 4.1–4.3`)](to-dos/phase-4-cross-agent-interception/overview.md)).
+
+`AgentHookAdapter` trait, `ClaudeCodeAdapter`, `CodexAdapter` + bounded `CodexRolloutTailer`, `AntigravityAdapter` (`exit 0`, UI-silent `systemMessage`, `512 KiB` tail-window `transcriptPath` fallback), `HermesAdapter` (`ContextEngine` & `MemoryProvider` v2 with `tool_calls` group preservation and occurrence-aligned `ingest_or_reuse_at_index`), `< 180` token Single-Tool Polymorphic `McpPagerServer` (`icx` with `⟪ICX:PROVENANCE│...⟫` redaction honesty, 16-hex ambiguity recovery hints, and bidirectional `xagent`), `WireProxyTransformer` (`Anthropic`, `OpenAI`, `Gemini`, SSE `⟪!icx:deref(...)⟫` expansion, and safe `TcpListener` `icx proxy`), and the comprehensive [Deployment & Agent Integration Guide](docs/deployment-and-agent-integration-guide.md).
+
 ### Added
 
 - **Phase 4 Sprint 3 — Single-Tool Polymorphic `McpPagerServer` (`icx`), Multi-Provider + SSE `WireProxyTransformer`, Local HTTP Proxy (`icx proxy`) & `v1.0.0` Deployment Guide (`crates/icx-adapters`, `crates/icx-proxy`, `crates/icx-cli`, `docs/deployment-and-agent-integration-guide.md`):**
@@ -478,6 +557,12 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
   - Implemented [`AgentHookAdapter`](crates/icx-adapters/src/lib.rs) and `AdapterError`, clear-state functional supersession in [`InfinityContextMmu`](crates/icx-adapters/src/mmu.rs) (`("fail", "0")` and `("status", "PASS")` in `BiTemporalGraph`), atomic workspace snapshot persistence (`mmu_state.json`, `cas_store.json`, `bitemporal_graph.json`, `icx-fabric-v1.shm`), `ClaudeCodeAdapter` (`SessionStart` `ICX:LEGEND`, `PreToolUse`, `PostToolUse` `lines=1..<L>` + `updatedMCPToolOutput`, `SubagentStart`/`SubagentStop`), `CodexAdapter` (strict `additionalProperties: false` wire schemas), and bounded `CodexRolloutTailer` (`T-41-001`, `T-41-002`).
 
 ## [0.4.0] - 2026-11-17
+
+### Highlights
+
+Phase 3: 10,240-Bit HDC, Contractive IFS Fractal Archive (`FCGA`), Titans-Inspired Surprise Gate & Bi-Temporal CSR Graph (`PPR`) ([Overview (`Sprints 3.1–3.3`)](to-dos/phase-3-hyperdimensional-and-fractal-index/overview.md)).
+
+10,240-bit `Hypervector` algebraic engine (`BitXor`/`BitXorAssign`, `unbind`, `inverse_permute`, `from_seed_framed`, `bind_role_filler`, `encode_sequence`, `cosine_bipolar`, `sub_hypervector_64`, `dedup_fingerprint_u128`), Infini-attention Delta-Rule `HdcBundler` with coordinate-parity tie-breaking and 128-bit deduplication, two-stage 16-byte `EntrySummary` L2-cache pre-screened `HdcAssociativeIndex` (`AssociativeMemoryIndex`), Contractive IFS `FractalCoord` (`verified_suffix_depth`, `to_q1_14`/`from_q1_14`, 64-bit Morton Z-order `morton_z64`, `@o1:o2` octal quadrant addressing) and `FractalTrajectoryArchive` verified against Theorem 3.2 bounds ($K \in 1..=32$), `TitansSurpriseGate` (`apply_idle_decay`, `observe_with_exit_code`, Delta-Rule novelty gating), and `BiTemporalGraph` with automatic functional relation supersession, atomic JSON persistence, and `CsrGraphSnapshot` $O(V + E)$ Personalized PageRank (`PPR`).
 
 ### Added
 
@@ -496,6 +581,12 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
   - Defined [`AssociativeMemoryIndex`](crates/icx-hdc/src/lib.rs) and upgraded [`HdcAssociativeIndex::query_associative`](crates/icx-hdc/src/lib.rs) with a two-stage L2-cache pre-screening pipeline over 16-byte `EntrySummary` records (`hv_sub64`, `subj_bloom32`, `quadrant_u16`, `surprise_q8`, `flags`).
 
 ## [0.3.0] - 2026-11-17
+
+### Highlights
+
+Phase 2: Alien Holographic Token Lattice (`AHTL`), Braille-256, Multi-Language Skeletonizers & 4-Tier Secret Redaction ([Overview (`Sprints 2.1–2.3`)](to-dos/phase-2-alien-codec-and-compression/overview.md)).
+
+Dual-Profile `AHTL v1.0` wire codec (`Profile A` `AhtlWirePacketV1` & `Profile B` `AhtlPacket`, `EpochHeader`, `AhtlStream`, `ContextCodec`) with bijective `%25`/`%23L` escaping, Unicode Braille-256 (`8`-byte & `64`-byte) bijection (`byte_to_braille_utf8`, `braille_utf8_to_byte`, `ChannelBHologram`), 1-Lipschitz 64-band HDC spectral folding (`Hypervector::spectral_bands_64`, `from_u64_seed`, `hv_digest_u64`, `hamming_distance_simd`), `FractalCoord::encode_fc_hex64` / `decode_fc_hex64`, multi-language `StructuralSkeletonizer` (`Rust`, `Python`, `TS/JS`, `Go`, `C/C++` + `cargo test`/`clippy`, `pytest`, `tsc`/`vitest`/`jest`, `go test` + unified `git diff` hunks), and 4-Tier `SecretRedactor` with Shannon entropy gating ($H(S)$) and `FLAG_IS_REDACTED` tagging, cross-referenced against `docs/ahtl/AHTL_v1_Complete_Technical_Specification_Volume.pdf`.
 
 ### Added
 
@@ -516,6 +607,12 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
   - Implemented Profile A [`AhtlWirePacketV1`](crates/icx-codec/src/ahtl.rs) (`⟦AHTL v1│#icx:<12-hex>│fc:<64-hex>│hv:<16-hex>│<64-Braille>│<skeleton>⟧`), enhanced Profile B `AhtlPacket` (`slice_hint`, `hologram_tag`, `compact_48bit_handle`, bijective `%25`/`%23L` subject escaping, `⇒` causal chains), `EpochHeader`, `WirePacket`, `AhtlStream`, `ContextCodec` trait, and `icx encode-ahtl --profile <a|b>` CLI support (`T-21-002`).
 
 ## [0.2.0] - 2026-11-17
+
+### Highlights
+
+Phase 1: Core CAS, Merkle-DAG (`LCM`), `/dev/shm` Seqlock Bus & Zero-`unsafe` Enforcement ([Overview (`Sprints 1.1–1.4`)](to-dos/phase-1-foundations/overview.md)).
+
+Two-threshold Normalized FastCDC with `LineIndexEntry` selective chunk line slicing, 48-bit (`#icx:<12-hex>`) and 64-bit (`#icx:<16-hex>`) BLAKE3 CAS handle resolution with ambiguity guards, 4-tier `MerkleContextDag` (`L1`..`L4` + `ToolArtifact`) with nested `Context-Folding` and `L3 -> L4` epoch compaction, a 200-turn prefix-cache simulation, the `AtomicU32`/`AtomicU64` in-process `SeqlockTelemetryBus` with a file-backed variant, permanent workspace-wide `unsafe_code = "forbid"`, Rust Edition `2024` / MSRV `1.100`, and `>= 95%` Codecov gate.
 
 ### Added
 
@@ -555,6 +652,12 @@ Finding IDs (`ICX-AUD-NNN`) refer to that audit; per-finding status is in
   - Optimized the [`README.md`](README.md) hero badge block into four balanced, width-verified rows covering CI, REUSE 3.3, CLA, Codecov, Antigravity (`agy`) PR review, Gitleaks, licensing, 5 pending patent families, verified performance benchmarks, and supported agent harnesses.
 
 ## [0.1.0] - 2026-11-16
+
+### Highlights
+
+Phase 0: Research, REA Forensics, Specifications & Workspace Bootstrap ([Overview](to-dos/phase-0-precursory-setup/overview.md)).
+
+38-source deep research report, 22 indexed arXiv papers (`ref-docs/papers/`; 10 of the PDFs were removed in v1.1.0 because their license does not permit redistribution), REA binary/SQLite forensics on Claude Code, Codex, Antigravity CLI (`agy`), and Hermes (`ref-docs/agent-internals/`), 13 normative specs + 4 ADRs (`docs/`), 9-chapter AHTL v1.0 specification volume (`docs/ahtl/`), multi-tier GPL-3.0/AGPL-3.0/CC-BY-NC-ND-4.0 + 5-family patent IP governance (`REUSE 3.3`), and 8-crate workspace bootstrap.
 
 ### Added
 

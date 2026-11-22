@@ -11,7 +11,7 @@
   <img src="assets/branding/icx-banner-1500x500.png" alt="Infinity-Context (icx) Hero Banner: Cross-Agent Virtual Context MMU and Alien Holographic Token Lattice" width="100%" />
 </p>
 
-<p align="center"><small>Archived concept artwork; embedded metrics and packet syntax are historical, non-normative. See <a href="assets/branding/README.md">branding status</a> and <a href="docs/adr/0006-v1-2-0-context-and-compatibility.md">current v1.2.0 contracts</a>.</small></p>
+<p align="center"><small>Archived concept artwork; embedded metrics and packet syntax are historical, non-normative. See <a href="assets/branding/README.md">branding status</a> and the <a href="docs/adr/0006-v1-2-0-context-and-compatibility.md">current context and compatibility contracts</a>.</small></p>
 
 <!-- Badges grouped by topic: titles in the left column, each group's badges split evenly over
      short lines (each under ~560 px) so the table stays whole at GitHub's README width. -->
@@ -49,7 +49,7 @@
 
 ## Overview
 
-**Infinity-Context (`icx`)** is an 8-crate Rust systems architecture that provides **unlimited effective context within and across AI coding and research agents** (**Claude Code**, **OpenAI Codex CLI**, **Google Antigravity CLI (`agy`)**, **Hermes Agent**, and MCP/ACP clients).
+**Infinity-Context (`icx`)** is a local context manager for AI coding and research agents (**Claude Code**, **OpenAI Codex CLI**, **Google Antigravity CLI (`agy`)**, **Hermes Agent**, **Meta Muse Code** and MCP clients), written as an 8-crate Rust workspace. It keeps bulky tool output out of an agent's context window, keeps every stored byte retrievable on demand, and shares working context between agents in the same project.
 
 Conventional context management relies on **human-readable English summarization** (`/compact`), which suffers from three compounding failure modes:
 
@@ -57,7 +57,7 @@ Conventional context management relies on **human-readable English summarization
 2. **Middle-Context Attentional Dilution ("Context Rot"):** Stuffing raw tool outputs into a 200K–1M token window degrades transformer softmax attention retrieval accuracy in the middle of the window while inflating per-turn latency and token cost.
 3. **KV-Cache Thrashing & Cross-Agent Isolation:** Mutating or sliding earlier conversation turns invalidates provider prompt caches (Anthropic 4-breakpoint `cache_control` and OpenAI 1,024-token prefix caches), while concurrent agents operating on the same repository cannot share live working memory.
 
-**Infinity-Context (`icx`)** solves all three by treating the LLM's context window as an **L1 Hardware Cache** managed by a deterministic Rust **Virtual Context Memory Management Unit (MMU)**. When a representation is consumed solely by a neural network's embedding layer and attention heads—never by human eyes—human readability is pure entropy overhead. `icx` replaces verbose raw tool outputs and lossy prose summaries with the **Alien Holographic Token Lattice (`AHTL`)**:
+**Infinity-Context (`icx`)** addresses all three by treating the LLM's context window as an **L1 Hardware Cache** managed by a deterministic Rust **Virtual Context Memory Management Unit (MMU)**. Text that only a model reads does not need to be written for people, so `icx` replaces verbose raw tool outputs and lossy prose summaries with the **Alien Holographic Token Lattice (`AHTL`)**:
 
 ```text
 ⟦Δ:crates/icx-core/src/dag.rs#L42-118⊢⊕fn:seal_epoch⋮¬unwrap()⋮!PANIC@L99:oob⋮✓test:14/14↦#icx:4f3598d97c50c484⋮Ψ:⠒⠴⡖⡸⢚⢼⣞⣰⟧
@@ -70,81 +70,19 @@ The inline size reduction depends on the input. In the built-in synthetic benchm
 
 ---
 
-## What Changed in v1.3.1
+## Latest Release
 
-v1.3.1 hides a value after a sensitive key from its first quote to the end of the line, so secrets
-inside code (`env::var("K").unwrap_or("...")`, `x or "..."`, template and prefixed literals) no
-longer stay visible in icx's stored copy (#29). A call head such as `env::var(` stays visible;
-later text on the line is hidden with the value. Complete JSON lines, such as minified API output,
-are parsed instead, so only the sensitive values are hidden. It also rejects CLI
-flags with a missing or flag-shaped value (#28), and aligns hook fail-open replies with each
-adapter's own no-op (#30). Details: [v1.3.1 release notes](docs/releases/v1.3.1/README.md).
-
-## What Changed in v1.3.0
-
-v1.3.0 adds **Meta Muse Code** as a fifth agent (`icx hook --agent muse`). The adapter follows the
-hook contract observed on Muse 1.4.25: session start and each prompt receive icx's tail slot and
-recall, and every tool output is captured for recall and `deref`. Muse does not let hooks replace
-tool output, so icx does not shrink output inside Muse; its value there is the shared working
-context across agents. It also hides more quoted text inside function calls under secret-looking
-keys and rejects `--dir` without a folder. Upgrade every agent to v1.3.0 before wiring Muse. Details:
-[v1.3.0 release notes](docs/releases/v1.3.0/README.md), setup in the
-[deployment guide](docs/deployment-and-agent-integration-guide.md) §2.6.
-
-## What Changed in v1.2.2
-
-v1.2.2 is a follow-up to v1.2.0 and supersedes v1.2.1, which was tagged but not published
-after a redactor crash was found (fixed here, with an exhaustive no-panic test). Commands and paths are now indexed by component, so searching
-for `seq 1 400` finds the output of `Bash:seq 1 400`; the index format is `ICXHDC05` and existing
-indexes are rebuilt on first load. Token counts (`max_tokens: 4096`) and code type annotations
-(`token: String`) are no longer hidden as secrets. The daemon survives a transient save failure
-without acknowledging it, and history eviction never empties the window when keeping some fits.
-Details: [v1.2.2 release notes](docs/releases/v1.2.2/README.md) and [`CHANGELOG.md`](CHANGELOG.md).
-
-## What Changed in v1.2.0
-
-v1.2.0 remediates the independent audit of v1.1.0 in [`docs/codex/`](docs/codex/README.md)
-(findings `ICX-CODEX-001` .. `ICX-CODEX-102`) plus the defects found in its pre-release review.
-Measured results, compatibility and open items are in the
-[v1.2.0 release notes](docs/releases/v1.2.0/README.md); current contracts are defined by
-[ADR 0006](docs/adr/0006-v1-2-0-context-and-compatibility.md).
-
-- **Bounded context:** the icx-managed window now has a total budget (`icx context-budget`).
-  At saturation old history is evicted in large steps behind one stable
-  `ICX:HISTORY_OMITTED` frame, so the prompt prefix stays byte-stable between steps; omitted
-  history stays dereferenceable.
-- **Recall:** exact lexical postings back the HDC/fractal recall, ranked by inverse document
-  frequency, so a unique identifier is never filtered out and outranks common words.
-- **Redaction:** YAML block, multi-line and flow-sequence secrets are hidden, redaction is
-  idempotent, and public digests (checksums, commit ids) are no longer over-redacted.
-- **Durability:** the daemon replies only after the store save succeeds, survives lock
-  contention, and no longer holds the workspace lock while reading a request.
-- **Integrations:** strict MCP request validation; Codex hook replies carry no
-  unsupported output field and no JSON nulls.
-- **Releases:** binaries are built by CI from the tag for static musl and glibc 2.35+, with
-  `SHA256SUMS`, build provenance and third-party notices.
-- **Upgrade:** v1.2.0 rebuilds workspaces into the ICXHDC04 snapshot format on first use.
-  v1.1.0 cannot read an upgraded workspace (it fails closed and loses nothing), so upgrade the
-  single `icx` binary used by all agents and keep a backup if you may downgrade. See
-  [`UPGRADING.md`](docs/releases/v1.2.0/UPGRADING.md).
-
-Historical figures and diagrams below are dated evidence/design summaries, not v1.2.0 timing,
-provider-cache, tokenizer or universal model-effectiveness guarantees.
-
-## What Changed in v1.1.0 (historical)
-
-v1.1.0 is a remediation release that follows an internal audit of v1.0.0 (findings `ICX-AUD-001` through `ICX-AUD-055`, in [`docs/claude/`](docs/claude/README.md)). Workspaces now default to a private per-project directory under `$XDG_STATE_HOME/icx/workspaces/` and are stored in a single owner-sealed SQLite file. A repository-local `.icx/` from v1.0.x is no longer loaded implicitly and must be adopted with `icx trust`. Hook cost no longer grows with workspace size: on a 338-artifact workspace an in-process hook fell from 940 ms to 14 ms, and with the new resident `icx daemon` the median on a workspace of about 2,000 artifacts is 3.1 ms. The proxy now requires a per-install token. Hook outputs were aligned with the current Claude Code, Codex, Antigravity (`agy`) and MCP contracts. The cache figure was renamed to what it measures, a byte-weighted prefix-reuse proxy. The bus reports dropped publishes instead of reporting success. Ten arXiv PDFs that may not be redistributed were removed. See [`CHANGELOG.md`](CHANGELOG.md) for the full list and [`ref-docs/corrections-2026-11-18.md`](ref-docs/corrections-2026-11-18.md) for corrections to the research corpus.
+**v1.3.1** fixes secret redaction inside code and one-line JSON, CLI flag values and fail-open hook
+replies. See the [v1.3.1 release notes](docs/releases/v1.3.1/README.md) and
+[`CHANGELOG.md`](CHANGELOG.md) for every release; upgrade notes are in each release's notes.
 
 ---
 
 ## Contents
 
-- [What Changed in v1.3.1](#what-changed-in-v131)
-- [What Changed in v1.3.0](#what-changed-in-v130)
-- [What Changed in v1.2.2](#what-changed-in-v122)
-- [What Changed in v1.2.0](#what-changed-in-v120)
-- [What Changed in v1.1.0](#what-changed-in-v110-historical)
+- [Latest Release](#latest-release)
 - [Highlights](#highlights)
+- [Getting Started](#getting-started)
 - [Architecture & Relationship Graphs](#architecture--relationship-graphs)
   - [5-Plane Virtual Context MMU Relationship Graph](#5-plane-virtual-context-mmu-relationship-graph)
   - [8-Crate Workspace & Subsystem Dependency Graph](#8-crate-workspace--subsystem-dependency-graph)
@@ -153,11 +91,11 @@ v1.1.0 is a remediation release that follows an internal audit of v1.0.0 (findin
 - [Prefix-Cache-Locked Epoch Controller](#prefix-cache-locked-epoch-controller)
 - [Cross-Agent Interception Matrix](#cross-agent-interception-matrix)
 - [Performance & Accuracy Benchmarks](#performance--accuracy-benchmarks)
+- [CLI Usage](#cli-usage)
 - [Repository Structure](#repository-structure)
-- [Quick Start & CLI Usage](#quick-start--cli-usage)
 - [Documentation & Research Corpus](#documentation--research-corpus)
 - [Unsafe Code Policy & Security](#unsafe-code-policy--security)
-- [Roadmap](#roadmap)
+- [Project Status & Roadmap](#project-status--roadmap)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -173,7 +111,67 @@ All figures below come from the synthetic in-process benchmark (`icx benchmark`)
 | **Plane 2: `icx-core` (`LCM`)** | FastCDC content-defined chunking with spread masks (mean chunk 10.6 KiB for an 8 KiB target), BLAKE3 content-addressed storage with 48-bit (`#icx:<12-hex>`) and 64-bit (`#icx:<16-hex>`) handles, a handle collision refused with `IcxError::HashCollision` instead of overwriting, a Merkle-DAG (`L1` turn/tool, `L2` branch, `L3` epoch, `L4` fold), and nested context folding (depth at most 64). One SQLite file (WAL) per workspace, saved in one transaction and sealed with a keyed BLAKE3 MAC. | `deref` returns the exact stored (post-redaction) bytes; FastCDC + BLAKE3 ingest of 64 KiB in 86.72 µs. |
 | **Plane 3: `icx-hdc` & `icx-store`** | 10,240-bit binary spatter code hypervectors (`[u64; 160]`), a delta-rule bundler inspired by Infini-attention, contractive IFS fractal coordinates (`fc:<64-hex>`), a Titans-inspired surprise gate (momentum-smoothed novelty from hypervector distance plus diagnostic and exit-code signals; not the learned neural memory of Behrouz et al.), and a bi-temporal graph with HippoRAG-style Personalized PageRank. | Hamming scan 64.20 µs per 1,000 nodes. Unique-token recall on 1,000 log documents: top-1 99.0%, top-5 99.7% (v1.0.0: 5.1% and 5.6%). |
 | **Plane 4: `icx-proxy`** | Prefix-cache-locked epoch controller and `WireProxyTransformer`. Client `cache_control` breakpoints are preserved; icx adds at most one, on a content block, keeps the total at 4 or fewer, and inherits a 1h TTL when the client uses one. Folded history is byte-stable across turns. The HTTP proxy binds to loopback and requires a per-install token. | 95.46% byte-weighted prefix reuse over all turns of a synthetic 50-turn transcript (95.38% excluding seal turns). This is a byte proxy, not a measured provider cache hit rate. |
-| **Plane 5: `icx-bus` & `icx-adapters`** | In-process seqlock ring of 256 slots of 4,096 bytes built on atomics. The file-backed variant uses `pread`/`pwrite` under a writer mutex and a file lock; it is not memory-mapped, not lock-free and not zero-copy, and readers are optimistic (seqlock version check). Publishes report drops and readers report missed sequence numbers. Adapters cover Claude Code, Codex CLI, Antigravity CLI (`agy`), Hermes Agent, and a single-tool MCP pager (`icx`). | 58.3 ns per in-process publish; file-backed publish-to-visible worst case 38 µs over 200 events. |
+| **Plane 5: `icx-bus` & `icx-adapters`** | In-process seqlock ring of 256 slots of 4,096 bytes built on atomics. The file-backed variant uses `pread`/`pwrite` under a writer mutex and a file lock; it is not memory-mapped, not lock-free and not zero-copy, and readers are optimistic (seqlock version check). Publishes report drops and readers report missed sequence numbers. Adapters cover Claude Code, Codex CLI, Antigravity CLI (`agy`), Hermes Agent, Meta Muse Code, and a single-tool MCP pager (`icx`). | 58.3 ns per in-process publish; file-backed publish-to-visible worst case 38 µs over 200 events. |
+
+---
+
+## Getting Started
+
+### 1. Install `icx`
+
+Prebuilt Linux x86-64 binaries are attached to every [release](https://github.com/doublegate/Infinity-Context/releases/latest):
+static musl (`x86_64-unknown-linux-musl`, any distribution) or glibc 2.35+ (`x86_64-unknown-linux-gnu`),
+each also built for `x86_64_v3` CPUs (AVX2, Haswell and newer). Verify the checksum and the build
+attestation before installing:
+
+```bash
+VERSION=v1.3.1
+TARGET=x86_64-unknown-linux-musl
+gh release download "$VERSION" -R doublegate/Infinity-Context \
+  -p "icx-$VERSION-$TARGET.tar.gz" -p SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
+gh attestation verify "icx-$VERSION-$TARGET.tar.gz" -R doublegate/Infinity-Context
+tar -xzf "icx-$VERSION-$TARGET.tar.gz"
+install -m 0755 "icx-$VERSION-$TARGET/icx" ~/.local/bin/icx
+```
+
+Or build from source with Rust 1.100+ (Edition 2024, via [rustup](https://rustup.rs)):
+
+```bash
+git clone https://github.com/doublegate/Infinity-Context.git
+cd Infinity-Context
+cargo install --path crates/icx-cli
+```
+
+### 2. Connect your agents
+
+Each agent calls `icx` from its lifecycle hooks and can query it through the `icx` MCP tool. The
+[Deployment & Agent Integration Guide](docs/deployment-and-agent-integration-guide.md) has the
+configuration for each one:
+
+| Agent | Setup |
+| :--- | :--- |
+| Claude Code | [§2.2](docs/deployment-and-agent-integration-guide.md#22-claude-code-configuration) |
+| OpenAI Codex CLI | [§2.3](docs/deployment-and-agent-integration-guide.md#23-openai-codex-cli-configuration) |
+| Google Antigravity CLI (`agy`) | [§2.4](docs/deployment-and-agent-integration-guide.md#24-google-antigravity-cli-agy-configuration) |
+| Hermes Agent | [§2.5](docs/deployment-and-agent-integration-guide.md#25-hermes-agent-configuration-contextengine-plugin) |
+| Meta Muse Code | [§2.6](docs/deployment-and-agent-integration-guide.md#26-meta-muse-code-configuration-v130) |
+| Other MCP clients | [§2.7](docs/deployment-and-agent-integration-guide.md#27-generic-mcp-harnesses) |
+
+`icx` can run alone or beside the [`ai-memory`](docs/deployment-and-agent-integration-guide.md#1-executive-architectural-overview--memory-tier-matrix)
+long-term memory server; the guide covers both setups.
+
+### 3. First steps
+
+```bash
+icx init       # create and seal this project's workspace (run inside the project)
+icx doctor     # check agent installations and workspace integrity
+icx status     # show what the workspace holds
+```
+
+After an agent session, its tool output is stored in the project's workspace: the agent sees
+compact packets and retrieves the full text with the `icx` MCP tool (`deref`, `slice`, `grep`,
+`recall`). Every command and option is under [CLI Usage](#cli-usage).
 
 ---
 
@@ -356,7 +354,7 @@ The hook contracts below were checked against each agent's upstream documentatio
 | **OpenAI Codex CLI** (`codex`) | `~/.codex/hooks.json` + `OPENAI_BASE_URL` wire proxy + MCP | Under Codex, icx does not shrink tool output: it ingests outputs so they can be recalled and dereferenced later. `PostToolUse` no longer appends `additionalContext`, which duplicated tokens next to the full native output. icx still emits `updatedMCPToolOutput` for MCP tools, but the Codex hooks documentation describes that field as not yet supported. `hooks.json` uses PascalCase event names, a string `command` and `timeout` in seconds. `SubagentStop` reads `last_assistant_message`. `PreToolUse` returns no decision. |
 | **Google Antigravity CLI** (`agy`) | `hooks.json` at workspace `.agents/hooks.json` or global `~/.gemini/config/hooks.json`; events `SessionStart`, `PreToolUse`, `PostToolUse`, `PreInvocation`, `PostInvocation`, `Stop` | `PreToolUse`: always `{"decision":"allow"}`. `PostToolUse`: `{}`. `PostInvocation` never sets `force_continue`. `Stop`: always `{"decision":"stop"}`, so a user's token or invocation budget is never overridden; it seals an epoch on `max_steps_exceeded` or error. `transcriptPath` is opened non-blocking, without following symlinks, regular files only. |
 | **Hermes Agent** (`hermes`) | `ContextEngine` plugin (`agent/context_engine.py`); there is no `hooks.yaml` integration | The Rust `HermesAdapter` implements the logic. This repository ships no Python shim: Hermes needs a small `ContextEngine` plugin that calls `icx hook --agent hermes --event ...`. |
-| **Meta Muse Code** (`muse`) | `~/.config/muse/settings.json` hooks (Claude-Code shape): `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `SubagentStart`, `SubagentStop`, `PreCompact`, `PostCompact`, `SessionEnd` + MCP (`muse mcp add icx --user -- icx mcp-serve`) | `SessionStart`/`UserPromptSubmit`: tail slot and recall in `additionalContext`. `PostToolUse`: output captured (Bash JSON unwrapped) but not replaced, because Muse rejects replacement; everything else `{}`. New in v1.3.0 ([adapter spec](docs/agent-adapters-and-interception.md)). |
+| **Meta Muse Code** (`muse`) | `~/.config/muse/settings.json` hooks (Claude-Code shape): `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `SubagentStart`, `SubagentStop`, `PreCompact`, `PostCompact`, `SessionEnd` + MCP (`muse mcp add icx --user -- icx mcp-serve`) | `SessionStart`/`UserPromptSubmit`: tail slot and recall in `additionalContext`. `PostToolUse`: output captured (Bash JSON unwrapped) but not replaced, because Muse rejects replacement; everything else `{}`. Muse loads MCP servers only in a trusted workspace ([adapter spec](docs/agent-adapters-and-interception.md)). |
 | **MCP Clients** | `icx mcp-serve` (JSON-RPC 2.0 over stdio) | One tool, `icx` (ops `deref`, `slice`, `grep`, `recall`, `fold`, `expand`, `xagent`, `status`). Legacy `initialize` negotiates 2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05; protocol 2026-07-28 clients use `server/discover` and per-request `_meta` versions. Fold depth is at most 64; input lines are bounded at 4 MiB. |
 
 ---
@@ -428,9 +426,11 @@ Infinity-Context/
 ├── images/                     # High-resolution logos & Graphviz (.dot / .png / .svg) relationship graphs
 ├── assets/                     # Multi-size icon packs (PNG/SVG/ICO), banners, web manifest & Social Preview card
 ├── docs/                       # Implementation specifications, deployment guide, numbers.md
-│   ├── adr/                    # Michael Nygard Architecture Decision Records (ADR-0001 .. ADR-0005)
+│   ├── adr/                    # Michael Nygard Architecture Decision Records (ADR-0001 .. ADR-0006)
 │   ├── ahtl/                   # AHTL v1.0 specification suite (9 chapters) and PDF volume
 │   ├── claude/                 # v1.1.0 audit report (findings ICX-AUD-001 .. ICX-AUD-055)
+│   ├── codex/                  # v1.2.0 independent audit (findings ICX-CODEX-001 .. ICX-CODEX-102)
+│   ├── releases/               # Per-release notes, upgrade guides and qualification evidence
 │   ├── diagrams/               # Normative Mermaid (.mmd) diagram sources
 │   ├── images/                 # Theme-adaptive dark/light SVG architecture & packet anatomy diagrams
 │   └── numbers.md              # Canonical table of every quantitative claim
@@ -440,43 +440,20 @@ Infinity-Context/
 │   ├── agent-internals/        # REA binary/SQLite forensics dossier & cross-agent hook/wire matrix
 │   ├── prior-art/              # Comparative analysis of GitHub & industry context engines
 │   └── novel-methods/          # Mathematical derivations of AHTL, 10,240-bit HDC, Fractal IFS & Titans gating
-├── to-dos/                     # 5-phase, 15-sprint hierarchical roadmap & ticket specifications (T-11-001..T-52-002)
+├── to-dos/                     # Roadmap, phase/sprint plans and remediation plans
 └── scripts/                    # Deterministic SVG, Graphviz, and platform asset generators
 ```
 
 ---
 
-## Quick Start & CLI Usage
-
-### Prerequisites
-
-- **Rust 1.100+** (Edition `2024`, `stable` toolchain via [rustup](https://rustup.rs))
-- **`jq` 1.6+** (required when running the local CI/CLA/reviewer self-test suites in `scripts/` and `.github/scripts/`)
-
-### Build, Test & Verify
+## CLI Usage
 
 ```bash
-# Clone the repository
-git clone https://github.com/doublegate/Infinity-Context.git
-cd Infinity-Context
-
-# Run the full test suite across all 8 workspace crates
-cargo test --workspace
-
-# Build the `icx` binary and put it on PATH (the examples below call `icx` directly)
-cargo install --path crates/icx-cli
-
-# Create and seal this project's workspace (run inside the project)
-icx init
-
-# Inspect local agent installations (Claude Code, Codex, Antigravity, Hermes, Muse) and workspace integrity
-icx doctor
-
-# Run the built-in synthetic benchmark suite
-icx benchmark
-
-# Display MMU, Merkle-DAG and HDC index status
-icx status
+icx init                # create and seal this project's workspace
+icx doctor              # inspect agent installations and workspace integrity
+icx status              # MMU, Merkle-DAG and HDC index status
+icx benchmark           # built-in synthetic benchmark suite
+icx --help              # every subcommand and option
 ```
 
 ### Workspace Location & Trust
@@ -543,7 +520,8 @@ The token is a per-install derived key, printed in hex. Clients that cannot chan
 - [System Architecture & 5-Plane Overview](docs/architecture.md)
 - [Alien Holographic Token Lattice (`AHTL`) Specification](docs/alien-holographic-codec.md)
 - [Canonical Numbers: every quantitative claim, its fixture and source](docs/numbers.md)
-- [v1.1.0 Audit Report (`ICX-AUD-001` .. `ICX-AUD-055`)](docs/claude/README.md)
+- Release notes: [v1.3.1](docs/releases/v1.3.1/README.md) · [v1.3.0](docs/releases/v1.3.0/README.md) · [v1.2.2](docs/releases/v1.2.2/README.md) · [v1.2.0](docs/releases/v1.2.0/README.md) ([upgrading](docs/releases/v1.2.0/UPGRADING.md))
+- Audits: [v1.1.0 (`ICX-AUD-001` .. `ICX-AUD-055`)](docs/claude/README.md) · [v1.2.0 independent audit (`ICX-CODEX-001` .. `ICX-CODEX-102`)](docs/codex/README.md)
 - [AHTL v1.0 Master Specification Suite (9 Chapters)](docs/ahtl/README.md) & [Printable Technical Specification Volume (PDF)](docs/ahtl/AHTL_v1_Complete_Technical_Specification_Volume.pdf)
 - [Virtual Memory, FastCDC & Lossless BLAKE3 Merkle-DAG (`LCM`)](docs/virtual-memory-and-dag-engine.md)
 - [10,240-Bit Hyperdimensional (`HDC`), Fractal (`FCGA`) & Bi-Temporal PPR Index](docs/hyperdimensional-and-fractal-index.md)
@@ -560,6 +538,7 @@ The token is a per-install derived key, printed in hex. Clients that cannot chan
 - [ADR-0003: Prefix-Cache-Locked Epoch Pinning](docs/adr/0003-prefix-cache-epoch-pinning.md)
 - [ADR-0004: Zero-Copy `/dev/shm` Seqlock Ring for Cross-Agent Telepathy](docs/adr/0004-zero-copy-shm-telepathy-bus.md) (title as originally written; the file-backed bus is not memory-mapped, lock-free or zero-copy)
 - [ADR-0005: v1.1.0 Workspace Trust, SQLite Store & Resident Daemon](docs/adr/0005-v1-1-0-workspace-trust-store-and-daemon.md) (supersedes the zero-copy parts of ADR-0004)
+- [ADR-0006: v1.2.0 Context Budgets & Compatibility](docs/adr/0006-v1-2-0-context-and-compatibility.md)
 
 ### Deep Research & Forensics Corpus (`ref-docs/`)
 
@@ -586,28 +565,19 @@ See [Security & Threat Model](docs/security-and-threat-model.md) and [SECURITY.m
 
 ---
 
-## Roadmap
+## Project Status & Roadmap
 
-Development is organized into Phases 0–5 and 15 sprints tracked in [`to-dos/ROADMAP.md`](to-dos/ROADMAP.md); all were completed in `v1.0.0`. `v1.1.0` is the audit remediation release described in [What Changed in v1.1.0](#what-changed-in-v110-historical). The milestone summaries below describe what each phase delivered; where a figure they once quoted was corrected by the audit, the v1.1.0 value is in [`docs/numbers.md`](docs/numbers.md).
-
-- **Phase 0 (`v0.1.0` — COMPLETED): Research, REA Forensics, Specifications & Workspace Bootstrap** — [Overview](to-dos/phase-0-precursory-setup/overview.md)
-  - 38-source deep research report, 22 indexed arXiv papers (`ref-docs/papers/`; 10 of the PDFs were removed in v1.1.0 because their license does not permit redistribution), REA binary/SQLite forensics on Claude Code, Codex, Antigravity CLI (`agy`), and Hermes (`ref-docs/agent-internals/`), 13 normative specs + 4 ADRs (`docs/`), 9-chapter AHTL v1.0 specification volume (`docs/ahtl/`), multi-tier GPL-3.0/AGPL-3.0/CC-BY-NC-ND-4.0 + 5-family patent IP governance (`REUSE 3.3`), and 8-crate workspace bootstrap.
-- **Phase 1 (`v0.2.0` — COMPLETED): Core CAS, Merkle-DAG (`LCM`), `/dev/shm` Seqlock Bus & Zero-`unsafe` Enforcement** — [Overview (`Sprints 1.1–1.4`)](to-dos/phase-1-foundations/overview.md)
-  - Two-threshold Normalized FastCDC with `LineIndexEntry` selective chunk line slicing, 48-bit (`#icx:<12-hex>`) and 64-bit (`#icx:<16-hex>`) BLAKE3 CAS handle resolution with ambiguity guards, 4-tier `MerkleContextDag` (`L1`..`L4` + `ToolArtifact`) with nested `Context-Folding` and `L3 -> L4` epoch compaction, a 200-turn prefix-cache simulation, the `AtomicU32`/`AtomicU64` in-process `SeqlockTelemetryBus` with a file-backed variant, permanent workspace-wide `unsafe_code = "forbid"`, Rust Edition `2024` / MSRV `1.100`, and `>= 95%` Codecov gate.
-- **Phase 2 (`v0.3.0` — COMPLETED): Alien Holographic Token Lattice (`AHTL`), Braille-256, Multi-Language Skeletonizers & 4-Tier Secret Redaction** — [Overview (`Sprints 2.1–2.3`)](to-dos/phase-2-alien-codec-and-compression/overview.md)
-  - Dual-Profile `AHTL v1.0` wire codec (`Profile A` `AhtlWirePacketV1` & `Profile B` `AhtlPacket`, `EpochHeader`, `AhtlStream`, `ContextCodec`) with bijective `%25`/`%23L` escaping, Unicode Braille-256 (`8`-byte & `64`-byte) bijection (`byte_to_braille_utf8`, `braille_utf8_to_byte`, `ChannelBHologram`), 1-Lipschitz 64-band HDC spectral folding (`Hypervector::spectral_bands_64`, `from_u64_seed`, `hv_digest_u64`, `hamming_distance_simd`), `FractalCoord::encode_fc_hex64` / `decode_fc_hex64`, multi-language `StructuralSkeletonizer` (`Rust`, `Python`, `TS/JS`, `Go`, `C/C++` + `cargo test`/`clippy`, `pytest`, `tsc`/`vitest`/`jest`, `go test` + unified `git diff` hunks), and 4-Tier `SecretRedactor` with Shannon entropy gating ($H(S)$) and `FLAG_IS_REDACTED` tagging, cross-referenced against `docs/ahtl/AHTL_v1_Complete_Technical_Specification_Volume.pdf`.
-- **Phase 3 (`v0.4.0` — COMPLETED): 10,240-Bit HDC, Contractive IFS Fractal Archive (`FCGA`), Titans-Inspired Surprise Gate & Bi-Temporal CSR Graph (`PPR`)** — [Overview (`Sprints 3.1–3.3`)](to-dos/phase-3-hyperdimensional-and-fractal-index/overview.md)
-  - 10,240-bit `Hypervector` algebraic engine (`BitXor`/`BitXorAssign`, `unbind`, `inverse_permute`, `from_seed_framed`, `bind_role_filler`, `encode_sequence`, `cosine_bipolar`, `sub_hypervector_64`, `dedup_fingerprint_u128`), Infini-attention Delta-Rule `HdcBundler` with coordinate-parity tie-breaking and 128-bit deduplication, two-stage 16-byte `EntrySummary` L2-cache pre-screened `HdcAssociativeIndex` (`AssociativeMemoryIndex`), Contractive IFS `FractalCoord` (`verified_suffix_depth`, `to_q1_14`/`from_q1_14`, 64-bit Morton Z-order `morton_z64`, `@o1:o2` octal quadrant addressing) and `FractalTrajectoryArchive` verified against Theorem 3.2 bounds ($K \in 1..=32$), `TitansSurpriseGate` (`apply_idle_decay`, `observe_with_exit_code`, Delta-Rule novelty gating), and `BiTemporalGraph` with automatic functional relation supersession, atomic JSON persistence, and `CsrGraphSnapshot` $O(V + E)$ Personalized PageRank (`PPR`).
-- **Phase 4 (`v0.5.0` — COMPLETED): Cross-Agent Adapters, Polymorphic MCP Pager & Cache-Epoch Wire Proxy** — [Overview (`Sprints 4.1–4.3`)](to-dos/phase-4-cross-agent-interception/overview.md)
-  - `AgentHookAdapter` trait, `ClaudeCodeAdapter`, `CodexAdapter` + bounded `CodexRolloutTailer`, `AntigravityAdapter` (`exit 0`, UI-silent `systemMessage`, `512 KiB` tail-window `transcriptPath` fallback), `HermesAdapter` (`ContextEngine` & `MemoryProvider` v2 with `tool_calls` group preservation and occurrence-aligned `ingest_or_reuse_at_index`), `< 180` token Single-Tool Polymorphic `McpPagerServer` (`icx` with `⟪ICX:PROVENANCE│...⟫` redaction honesty, 16-hex ambiguity recovery hints, and bidirectional `xagent`), `WireProxyTransformer` (`Anthropic`, `OpenAI`, `Gemini`, SSE `⟪!icx:deref(...)⟫` expansion, and safe `TcpListener` `icx proxy`), and the comprehensive [Deployment & Agent Integration Guide](docs/deployment-and-agent-integration-guide.md).
-- **Phase 5 (`v1.0.0` — COMPLETED): Long-Horizon Verification, 9-SLO Benchmark Suite, AHTL Exactness Closure & Production Release** — [Overview (`Sprints 5.1–5.2`)](to-dos/phase-5-verification-benchmarks-and-release/overview.md)
-  - 500-turn (`> 8.4 MB` / `> 2.1M` raw tokens) Needle-in-a-Haystack / OOLONG & prefix-cache simulator with passkey recall, 4-agent shared-file bus verification across Claude Code, Antigravity CLI, Codex, and Hermes, full 256-bit `Blake3Digest` collision guards in `CasStore::put_bytes_checked`, adaptive Stage-1 `HdcAssociativeIndex` candidate scaling (`(entries.len() / 64).clamp(16, 512)`), bijective `AhtlClause` key/value escaping, enhanced `icx doctor [--dir <PATH>]` (`verify_all_integrity` + `verify_all_merkle_integrity_with_cas`), and 9-SLO `icx benchmark` scorecard.
+The current state, metrics and known issues are in [`PROJECT-STATUS.md`](PROJECT-STATUS.md);
+planned work is in [`to-dos/ROADMAP.md`](to-dos/ROADMAP.md) and the
+[issue tracker](https://github.com/doublegate/Infinity-Context/issues). Phases 0–5 (v0.1.0 to
+v1.0.0) are complete; the history of every release, including those phases, is in
+[`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
 ## Contributing
 
-Contributions are welcome and are accepted under the [Contributor License Agreement (`CLA.md`)](CLA.md). Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before opening a pull request. Ensure **Rust 1.100+** and **`jq`** are installed, as all changes must pass:
+Contributions are welcome and are accepted under the [Contributor License Agreement (`CLA.md`)](CLA.md). Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before opening a pull request. Ensure **Rust 1.100+** and **`jq` 1.6+** (used by the CI, CLA and reviewer self-tests) are installed, as all changes must pass:
 
 ```bash
 cargo fmt --all -- --check
