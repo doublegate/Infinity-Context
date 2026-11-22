@@ -11,6 +11,7 @@
 **Description:** Create root `Cargo.toml`, `rust-toolchain.toml`, `.gitignore`, `.editorconfig`, `.github/workflows/ci.yml`, and the 8 workspace crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`).
 
 **Acceptance Criteria:**
+
 - [x] `cargo check --workspace --all-targets` succeeds with zero warnings.
 - [x] Workspace lints enforce `unsafe_code = "forbid"` (except `icx-bus` where `mmap` is encapsulated).
 - [x] Documentation updated in `docs/build-and-tooling.md`.
@@ -26,6 +27,7 @@
 **Description:** Define the 64-bit short handle `ArtifactId` (`#icx:<16-hex>`), full 256-bit `Blake3Digest`, `AgentKind`, and typed `IcxError` hierarchy in `crates/icx-core`.
 
 **Acceptance Criteria:**
+
 - [x] `ArtifactId::from_digest` deterministically extracts the big-endian leading 64 bits of a `Blake3Digest`.
 - [x] `Display` and `FromStr` round-trip `#icx:0123456789abcdef` cleanly.
 - [x] Unit tests added covering parsing, formatting, and malformed handle rejection.
@@ -41,6 +43,7 @@
 **Description:** Implement deterministic rolling gear-hash Content-Defined Chunking (`min=2048`, `avg=8192`, `max=65536` bytes) in `crates/icx-core/src/chunker.rs` so shared prefixes/suffixes across large tool outputs deduplicate automatically.
 
 **Acceptance Criteria:**
+
 - [x] Chunk boundaries depend exclusively on byte content and respect `min`/`max` bounds.
 - [x] Concatenating emitted chunks reproduces the exact input byte slice.
 - [x] Unit tests verify mid-file insertion stability (chunks after a localized edit realign).
@@ -56,6 +59,7 @@
 **Description:** Implement `CasStore` in `crates/icx-core/src/cas.rs` supporting `put_bytes`, `deref_bytes`, `deref_lines`, and `grep_cold`, with mandatory BLAKE3 digest verification on every read.
 
 **Acceptance Criteria:**
+
 - [x] `put_bytes` chunks payloads, hashes each chunk and the composite artifact with `BLAKE3`, and indexes line byte offsets.
 - [x] `deref_bytes` verifies `blake3::hash(&reconstructed) == full_digest`, returning `IcxError::IntegrityViolation` if any byte is mutated.
 - [x] `deref_lines(id, start, end)` returns exact 1-based inclusive line slices.

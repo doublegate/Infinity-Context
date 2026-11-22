@@ -11,6 +11,7 @@
 **Description:** Implement `ClaudeCodeAdapter` handling `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse` (emitting `hookSpecificOutput.updatedToolOutput` with an AHTL stub + `#icx:<hash>` when output exceeds threshold), `PreCompact`, and `PostCompact`.
 
 **Acceptance Criteria:**
+
 - [x] `PostToolUse` with a 50 KB `Bash` output returns a compact `< 400 byte` `updatedToolOutput` AHTL stub and commits the raw 50 KB payload to `CasStore`.
 - [x] `UserPromptSubmit` injects recalled AHTL packets and `/dev/shm` cross-agent telepathy updates into `additionalContext`.
 
@@ -25,6 +26,7 @@
 **Description:** Implement `CodexAdapter` handling `session-start`, `user-prompt-submit`, `post-tool-use`, `pre-compact`, and `post-compact` conforming strictly to Codex's `additionalProperties: false` JSON schemas.
 
 **Acceptance Criteria:**
+
 - [x] Emitted JSON contains only fields permitted by Codex `0.169.0`'s embedded `*.command.output` schemas.
 - [x] Unit tests verify schema conformance for all supported hook events.
 

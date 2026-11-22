@@ -426,7 +426,7 @@ Infinity-Context/
 ├── images/                     # High-resolution logos & Graphviz (.dot / .png / .svg) relationship graphs
 ├── assets/                     # Multi-size icon packs (PNG/SVG/ICO), banners, web manifest & Social Preview card
 ├── docs/                       # Implementation specifications, deployment guide, numbers.md
-│   ├── adr/                    # Michael Nygard Architecture Decision Records (ADR-0001 .. ADR-0006)
+│   ├── adr/                    # Michael Nygard Architecture Decision Records (ADR-0001 .. ADR-0007)
 │   ├── ahtl/                   # AHTL v1.0 specification suite (9 chapters) and PDF volume
 │   ├── claude/                 # v1.1.0 audit report (findings ICX-AUD-001 .. ICX-AUD-055)
 │   ├── codex/                  # v1.2.0 independent audit (findings ICX-CODEX-001 .. ICX-CODEX-102)
@@ -515,6 +515,8 @@ The token is a per-install derived key, printed in hex. Clients that cannot chan
 
 ## Documentation & Research Corpus
 
+The documentation is also published as a searchable site: <https://doublegate.github.io/Infinity-Context/>.
+
 ### Implementation Specifications (`docs/` & `docs/ahtl/`)
 
 - [System Architecture & 5-Plane Overview](docs/architecture.md)
@@ -539,6 +541,7 @@ The token is a per-install derived key, printed in hex. Clients that cannot chan
 - [ADR-0004: Zero-Copy `/dev/shm` Seqlock Ring for Cross-Agent Telepathy](docs/adr/0004-zero-copy-shm-telepathy-bus.md) (title as originally written; the file-backed bus is not memory-mapped, lock-free or zero-copy)
 - [ADR-0005: v1.1.0 Workspace Trust, SQLite Store & Resident Daemon](docs/adr/0005-v1-1-0-workspace-trust-store-and-daemon.md) (supersedes the zero-copy parts of ADR-0004)
 - [ADR-0006: v1.2.0 Context Budgets & Compatibility](docs/adr/0006-v1-2-0-context-and-compatibility.md)
+- [ADR-0007 (proposed): Opt-in Memory-Mapped Seqlock Bus (`icx-shm`)](docs/adr/0007-opt-in-icx-shm-bus.md)
 
 ### Deep Research & Forensics Corpus (`ref-docs/`)
 

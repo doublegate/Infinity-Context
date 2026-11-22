@@ -369,3 +369,28 @@ fn secrets_inside_keys_are_hidden() {
         assert!(!clean.contains("aaaa"), "{line} -> {clean}");
     }
 }
+
+/// Security review of #31: a multi-word or multi-line string under a sensitive key (whole key,
+/// separated or nested) is replaced whole by the JSON scanner before string redaction runs.
+#[test]
+fn whitespace_values_under_sensitive_keys_are_hidden() {
+    for (line, words) in [
+        (
+            r#"{"password":"correct horse aaaa"}"#,
+            &["correct", "horse", "aaaa"][..],
+        ),
+        (r#"{"db":{"api.key":"x y aaaa"}}"#, &["x y", "aaaa"][..]),
+        (r#"{"auth_token":"a b\nc aaaa"}"#, &["a b", "c aaaa"][..]),
+        (
+            r#"[{"secret":"multi word aaaa"}]"#,
+            &["multi", "word", "aaaa"][..],
+        ),
+    ] {
+        let clean = once(line);
+        // The whole value is replaced, not just its last word.
+        assert!(
+            words.iter().all(|w| !clean.contains(w)) && clean.contains("[REDACTED:CONFIG_SECRET]"),
+            "{line} -> {clean}"
+        );
+    }
+}

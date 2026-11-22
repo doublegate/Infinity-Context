@@ -4,7 +4,7 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 
 ## Status
 
-**Active release work:** [v1.2.0 remediation](v1.2.0-remediation.md) on `codex-audit`, with
+**Active release work:** [v1.2.0 remediation](codex-audit-remediation.md) on `codex-audit`, with
 [durable implementation status](../PROJECT-STATUS.md). The phase history and its original
 quantitative exit criteria below describe the original v1.0.0 plan; checked boxes are historical
 records, not current independent validation. Current published-manifest baseline is v1.1.0.
@@ -18,6 +18,7 @@ records, not current independent validation. Current published-manifest baseline
 ## Phases Overview
 
 ### Phase 0 — Pre-Cursory Setup, Deep Research, REA Forensics & Workspace Bootstrap (COMPLETED — `v0.1.0`)
+
 **Goal:** Conduct 38-source deep research, download 22 arXiv PDFs (`ref-docs/papers/`), reverse-engineer local agent binaries & SQLite databases with REA (`ref-docs/agent-internals/`), derive full technical specifications (`docs/`), configure `ai-memory` (`default/doublegate-infinity-context`), and bootstrap the compiling/tested 8-crate Rust workspace.  
 **Exit Criterion:** All research, specifications, ADRs, TODOs, `ai-memory` durable pages, and workspace bootstrap gates (`cargo fmt`, `cargo clippy`, `cargo test`, `icx benchmark`, `icx doctor`) pass with zero warnings.  
 
@@ -26,6 +27,7 @@ records, not current independent validation. Current published-manifest baseline
 ---
 
 ### Phase 1 — Foundations, BLAKE3 CAS, LCM Merkle-DAG, `/dev/shm` Bus & Zero-`unsafe` Enforcement (COMPLETED — `v0.2.0`)
+
 **Goal:** Establish the 8-crate Rust Cargo workspace, FastCDC + BLAKE3 Content-Addressed Store, Lossless Context Management (`LCM`) Merkle-DAG, Cache-Epoch Prefix Controller, lock-free `/dev/shm` Seqlock Ring Buffer, permanent workspace-wide `unsafe_code = "forbid"` (`std` allowed, zero `unsafe` through `v1.0.0`), and `>= 95%` Codecov line coverage.  
 **Exit Criterion:** `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo llvm-cov --workspace --all-targets --fail-under-lines 95` pass with 100% lossless byte/line round-trip recovery, zero `unsafe` code across all 8 crates, and `< 1 µs` seqlock ring latency.  
 **Estimated Duration:** 4 weeks  
@@ -39,6 +41,7 @@ records, not current independent validation. Current published-manifest baseline
 ---
 
 ### Phase 2 — Alien Holographic Token Lattice (`AHTL`) & Structural Skeletonizers (COMPLETED — `v0.3.0`)
+
 **Goal:** Implement the non-human BPE-aligned `AHTL` Dual-Profile codec (`Profile A` & `Profile B`), Braille-256 (`8`-byte & `64`-byte) topological sketcher with 1-Lipschitz spectral folding, multi-language AST/log/diff skeletonizers, and 4-Tier pre-ingestion secret redaction + Shannon entropy gate.  
 **Exit Criterion:** Achieves `12x–40x` compression ratio on real agent transcripts/logs with 100% identifier/line preservation, zero delimiter-injection vulnerabilities, and 100% secret redaction coverage, cross-referenced against `docs/ahtl/AHTL_v1_Complete_Technical_Specification_Volume.pdf`.  
 **Estimated Duration:** 3 weeks  
@@ -51,6 +54,7 @@ records, not current independent validation. Current published-manifest baseline
 ---
 
 ### Phase 3 — Hyperdimensional (`HDC`), Fractal (`FCGA`) & Bi-Temporal Graph Index (COMPLETED — `v0.4.0`)
+
 **Goal:** Build the sub-50µs 10,240-bit HDC associative memory engine, Contractive IFS Fractal Trajectory Archive, Titans Surprise-Gated Momentum tracker, and Bi-Temporal CSR Graph with HippoRAG Personalized PageRank.  
 **Exit Criterion:** Associative recall queries complete in `< 50 µs` over 10,000 nodes; Fractal suffix matching identifies shared trajectory suffixes in $O(1)$ time; Bi-Temporal functional edges auto-invalidate stale facts.  
 **Estimated Duration:** 3 weeks  
@@ -63,6 +67,7 @@ records, not current independent validation. Current published-manifest baseline
 ---
 
 ### Phase 4 — Cross-Agent Low-Level Interception, MCP Pager & Wire Proxy (COMPLETED — `v0.5.0`)
+
 **Goal:** Wire native lifecycle hook adapters for Claude Code (`2.1.326+`), OpenAI Codex (`0.169.0+`), Antigravity CLI (`agy`), and Hermes Agent, plus the Single-Tool Polymorphic MCP Pager (`icx`), SQLite WAL / Rollout JSONL tailer, and HTTP/1.1 & SSE Cache-Epoch Reverse Proxy.  
 **Exit Criterion:** All four agent adapters pass wire-schema conformance tests; `PostToolUse` rewrites bulky tool outputs into AHTL stubs; cross-agent telepathy propagates across harnesses in `< 100 µs`.  
 **Estimated Duration:** 3 weeks  
@@ -75,6 +80,7 @@ records, not current independent validation. Current published-manifest baseline
 ---
 
 ### Phase 5 — Long-Horizon Verification, Benchmarks & Production Packaging (COMPLETED — `v1.0.0`)
+
 **Goal:** Verify Infinity-Context on multi-million-token Needle-in-a-Haystack / OOLONG simulations, validate `>= 94%` prompt prefix-cache hit ratios, close all AHTL exactness items, and ship the `v1.0.0` `icx` CLI (`doctor`, `benchmark`, `status`, `proxy`, systemd user service).  
 **Exit Criterion:** 100% pass rate on multi-million-token passkey retrieval and multi-agent chaos tests; `icx benchmark` and `icx doctor` report all SLOs green.  
 **Estimated Duration:** 2 weeks  

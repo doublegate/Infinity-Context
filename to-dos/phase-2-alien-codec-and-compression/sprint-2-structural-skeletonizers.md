@@ -9,6 +9,7 @@
 ## Tickets
 
 ### `T-22-001` — Source Code & Unified Diff Structural Skeletonizer
+
 - **File:** `crates/icx-codec/src/skeleton.rs`
 - **Tasks:**
   - [x] Extract top-level function, struct, enum, trait, class, type, and interface signatures across Rust, Python, TypeScript/JS, Go, and C/C++ (`extract_symbol_signature`), folding contiguous imports (`imports:L<a>-<b>(N)`), extracting module headers (`mod@L<n>`), and computing block line spans (`L<start>-<end>`).
@@ -18,6 +19,7 @@
   - [x] `cargo test -p icx-codec skeleton` passes across source, diff, and plain-text inputs.
 
 ### `T-22-002` — Compiler & Test-Suite Log Skeletonizer (`12x–40x` Compression)
+
 - **File:** `crates/icx-codec/src/skeleton.rs`
 - **Tasks:**
   - [x] Detect test/build logs (`cargo test`, `Compiling`, `error[E`, `panicked at`, `pytest`, `tsc`/`vitest`, `go test`) automatically.

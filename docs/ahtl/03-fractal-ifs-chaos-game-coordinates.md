@@ -69,6 +69,7 @@ For each corner vertex $\vec{v} \in \{-1, +1\}^{16}$, define the affine similari
 $$w_{\vec{v}}(\vec{z}) = \frac{1}{2}\vec{z} + \frac{1}{2}\vec{v}$$
 
 **Theorem 3.1 (Strict Contractivity & Forward Invariance on $[-1, +1]^{16}$):**  
+
 1. *Forward Invariance:* For any $\vec{z} \in [-1, +1]^{16}$ and $\vec{v} \in \{-1, +1\}^{16}$, every coordinate $j \in \{0, \dots, 15\}$ satisfies:
    $$|w_{\vec{v}}(\vec{z})_j| = \left|\frac{1}{2} z_j + \frac{1}{2} v_j\right| \le \frac{1}{2}|z_j| + \frac{1}{2}|v_j| \le \frac{1}{2}(1) + \frac{1}{2}(1) = 1 \implies w_{\vec{v}}(\mathcal{X}) \subseteq \mathcal{X}$$
 2. *Lipschitz Contraction Factor $L = 0.5 < 1$:* For any two points $\vec{x}, \vec{y} \in \mathcal{X}$ and any fixed $\vec{v} \in \{-1, +1\}^{16}$:
@@ -92,6 +93,7 @@ Starting from the origin $\vec{z}_0 = \vec{0} \in [-1, +1]^{16}$, a sequence of 
 $$\vec{z}_t = w_{\vec{v}(s_t)}\big(\vec{z}_{t-1}\big) = \frac{1}{2}\vec{z}_{t-1} + \frac{1}{2}\vec{v}(s_t) = \sum_{k=0}^{t-1} 2^{-(k+1)} \vec{v}(s_{t-k})$$
 
 Observe the dyadic positional hierarchy of this expansion:
+
 - The **most recent transition** $s_t$ ($k = 0$) is weighted by $2^{-1} = \frac{1}{2}$ and determines the **sign (orthant)** of every coordinate $z_{t,j}$.
 - The **$k$-th most recent transition** $s_{t-k+1}$ determines the **$k$-th most significant fractional bit** of the signed dyadic expansion of $z_{t,j}$!
 

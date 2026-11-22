@@ -74,6 +74,30 @@ Supply-chain rules (ICX-AUD-040):
 - `deny.toml` fails the build on RustSec advisories and yanked crates, and allows only licenses
   compatible with distribution under GPL-3.0-or-later / AGPL-3.0-or-later.
 
+### Documentation site (`docs.yml`)
+
+The site at <https://doublegate.github.io/Infinity-Context/> is built with
+[Zensical](https://zensical.org/) (pinned in the workflow) from `docs/` plus the root README,
+CHANGELOG, PROJECT-STATUS, CONTRIBUTING, SECURITY and LICENSING pages. Pull requests that touch
+the docs build it in strict mode, so a broken internal link fails the check; pushes to `main`
+also deploy it to GitHub Pages. To build and preview locally (Python 3.11+):
+
+```bash
+pip install --require-hashes -r .github/docs-requirements.txt
+python3 scripts/build_docs_site.py
+zensical build --clean --strict -f .site-src/zensical.toml   # output in .site-src/site
+zensical serve -f .site-src/zensical.toml                    # preview on localhost:8000
+```
+
+Math is rendered by MathJax 3.2.2, self-hosted rather than loaded from a CDN: staging downloads
+the npm package (network access needed), checks it against a pinned SHA-512, and copies only
+the script, its fonts and its Apache-2.0 license into the site.
+
+`scripts/build_docs_site.py` copies the pages into `.site-src/` without changing the sources:
+links to files outside `docs/` point at GitHub, images outside `docs/` are copied in, and the
+navigation lists every page (curated order first, so a new document appears without editing
+the configuration).
+
 ---
 
 ## 4. Workspace Lints & Licensing (`Cargo.toml`)

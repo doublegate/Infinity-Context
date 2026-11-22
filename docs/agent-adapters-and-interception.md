@@ -12,7 +12,7 @@
 
 Hook contracts below were checked against upstream documentation on 2026-11-18 (Claude Code 2.1.328, codex-cli 0.170.0, agy 1.5.11, Hermes source `dc394c6`). `crates/icx-adapters/tests/claude_contract.rs` pins the Claude Code output shapes; the other adapters are covered by unit tests, not by fixtures captured from live agent runs.
 
-The v1.2.0 Codex correction is also pinned by `protocol_validation_v120.rs` and the local
+The v1.2.0 Codex correction is also pinned by `protocol_validation.rs` and the local
 Codex 0.171 diagnostic: tool-output replacement is unsupported. The tests exercise adapter
 output and storage; they are not live paid-provider or complete host-integration acceptance.
 Current compatibility and evidence limits supersede older design promises in

@@ -131,9 +131,9 @@ non-secrets can be removed; see [docs/security-and-threat-model.md](security-and
 - **Property tests (`proptest`, `crates/icx-codec/tests/properties.rs`):** `redact` is the
   identity on secret-free text and idempotent; `sanitize` removes every delimiter; packets built
   from hostile field text render to exactly one packet and round-trip; clause parsing is total.
-- **Codec regressions (`crates/icx-codec/tests/codec_v110.rs`):** hex epoch ids, `SliceMap`
+- **Codec regressions (`crates/icx-codec/tests/codec_conformance.rs`):** hex epoch ids, `SliceMap`
   validation, bounded clause chains.
-- **Redaction fixtures (`crates/icx-codec/tests/redact_v110.rs`):** URL user-info for every scheme,
+- **Redaction fixtures (`crates/icx-codec/tests/redact_recall_and_losslessness.rs`):** URL user-info for every scheme,
   additional vendor formats and key names, multi-line JSON/YAML values, single-line and
   unterminated PEM blocks, losslessness on secret-free input.
 - **Compression tests (`crates/icx-codec/src/skeleton.rs`):** `>= 25x` on a synthetic passing

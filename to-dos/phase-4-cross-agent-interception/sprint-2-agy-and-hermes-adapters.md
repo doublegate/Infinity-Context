@@ -11,6 +11,7 @@
 **Description:** Implement `AntigravityAdapter` for `SessionStart`, `PreInvocation`, `PostInvocation`, `PreToolUse`, `PostToolUse`, and `Stop` using camelCase protojson keys (`conversationId`, `injectSteps`, `metadata.user_markdown: ""`, `terminationBehavior`).
 
 **Acceptance Criteria:**
+
 - [x] `PreInvocation` injects recalled AHTL frames inside `systemMessage` with `metadata.user_markdown: ""` so the human UI remains clean while the model receives the machine context.
 - [x] `Stop` with `terminationReason: "MAX_TOKEN_BUDGET_EXCEEDED"` and `continuationActive: false` folds the epoch and returns `{"decision": "continue", ...}`.
 
@@ -25,6 +26,7 @@
 **Description:** Implement `HermesAdapter` transforming OpenAI-style `request_messages` into Cache-Epoch-aligned AHTL frames + Ephemeral Tail Slot for Hermes's `ContextEngine.select_context()`.
 
 **Acceptance Criteria:**
+
 - [x] Preserves the system head and `protect_last_n` tail messages verbatim while replacing middle-history tool bloat with sealed AHTL epochs.
 
 **Dependencies:** T-42-001  

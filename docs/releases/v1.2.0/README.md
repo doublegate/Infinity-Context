@@ -1,7 +1,7 @@
 # v1.2.0 implementation and qualification
 
 Branch: `codex-audit`. Manifest version: 1.2.0. **Released 2026-11-21 (pull request #22).** Audit evidence against a996d59 remains unchanged in `docs/codex/`.
-The [implementation tracker](../../../to-dos/v1.2.0-remediation.md) and
+The [implementation tracker](../../../to-dos/codex-audit-remediation.md) and
 [project status](../../../PROJECT-STATUS.md) distinguish completed work from open gates.
 
 ## Implemented behavior

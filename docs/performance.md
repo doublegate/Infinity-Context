@@ -114,7 +114,7 @@ daemon avoids the load entirely.
 
 | Item | Result |
 | :--- | :--- |
-| HDC unique-token recall, 1,000 log documents | top-1 5.1% to 99.0%, top-5 5.6% to 99.7% (v1.0.0 to v1.1.0); query 24 µs to 69 µs. Gate test: recall@5 `>= 95%` at n = 300 (`crates/icx-hdc/tests/recall_v110.rs`). |
+| HDC unique-token recall, 1,000 log documents | top-1 5.1% to 99.0%, top-5 5.6% to 99.7% (v1.0.0 to v1.1.0); query 24 µs to 69 µs. Gate test: recall@5 `>= 95%` at n = 300 (`crates/icx-hdc/tests/recall_gate.rs`). |
 | File-backed telepathy ring, publish to visible in a second handle | worst case 38 µs over 200 events (`crates/icx-bus/tests/loss_signalling.rs`) |
 | FastCDC mean chunk size on this repository's sources (target 8 KiB) | 13.2 KiB to 10.6 KiB after switching to spread masks |
 

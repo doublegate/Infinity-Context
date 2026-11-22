@@ -215,6 +215,7 @@ pub fn hamming_distance_simd(&self, other: &Self) -> u32 {
     d0 + d1 + d2 + d3
 }
 ```
+
 Breaking the dependency chain into four independent accumulators (`d0..d3`) saturates the out-of-order execution ports on Intel Skylake/Comet Lake/Sapphire Rapids and AMD Zen 4/5 cores, achieving **$< 12\text{ ns}$ per 10,240-bit comparison**.
 
 ---

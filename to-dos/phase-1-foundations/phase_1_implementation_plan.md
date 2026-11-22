@@ -60,6 +60,7 @@ flowchart TB
 ## Open Questions
 
 > [!IMPORTANT]
+>
 > 1. **Branching & Untracked `docs/ahtl/` + `ref-docs/` Directories:** Should we keep `docs/ahtl/` and the four `ref-docs/` subdirectories untracked while executing and opening the Phase 1 PR (saving them for a separate AHTL Specification PR), or would you like them committed on their own branch/PR first?
 > 2. **Phase 1 Execution Mode:** Once you approve this plan, should I execute all three sprints (Sprint 1.1, Sprint 1.2, Sprint 1.3) sequentially to completion, run the full verification suite (`cargo fmt`, `cargo clippy`, `cargo test`, `icx benchmark`, `icx doctor`, `reuse lint`), and open the Phase 1 PR?
 
@@ -70,6 +71,7 @@ flowchart TB
 ### Component 1 — Sprint 1.1: Core Identifiers, Normalized FastCDC & BLAKE3 CAS (`crates/icx-core`)
 
 #### [MODIFY] [lib.rs](../../crates/icx-core/src/lib.rs)
+
 - Implement **Ticket `T-11-002`** enhancements:
   - Support parsing both 64-bit Profile B handles (`#icx:<16-hex>`) and 48-bit Profile A compact handles (`#icx:<12-hex>`) via `ArtifactPrefix` / `ArtifactId::parse_prefix`, plus `ArtifactId::to_short_hex12()` (`#icx:<12-hex>`).
   - Add domain-separated hashing on `Blake3Digest`: `Blake3Digest::hash_with_domain(domain: &str, data: &[u8])` and `Blake3Digest::hash_xof(seed_context: &str, out: &mut [u8])`.
@@ -93,6 +95,7 @@ pub trait ContentAddressedStore: Send + Sync {
 ```
 
 #### [MODIFY] [chunker.rs](../../crates/icx-core/src/chunker.rs)
+
 - Implement **Ticket `T-11-003`** enhancements:
   - Upgrade `chunk_bytes` to **Normalized FastCDC** (two-mask gear-hash cut-point algorithm: stricter mask `mask_s = (1u64 << (bits + 1)) - 1` for `[min_size .. avg_size)` and relaxed mask `mask_l = (1u64 << (bits - 1)) - 1` for `[avg_size .. max_size)`).
   - Add `ChunkSpan { offset: usize, len: usize, start_line: u32, end_line: u32 }` helper (`chunk_bytes_with_lines`) that computes exact 1-based line spans per chunk in a single streaming pass.
@@ -106,8 +109,10 @@ let normal_pivot = (offset + cfg.avg_size.max(min_size)).min(limit);
 ```
 
 #### [MODIFY] [cas.rs](../../crates/icx-core/src/cas.rs)
+
 - Implement **Ticket `T-11-004`** enhancements:
   - Add `LineIndexEntry` (`docs/data-model.md` §2) to `StoredArtifact`:
+
     ```rust
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     pub struct LineIndexEntry {
@@ -118,6 +123,7 @@ let normal_pivot = (offset + cfg.avg_size.max(min_size)).min(limit);
         pub chunk_id: ArtifactId,
     }
     ```
+
   - Update `CasStore::deref_lines(id, start_line, end_line)` so it uses `meta.line_index` to identify, BLAKE3-verify, and concatenate **only the `L0` chunks overlapping `start_line..=end_line`**, avoiding full-artifact materialization on multi-megabyte logs while still verifying the cryptographic BLAKE3 digest of every accessed chunk.
   - Add `CasStore::resolve_handle(&self, handle_or_prefix: &str) -> Result<ArtifactId, IcxError>` supporting both `#icx:<16-hex>` (exact `u64` lookup) and `#icx:<12-hex>` (48-bit prefix range scan via `BTreeMap::range(min_id..=max_id)`).
   - Add `CasStore::put_bytes_checked(&mut self, raw: &[u8]) -> Result<(ArtifactId, Blake3Digest), IcxError>` enforcing `ICX_MAX_INGEST_BYTES` (`64 MiB`).
@@ -129,6 +135,7 @@ let normal_pivot = (offset + cfg.avg_size.max(min_size)).min(limit);
 ### Component 2 — Sprint 1.2: Lossless Merkle-DAG (`LCM`) & Cache-Epoch Controller (`crates/icx-core`)
 
 #### [MODIFY] [dag.rs](../../crates/icx-core/src/dag.rs)
+
 - Implement **Tickets `T-12-001` & `T-12-002`** enhancements:
   - Add `ToolArtifactNode` (`docs/data-model.md` §2) and `DagNode::ToolArtifact(ToolArtifactNode)` alongside `DagNode::Turn`, `DagNode::SubTrajectoryBranch`, and `DagNode::CacheEpoch`.
   - Upgrade `active_branch: Option<OpenBranch>` to a nested stack `branch_stack: Vec<OpenBranch>` so nested sub-trajectories (e.g., an outer feature branch containing an inner compile-fix loop) fold cleanly into parent branches or the main trunk.
@@ -137,6 +144,7 @@ let normal_pivot = (offset + cfg.avg_size.max(min_size)).min(limit);
   - Add `MerkleContextDag::verify_merkle_integrity(&self, id: ArtifactId) -> Result<bool, IcxError>` to recompute and verify the domain-separated `Blake3Digest` of any `L1`, `L2`, or `L3` node from its children.
 
 #### [MODIFY] [epoch.rs](../../crates/icx-core/src/epoch.rs)
+
 - Implement **Ticket `T-12-003`** enhancements:
   - Add provider-calibrated constructors on `EpochControllerConfig`:
     - `EpochControllerConfig::anthropic_default()` (`epoch_rollover_tokens: 16_384`, `protect_last_n_turns: 6`, `tail_slot_max_tokens: 2_048`)
@@ -150,8 +158,10 @@ let normal_pivot = (offset + cfg.avg_size.max(min_size)).min(limit);
 ### Component 3 — Sprint 1.3: Lock-Free `/dev/shm` Seqlock Telepathy Bus (`crates/icx-bus`)
 
 #### [MODIFY] [ring.rs](../../crates/icx-bus/src/ring.rs)
+
 - Implement **Tickets `T-13-001` & `T-13-002`** enhancements:
   - Enrich `FabricHeader` (`64` bytes, `#[repr(C, align(64))]`) with `flags: u32`, `active_agents_mask: AtomicU64`, and `global_dag_root: [u8; 32]` (`docs/wire-protocol-and-shm-bus.md` §2.1):
+
     ```rust
     #[repr(C, align(64))]
     #[derive(Debug)]
@@ -164,6 +174,7 @@ let normal_pivot = (offset + cfg.avg_size.max(min_size)).min(limit);
         pub global_dag_root: [u8; 32],      // 32B (offset 32..64)
     }
     ```
+
   - Enrich `SeqlockSlot` (`4,096` bytes, `#[repr(C, align(64))]`) with `packet_kind: u8` (`Δ`, `Ψ`, `Ω`, `Θ`, `Φ`) inside the existing reserved bytes without changing `size_of::<SeqlockSlot>() == 4096`.
   - Enforce Unix file mode `0o600` (`OpenOptionsExt::mode(0o600)`) and owner-UID verification (`MetadataExt::uid()` compared against `/proc/self/status` `Uid:` in 100% safe Rust) in `SeqlockTelemetryBus::open_shared_file` (`docs/security-and-threat-model.md` §2).
   - Add `SeqlockTelemetryBus::poll_workspace_since(&self, since_seq: u64, workspace_hash: u64) -> Vec<TelepathyEvent>` so cross-agent readers filter out telepathy frames from unrelated repositories in the same single pass.
@@ -174,10 +185,12 @@ let normal_pivot = (offset + cfg.avg_size.max(min_size)).min(limit);
 ### Component 4 — CLI & MMU Integration (`crates/icx-adapters`, `crates/icx-cli`)
 
 #### [MODIFY] [mmu.rs](../../crates/icx-adapters/src/mmu.rs)
+
 - Wire `CasStore::resolve_handle` into `InfinityContextMmu` so MCP `deref`, `slice`, and `grep` operations transparently resolve both 16-hex (`#icx:<16-hex>`) and 12-hex (`#icx:<12-hex>`) handles.
 - Use `bus.poll_workspace_since(cursor, self.workspace_hash)` in `build_ephemeral_tail_slot` to enforce workspace-scoped cross-agent telepathy isolation.
 
 #### [MODIFY] [main.rs](../../crates/icx-cli/src/main.rs)
+
 - Add the `icx init` and `icx deref <HANDLE> [--lines START:END]` CLI subcommands specified in [interfaces.md](../../docs/interfaces.md#L98-L105) so users and agents can initialize `/dev/shm/icx-fabric-v1` and dereference `#icx:<hex>` handles directly from the command line.
 
 ---
@@ -185,6 +198,7 @@ let normal_pivot = (offset + cfg.avg_size.max(min_size)).min(limit);
 ### Component 5 — Sprint 1.4: Toolchain Modernization, 100% Zero-`unsafe` Conversion & `>= 95%` Codecov Enforcement
 
 #### [NEW] [sprint-4-zero-unsafe-enforcement.md](../../to-dos/phase-1-foundations/sprint-4-zero-unsafe-enforcement.md)
+
 - Define **Tickets `T-14-001`..`T-14-004`**:
   - **`T-14-001`:** Incorporate and expand Dependabot PR #2 (`actions/checkout@v7`, `codecov/codecov-action@v7`), upgrade workspace Rust edition to `2024` and MSRV (`rust-version`) to `1.100`, and bump Cargo workspace dependencies (`blake3 = "1.8.7"`, `serde = "1.0.229"`, `serde_json = "1.0.154"`, `thiserror = "2.0.21"`).
   - **`T-14-002`:** Refactor `SeqlockTelemetryBus`, `FabricHeader` (64 B), and `SeqlockSlot` (4,096 B) in [ring.rs](../../crates/icx-bus/src/ring.rs) to 100% safe `AtomicU32` and `AtomicU64` word arrays and safe `/dev/shm` positional I/O (`std::os::unix::fs::FileExt::{read_exact_at, write_all_at}` + `File::try_lock`), eliminating all 11 `unsafe` blocks and removing `memmap2`.
@@ -196,25 +210,32 @@ let normal_pivot = (offset + cfg.avg_size.max(min_size)).min(limit);
 ## Verification Plan
 
 ### Automated Tests
+
 1. **Workspace Unit & Property Tests:**
+
    ```bash
    cargo test --workspace --all-targets
    ```
+
    - Verifies `T-11-002` (`#icx:<12-hex>` and `#icx:<16-hex>` round-trip & prefix resolution), `T-11-003` (Normalized FastCDC boundary stability & exact byte reconstruction), `T-11-004` (`LineIndexEntry` selective chunk dereferencing, 64 MiB cap, `IntegrityViolation` detection, directory persistence), `T-12-001`/`T-12-002` (`ToolArtifactNode`, stacked `begin_branch`/`fold_branch`/`expand_branch`, Merkle root verification), `T-12-003` (200-turn `>= 94%` prefix-cache simulation & `retarget_budget` hierarchical `L3 -> L4` folding), and `T-13-001`/`T-13-002` (8-writer × 8-reader × 10,000-message concurrent Seqlock stress test & `mmap` file permissions).
 2. **Formatting, Clippy, Rustdoc & REUSE Gates:**
+
    ```bash
    cargo fmt --all -- --check
    cargo clippy --workspace --all-targets -- -D warnings
    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
    uvx reuse lint
    ```
+
 3. **End-to-End SLO Benchmark & Doctor Verification:**
+
    ```bash
    cargo run --release -p icx-cli -- benchmark
    cargo run --release -p icx-cli -- doctor
    ```
 
 ### Manual Verification
+
 - Inspect `cargo run --release -p icx-cli -- benchmark` output to confirm:
   - FastCDC + BLAKE3 CAS ingest latency `< 110 µs` for 64 KB payloads.
   - `/dev/shm` Seqlock ring publish/poll latency `< 800 ns`.

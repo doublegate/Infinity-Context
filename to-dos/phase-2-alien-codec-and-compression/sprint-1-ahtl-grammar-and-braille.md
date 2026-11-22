@@ -9,6 +9,7 @@
 ## Tickets
 
 ### `T-21-001` — Unicode Braille-256 (`U+2800..U+28FF`) Bijection & Sketch Encoder
+
 - **File:** `crates/icx-codec/src/braille.rs`, `crates/icx-hdc/src/hv.rs`, `crates/icx-hdc/src/fractal.rs`
 - **Tasks:**
   - [x] Verify `byte_to_braille(u8) -> char`, `braille_to_byte(char) -> Option<u8>`, and closed-form 3-byte UTF-8 helpers `byte_to_braille_utf8(u8) -> [u8; 3]` and `braille_utf8_to_byte([u8; 3]) -> Option<u8>` across all 256 byte values (`0x00..=0xFF`).
@@ -18,6 +19,7 @@
   - [x] `cargo test -p icx-codec braille` and `cargo test -p icx-hdc` pass with `10,000` random 64-bit and 512-bit round-trip vectors and 1-Lipschitz bound verification.
 
 ### `T-21-002` — Canonical `AhtlPacket` Serializer & Parser
+
 - **File:** `crates/icx-codec/src/ahtl.rs`, `crates/icx-codec/src/lib.rs`, `crates/icx-cli/src/main.rs`
 - **Tasks:**
   - [x] Implement `PacketKind` (`Δ`, `Ψ`, `Ω`, `Θ`, `Φ`), `ClauseOp` (`⊕`, `⊖`, `¬`, `!`, `✓`, `Neutral`), `AhtlClause` (including causal implication chains `⇒`), `AhtlPacket` (`Profile B` with `slice_hint`, `hologram_tag`, and `#L` subject escaping), `AhtlWirePacketV1` (`Profile A`), `EpochHeader`, `WirePacket`, `AhtlStream`, and normative `ContextCodec` trait.

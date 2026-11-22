@@ -12,6 +12,7 @@ AI coding and research agents on a developer workstation (Claude Code `2.1.326`,
 ## Decision
 
 We adopt a **Five-Plane Hybrid Interception Architecture**:
+
 1. **Plane 0 (Wire Proxy & SQLite/WAL Tailer):** Intercepts HTTP/2 & SSE traffic where base URLs are configurable and tails local SQLite WALs (`state_5.sqlite`, `conversations/*.db`, `state.db`) and JSONL transcripts for locked transports.
 2. **Plane 1 (Native Lifecycle Hooks):** Uses each agent's synchronous mutation hooks (`updatedToolOutput`, `injectSteps`, `pre-model-request`, `ContextEngine.select_context`) to virtualize bulky tool outputs before LLM ingestion.
 3. **Plane 2 (AHTL Codec & Titans Surprise Gate):** Compresses context into non-human BPE-aligned symbolic frames.

@@ -59,3 +59,11 @@ CLAUDE.local.md
 .env.*
 .envrc
 .direnv/
+
+# Documentation site staging and output (scripts/build_docs_site.py, Zensical)
+/.site-src/
+/.site-cache/
+/site/
+
+# Local archives of files no longer needed in the repository (kept on disk only)
+archive/

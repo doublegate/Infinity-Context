@@ -36,7 +36,7 @@ fn redaction_reaches_a_stable_continuation_form_on_the_first_pass() {
         "TOKEN:\nPsk-ssVk-kP-P=S",
         "TOKEN:\nPsk-OyyyTOKEN:",
         "password:\n  ask-123456789=x\n",
-        std::str::from_utf8(include_bytes!("fixtures/redact-original-v120.bin")).unwrap(),
+        std::str::from_utf8(include_bytes!("fixtures/redact-original.bin")).unwrap(),
     ] {
         let clean = SecretRedactor::redact(input);
         assert_eq!(SecretRedactor::redact(&clean), clean, "{input:?}");
@@ -99,7 +99,7 @@ fn adjacent_sendgrid_credentials_are_removed_on_the_first_pass() {
         "before [REDACTED:SENDGRID_KEY][REDACTED:SENDGRID_KEY] after"
     );
     assert_eq!(SecretRedactor::redact(&once), once);
-    let fuzz = std::str::from_utf8(include_bytes!("fixtures/redact-sendgrid-v120.bin")).unwrap();
+    let fuzz = std::str::from_utf8(include_bytes!("fixtures/redact-sendgrid.bin")).unwrap();
     let once = SecretRedactor::redact(fuzz);
     assert_eq!(SecretRedactor::redact(&once), once);
 }
@@ -115,7 +115,7 @@ fn quoted_inline_values_cannot_turn_prose_into_pending_secret_headers() {
     );
     let once = SecretRedactor::redact(input);
     assert_eq!(SecretRedactor::redact(&once), once);
-    let original = std::str::from_utf8(include_bytes!("fixtures/redact-header-v120.bin")).unwrap();
+    let original = std::str::from_utf8(include_bytes!("fixtures/redact-header.bin")).unwrap();
     let once = SecretRedactor::redact(original);
     assert_eq!(SecretRedactor::redact(&once), once);
 }
@@ -141,8 +141,7 @@ fn nested_url_scheme_does_not_hide_a_credential_until_after_vendor_replacement()
     assert!(!clean.contains("sk-abcdefghijklmn"));
     assert!(clean.ends_with("@host/path"));
     assert_eq!(SecretRedactor::redact(&clean), clean);
-    let original =
-        std::str::from_utf8(include_bytes!("fixtures/redact-nested-url-v120.bin")).unwrap();
+    let original = std::str::from_utf8(include_bytes!("fixtures/redact-nested-url.bin")).unwrap();
     let once = SecretRedactor::redact(original);
     assert_eq!(SecretRedactor::redact(&once), once);
 }
@@ -189,8 +188,8 @@ fn extra_authority_at_signs_do_not_hide_an_earlier_url_credential() {
 #[test]
 fn additional_fuzzer_artifacts_are_panic_free_and_stable() {
     for bytes in [
-        include_bytes!("fixtures/redact-unicode-panic-v120.bin").as_slice(),
-        include_bytes!("fixtures/redact-overlapping-authority-v120.bin").as_slice(),
+        include_bytes!("fixtures/redact-unicode-panic.bin").as_slice(),
+        include_bytes!("fixtures/redact-overlapping-authority.bin").as_slice(),
     ] {
         let input = std::str::from_utf8(bytes).unwrap();
         let once = SecretRedactor::redact(input);
@@ -217,7 +216,7 @@ fn pending_scalar_is_redacted_before_emitting_a_private_key_marker() {
 #[test]
 fn original_pending_scalar_private_key_fuzz_artifact_is_stable() {
     let input =
-        std::str::from_utf8(include_bytes!("fixtures/redact-pending-key-block-v120.bin")).unwrap();
+        std::str::from_utf8(include_bytes!("fixtures/redact-pending-key-block.bin")).unwrap();
     let once = SecretRedactor::redact(input);
     assert_eq!(SecretRedactor::redact(&once), once);
 }

@@ -14,6 +14,7 @@ SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commerci
 ## 1. Why Non-Human `AHTL` Packets Outperform Natural-Language Summaries
 
 When an AI coding agent's context window approaches saturation, standard harnesses invoke an LLM summarization pass (`/compact`) that rewrites the conversation history into polite English paragraphs. From the perspective of Transformer linear algebra and provider KV-cache engineering, natural-language summarization commits three catastrophic errors:
+
 1. **Irreversible Erasure of High-Frequency Tokens:** Summarization smoothing discards exact hexadecimal pointers, line numbers (`L219` vs. `L412`), and subtle type signatures, dropping exact passkey/line recall to **19.0%**.
 2. **BPE Channel Capacity Waste:** English prose carries only $4.5\text{–}6.0\text{ bits/token}$ across a vocabulary of $|V| \in [100\,000, 256\,000]$ ($H_{\max} = \log_2 |V| \approx 16.61\text{–}18.00\text{ bits/token}$).
 3. **100% KV Prefix Cache Invalidation:** Replacing turns $1 \dots K$ at the head of the prompt changes every token offset in the prefix, invalidating 100% of cached Key/Value tensors on Anthropic, OpenAI, and Gemini servers.
@@ -37,6 +38,7 @@ Modern BPE tokenizers (`o200k_base` with $|V| = 200,000$; `cl100k_base` with $|V
 *Figure 7.2: BPE channel capacity utilization, $QK^T / \sqrt{d_k}$ Softmax noise elimination, and AST skeleton alignment ([Vector SVG](images/generated/ahtl_bpe_qkt_attention_and_ast_skeleton.svg)).*
 
 `AHTL v1.0` exploits BPE pre-tokenization regexes through three structural invariants:
+
 1. **Non-Alphanumeric Operator Isolation (`[^\s\p{L}\p{N}]+`):** Unicode mathematical operators (`⟦`, `⟧`, `⟪`, `⟫`, `│`, `⊢`, `⋮`, `↦`, `⊕`, `⊖`, `¬`, `!`, `✓`) belong to Unicode categories `Ps`, `Pe`, `Sm`, `So`, and `Po`. Because BPE pre-tokenizers split strictly between `\p{L}` (letters), `\p{N}` (numbers), and `[^\s\p{L}\p{N}]` (symbols/punctuation), **an `AHTL` operator never merges with an adjacent identifier character**, even with zero whitespace between clauses!
 2. **Exact Identifier Token Identity:** In `⊢⊕fn:alloc_page⋮!PANIC@L99`, the identifier `alloc_page` is pre-tokenized into `["alloc", "_page"]`—the **exact same token ID sequence** produced when a user asks *"Where is `alloc_page` defined?"*.
 3. **Disjoint Channel B Braille Subspace (`U+2800..U+28FF`):** As proven in Chapter 02, Braille codepoints occupy `0xE2 0xA0..0xA3 0x80..0xBF` (`So`), preventing binary hologram bits from ever forming false-positive ASCII subword tokens.
@@ -77,6 +79,7 @@ $$\frac{\operatorname{SNR}_{\text{AHTL}}}{\operatorname{SNR}_{\text{raw}}} = \fr
 ## 4. Titans Surprise-Gated Momentum Eviction (`crates/icx-hdc/src/surprise.rs`)
 
 Adapting Google's **Titans** neural long-term memory (`arXiv:2501.00663`), `TitansSurpriseGate::observe` (`crates/icx-hdc/src/surprise.rs:96-137`) scores every incoming event $e_t$ using three signals:
+
 1. **HDC Associative Novelty ($\nu_t \in [0, 1]$):** $\nu_t = 1.0 - \operatorname{sim}(H_t, M_{t-1})$.
 2. **Normalized Shannon Byte Entropy ($H_{\text{norm}}(e_t) \in [0, 1]$):** $H_{\text{norm}}(e_t) = -\frac{1}{8}\sum_{b=0}^{255} p(b)\log_2 p(b)$ over the first 4,096 bytes.
 3. **Deterministic Diagnostic Anomaly Boost ($\delta_t \in \{0.0, 0.45\}$):** Triggered whenever $e_t$ contains `error[E`, `panicked at`, `FAILED`, `fatal:`, `Segmentation fault`, `IntegrityViolation`, `Exception:`, or `Traceback (most recent call last)`.
@@ -87,6 +90,7 @@ $$g_t = \operatorname{clamp}\big(0.65\,\nu_t + 0.35\,H_{\text{norm}}(e_t) + \del
 $$S_t = \begin{cases} \max\big(g_t, \; \eta S_{t-1} + (1 - \eta) g_t\big) & \text{if } \delta_t > 0 \\ \operatorname{clamp}\big(\eta S_{t-1} + (1 - \eta) g_t, \; 0.0, \; 1.0\big) & \text{otherwise} \end{cases}$$
 
 Effective surprise $S_{\text{eff}} = \max(g_t, S_t)$ assigns each packet to one of three virtual memory retention tiers:
+
 - **$S_{\text{eff}} \ge 0.70 \implies$ `RetentionTier::PinHighResolution` (Tier L1):** Retains full `AHTL` diagnostic clauses in the active window and pins follow-up investigation turns via momentum carry-over.
 - **$0.35 \le S_{\text{eff}} < 0.70 \implies$ `RetentionTier::FoldAhtlStub` (Tier L2):** Folds into a standard `AHTL` stub with `#icx:<hex>` pointer.
 - **$S_{\text{eff}} < 0.35 \implies$ `RetentionTier::ColdBeacon` (Tier L3/L4):** Compresses during epoch sealing into an 8-token micro-beacon `⟦Ψ:role↦#icx:<hex>⟧`.
@@ -100,6 +104,7 @@ Effective surprise $S_{\text{eff}} = \max(g_t, S_t)$ assigns each packet to one 
 *Figure 7.3: Empirical rate-distortion Pareto frontier comparing `AHTL v1.0` (illustrative: packet-size ratios depend on the input; a packet is a skeleton plus a handle, and full content is recovered losslessly from the CAS by deref) against lossy compaction baselines ([Vector SVG](images/generated/AHTL_v1_Compression_vs_Recall_Pareto_Frontier.svg)).*
 
 In `crates/icx-core/src/epoch.rs` and `crates/icx-proxy/src/lib.rs`, `CacheEpochController` partitions the outbound prompt into four strict zones:
+
 1. **Zone 0 (`pinned_head`):** Immutable system prompt + `⟪ICX:LEGEND│...⟫` + single `icx` MCP tool (`Breakpoint #0`).
 2. **Zone 1 (`sealed_epochs`):** Append-only vector of `DagNode::CacheEpoch` frames (`⟪ICX:v1│ep=0000│root=...│nodes=K⟫`). Once sealed, an epoch's bytes **never change** for the remainder of the session (`Breakpoints #1..#3`).
 3. **Zone 2 (`active_window`):** Unsealed recent `AHTL` turns. When unsealed tokens exceed `epoch_rollover_tokens` (generic default `4,096`; provider presets `16,384` for Anthropic and `8,192` for OpenAI, `crates/icx-core/src/epoch.rs`), all but the last `protect_last_n_turns` (`4`) turns are cryptographically sealed into a new `CacheEpoch` and appended to Zone 1.

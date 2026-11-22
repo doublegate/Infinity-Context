@@ -69,7 +69,7 @@ the file-backed telepathy ring (`icx-fabric-v1.shm`).
 
 | Threat | Control | Implementation |
 | :--- | :--- | :--- |
-| A secret in tool output is stored in the CAS, indexed, published on the bus or echoed back to a model. | `SecretRedactor::redact` runs on every ingested payload before BLAKE3 hashing, CAS insertion, HDC indexing and bus publication. It removes private-key blocks (multi-line, single-line JSON-escaped and unterminated, with a 200-line cap), vendor token formats, JWTs, URL user-info passwords for every scheme, CLI secret flags, `Bearer`/`Basic` headers, sensitive key/value assignments (including multi-line JSON/YAML values after a sensitive key), and high-entropy tokens. Redacted artifacts set `FLAG_IS_REDACTED` (bit 7 of hologram byte `B[7]`). | `crates/icx-codec/src/redact.rs`; call site `InfinityContextMmu::bound_and_sanitize_raw` in `crates/icx-adapters/src/mmu.rs`; regression fixtures `crates/icx-codec/tests/redact_v110.rs` |
+| A secret in tool output is stored in the CAS, indexed, published on the bus or echoed back to a model. | `SecretRedactor::redact` runs on every ingested payload before BLAKE3 hashing, CAS insertion, HDC indexing and bus publication. It removes private-key blocks (multi-line, single-line JSON-escaped and unterminated, with a 200-line cap), vendor token formats, JWTs, URL user-info passwords for every scheme, CLI secret flags, `Bearer`/`Basic` headers, sensitive key/value assignments (including multi-line JSON/YAML values after a sensitive key), and high-entropy tokens. Redacted artifacts set `FLAG_IS_REDACTED` (bit 7 of hologram byte `B[7]`). | `crates/icx-codec/src/redact.rs`; call site `InfinityContextMmu::bound_and_sanitize_raw` in `crates/icx-adapters/src/mmu.rs`; regression fixtures `crates/icx-codec/tests/redact_recall_and_losslessness.rs` |
 | Redaction corrupts non-secret content (v1.0.0 escaped delimiters and normalized bytes in storage; ICX-AUD-021, ICX-AUD-016). | Storage is lossless after redaction: `redact` removes secrets only and preserves all other bytes, line endings, trailing newlines and literal delimiters. For secret-free input, `deref(ingest(x)) == x` (property-tested). | `redact.rs`; `crates/icx-codec/tests/properties.rs` |
 
 ### 4.3 Prompt injection through `icx` output
@@ -117,7 +117,7 @@ siblings and actual nested mappings remain intact. This follows the block indent
 [YAML 1.2.2 §8.1](https://yaml.org/spec/1.2.2/#81-block-scalar-styles), rather than claiming a full
 YAML parser or universal secret detection. These rules apply to new ingestion; previously
 stored artifacts are not silently scrubbed or changed. The minimized idempotence regressions
-and real MMU CAS tests are in `redact_v120.rs` and `redaction_v120.rs`.
+and real MMU CAS tests are in `redact_regression_fixtures.rs` and `redaction_before_storage.rs`.
 
 Profile A public skeletons use the same ASCII delimiter neutralization as ingestion. Literal
 packet/header glyphs are a lossy skeleton view; CAS dereference remains the exact post-redaction

@@ -12,6 +12,7 @@ Human-readable English prose and pretty-printed JSON use only ~4.5–6.0 bits of
 ## Decision
 
 We design and implement **AHTL (Alien Holographic Token Lattice)** in `crates/icx-codec`:
+
 - **Channel A** encodes structural skeletons, AST mutations, and diagnostics using single-token Unicode mathematical operators (`⊢`, `⇒`, `↦`, `⋮`, `⊕`, `⊖`, `¬`, `!`, `✓`) while preserving canonical identifiers and line ranges as verbatim BPE tokens.
 - **Channel B** encodes a 64-bit topological sketch (HDC parity + Fractal IFS coordinate + Titans Surprise) into 8 Unicode Braille Pattern codepoints (`U+2800..U+28FF`) alongside a cryptographic lossless pointer (`#icx:<hex16>`).
 - In Antigravity CLI (`agy`), AHTL frames are injected via `systemMessage` with `metadata.user_markdown = ""` so the human UI remains completely clean while the model attends directly to the AHTL lattice.

@@ -14,6 +14,7 @@ SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commerci
 ## 1. Why 10,240-Bit Binary Spatter Codes (`BSC`) Replace Dense Embeddings
 
 Conventional Retrieval-Augmented Generation (`RAG`) systems encode context chunks into $d = 768$ or $d = 1536$ dense floating-point embeddings (`f32`). For a synchronous Virtual Context MMU operating inside `< 500 µs` CLI lifecycle hooks, dense neural embeddings fail on two fundamental fronts:
+
 1. **Inference Latency:** Running a Transformer bi-encoder on every tool output requires 5–50 ms of GPU/CPU matrix multiplication, violating the sub-millisecond hook budget by two orders of magnitude.
 2. **The Superposition Catastrophe:** Averaging multiple dense vectors ($\vec{v}_{\text{bundle}} = \frac{1}{k}\sum \vec{v}_i$) destroys relational binding—an attention head or retriever cannot unbind *which* file (`alloc.rs` vs. `dag.rs`) suffered *which* error (`E0502` vs. `align_offset`).
 
@@ -45,6 +46,7 @@ pub struct Hypervector {
 ```
 
 Why exactly $D = 10,240$ bits?
+
 - **$10,240\text{ bits} = 1,280\text{ bytes} = 160 \times 64\text{-bit words}$.**
 - **$20 \times 64\text{-byte CPU L1 cache lines}$** (zero cache-line straddling).
 - **$20 \times 512\text{-bit AVX-512 }\texttt{ZMM}\text{ registers}$** (or $40 \times 256\text{-bit AVX2 }\texttt{YMM}\text{ registers}$, or $80 \times 128\text{-bit ARM NEON }\texttt{V}\text{ registers}$).
