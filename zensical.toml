@@ -17,10 +17,11 @@ copyright = "Code GPL-3.0-or-later / AGPL-3.0-or-later; specifications and diagr
 docs_dir = "docs"
 site_dir = "site"
 strict = true
-# Math: pymdownx.arithmatex (generic) rendered by MathJax 3 (pinned) in the browser.
+# Math: pymdownx.arithmatex (generic) rendered by MathJax 3.2.2, self-hosted: the build script
+# downloads the npm package and verifies its pinned SHA-512 before copying it into the site.
 extra_javascript = [
   "javascripts/mathjax.js",
-  "https://unpkg.com/mathjax@3.2.2/es5/tex-mml-chtml.js",
+  "javascripts/mathjax/tex-mml-chtml.js",
 ]
 
 [project.theme]

@@ -23,10 +23,15 @@ Then:  zensical build --clean --strict -f .site-src/zensical.toml   (output: .si
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
+import io
 import posixpath
 import re
 import shutil
 import sys
+import tarfile
+import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -45,6 +50,15 @@ ROOT_PAGES = {
 
 # Files outside docs/ the theme itself needs (logo, favicon), copied in under _repo/.
 STATIC = ["assets/icons/png/icon-128.png", "assets/web/favicon-32x32.png"]
+
+# MathJax is self-hosted, not loaded from a CDN: the npm package is downloaded at staging time
+# and must match npm's published integrity hash, so a compromised CDN or registry cannot change
+# the script the site serves. Only the files the site needs are extracted.
+MATHJAX_URL = "https://registry.npmjs.org/mathjax/-/mathjax-3.2.2.tgz"
+MATHJAX_SHA512 = "Bt+SSVU8eBG27zChVewOicYs7Xsdt40qm4+UpHyX7k0/O9NliPc+x77k1/FEsPsjKPZGJvtRZM1vO+geW0OhGw=="
+MATHJAX_FILES = re.compile(
+    r"^package/(LICENSE|es5/tex-mml-chtml\.js|es5/output/chtml/fonts/woff-v2/[A-Za-z0-9_-]+\.woff)$"
+)
 
 IMAGE_EXT = {".png", ".svg", ".jpg", ".jpeg", ".gif", ".webp", ".ico"}
 
@@ -166,6 +180,29 @@ def rewrite_text(text: str, src_repo: str, src_staged: str, out: Path) -> str:
     return "".join(lines)
 
 
+def vendor_mathjax(out: Path) -> None:
+    """Download the pinned MathJax package, verify it, and extract the needed files."""
+    with urllib.request.urlopen(MATHJAX_URL, timeout=60) as response:
+        data = response.read()
+    digest = base64.b64encode(hashlib.sha512(data).digest()).decode()
+    if digest != MATHJAX_SHA512:
+        raise SystemExit(f"MathJax package integrity mismatch: got sha512-{digest}")
+    dest_root = out / "javascripts" / "mathjax"
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+        for member in archive.getmembers():
+            if not member.isfile() or not MATHJAX_FILES.match(member.name):
+                continue
+            relative = member.name.removeprefix("package/").removeprefix("es5/")
+            target = dest_root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            source = archive.extractfile(member)
+            if source is None:
+                continue
+            target.write_bytes(source.read())
+    if not (dest_root / "tex-mml-chtml.js").is_file():
+        raise SystemExit("MathJax package did not contain es5/tex-mml-chtml.js")
+
+
 def stage(out: Path) -> list[str]:
     if out.exists():
         shutil.rmtree(out)
@@ -174,6 +211,7 @@ def stage(out: Path) -> list[str]:
     )
     # Site-only assets (the MathJax configuration) live outside docs/.
     shutil.copytree(REPO / "scripts" / "site", out, dirs_exist_ok=True)
+    vendor_mathjax(out)
     for repo_path in STATIC:
         dest = out / "_repo" / repo_path
         dest.parent.mkdir(parents=True, exist_ok=True)
