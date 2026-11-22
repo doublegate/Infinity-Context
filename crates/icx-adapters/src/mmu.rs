@@ -1052,7 +1052,15 @@ impl InfinityContextMmu {
         match self.cas.deref_lines(id, start_line, end_line) {
             Ok(text) => Ok(text),
             Err(IcxError::ArtifactNotFound(_)) => {
-                self.dag.deref_node_lines(id, start_line, end_line)
+                // DAG nodes (turns, folds, epochs) clamp the same way (review of #38).
+                match self.dag.deref_node_lines(id, start_line, end_line) {
+                    Err(IcxError::InvalidLineRange { total, .. })
+                        if start_line >= 1 && start_line <= total && end_line > total =>
+                    {
+                        self.dag.deref_node_lines(id, start_line, total)
+                    }
+                    other => other,
+                }
             }
             Err(e) => Err(e),
         }

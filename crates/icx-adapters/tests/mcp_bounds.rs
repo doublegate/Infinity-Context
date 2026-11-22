@@ -163,6 +163,17 @@ fn slice_ends_are_clamped_and_grep_replies_are_bounded() {
         json!({"op": "slice", "id": short, "range": [500, 600]}),
     );
     assert!(err, "a start past the end is still an error: {text}");
+    // A short folded branch (a DAG node, not a CAS artifact) clamps too, so the default range
+    // `[1, 50]` works on it (review of #38).
+    call(&mut mmu, json!({"op": "fold", "q": "begin:clamp"}));
+    let (fold, _) = call(&mut mmu, json!({"op": "fold", "q": "short branch"}));
+    let node = fold
+        .split("#icx:")
+        .nth(1)
+        .map(|r| format!("#icx:{}", &r[..16]))
+        .unwrap_or_else(|| panic!("no fold handle: {fold}"));
+    let (text, err) = call(&mut mmu, json!({"op": "slice", "id": node}));
+    assert!(!err, "default slice of a short fold node failed: {text}");
 
     let minified = format!("{{\"needle\":1,\"pad\":\"{}\"}}\n", "z".repeat(50_000)).repeat(100);
     stub(&mut mmu, minified);

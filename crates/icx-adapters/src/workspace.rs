@@ -184,7 +184,8 @@ fn proc_info(pid: u32) -> Option<(u32, u64, String)> {
 #[cfg(target_os = "linux")]
 const LAUNCHERS: &[&str] = &[
     "sh", "bash", "dash", "zsh", "fish", "ksh", "busybox", "env", "timeout", "nice", "nohup",
-    "setsid", "stdbuf", "flock", "icx-hook",
+    "setsid", "stdbuf", "flock", "icx-hook", "bwrap", "unshare", "firejail", "direnv", "mise",
+    "asdf",
 ];
 
 /// The agent process this `icx` runs under, as `(pid, start time)`: the nearest ancestor that is
@@ -253,10 +254,36 @@ pub fn record_agent_workspace(ws_dir: &Path, roots: &WorkspaceRoots) {
         };
         if written.is_err() || std::fs::rename(&tmp, &path).is_err() {
             let _ = std::fs::remove_file(&tmp);
+            return;
         }
+        prune_agent_records(&dir);
     }
     #[cfg(not(target_os = "linux"))]
     let _ = (ws_dir, roots);
+}
+
+/// Removes records whose agent process has exited (or whose PID was reused). Runs only after a
+/// new record is written, so a long session pays nothing per hook (review of #38).
+#[cfg(target_os = "linux")]
+fn prune_agent_records(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(stem) = name.to_str().and_then(|n| n.strip_suffix(".ws")) else {
+            continue;
+        };
+        let Some((pid, start)) = stem.split_once('-') else {
+            continue;
+        };
+        let (Ok(pid), Ok(start)) = (pid.parse::<u32>(), start.parse::<u64>()) else {
+            continue;
+        };
+        if proc_info(pid).is_none_or(|(_, s, _)| s != start) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 /// The workspace this MCP server's own agent's hooks are using, if recorded (v1.3.2, #34). Only
@@ -265,10 +292,16 @@ pub fn record_agent_workspace(ws_dir: &Path, roots: &WorkspaceRoots) {
 pub fn agent_workspace(roots: &WorkspaceRoots) -> Option<PathBuf> {
     #[cfg(target_os = "linux")]
     {
+        use std::os::unix::fs::MetadataExt;
         let (pid, start) = agent_of_self()?;
-        let path = agent_registry_dir(roots).join(format!("{pid}-{start}.ws"));
+        let dir = agent_registry_dir(roots);
+        // The registry must be private, and the record owned by the same user and not group- or
+        // world-accessible, so another account cannot steer this server (review of #38).
+        check_dir_security(&dir).ok()?;
+        let owner = std::fs::symlink_metadata(&dir).ok()?.uid();
+        let path = dir.join(format!("{pid}-{start}.ws"));
         let meta = std::fs::symlink_metadata(&path).ok()?;
-        if !meta.is_file() || meta.len() > 4096 {
+        if !meta.is_file() || meta.len() > 4096 || meta.uid() != owner || meta.mode() & 0o077 != 0 {
             return None;
         }
         let text = std::fs::read_to_string(&path).ok()?;

@@ -19,20 +19,21 @@ pub const MAX_FOLD_DEPTH: usize = 64;
 const GREP_LINE_CHARS: usize = 400;
 /// Largest `grep` reply, in bytes.
 const GREP_REPLY_BYTES: usize = 32 * 1024;
+/// Appended to a grep reply cut at `GREP_REPLY_BYTES`.
+const GREP_TRAILER: &str = "\n…[more matches omitted; narrow the pattern or pass `id`]";
 
 /// Single-tool polymorphic Model Context Protocol (`MCP`) server.
 #[derive(Clone, Debug, Default)]
 pub struct McpPagerServer;
 
 impl McpPagerServer {
-    /// `text` cut to `max` characters, with a note of how many were left out.
+    /// `text` cut to `max` characters, with a note of how many bytes were left out. Only the
+    /// first `max` characters are walked, so a huge line costs no more than a short one.
     fn truncate_chars(text: &str, max: usize) -> String {
-        let total = text.chars().count();
-        if total <= max {
-            return text.to_owned();
+        match text.char_indices().nth(max) {
+            None => text.to_owned(),
+            Some((cut, _)) => format!("{}…[+{} bytes]", &text[..cut], text.len() - cut),
         }
-        let head: String = text.chars().take(max).collect();
-        format!("{head}…[+{} chars]", total - max)
     }
 
     fn valid_envelope(req: &Value) -> bool {
@@ -458,10 +459,9 @@ impl McpPagerServer {
                                 m.line_number,
                                 InfinityContextMmu::escape_untrusted_delimiters(&line)
                             );
-                            if out.len() + entry.len() > GREP_REPLY_BYTES {
-                                out.push_str(
-                                    "\n…[more matches omitted; narrow the pattern or pass `id`]",
-                                );
+                            // The trailer fits inside the budget too.
+                            if out.len() + entry.len() + GREP_TRAILER.len() > GREP_REPLY_BYTES {
+                                out.push_str(GREP_TRAILER);
                                 break;
                             }
                             out.push_str(&entry);

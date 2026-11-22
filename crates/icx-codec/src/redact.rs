@@ -934,7 +934,10 @@ impl SecretRedactor {
                 continue;
             }
             let key_name = &out[key_start..key_end];
-            if !key_name.is_empty() && Self::is_sensitive_key_name(key_name) {
+            if !key_name.is_empty()
+                && Self::is_sensitive_key_name(key_name)
+                && !Self::is_token_quantity(key_name, &out[..key_start])
+            {
                 let mut val_start = colon_idx + 1;
                 while val_start < bytes.len()
                     && (bytes[val_start] == b' ' || bytes[val_start] == b'\t')
@@ -1615,6 +1618,29 @@ impl SecretRedactor {
             && lead.ends_with(',')
             && (tail.is_empty() || tail.starts_with(','));
         labelled || sha256sum_line || commit_line || table_cell || csv_cell
+    }
+
+    /// `512 tokens:` / `1,024 tokens:`: a count of tokens labelling a list, not a `tokens` key
+    /// (`512 tokens: Fable 5.2, ...` was redacted in the field; v1.3.2). Only `token`/`tokens`
+    /// directly after a standalone number qualifies; a bare `tokens:` key is still a secret key.
+    fn is_token_quantity(key_name: &str, before: &str) -> bool {
+        if !matches!(key_name.to_ascii_lowercase().as_str(), "token" | "tokens") {
+            return false;
+        }
+        let Some(lead) = before.strip_suffix([' ', '\t']) else {
+            return false;
+        };
+        let number_len = lead
+            .bytes()
+            .rev()
+            .take_while(|b| b.is_ascii_digit() || *b == b',')
+            .count();
+        let number = &lead[lead.len() - number_len..];
+        let boundary = lead[..lead.len() - number_len]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_alphanumeric() && c != '_');
+        number.bytes().any(|b| b.is_ascii_digit()) && boundary
     }
 
     /// Whether `before` ends in a run of 2+ ASCII letters with no digit, so that with `sk` it

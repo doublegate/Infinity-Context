@@ -935,6 +935,16 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
                     )
                 }
             }
+        } else if McpPagerServer::requires_workspace_state(&req_line) {
+            // Never answer from a previously loaded workspace when this one is unusable (a
+            // followed workspace that failed its trust checks; review of #38).
+            mcp_tool_error_response(
+                &req_line,
+                &format!(
+                    "ERR: workspace {} is unavailable (missing, not owned, permissive or unsealed); run `icx doctor`",
+                    ws_dir.display()
+                ),
+            )
         } else {
             McpPagerServer::handle_jsonrpc(&req_line, &mut mmu)
         };
@@ -1331,7 +1341,8 @@ fn parse_doctor_dir_flag(args: &[String]) -> Result<Option<&str>, String> {
     while i < args.len() {
         match args[i].as_str() {
             "--dir" => {
-                dir_str = Some(flag_value_at(args, i, "icx doctor")?);
+                let value = flag_value_at(args, i, "icx doctor")?;
+                set_option_once(&mut dir_str, "icx doctor", "--dir", value)?;
                 i += 2;
             }
             unknown => {

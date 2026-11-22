@@ -96,3 +96,21 @@ fn prefixes_inside_words_and_word_slugs_are_kept() {
         assert!(once(line).contains("[REDACTED:"), "{line}");
     }
 }
+
+/// v1.3.2 field over-redaction: a token count labelling a list is not a `tokens` key.
+#[test]
+fn token_counts_are_not_token_keys() {
+    for line in [
+        "512 tokens: Fable 5.2, Opus 5.5\n",
+        "| 1,024 tokens: Sonnet 5.5 |\n",
+    ] {
+        assert_eq!(once(line), line);
+    }
+    for line in [
+        "tokens: aaaa\n",
+        "api tokens: aaaa\n",
+        "x512 tokens: aaaa\n",
+    ] {
+        assert!(once(line).contains("[REDACTED:"), "{line}");
+    }
+}

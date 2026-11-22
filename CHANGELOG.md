@@ -46,10 +46,13 @@ and several redactor over-redactions seen in the field are gone.
   (163 lines).
 - **Redactor over-redaction seen in the field.** A vendor prefix inside a word is not a token
   start (`autodesk-...` matched `sk-`); a `-`-joined name made of words (project-directory slugs,
-  model names such as `Llama-4-Maverick-17B-Instruct`) is not a high-entropy secret. Real tokens
-  are still caught.
-- **`slice`** clamps an end past the last line instead of failing (a start past the end is still an
-  error). **`grep`** bounds each matched line to 400 characters and a reply to 32 KiB (a minified
+  model names such as `Llama-4-Maverick-17B-Instruct`) is not a high-entropy secret, and a token
+  count labelling a list (`512 tokens: ...`) is not a `tokens` key. Only the generic `sk-` prefix
+  gets the in-word exemption, and only after an ordinary word (`disk-`, `autodesk-`); a slug with
+  a part of 20+ characters or a random mixed-case part stays subject to the entropy gate. Real
+  tokens are still caught.
+- **`slice`** (and `icx deref --lines`) clamps an end past the last line instead of failing, for
+  stored outputs and fold/epoch nodes alike (a start past the end is still an error). **`grep`** bounds each matched line to 400 characters and a reply to 32 KiB (a minified
   line produced a 238,000-character reply that the client rejected).
 
 ### Changed
