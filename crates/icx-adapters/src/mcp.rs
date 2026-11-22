@@ -15,12 +15,26 @@ pub const LEGACY_PROTOCOL_VERSIONS: &[&str] =
 
 /// Maximum number of simultaneously open `fold begin:` branches (ICX-AUD-014).
 pub const MAX_FOLD_DEPTH: usize = 64;
+/// Longest matched line a `grep` reply shows, in characters (the full line is one `slice` away).
+const GREP_LINE_CHARS: usize = 400;
+/// Largest `grep` reply, in bytes.
+const GREP_REPLY_BYTES: usize = 32 * 1024;
 
 /// Single-tool polymorphic Model Context Protocol (`MCP`) server.
 #[derive(Clone, Debug, Default)]
 pub struct McpPagerServer;
 
 impl McpPagerServer {
+    /// `text` cut to `max` characters, with a note of how many were left out.
+    fn truncate_chars(text: &str, max: usize) -> String {
+        let total = text.chars().count();
+        if total <= max {
+            return text.to_owned();
+        }
+        let head: String = text.chars().take(max).collect();
+        format!("{head}…[+{} chars]", total - max)
+    }
+
     fn valid_envelope(req: &Value) -> bool {
         req.is_object()
             && req.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
@@ -400,7 +414,15 @@ impl McpPagerServer {
                     .unwrap_or((1, 50));
 
                 match mmu.resolve_handle(id_str) {
-                    Ok(aid) => match mmu.deref_lines(aid, range.0, range.1) {
+                    // An end past the last line is clamped instead of failing the call (v1.3.2);
+                    // a start past the end is still an error.
+                    Ok(aid) => match mmu.deref_lines(
+                        aid,
+                        range.0,
+                        mmu.cas
+                            .get_meta(aid)
+                            .map_or(range.1, |m| range.1.min(m.total_lines.max(range.0))),
+                    ) {
                         Ok(text) => (Self::attach_provenance(&text, aid, args, mmu), false),
                         Err(e) => (Self::format_error(&e), true),
                     },
@@ -426,24 +448,33 @@ impl McpPagerServer {
                     None => None,
                 };
                 match mmu.grep_cold(target_id, pattern, limit) {
-                    Ok(matches) => (
-                        // Same provenance framing as deref/slice (SECURITY.md invariant 3).
-                        std::iter::once(format!(
+                    Ok(matches) => {
+                        // Same provenance framing as deref/slice (SECURITY.md invariant 3). Each
+                        // matched line and the whole reply are bounded (v1.3.2): one minified or
+                        // JSON line used to make a reply of hundreds of KB that the client
+                        // rejected. The full line stays available through `slice`.
+                        let mut out = format!(
                             "⟪ICX:PROVENANCE│op=grep│matches={}│trust=untrusted_data⟫",
                             matches.len()
-                        ))
-                        .chain(matches.iter().map(|m| {
-                            format!(
-                                "{}#L{}: {}",
+                        );
+                        for m in &matches {
+                            let line = Self::truncate_chars(&m.line_text, GREP_LINE_CHARS);
+                            let entry = format!(
+                                "\n{}#L{}: {}",
                                 m.artifact_id,
                                 m.line_number,
-                                InfinityContextMmu::escape_untrusted_delimiters(&m.line_text)
-                            )
-                        }))
-                        .collect::<Vec<_>>()
-                        .join("\n"),
-                        false,
-                    ),
+                                InfinityContextMmu::escape_untrusted_delimiters(&line)
+                            );
+                            if out.len() + entry.len() > GREP_REPLY_BYTES {
+                                out.push_str(
+                                    "\n…[more matches omitted; narrow the pattern or pass `id`]",
+                                );
+                                break;
+                            }
+                            out.push_str(&entry);
+                        }
+                        (out, false)
+                    }
                     Err(e) => (Self::format_error(&e), true),
                 }
             }

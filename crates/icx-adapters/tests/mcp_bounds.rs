@@ -116,3 +116,65 @@ fn grep_results_carry_the_untrusted_data_provenance_header() {
     assert!(text.starts_with("⟪ICX:PROVENANCE│op=grep"), "{text}");
     assert!(text.contains("trust=untrusted_data"), "{text}");
 }
+
+/// v1.3.2: a slice end past the last line is clamped instead of failing, and a grep reply is
+/// bounded per line and in total (a minified line used to produce a reply of hundreds of KB).
+#[test]
+fn slice_ends_are_clamped_and_grep_replies_are_bounded() {
+    use icx_adapters::mmu::InfinityContextMmu;
+    use icx_adapters::{ClaudeCodeAdapter, McpPagerServer};
+    use serde_json::json;
+    let mut mmu = InfinityContextMmu::default();
+    let call = |mmu: &mut InfinityContextMmu, args: serde_json::Value| {
+        let req = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "icx", "arguments": args}});
+        let resp = McpPagerServer::handle_jsonrpc(&req.to_string(), mmu);
+        let text = resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        (text, resp["result"]["isError"].as_bool().unwrap_or(false))
+    };
+    let stub = |mmu: &mut InfinityContextMmu, stdout: String| {
+        let payload = json!({"hook_event_name": "PostToolUse", "tool_name": "Bash",
+            "tool_input": {"command": "x"},
+            "tool_response": {"stdout": stdout, "stderr": "", "interrupted": false, "isImage": false}});
+        let out = ClaudeCodeAdapter::handle_hook("PostToolUse", &payload.to_string(), mmu).unwrap();
+        format!("#icx:{}", &out.split("#icx:").nth(1).unwrap()[..16])
+    };
+    let short = stub(
+        &mut mmu,
+        (1..=200)
+            .map(|n| format!("line {n}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n",
+    );
+    let (text, err) = call(
+        &mut mmu,
+        json!({"op": "slice", "id": short, "range": [195, 400]}),
+    );
+    assert!(
+        !err && text.contains("line 200") && text.contains("line 195"),
+        "{text}"
+    );
+    let (text, err) = call(
+        &mut mmu,
+        json!({"op": "slice", "id": short, "range": [500, 600]}),
+    );
+    assert!(err, "a start past the end is still an error: {text}");
+
+    let minified = format!("{{\"needle\":1,\"pad\":\"{}\"}}\n", "z".repeat(50_000)).repeat(100);
+    stub(&mut mmu, minified);
+    let (text, err) = call(&mut mmu, json!({"op": "grep", "q": "needle", "k": 250}));
+    assert!(
+        !err && text.len() <= 33 * 1024,
+        "reply of {} bytes",
+        text.len()
+    );
+    assert!(
+        text.contains("…[+") && text.contains("more matches omitted"),
+        "{}",
+        &text[..300]
+    );
+}

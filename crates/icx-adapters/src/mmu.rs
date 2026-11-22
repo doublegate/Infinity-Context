@@ -20,6 +20,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static MMU_TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 static WORKSPACE_IO_LOCK: Mutex<()> = Mutex::new(());
 
+/// Recall entries weaker than this on similarity, fractal suffix and combined score are not
+/// shown (v1.3.2).
+const MIN_RECALL_SIMILARITY: f32 = 0.10;
+
 /// Default inline byte threshold above which tool outputs are virtualized into AHTL Holographic Stubs.
 pub const DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES: usize = 512;
 
@@ -942,6 +946,15 @@ impl InfinityContextMmu {
         limit: usize,
         hit: &AssociativeHit,
     ) {
+        // A hit that is weak on every signal is noise in the agent's context (v1.3.2: 6% of
+        // injected recall lines in the field had sim < 0.1). Exact-identifier (lexical) hits
+        // carry a combined score and are kept.
+        if hit.hdc_similarity < MIN_RECALL_SIMILARITY
+            && hit.shared_fractal_suffix == 0
+            && hit.combined_score < MIN_RECALL_SIMILARITY
+        {
+            return;
+        }
         if !Self::append_tail_line(
             lines,
             used,
@@ -1774,5 +1787,37 @@ impl InfinityContextMmu {
         let out = op(self)?;
         self.save_workspace_dir_unlocked(icx_dir).map_err(E::from)?;
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod recall_floor_tests {
+    use super::*;
+    use icx_core::ArtifactId;
+
+    fn hit(sim: f32, suffix: u32, combined: f32) -> AssociativeHit {
+        AssociativeHit {
+            artifact_id: ArtifactId(0x1234),
+            subject: "Bash:seq".into(),
+            hdc_similarity: sim,
+            shared_fractal_suffix: suffix,
+            combined_score: combined,
+        }
+    }
+
+    fn shown(h: &AssociativeHit) -> bool {
+        let (mut lines, mut used) = (Vec::new(), 0usize);
+        InfinityContextMmu::append_tail_recall(&mut lines, &mut used, 4096, h);
+        !lines.is_empty()
+    }
+
+    #[test]
+    fn weak_recall_is_dropped_and_strong_or_lexical_recall_is_kept() {
+        assert!(!shown(&hit(0.02, 0, 0.02)));
+        assert!(shown(&hit(0.45, 0, 0.45)));
+        // An exact-identifier hit can have low HDC similarity but a high combined score.
+        assert!(shown(&hit(0.03, 0, 0.9)));
+        // A shared fractal suffix is a signal of its own.
+        assert!(shown(&hit(0.03, 2, 0.03)));
     }
 }
