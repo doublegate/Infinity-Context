@@ -10,6 +10,8 @@ and pull requests cite for the ticket's whole life.
   (2026-11-22). Durable state lives in [PROJECT-STATUS.md](../PROJECT-STATUS.md), and user-visible
   change in [CHANGELOG.md](../CHANGELOG.md).
 - **Next release:** v1.4.0, [Phase 6](#phase-6--v140-agent-reach-and-output-shrinking).
+- **Tracking:** one GitHub milestone per release, with one issue per sprint (#40 to #81).
+  Issue #32 (`icx-shm`) is in the v2.0.0 milestone.
 - **Release train:** Phase 6 to Phase 11 ship v1.4.0 to v1.9.0, one minor release per phase.
   Phase 12 ships v2.0.0.
 - **History:** Phases 0 to 5 built v0.1.0 to v1.0.0. Their checked boxes are historical records,
@@ -58,7 +60,8 @@ Goal: reach more agents, and shrink output where icx cannot today. This includes
 - `icx install`.
 
 - [Overview](phase-6-agent-reach-and-output-shrinking/overview.md) ·
-  [Implementation plan](phase-6-agent-reach-and-output-shrinking/phase_6_implementation_plan.md)
+  [Implementation plan](phase-6-agent-reach-and-output-shrinking/phase_6_implementation_plan.md) ·
+  [v1.4.0 milestone](https://github.com/doublegate/Infinity-Context/milestone/1)
   - [Sprint 1 — Agent Internals Investigation (REA/Ghidra)](phase-6-agent-reach-and-output-shrinking/sprint-1-agent-internals-investigation.md) (7 tickets)
   - [Sprint 2 — Codex Output Shrinking](phase-6-agent-reach-and-output-shrinking/sprint-2-codex-output-shrinking.md) (5 tickets)
   - [Sprint 3 — New Adapters: Gemini CLI, Cursor and OpenCode](phase-6-agent-reach-and-output-shrinking/sprint-3-new-adapters.md) (4 tickets)
@@ -75,7 +78,8 @@ Goal: better search and compaction. This includes:
 - `icx rescan`, and a structural redactor.
 
 - [Overview](phase-7-retrieval-and-compaction-quality/overview.md) ·
-  [Implementation plan](phase-7-retrieval-and-compaction-quality/phase_7_implementation_plan.md)
+  [Implementation plan](phase-7-retrieval-and-compaction-quality/phase_7_implementation_plan.md) ·
+  [v1.5.0 milestone](https://github.com/doublegate/Infinity-Context/milestone/2)
   - [Sprint 1 — Ranking](phase-7-retrieval-and-compaction-quality/sprint-1-ranking.md) (4 tickets)
   - [Sprint 2 — Evaluation](phase-7-retrieval-and-compaction-quality/sprint-2-evaluation.md) (4 tickets)
   - [Sprint 3 — Compaction](phase-7-retrieval-and-compaction-quality/sprint-3-compaction.md) (4 tickets)
@@ -91,7 +95,8 @@ only basis for a cache-hit claim. Also:
 - alignment with MCP 2026-07-28.
 
 - [Overview](phase-8-cache-proxy-and-observability/overview.md) ·
-  [Implementation plan](phase-8-cache-proxy-and-observability/phase_8_implementation_plan.md)
+  [Implementation plan](phase-8-cache-proxy-and-observability/phase_8_implementation_plan.md) ·
+  [v1.6.0 milestone](https://github.com/doublegate/Infinity-Context/milestone/3)
   - [Sprint 1 — Provider Caching](phase-8-cache-proxy-and-observability/sprint-1-provider-caching.md) (4 tickets)
   - [Sprint 2 — Offline Test Harness](phase-8-cache-proxy-and-observability/sprint-2-offline-test-harness.md) (3 tickets)
   - [Sprint 3 — Observability](phase-8-cache-proxy-and-observability/sprint-3-observability.md) (5 tickets)
@@ -108,7 +113,8 @@ Goal: storage, compatibility and platforms. This includes:
 - the open strict benchmarks.
 
 - [Overview](phase-9-storage-scale-and-platforms/overview.md) ·
-  [Implementation plan](phase-9-storage-scale-and-platforms/phase_9_implementation_plan.md)
+  [Implementation plan](phase-9-storage-scale-and-platforms/phase_9_implementation_plan.md) ·
+  [v1.7.0 milestone](https://github.com/doublegate/Infinity-Context/milestone/4)
   - [Sprint 1 — Storage](phase-9-storage-scale-and-platforms/sprint-1-storage.md) (4 tickets)
   - [Sprint 2 — Compatibility](phase-9-storage-scale-and-platforms/sprint-2-compatibility.md) (3 tickets)
   - [Sprint 3 — Platforms](phase-9-storage-scale-and-platforms/sprint-3-platforms.md) (6 tickets)
@@ -125,7 +131,8 @@ Goal: prevent bulky output before it reaches the agent, and prove the savings. T
 - code health and the remaining security residuals.
 
 - [Overview](phase-10-prevent-and-prove/overview.md) ·
-  [Implementation plan](phase-10-prevent-and-prove/phase_10_implementation_plan.md)
+  [Implementation plan](phase-10-prevent-and-prove/phase_10_implementation_plan.md) ·
+  [v1.8.0 milestone](https://github.com/doublegate/Infinity-Context/milestone/5)
   - [Sprint 1 — Pre-Execution Command Rewriter](phase-10-prevent-and-prove/sprint-1-pre-execution-command-rewriter.md) (4 tickets)
   - [Sprint 2 — Pre-Tool Redirect](phase-10-prevent-and-prove/sprint-2-pre-tool-redirect.md) (2 tickets)
   - [Sprint 3 — Log and Test-Output Templating](phase-10-prevent-and-prove/sprint-3-log-and-test-output-templating.md) (4 tickets)
@@ -146,7 +153,8 @@ Goal: governance, distribution and polish. This includes:
 - library and supply-chain work, the documentation site, and Markdown export.
 
 - [Overview](phase-11-govern-and-distribute/overview.md) ·
-  [Implementation plan](phase-11-govern-and-distribute/phase_11_implementation_plan.md)
+  [Implementation plan](phase-11-govern-and-distribute/phase_11_implementation_plan.md) ·
+  [v1.9.0 milestone](https://github.com/doublegate/Infinity-Context/milestone/6)
   - [Sprint 1 — Privacy and Policy](phase-11-govern-and-distribute/sprint-1-privacy-and-policy.md) (5 tickets)
   - [Sprint 2 — Timeline and Repo Map](phase-11-govern-and-distribute/sprint-2-timeline-and-repo-map.md) (3 tickets)
   - [Sprint 3 — Local Viewer](phase-11-govern-and-distribute/sprint-3-local-viewer.md) (3 tickets)
@@ -168,7 +176,8 @@ Goal: the architecture changes that need a major release. This includes:
 - conditional team sync.
 
 - [Overview](phase-12-architecture-v2/overview.md) ·
-  [Implementation plan](phase-12-architecture-v2/phase_12_implementation_plan.md)
+  [Implementation plan](phase-12-architecture-v2/phase_12_implementation_plan.md) ·
+  [v2.0.0 milestone](https://github.com/doublegate/Infinity-Context/milestone/7)
   - [Sprint 1 — `icx-shm` Design Acceptance and Scaffolding](phase-12-architecture-v2/sprint-1-shm-design-and-scaffolding.md) (11 tickets)
   - [Sprint 2 — `icx-shm` Core Protocol](phase-12-architecture-v2/sprint-2-shm-core-protocol.md) (8 tickets)
   - [Sprint 3 — `icx-shm` Qualification](phase-12-architecture-v2/sprint-3-shm-qualification.md) (8 tickets)
