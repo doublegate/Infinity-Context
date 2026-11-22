@@ -24,7 +24,8 @@ regexes = [
 [[allowlists]]
 description = "v1.1.0 and v1.2.0 redactor regression fixtures: synthetic, non-functional credential-shaped strings and public digests only (ICX-AUD-015, ICX-CODEX-001/006, v1.2.0 review)"
 paths = [
-  '''^crates/icx-codec/tests/redact_v1[12]0\.rs$''',
+  # The same two files under their current and pre-rename names (history keeps the old paths).
+  '''^crates/icx-codec/tests/(redact_recall_and_losslessness|redact_regression_fixtures|redact_v1[12]0)\.rs$''',
 ]
 
 [[allowlists]]

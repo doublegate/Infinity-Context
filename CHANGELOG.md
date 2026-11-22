@@ -5,6 +5,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Documentation
+
+- Documentation site built with Zensical and published to GitHub Pages
+  (<https://doublegate.github.io/Infinity-Context/>): `zensical.toml`,
+  `scripts/build_docs_site.py` (stages `docs/` and the root pages, points links that leave the
+  site at GitHub, builds the navigation) and `.github/workflows/docs.yml` (strict build on pull
+  requests, deploy from `main`; Zensical pinned, actions pinned by SHA).
+- ADR-0007 (proposed): opt-in memory-mapped seqlock bus (`icx-shm`), tracked in #32.
+- Markdown lint: blank-line fixes across non-frozen documents.
+
+### Changed
+
+- Version-numbered file names replaced with descriptive ones, so names stay valid for every
+  release: the 46 `*_v1NN.rs` / `redact_issue24.rs` integration tests (for example
+  `redact_v120.rs` -> `redact_regression_fixtures.rs`, `redact_v110.rs` ->
+  `redact_recall_and_losslessness.rs`, `window_eviction_v121.rs` ->
+  `window_eviction_accounting.rs`; the version a test was added in stays in its doc comment), the
+  `redact-*-v120.bin` fuzz fixtures, the property-test regression file, and
+  `to-dos/v1.2.0-remediation.md` -> `to-dos/codex-audit-remediation.md`. ADRs, frozen audits,
+  release notes, the AHTL v1 format and `ref-docs/` keep their names. The gitleaks path allowlist
+  names the same two fixture files under both names, since history keeps the old paths.
+- `.gitignore`: `archive/` folders (local archives, never committed) and the docs-site build
+  output (`.site-src/`, `site/`).
+
+### Tests
+
+- Regression tests for multi-word and multi-line values under sensitive JSON keys.
+
 ## [1.3.1] - 2026-11-22
 
 Fixes #28, #29 and #30. Release notes:

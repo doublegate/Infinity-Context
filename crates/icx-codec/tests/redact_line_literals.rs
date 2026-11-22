@@ -65,7 +65,7 @@ fn call_heads_stay_visible() {
 /// pinned here.
 #[test]
 fn later_literals_on_the_line_are_hidden_too() {
-    // A complete JSON line is redacted structurally instead (redact_json_lines_v131.rs); a line
+    // A complete JSON line is redacted structurally instead (redact_json_lines.rs); a line
     // that only starts like JSON keeps the first-quote rule.
     let c = hidden("{\"password\": \"aaaa\", \"user\": \"aaaa\"\n");
     assert_eq!(c, "{\"password\": [REDACTED:CONFIG_SECRET]\n", "{c:?}");

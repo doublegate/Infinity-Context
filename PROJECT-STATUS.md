@@ -11,7 +11,7 @@ published. Notes: [`docs/releases/v1.2.2/`](docs/releases/v1.2.2/README.md).
 
 v1.2.0 was released on 2026-11-21 from pull request #22 (branch `codex-audit`). It
 remediates the independent audit of v1.1.0 in `docs/codex/` (Codex implementation, tracked in
-[the v1.2.0 plan](to-dos/v1.2.0-remediation.md)) and the defects found by the pre-release review
+[the v1.2.0 plan](to-dos/codex-audit-remediation.md)) and the defects found by the pre-release review
 (tickets T-120-026..030 and the parallel scan). It was qualified by the exact-commit CI run
 of that pull request and published as the v1.2.0 GitHub release.
 
@@ -49,7 +49,7 @@ full-request bound is claimed.
 | Workspace tests | 339 pass, 0 fail (2 ignored: long-horizon qualification, daemon child scenario) | `cargo test --workspace`, v1.3.1 |
 | Line coverage | 95.21% at v1.3.1; floor 95% | `cargo llvm-cov` |
 | Benchmark | 10/10 quiet-host runs pass all gates | `docs/performance.md`, evidence `benchmark-native-final-series.json` |
-| Saturated window prefix reuse | 0.94 (was 0.01) | `crates/icx-core/tests/window_eviction_v120.rs` |
+| Saturated window prefix reuse | 0.94 (was 0.01) | `crates/icx-core/tests/window_eviction.rs` |
 | Frozen retrieval matrix | 27 rows, recall@1/@5 = 100% | synthetic identifiers, not general model recall |
 | Mutation samples | 135 executed; 80 caught/43 missed/7 unviable/5 timeout | `docs/releases/v1.2.0/mutation-triage.md` |
 | Release packages | 4 Linux variants pass local and Ubuntu 22.04/glibc 2.35 checks | `docs/releases/v1.2.0/evidence/package-qualification.md` |

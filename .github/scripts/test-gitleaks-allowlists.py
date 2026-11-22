@@ -28,7 +28,7 @@ def main():
     audit_fixture = "password:" + "\\n  " + "ask-" + "123456789=x" + "\\n"
     manifest = "docs/releases/v1.2.0/evidence/control-source-manifest.json"
     audit_path = "docs/codex/evidence/codec-redact-readable.txt"
-    metadata = {"crates/icx-codec/tests/fixtures/redact-pending-key-block-v120.bin": approved}
+    metadata = {"crates/icx-codec/tests/fixtures/redact-pending-key-block.bin": approved}
     controls = [
         ("approved-sha", manifest, metadata, 0, []),
         ("outside-sha", "outside-source-manifest.json", metadata, 1, [2]),

@@ -4,7 +4,7 @@ This is the master planning entry point for **Infinity-Context (`icx`)**. Each p
 
 ## Status
 
-**Active release work:** [v1.2.0 remediation](v1.2.0-remediation.md) on `codex-audit`, with
+**Active release work:** [v1.2.0 remediation](codex-audit-remediation.md) on `codex-audit`, with
 [durable implementation status](../PROJECT-STATUS.md). The phase history and its original
 quantitative exit criteria below describe the original v1.0.0 plan; checked boxes are historical
 records, not current independent validation. Current published-manifest baseline is v1.1.0.
