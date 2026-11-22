@@ -46,9 +46,10 @@ impl SecretRedactor {
                 // Emit the hidden value and its closing quote, then classify the rest of the
                 // line like any other line: it can open a key block, a new block or quoted
                 // secret, or hold further assignments.
+                // The opening quote went with the first line's marker (first-quote rule), so the
+                // closing quote goes with this one: no unmatched quote is left (#33).
                 out.push_str(&body[..content_start]);
                 out.push_str("[REDACTED:SECRET]");
-                out.push(char::from(q));
                 body = &body[content_start + close + 1..];
                 pending_value = None;
                 if body.is_empty() {
@@ -609,6 +610,12 @@ impl SecretRedactor {
                     break;
                 };
                 let start = search_pos + rel_idx;
+                // A prefix inside a word is not a token start (`autodesk-...`, `disk-by...`
+                // matched `sk-` in the field; v1.3.2). Such text still meets the entropy gate.
+                if start > 0 && current.as_bytes()[start - 1].is_ascii_alphanumeric() {
+                    search_pos = start + prefix.len();
+                    continue;
+                }
                 let rest = &current.as_bytes()[start..];
                 let token_len = rest
                     .iter()
@@ -629,85 +636,6 @@ impl SecretRedactor {
 
         // 8. Tier 3 — Shannon character entropy gate for unprefixed high-entropy secret tokens
         Self::redact_high_entropy_tokens(&current)
-    }
-
-    /// `String::from("...")`, `Some('...')`, `Secret::new("...")`: a value that wraps quoted
-    /// literals in a call. Replaces every quoted literal up to the closing parenthesis (v1.2.1;
-    /// the unquoted span used to stop at the opening quote and leave the literal visible).
-    /// Returns the position after the call, or `None` when the value has another shape.
-    fn redact_call_wrapped_literals(
-        out: &mut String,
-        val_start: usize,
-        replacement: &str,
-    ) -> Option<usize> {
-        let rest = out.get(val_start..)?;
-        // A call head (`Some(`, `pydantic.SecretStr(`, `field(`), then every quoted literal in its
-        // argument list, wherever it sits and however deeply it is nested (v1.2.2, v1.3.0).
-        if !rest.as_bytes().first().is_some_and(u8::is_ascii_alphabetic) {
-            return None;
-        }
-        let name_len = rest
-            .bytes()
-            .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b':' | b'.'))
-            .count();
-        if !rest[name_len..].starts_with('(') {
-            return None;
-        }
-        let mut depth = 1usize;
-        let open = val_start + name_len + 1;
-        let mut quote: Option<u8> = None;
-        let mut spans = Vec::new();
-        let mut lit_start = 0usize;
-        let mut close = None;
-        let bytes = out.as_bytes();
-        let mut i = open;
-        while i < bytes.len() && bytes[i] != b'\n' {
-            let b = bytes[i];
-            match quote {
-                // Skip the escaped byte, but never past the end of the input or the line.
-                Some(_) if b == b'\\' && bytes.get(i + 1).is_some_and(|&n| n != b'\n') => {
-                    i += 1;
-                }
-                Some(q) if b == q => {
-                    spans.push((lit_start, i));
-                    quote = None;
-                }
-                None if b == b'"' || b == b'\'' => {
-                    quote = Some(b);
-                    lit_start = i + 1;
-                }
-                None if b == b'(' => depth += 1,
-                None if b == b')' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        close = Some(i);
-                        break;
-                    }
-                }
-                _ => {}
-            }
-            i += 1;
-        }
-        let i = i.min(bytes.len());
-        // An unterminated literal is hidden to the end of the line.
-        if quote.is_some() {
-            spans.push((lit_start, i));
-        }
-        // Exact redactor markers are already redacted: leave them (idempotent). A literal that
-        // only starts like a marker is still redacted.
-        let had_marker = spans
-            .iter()
-            .any(|&(a, b)| Self::is_redaction_marker(&out[a..b]));
-        spans.retain(|&(a, b)| !Self::is_redaction_marker(&out[a..b]));
-        let end = close.map_or(i, |c| c + 1);
-        if spans.is_empty() {
-            return had_marker.then_some(end);
-        }
-        let removed: usize = spans.iter().map(|&(a, b)| b - a).sum();
-        for &(a, b) in spans.iter().rev() {
-            out.replace_range(a..b, replacement);
-        }
-        Some((end + spans.len() * replacement.len() - removed).min(out.len()))
     }
 
     /// Whether `text` is exactly one marker this redactor emits (`[REDACTED:ENV_SECRET]`).
@@ -781,73 +709,13 @@ impl SecretRedactor {
         if let Some(end) = Self::redact_from_first_quote(out, val_start, replacement) {
             return Some(end);
         }
-        if let Some(end) = Self::redact_call_wrapped_literals(out, val_start, replacement) {
-            return Some(end);
-        }
+        // Past this point the rest of the line holds no quote of any kind, so only unquoted
+        // shapes remain (#33: the quoted-literal branches that used to follow were unreachable).
         let bytes = out.as_bytes();
         if val_start >= bytes.len() {
             return None;
         }
         let quote = bytes[val_start];
-        let escaped_quote = if quote == b'\\'
-            && val_start + 1 < bytes.len()
-            && (bytes[val_start + 1] == b'"' || bytes[val_start + 1] == b'\'')
-        {
-            Some(bytes[val_start + 1])
-        } else {
-            None
-        };
-        if let Some(eq_q) = escaped_quote {
-            let inner_start = val_start + 2;
-            let mut inner_end = inner_start;
-            while inner_end < bytes.len() {
-                if bytes[inner_end] == b'\\'
-                    && inner_end + 1 < bytes.len()
-                    && bytes[inner_end + 1] == eq_q
-                {
-                    break;
-                }
-                if bytes[inner_end] == b'"' || bytes[inner_end] == b'\'' {
-                    break;
-                }
-                inner_end += 1;
-            }
-            if inner_end > inner_start && !out[inner_start..inner_end].starts_with("[REDACTED:") {
-                out.replace_range(inner_start..inner_end, replacement);
-                // A malformed escaped opening can terminate at a bare one-byte quote.
-                // Advancing by an assumed two-byte closer could enter the following UTF-8
-                // codepoint. Resume at the known replacement boundary instead.
-                return Some(inner_start + replacement.len());
-            }
-            return None;
-        }
-        if quote == b'"' || quote == b'\'' {
-            let inner_start = val_start + 1;
-            let mut inner_end = inner_start;
-            while inner_end < bytes.len() {
-                if bytes[inner_end] == quote {
-                    // YAML single-quoted scalars escape a quote by doubling it (`''`).
-                    if quote == b'\'' && bytes.get(inner_end + 1) == Some(&b'\'') {
-                        inner_end += 2;
-                        continue;
-                    }
-                    break;
-                }
-                if bytes[inner_end] == b'\\'
-                    && inner_end + 1 < bytes.len()
-                    && bytes[inner_end + 1].is_ascii()
-                {
-                    inner_end += 2;
-                } else {
-                    inner_end += 1;
-                }
-            }
-            if inner_end > inner_start && !out[inner_start..inner_end].starts_with("[REDACTED:") {
-                out.replace_range(inner_start..inner_end, replacement);
-                return Some(inner_start + replacement.len());
-            }
-            return None;
-        }
         if quote == b'[' {
             // An earlier pass already replaced this value.
             if out[val_start..].starts_with("[REDACTED:") {
@@ -858,30 +726,20 @@ impl SecretRedactor {
             let inner_start = val_start + 1;
             let mut depth = 1usize;
             let mut inner_end = bytes.len();
-            // Brackets inside a quoted element (`["a]b", "c"]`) are text, not structure.
-            let mut in_quote: Option<u8> = None;
-            let mut offset = 0;
-            let rest = &bytes[inner_start..];
-            while offset < rest.len() {
-                let b = rest[offset];
-                match in_quote {
-                    Some(b'"') if b == b'\\' => offset += 1,
-                    Some(q) if b == q => in_quote = None,
-                    Some(_) => {}
-                    None => match b {
-                        b'"' | b'\'' => in_quote = Some(b),
-                        b'[' => depth += 1,
-                        b']' => {
-                            depth -= 1;
-                            if depth == 0 {
-                                inner_end = inner_start + offset;
-                                break;
-                            }
+            // No quote can follow here (a quoted line took the first-quote rule), so brackets
+            // are structure.
+            for (offset, &b) in bytes[inner_start..].iter().enumerate() {
+                match b {
+                    b'[' => depth += 1,
+                    b']' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            inner_end = inner_start + offset;
+                            break;
                         }
-                        _ => {}
-                    },
+                    }
+                    _ => {}
                 }
-                offset += 1;
             }
             let inner = &out[inner_start..inner_end];
             if !inner.trim().is_empty() && !inner.starts_with("[REDACTED:") {
@@ -1012,7 +870,16 @@ impl SecretRedactor {
             };
             let (head, header) = line.split_at(colon);
             let mut out = Self::redact_colon_assignments(head);
-            out.push_str(header);
+            // When an earlier value's marker swallowed the block's own key (`"api_key": "x",
+            // "password": |`), the header has no key left to attach to: drop it (#33).
+            let key = head
+                .trim_end()
+                .rsplit(|c: char| c.is_whitespace() || matches!(c, ',' | '{'))
+                .next()
+                .unwrap_or("");
+            if out == head || out.trim_end().ends_with(key) {
+                out.push_str(header);
+            }
             return out;
         }
         let mut out = line.to_owned();
@@ -1747,6 +1614,20 @@ impl SecretRedactor {
         labelled || sha256sum_line || commit_line || table_cell || csv_cell
     }
 
+    /// At least three `-`-separated parts, at least two (and a third) of them natural words.
+    fn is_word_slug(token: &str) -> bool {
+        let parts: Vec<&str> = token.split('-').filter(|p| !p.is_empty()).collect();
+        let words = parts
+            .iter()
+            .filter(|p| {
+                p.len() >= 3
+                    && p.bytes().all(|b| b.is_ascii_alphabetic())
+                    && p.bytes().any(|b| !b.is_ascii_hexdigit())
+            })
+            .count();
+        parts.len() >= 3 && words >= 2 && words * 3 >= parts.len()
+    }
+
     fn is_high_entropy_secret_candidate(
         token: &str,
         prefix_before_token: &str,
@@ -1770,6 +1651,14 @@ impl SecretRedactor {
             || prefix_before_token.ends_with("hv:")
             || prefix_before_token.ends_with("root=")
         {
+            return false;
+        }
+
+        // A `-`-joined name made mostly of words is a slug, not a secret: project-directory
+        // slugs (`-home-user-Code-Project-...`) and model names (`Llama-4-Maverick-17B-Instruct`)
+        // were redacted in the field (v1.3.2). A word is 3+ letters including one outside a-f,
+        // so hex runs, UUIDs and random keys never count as words.
+        if Self::is_word_slug(token) {
             return false;
         }
 
@@ -2004,6 +1893,11 @@ fn json_key_segments(key: &str) -> impl Iterator<Item = &str> {
 /// classify a key (security reviews of PR #31).
 fn json_key_is_sensitive(key: &str) -> bool {
     let segments: Vec<&str> = json_key_segments(key).collect();
+    // A dotted or spaced counter (`max.tokens`, `prompt tokens`) is a count like `max_tokens`,
+    // not a credential (#33). Other separated keys still match on any segment (fail closed).
+    if SecretRedactor::is_token_count_key(&segments.join("_").to_ascii_uppercase()) {
+        return false;
+    }
     SecretRedactor::is_sensitive_key_name(key)
         || segments.iter().any(|s| SecretRedactor::is_sensitive_key_name(s))
         // Joined forms: `api.key` / `api key` name an API_KEY / APIKEY.
@@ -2263,11 +2157,16 @@ impl JsonScan<'_> {
             Some(k) => SecretRedactor::redact(raw)
                 .split('\n')
                 .map(|line| {
-                    if keep_plain(line) {
-                        line.to_owned()
+                    // A CRLF line keeps its `\r` out of the digest and key-context checks (#33).
+                    let (body, cr) = line
+                        .strip_suffix('\r')
+                        .map_or((line, ""), |body| (body, "\r"));
+                    let clean = if keep_plain(body) {
+                        body.to_owned()
                     } else {
-                        with_key(line, k)
-                    }
+                        with_key(body, k)
+                    };
+                    format!("{clean}{cr}")
                 })
                 .collect::<Vec<_>>()
                 .join("\n"),
