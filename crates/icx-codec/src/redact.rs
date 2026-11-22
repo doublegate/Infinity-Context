@@ -2249,10 +2249,11 @@ impl JsonScan<'_> {
         };
         // The text is redacted as plain text first; then each line again with the key as
         // context (a hex value under a key is hidden, as on a plain `key: value` line). The plain
-        // result is kept only for embedded JSON, which has its own keys, and for a line whose
+        // result is kept only for a line that parses as JSON (it has its own keys), and for a line whose
         // long hex tokens all sit in a public digest context (`<sha256>  file`); review of #31.
-        let keep_plain =
-            |line: &str| line.trim_start().starts_with(['{', '[']) || hex_tokens_all_digests(line);
+        let keep_plain = |line: &str| {
+            SecretRedactor::redact_json_line(line).is_some() || hex_tokens_all_digests(line)
+        };
         let clean = match key {
             None => SecretRedactor::redact(raw),
             // As text first (a line that is just `password:` arms the multi-line value rule).

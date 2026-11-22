@@ -335,6 +335,9 @@ fn split_key_blocks_and_hex_in_prose() {
     for line in [
         format!(r#"{{"stdout":"token {sha} ok"}}"#),
         format!(r#"{{"stdout":"value {sha}"}}"#),
+        // Prose that only starts like JSON is not JSON (security review of d4b3e77).
+        format!(r#"{{"stdout":"[info] token {sha}"}}"#),
+        format!(r#"{{"stdout":"{{ value {sha}"}}"#),
     ] {
         let clean = once(&line);
         assert!(!clean.contains(sha), "{line} -> {clean}");
