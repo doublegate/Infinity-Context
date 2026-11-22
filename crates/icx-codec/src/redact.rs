@@ -607,7 +607,8 @@ impl SecretRedactor {
         let calls_or_indexes = after_head.starts_with(['(', '[']);
         let code_like = calls_or_indexes
             || after_head.starts_with('<')
-            || Self::continuation_len(after_head).is_some();
+            || Self::continuation_len(after_head).is_some()
+            || Self::starts_with_operator(after_head);
         if !code_like {
             return None;
         }
@@ -664,11 +665,16 @@ impl SecretRedactor {
                 None if !to_eol && depth == 0 && angle == 0 && (b == b';' || b == b',') => break,
                 // Whitespace ends the expression unless an operator continues it; the operator
                 // and the whitespace around it are skipped as one step.
-                None if !to_eol && depth == 0 && angle == 0 && (b == b' ' || b == b'\t') => {
-                    match Self::continuation_len(&out[i..]) {
-                        Some(len) => i += len - 1,
-                        None => break,
-                    }
+                // Fail closed: whitespace ends the expression only where a new field clearly
+                // starts (`token=...`, `user: ...`, `--flag`); otherwise the scan goes on
+                // (concatenation, ternaries, `if`/`else`, any operator).
+                None if !to_eol
+                    && depth == 0
+                    && angle == 0
+                    && (b == b' ' || b == b'\t')
+                    && Self::starts_new_field(&out[i..]) =>
+                {
+                    break;
                 }
                 _ => {}
             }
@@ -698,6 +704,36 @@ impl SecretRedactor {
             out.replace_range(a..b, replacement);
         }
         Some((end + spans.len() * replacement.len() - removed).min(out.len()))
+    }
+
+    /// Whether `text` (starting at whitespace) begins a new field after a value: an identifier
+    /// followed by `=` (not `==`) or by `:` and whitespace, or a `--flag`.
+    fn starts_new_field(text: &str) -> bool {
+        let t = text.trim_start_matches([' ', '\t']);
+        if t.starts_with("--") {
+            return true;
+        }
+        let n = t
+            .bytes()
+            .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
+            .count();
+        if n == 0 || !t.as_bytes()[0].is_ascii_alphabetic() {
+            return false;
+        }
+        let r = &t[n..];
+        (r.starts_with('=') && !r.starts_with("=="))
+            || r.strip_prefix(':')
+                .is_some_and(|x| x.starts_with([' ', '\t']))
+    }
+
+    /// Whether `text` (after the value's head) continues with an operator: `+ - * / % ? | &` or
+    /// a Python `if`, so the value is an expression rather than a plain token.
+    fn starts_with_operator(text: &str) -> bool {
+        let t = text.trim_start_matches([' ', '\t']);
+        t.len() < text.len()
+            && (t.starts_with(['+', '-', '*', '/', '%', '?', '|', '&'])
+                || t.strip_prefix("if")
+                    .is_some_and(|r| r.starts_with([' ', '\t'])))
     }
 
     /// When `text` continues an expression, the length of that continuation: leading spaces or

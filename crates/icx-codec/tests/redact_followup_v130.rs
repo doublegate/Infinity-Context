@@ -258,3 +258,30 @@ fn code_values_end_at_the_expression_and_generics_nest() {
     let r = SecretRedactor::redact("password=SecretStr(\"aaaa\") user=\"admin\"\n");
     assert!(r.contains("user=\"admin\""), "{r:?}");
 }
+
+/// Security review of 82e64b6: whitespace ends a code value only before a new field, so
+/// concatenation and ternaries keep every literal redacted.
+#[test]
+fn concatenation_and_ternaries_fail_closed() {
+    for (line, secrets) in [
+        (
+            "password = SecretStr(\"aaaa\") + \"bbbb\"\n",
+            &["aaaa", "bbbb"][..],
+        ),
+        (
+            "token = f(x) ? \"aaaa\" : \"bbbb\";\n",
+            &["aaaa", "bbbb"][..],
+        ),
+        (
+            "token = cond ? \"aaaa\" : \"bbbb\";\n",
+            &["aaaa", "bbbb"][..],
+        ),
+        ("api_key = base + \"aaaa\"\n", &["aaaa"][..]),
+        ("password = x if y else \"aaaa\"\n", &["aaaa"][..]),
+    ] {
+        let clean = SecretRedactor::redact(line);
+        for s in secrets {
+            assert!(!clean.contains(s), "{line:?} -> {clean:?}");
+        }
+    }
+}
