@@ -414,15 +414,8 @@ impl McpPagerServer {
                     .unwrap_or((1, 50));
 
                 match mmu.resolve_handle(id_str) {
-                    // An end past the last line is clamped instead of failing the call (v1.3.2);
-                    // a start past the end is still an error.
-                    Ok(aid) => match mmu.deref_lines(
-                        aid,
-                        range.0,
-                        mmu.cas
-                            .get_meta(aid)
-                            .map_or(range.1, |m| range.1.min(m.total_lines.max(range.0))),
-                    ) {
+                    // `deref_lines` clamps an end past the last line (v1.3.2).
+                    Ok(aid) => match mmu.deref_lines(aid, range.0, range.1) {
                         Ok(text) => (Self::attach_provenance(&text, aid, args, mmu), false),
                         Err(e) => (Self::format_error(&e), true),
                     },

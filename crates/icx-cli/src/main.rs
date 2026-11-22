@@ -654,7 +654,12 @@ fn run_deref(args: &[String]) -> Result<(), String> {
                 handle = Some(&args[i]);
                 i += 1;
             }
-            _ => i += 1,
+            // A typo (`--line 1:2`) or a second handle is an error, not silently ignored.
+            other => {
+                return Err(format!(
+                    "icx deref error: unexpected argument `{other}`\n{USAGE}"
+                ));
+            }
         }
     }
     let Some(handle) = handle else {
@@ -2769,11 +2774,20 @@ mod tests {
                 "1:1".into(),
                 "--dir".into(),
                 dir_arg.clone(),
-                "--extra".into(),
             ],
             io::Cursor::new(""),
         )
         .unwrap();
+        // An unknown flag is an error since v1.3.2 (it used to be ignored).
+        assert!(
+            run_deref(&[
+                handle_str.clone(),
+                "--dir".into(),
+                dir_arg.clone(),
+                "--extra".into()
+            ])
+            .is_err()
+        );
         assert!(run_deref(&[]).is_err());
         assert!(run_deref(&[handle_str.clone(), "--lines".into(), "bad".into()]).is_err());
         assert!(

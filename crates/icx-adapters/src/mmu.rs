@@ -1043,6 +1043,12 @@ impl InfinityContextMmu {
         start_line: usize,
         end_line: usize,
     ) -> Result<String, IcxError> {
+        // An end past the last line is clamped (v1.3.2), for MCP `slice` and `icx deref --lines`
+        // alike; a start past the end is still an error.
+        let end_line = self
+            .cas
+            .get_meta(id)
+            .map_or(end_line, |m| end_line.min(m.total_lines.max(start_line)));
         match self.cas.deref_lines(id, start_line, end_line) {
             Ok(text) => Ok(text),
             Err(IcxError::ArtifactNotFound(_)) => {

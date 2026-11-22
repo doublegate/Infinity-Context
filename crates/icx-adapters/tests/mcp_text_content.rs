@@ -81,3 +81,19 @@ fn non_text_blocks_keep_the_json_form() {
     let full = call(&mut mmu, &json!({"op": "deref", "id": handle}));
     assert!(full.contains(r#""type":"image""#), "{full}");
 }
+
+/// Review of #38: a result with `structuredContent` beside its text keeps the JSON form.
+#[test]
+fn structured_content_is_not_dropped() {
+    let mut mmu = InfinityContextMmu::default();
+    let response = json!({
+        "content": [{"type": "text", "text": docs(30)}],
+        "structuredContent": {"rows": [1, 2, 3]}
+    });
+    let handle = stub_handle(&mut mmu, &response);
+    let full = call(&mut mmu, &json!({"op": "deref", "id": handle}));
+    assert!(
+        full.contains("structuredContent") && full.contains("rows"),
+        "{full}"
+    );
+}

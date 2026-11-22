@@ -250,5 +250,24 @@ fn repeated_flags_are_rejected_and_positionals_are_found_anywhere() {
         out.status.success() && String::from_utf8_lossy(&out.stdout).contains("fn main"),
         "{out:?}"
     );
+    // An end past the last line is clamped, as MCP `slice` does (review of #38).
+    let out = run(
+        &b,
+        &["deref", &handle, "--dir", ws, "--lines", "1:100000"],
+        b"",
+    );
+    assert!(out.status.success(), "{out:?}");
+    // A typo or a second handle is an error, not silently ignored.
+    for args in [
+        &["deref", &handle, "--dir", ws, "--line", "1:2"][..],
+        &["deref", &handle, &handle, "--dir", ws][..],
+    ] {
+        let out = run(&b, args, b"");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !out.status.success() && err.contains("unexpected argument"),
+            "{args:?}: {err}"
+        );
+    }
     let _ = std::fs::remove_dir_all(&b);
 }

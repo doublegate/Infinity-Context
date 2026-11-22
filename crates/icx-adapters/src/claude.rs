@@ -218,7 +218,15 @@ fn compaction_instructions(tail_slot: &str) -> String {
 fn mcp_text_content(response: &Value) -> Option<String> {
     let blocks = match response {
         Value::Array(blocks) => blocks,
-        Value::Object(map) => map.get("content")?.as_array()?,
+        // Only a plain result: any other field (`structuredContent`, ...) keeps the JSON form, so
+        // structured data is never dropped (review of #38).
+        Value::Object(map)
+            if map
+                .keys()
+                .all(|k| matches!(k.as_str(), "content" | "isError" | "_meta")) =>
+        {
+            map.get("content")?.as_array()?
+        }
         _ => return None,
     };
     if blocks.is_empty() {

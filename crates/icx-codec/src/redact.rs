@@ -611,8 +611,8 @@ impl SecretRedactor {
                 };
                 let start = search_pos + rel_idx;
                 // The generic `sk-` inside an ordinary word is not a token start (`autodesk-...`,
-                // `disk-by...` matched in the field; v1.3.2): only when 3+ letters (no digits)
-                // end in it, such as `autode|sk-`. Every distinctive prefix (`ghp_`, `AKIA`,
+                // `disk-by...` matched in the field; v1.3.2): only when 2+ letters (no digits)
+                // precede it, so the whole is a word such as `di|sk-` or `autode|sk-`. Every distinctive prefix (`ghp_`, `AKIA`,
                 // `sk-ant-`, ...) is redacted wherever it appears, so `%3Dghp_...` or a literal
                 // `\nAKIA...` is still caught (security review of #38).
                 if prefix == "sk-" && Self::ends_an_ordinary_word(&current[..start]) {
@@ -1617,29 +1617,39 @@ impl SecretRedactor {
         labelled || sha256sum_line || commit_line || table_cell || csv_cell
     }
 
-    /// Whether `before` ends in a run of 3+ ASCII letters that starts at a word boundary, with
-    /// no digit in the run (`autode` in `autodesk-`, not `n` in a literal `\nAKIA`).
+    /// Whether `before` ends in a run of 2+ ASCII letters with no digit, so that with `sk` it
+    /// forms a 4+ letter word (`di` in `disk-`, `autode` in `autodesk-`; not `x9sk-`).
     fn ends_an_ordinary_word(before: &str) -> bool {
         let run = before
             .bytes()
             .rev()
             .take_while(u8::is_ascii_alphanumeric)
             .collect::<Vec<u8>>();
-        run.len() >= 3 && run.iter().all(u8::is_ascii_alphabetic)
+        run.len() >= 2 && run.iter().all(u8::is_ascii_alphabetic)
     }
 
-    /// At least three `-`-separated parts, at least two (and a third) of them natural words.
+    /// A `-`-joined name: at least three parts, none of 20+ characters, and at least two (and a
+    /// third) of them natural words. A word is 3-19 letters with a vowel and a letter outside a-f,
+    /// written lowercase, Capitalized or ALL CAPS, so random mixed-case runs (`AbCxQ`, `zzZq`)
+    /// and hex never count, and `<word>-<word>-<long secret>` stays subject to the entropy gate
+    /// (review of #38).
     fn is_word_slug(token: &str) -> bool {
         let parts: Vec<&str> = token.split('-').filter(|p| !p.is_empty()).collect();
-        let words = parts
-            .iter()
-            .filter(|p| {
-                p.len() >= 3
-                    && p.bytes().all(|b| b.is_ascii_alphabetic())
-                    && p.bytes().any(|b| !b.is_ascii_hexdigit())
-            })
-            .count();
-        parts.len() >= 3 && words >= 2 && words * 3 >= parts.len()
+        if parts.len() < 3 || parts.iter().any(|p| p.len() >= 20) {
+            return false;
+        }
+        let is_word = |p: &str| {
+            let b = p.as_bytes();
+            let cased =
+                b[1..].iter().all(u8::is_ascii_lowercase) || b.iter().all(u8::is_ascii_uppercase);
+            (3..20).contains(&b.len())
+                && b.iter().all(u8::is_ascii_alphabetic)
+                && b.iter().any(|c| !c.is_ascii_hexdigit())
+                && b.iter().any(|c| b"aeiouyAEIOUY".contains(c))
+                && cased
+        };
+        let words = parts.iter().filter(|p| is_word(p)).count();
+        words >= 2 && words * 3 >= parts.len()
     }
 
     fn is_high_entropy_secret_candidate(

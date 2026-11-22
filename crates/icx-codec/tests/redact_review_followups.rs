@@ -71,8 +71,17 @@ fn prefixes_inside_words_and_word_slugs_are_kept() {
         "https://www.autodesk-example.invalid/autodesk-products-overview/page\n",
         "foreign agent slug -home-user-Code-OSS-Public-Projects-StarGazer-ab12cd34\n",
         "model Llama-4-Maverick-17B-128E-Instruct-FP8 loaded\n",
+        "Unit dev-disk-by-uuid-0f3a.device and task-runner-queue started\n",
     ] {
         assert_eq!(once(line), line);
+    }
+    // Tagged or mixed-case random segments are not words (review of #38).
+    for line in [
+        "opaque AbCxQ-zzZq-Kp7Lm2Nq8Rs4Tv6Wx0Yz3\n",
+        "deploy myapp-prod-aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY\n",
+        "org-live-Kp7Lm2Nq8Rs4Tv6Wx0Yz3Ab9Cd5Ef1Gh\n",
+    ] {
+        assert!(once(line).contains("[REDACTED:"), "{line}");
     }
     // Real tokens are still caught, at a boundary or by the entropy gate.
     for line in [
