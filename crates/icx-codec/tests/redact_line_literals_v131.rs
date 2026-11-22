@@ -158,6 +158,9 @@ fn first_quote_to_end_of_line() {
     hidden("{\"api_key\": \"x\", \"password\": aaaa}\n");
     hidden("{\"api_key\": \"x\", \"tokens\": [aaaa, 67890]}\n");
     hidden("password = \\\"x\\\" + \\\"aaaa\\\"\n");
+    // Codex P1 on #31: a later quoted sensitive key with an unquoted value (JSON and YAML flow).
+    hidden("{\"password\":\"x\",\"token\":aaaa}\n");
+    hidden("{password: x, \"api_key\": aaaa}\n");
     // A call head stays visible; everything from the first quote is one marker.
     let c = hidden("password = env::var(\"K\").unwrap_or(\"aaaa\")\n");
     assert_eq!(c, "password = env::var([REDACTED:ENV_SECRET]\n", "{c:?}");
