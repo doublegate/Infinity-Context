@@ -179,3 +179,56 @@ fn separated_keys_and_key_block_banners() {
     let clean = SecretRedactor::redact(input);
     assert!(!clean.contains("MIIEaaaabbbbcccc"), "{clean:?}");
 }
+
+/// Every way a line can fail to be strict JSON falls back to the first-quote rule (fail closed),
+/// and edge-valid JSON is handled exactly.
+#[test]
+fn invalid_json_falls_back_and_edge_cases_parse() {
+    for broken in [
+        r#"{"password":"aaaa","n":01}"#,
+        r#"{"password":"aaaa","n":1.}"#,
+        r#"{"password":"aaaa","n":1e}"#,
+        r#"{"password":"aaaa","n":-}"#,
+        r#"{"password":"aaaa","n":tru}"#,
+        r#"{"password":"aaaa","s":"bad \x escape"}"#,
+        r#"{"password":"aaaa","s":"bad \u12G4"}"#,
+        "{\"password\":\"aaaa\",\"s\":\"ctrl \u{1} char\"}",
+        r#"{"password":"aaaa","s":"unterminated}"#,
+        r#"{"password":"aaaa"} trailing"#,
+        r#"{"password":"aaaa" "missing":"comma"}"#,
+        r#"{password:"aaaa"}"#,
+    ] {
+        let clean = once(broken);
+        assert!(!clean.contains("aaaa"), "{broken} -> {clean}");
+        assert!(
+            !clean.contains(r#""password":"[REDACTED:CONFIG_SECRET]""#),
+            "took the JSON path: {clean}"
+        );
+    }
+    // Nesting deeper than the limit falls back too.
+    let deep = format!(
+        "{}\"password\":\"aaaa\"{}",
+        "{\"a\":".repeat(140) + "{",
+        "}".repeat(141)
+    );
+    assert!(!once(&deep).contains("aaaa"));
+    // Edge-valid JSON: empty containers, numbers, escapes, nested arrays.
+    let ok = r#"{"a":{},"b":[],"c":[[1,-2.5E+3,0e0]],"d":"\"\\\/\b\f\n\r\té","password":"aaaa"}"#;
+    let clean = once(ok);
+    assert!(
+        clean.starts_with(r#"{"a":{},"b":[],"c":[[1,-2.5E+3,0e0]],"d":"\"\\\/\b\f\n\r\té","#),
+        "{clean}"
+    );
+    assert!(
+        clean.ends_with(r#""password":"[REDACTED:CONFIG_SECRET]"}"#),
+        "{clean}"
+    );
+    // An undecodable key (lone surrogate) is treated as sensitive.
+    assert!(!once(r#"{"\ud800":"aaaa"}"#).contains("aaaa"));
+    // Top-level arrays of strings are redacted element by element.
+    let arr = once(r#"["--password=aaaa","ok"]"#);
+    assert!(!arr.contains("aaaa") && arr.ends_with(r#","ok"]"#), "{arr}");
+    // A value already redacted stays exactly as it is.
+    let done = r#"{"token":"[REDACTED:CONFIG_SECRET]","n":1}"#;
+    assert_eq!(once(done), done);
+}
