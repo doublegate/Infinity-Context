@@ -2,8 +2,8 @@
 
 use icx_adapters::workspace::{self, WorkspaceRoots};
 use icx_adapters::{
-    AntigravityAdapter, ClaudeCodeAdapter, CodexAdapter, HermesAdapter, InfinityContextMmu,
-    McpPagerServer, MuseAdapter,
+    AntigravityAdapter, ClaudeCodeAdapter, CodexAdapter, GeminiCliAdapter, HermesAdapter,
+    InfinityContextMmu, McpPagerServer, MuseAdapter,
 };
 use icx_codec::{AhtlPacket, StructuralSkeletonizer, WirePacket};
 use icx_core::epoch::{CacheEpochController, EpochControllerConfig};
@@ -214,7 +214,7 @@ Subcommands:",
   codex-ingest [--sessions <DIR>] [--project <DIR> | --all-projects] [--dir <PATH>]
       Ingest new records from Codex rollouts (.jsonl and .jsonl.zst) whose session ran in the
       project (default: the current project; sessions default to $CODEX_HOME/sessions)
-  hook --agent <claude-code|codex|agy|hermes|muse> --event <EVENT> [--dir <PATH>]
+  hook --agent <claude-code|codex|agy|hermes|muse|gemini-cli> --event <EVENT> [--dir <PATH>]
       Execute synchronous <500us lifecycle hook (reads JSON from stdin, writes JSON to stdout)
   mcp-serve [--dir <PATH>]
       Run the Single-Tool Polymorphic MCP Virtual Pager (`icx`) over stdio (JSON-RPC 2.0)
@@ -834,6 +834,7 @@ fn dispatch_agent_hook(
         AgentKind::AntigravityCli => AntigravityAdapter::handle_hook(event_str, stdin_buf, mmu),
         AgentKind::Hermes => HermesAdapter::handle_hook(event_str, stdin_buf, mmu),
         AgentKind::Muse => MuseAdapter::handle_hook(event_str, stdin_buf, mmu),
+        AgentKind::GeminiCli => GeminiCliAdapter::handle_hook(event_str, stdin_buf, mmu),
         _ => ClaudeCodeAdapter::handle_hook(event_str, stdin_buf, mmu),
     }
 }
