@@ -1,98 +1,234 @@
 # Infinity-Context (`icx`) — Project Roadmap
 
-This is the master planning entry point for **Infinity-Context (`icx`)**. Each phase below links to its phase overview and constituent sprint files. Every ticket has a portable ID (`T-<Phase><Sprint>-<NNN>`) referenced in commits, tests, and documentation.
+This is the planning entry point for Infinity-Context (`icx`). Each phase links to its overview,
+its implementation plan and its sprint files. Every ticket has a stable ID, which branches, commits
+and pull requests cite for the ticket's whole life.
 
 ## Status
 
-**Active release work:** [v1.2.0 remediation](codex-audit-remediation.md) on `codex-audit`, with
-[durable implementation status](../PROJECT-STATUS.md). The phase history and its original
-quantitative exit criteria below describe the original v1.0.0 plan; checked boxes are historical
-records, not current independent validation. Current published-manifest baseline is v1.1.0.
+- **Current release:** [v1.3.2](https://github.com/doublegate/Infinity-Context/releases/tag/v1.3.2)
+  (2026-11-22). Durable state lives in [PROJECT-STATUS.md](../PROJECT-STATUS.md), and user-visible
+  change in [CHANGELOG.md](../CHANGELOG.md).
+- **Next release:** v1.4.0, [Phase 6](#phase-6--v140-agent-reach-and-output-shrinking).
+- **Release train:** Phase 6 to Phase 11 ship v1.4.0 to v1.9.0, one minor release per phase.
+  Phase 12 ships v2.0.0.
+- **History:** Phases 0 to 5 built v0.1.0 to v1.0.0. Their checked boxes are historical records,
+  not current validation. The v1.1.0 to v1.3.2 remediation and fix releases were tracked in
+  [codex-audit-remediation.md](codex-audit-remediation.md), the CHANGELOG and GitHub issues.
 
-- **Current Version:** `v1.0.0` (`Phase 0` `v0.1.0`, `Phase 1` `v0.2.0`, `Phase 2` `v0.3.0`, `Phase 3` `v0.4.0`, `Phase 4` `v0.5.0`, and `Phase 5` `v1.0.0` All Complete)
-- **Current Phase:** Phase 5 Complete (`v1.0.0` Production Release — All 5 Phases, 15 Sprints, and Tickets `T-11-001` through `T-52-002` Completed & Verified)
-- **Active Workspace:** 8 Rust crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`) — `std`-based, permanently `unsafe_code = "forbid"` (`0` `unsafe` blocks), Rust Edition `2024` / MSRV `1.100`, `>= 95%` Codecov line coverage (`97.5%+` measured)
+## Planning conventions
 
----
+These rules apply to every phase from Phase 6 on.
 
-## Phases Overview
+- **Ticket IDs:**
+  - Phases 6 to 9 use `T-<phase><sprint>-<nnn>`, as Phases 0 to 5 did (for example `T-61-001`).
+  - Phase 10 onward uses `T-<phase>-<sprint>-<nnn>` (for example `T-10-1-001`), so that
+    `T-101` cannot mean two things.
+  - Housekeeping tickets use `T-H-<nnn>`.
+- **Sources:** every ticket names its source: an issue, a document path and line, an audit
+  finding ID, a URL or a paper. Nothing in these plans is unsourced.
+- **Claims:** acceptance criteria contain no unverified performance numbers. A target reads
+  "measured and published in `docs/numbers.md`". Figures that `docs/numbers.md` disowns are not
+  reused.
+- **Research continues during the work, not only during planning:**
+  - Each sprint file opens with a research gate, and each ticket carries a Research line.
+  - Before a ticket starts, re-check every external fact it depends on: agent hook
+    documentation, the MCP specification, provider APIs, crate versions. Also re-run the
+    project's own evidence. Record what changed in the sprint's dated "Research notes".
+  - Agent-facing tickets confirm behaviour on the locally installed agent version first, with REA
+    where the documentation is silent.
+  - A research-backed ticket states its hypothesis and the measurement that settles it. A
+    rejected hypothesis closes the ticket with the finding instead of a feature.
+  - At each sprint's close, re-scan upstream changes and adjust the next sprint's tickets.
+- **Additive by default:** new capability lands off by default, so the default build is unchanged
+  until a feature proves out. Breaking format or policy changes wait for v2.0.0.
 
-### Phase 0 — Pre-Cursory Setup, Deep Research, REA Forensics & Workspace Bootstrap (COMPLETED — `v0.1.0`)
+## Release train
 
-**Goal:** Conduct 38-source deep research, download 22 arXiv PDFs (`ref-docs/papers/`), reverse-engineer local agent binaries & SQLite databases with REA (`ref-docs/agent-internals/`), derive full technical specifications (`docs/`), configure `ai-memory` (`default/doublegate-infinity-context`), and bootstrap the compiling/tested 8-crate Rust workspace.  
-**Exit Criterion:** All research, specifications, ADRs, TODOs, `ai-memory` durable pages, and workspace bootstrap gates (`cargo fmt`, `cargo clippy`, `cargo test`, `icx benchmark`, `icx doctor`) pass with zero warnings.  
+### Phase 6 — v1.4.0: Agent reach and output shrinking
 
-- [Phase 0 Overview](phase-0-precursory-setup/overview.md)
+Goal: reach more agents, and shrink output where icx cannot today. This includes:
 
----
+- an investigation of the installed agents with REA and Ghidra, for integration points the
+  documented hooks do not expose;
+- Codex output shrinking;
+- Gemini CLI, Cursor and OpenCode adapters;
+- deeper Claude Code integration, including the plan-mode permission behaviour of the icx tool;
+- live contract fixtures for every agent;
+- `icx install`.
 
-### Phase 1 — Foundations, BLAKE3 CAS, LCM Merkle-DAG, `/dev/shm` Bus & Zero-`unsafe` Enforcement (COMPLETED — `v0.2.0`)
+- [Overview](phase-6-agent-reach-and-output-shrinking/overview.md) ·
+  [Implementation plan](phase-6-agent-reach-and-output-shrinking/phase_6_implementation_plan.md)
+  - [Sprint 1 — Agent Internals Investigation (REA/Ghidra)](phase-6-agent-reach-and-output-shrinking/sprint-1-agent-internals-investigation.md) (7 tickets)
+  - [Sprint 2 — Codex Output Shrinking](phase-6-agent-reach-and-output-shrinking/sprint-2-codex-output-shrinking.md) (5 tickets)
+  - [Sprint 3 — New Adapters: Gemini CLI, Cursor and OpenCode](phase-6-agent-reach-and-output-shrinking/sprint-3-new-adapters.md) (4 tickets)
+  - [Sprint 4 — Claude Code Depth](phase-6-agent-reach-and-output-shrinking/sprint-4-claude-code-depth.md) (8 tickets)
+  - [Sprint 5 — Install and Verification Tooling](phase-6-agent-reach-and-output-shrinking/sprint-5-install-and-verification-tooling.md) (6 tickets)
 
-**Goal:** Establish the 8-crate Rust Cargo workspace, FastCDC + BLAKE3 Content-Addressed Store, Lossless Context Management (`LCM`) Merkle-DAG, Cache-Epoch Prefix Controller, lock-free `/dev/shm` Seqlock Ring Buffer, permanent workspace-wide `unsafe_code = "forbid"` (`std` allowed, zero `unsafe` through `v1.0.0`), and `>= 95%` Codecov line coverage.  
-**Exit Criterion:** `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo llvm-cov --workspace --all-targets --fail-under-lines 95` pass with 100% lossless byte/line round-trip recovery, zero `unsafe` code across all 8 crates, and `< 1 µs` seqlock ring latency.  
-**Estimated Duration:** 4 weeks  
+### Phase 7 — v1.5.0: Retrieval and compaction quality
 
-- [Phase 1 Overview](phase-1-foundations/overview.md) · [Phase 1 Implementation Plan](phase-1-foundations/phase_1_implementation_plan.md)
-  - [Sprint 1 — Workspace, FastCDC & BLAKE3 CAS (COMPLETED)](phase-1-foundations/sprint-1-workspace-and-cas.md)
-  - [Sprint 2 — Lossless Merkle-DAG (`LCM`) & Cache-Epoch Controller (COMPLETED)](phase-1-foundations/sprint-2-merkle-dag-and-epochs.md)
-  - [Sprint 3 — Lock-Free `/dev/shm` Seqlock Telepathy Bus (COMPLETED)](phase-1-foundations/sprint-3-shm-seqlock-bus.md)
-  - [Sprint 4 — Toolchain Modernization, 100% Zero-`unsafe` Conversion & `>= 95%` Codecov Enforcement (COMPLETED)](phase-1-foundations/sprint-4-zero-unsafe-enforcement.md)
+Goal: better search and compaction. This includes:
 
----
+- BM25 and trigram ranking fused with HDC, and optional local embeddings;
+- an evaluation set drawn from real sessions;
+- a resume packet injected around compaction, and agent-directed eviction;
+- `icx rescan`, and a structural redactor.
 
-### Phase 2 — Alien Holographic Token Lattice (`AHTL`) & Structural Skeletonizers (COMPLETED — `v0.3.0`)
+- [Overview](phase-7-retrieval-and-compaction-quality/overview.md) ·
+  [Implementation plan](phase-7-retrieval-and-compaction-quality/phase_7_implementation_plan.md)
+  - [Sprint 1 — Ranking](phase-7-retrieval-and-compaction-quality/sprint-1-ranking.md) (4 tickets)
+  - [Sprint 2 — Evaluation](phase-7-retrieval-and-compaction-quality/sprint-2-evaluation.md) (4 tickets)
+  - [Sprint 3 — Compaction](phase-7-retrieval-and-compaction-quality/sprint-3-compaction.md) (4 tickets)
+  - [Sprint 4 — Redaction](phase-7-retrieval-and-compaction-quality/sprint-4-redaction.md) (4 tickets)
 
-**Goal:** Implement the non-human BPE-aligned `AHTL` Dual-Profile codec (`Profile A` & `Profile B`), Braille-256 (`8`-byte & `64`-byte) topological sketcher with 1-Lipschitz spectral folding, multi-language AST/log/diff skeletonizers, and 4-Tier pre-ingestion secret redaction + Shannon entropy gate.  
-**Exit Criterion:** Achieves `12x–40x` compression ratio on real agent transcripts/logs with 100% identifier/line preservation, zero delimiter-injection vulnerabilities, and 100% secret redaction coverage, cross-referenced against `docs/ahtl/AHTL_v1_Complete_Technical_Specification_Volume.pdf`.  
-**Estimated Duration:** 3 weeks  
+### Phase 8 — v1.6.0: Prompt-cache proxy and observability
 
-- [Phase 2 Overview](phase-2-alien-codec-and-compression/overview.md) · [Phase 2 Implementation Plan](phase-2-alien-codec-and-compression/phase_2_implementation_plan.md)
-  - [Sprint 1 — AHTL Grammar, Parser & Braille-256 Bijection (COMPLETED)](phase-2-alien-codec-and-compression/sprint-1-ahtl-grammar-and-braille.md)
-  - [Sprint 2 — AST, Test-Log & Diff Structural Skeletonizers (COMPLETED)](phase-2-alien-codec-and-compression/sprint-2-structural-skeletonizers.md)
-  - [Sprint 3 — Pre-Ingestion Secret Redactor & Delimiter Escaping (COMPLETED)](phase-2-alien-codec-and-compression/sprint-3-secret-redaction-and-safety.md)
+Goal: proxy support for current provider caching, with the providers' own cache counters as the
+only basis for a cache-hit claim. Also:
 
----
+- an offline fake-provider harness;
+- per-hook traces and `icx stats`;
+- alignment with MCP 2026-07-28.
 
-### Phase 3 — Hyperdimensional (`HDC`), Fractal (`FCGA`) & Bi-Temporal Graph Index (COMPLETED — `v0.4.0`)
+- [Overview](phase-8-cache-proxy-and-observability/overview.md) ·
+  [Implementation plan](phase-8-cache-proxy-and-observability/phase_8_implementation_plan.md)
+  - [Sprint 1 — Provider Caching](phase-8-cache-proxy-and-observability/sprint-1-provider-caching.md) (4 tickets)
+  - [Sprint 2 — Offline Test Harness](phase-8-cache-proxy-and-observability/sprint-2-offline-test-harness.md) (3 tickets)
+  - [Sprint 3 — Observability](phase-8-cache-proxy-and-observability/sprint-3-observability.md) (5 tickets)
+  - [Sprint 4 — MCP 2026-07-28 Alignment](phase-8-cache-proxy-and-observability/sprint-4-mcp-2026-07-28-alignment.md) (6 tickets)
 
-**Goal:** Build the sub-50µs 10,240-bit HDC associative memory engine, Contractive IFS Fractal Trajectory Archive, Titans Surprise-Gated Momentum tracker, and Bi-Temporal CSR Graph with HippoRAG Personalized PageRank.  
-**Exit Criterion:** Associative recall queries complete in `< 50 µs` over 10,000 nodes; Fractal suffix matching identifies shared trajectory suffixes in $O(1)$ time; Bi-Temporal functional edges auto-invalidate stale facts.  
-**Estimated Duration:** 3 weeks  
+### Phase 9 — v1.7.0: Storage, scale and platforms
 
-- [Phase 3 Overview](phase-3-hyperdimensional-and-fractal-index/overview.md) · [Phase 3 Implementation Plan](phase-3-hyperdimensional-and-fractal-index/phase_3_implementation_plan.md)
-  - [Sprint 1 — 10,240-Bit HDC/HRR Engine & Infini-Attention Delta Bundler (COMPLETED)](phase-3-hyperdimensional-and-fractal-index/sprint-1-hdc-10240bit-engine.md)
-  - [Sprint 2 — Fractal Chaos-Game Archive (`FCGA`) & Titans Surprise Gate (COMPLETED)](phase-3-hyperdimensional-and-fractal-index/sprint-2-fractal-ifs-and-surprise-gate.md)
-  - [Sprint 3 — Bi-Temporal CSR Knowledge Graph & Personalized PageRank (`PPR`) (COMPLETED)](phase-3-hyperdimensional-and-fractal-index/sprint-3-bitemporal-graph-and-ppr.md)
+Goal: storage, compatibility and platforms. This includes:
 
----
+- incremental saves and zstd in the content store, a trigram index for `grep`, and less lock
+  contention;
+- downgrade and export paths;
+- aarch64 Linux, macOS and Windows builds;
+- the open strict benchmarks.
 
-### Phase 4 — Cross-Agent Low-Level Interception, MCP Pager & Wire Proxy (COMPLETED — `v0.5.0`)
+- [Overview](phase-9-storage-scale-and-platforms/overview.md) ·
+  [Implementation plan](phase-9-storage-scale-and-platforms/phase_9_implementation_plan.md)
+  - [Sprint 1 — Storage](phase-9-storage-scale-and-platforms/sprint-1-storage.md) (4 tickets)
+  - [Sprint 2 — Compatibility](phase-9-storage-scale-and-platforms/sprint-2-compatibility.md) (3 tickets)
+  - [Sprint 3 — Platforms](phase-9-storage-scale-and-platforms/sprint-3-platforms.md) (6 tickets)
+  - [Sprint 4 — Performance](phase-9-storage-scale-and-platforms/sprint-4-performance.md) (5 tickets)
 
-**Goal:** Wire native lifecycle hook adapters for Claude Code (`2.1.326+`), OpenAI Codex (`0.169.0+`), Antigravity CLI (`agy`), and Hermes Agent, plus the Single-Tool Polymorphic MCP Pager (`icx`), SQLite WAL / Rollout JSONL tailer, and HTTP/1.1 & SSE Cache-Epoch Reverse Proxy.  
-**Exit Criterion:** All four agent adapters pass wire-schema conformance tests; `PostToolUse` rewrites bulky tool outputs into AHTL stubs; cross-agent telepathy propagates across harnesses in `< 100 µs`.  
-**Estimated Duration:** 3 weeks  
+### Phase 10 — v1.8.0: Prevent and prove
 
-- [Phase 4 Overview](phase-4-cross-agent-interception/overview.md) · [Phase 4 Implementation Plan](phase-4-cross-agent-interception/phase_4_implementation_plan.md)
-  - [Sprint 1 — Claude Code & OpenAI Codex Hook & WAL Adapters (COMPLETED)](phase-4-cross-agent-interception/sprint-1-claude-and-codex-adapters.md)
-  - [Sprint 2 — Antigravity CLI (`agy`) & Hermes ContextEngine Adapters (COMPLETED)](phase-4-cross-agent-interception/sprint-2-agy-and-hermes-adapters.md)
-  - [Sprint 3 — Single-Tool Polymorphic MCP Pager & Cache-Epoch Wire Proxy (COMPLETED)](phase-4-cross-agent-interception/sprint-3-mcp-pager-and-wire-proxy.md)
+Goal: prevent bulky output before it reaches the agent, and prove the savings. This includes:
 
----
+- a command rewriter that runs before execution, a redirect before oversized reads, and log
+  templating;
+- a savings ledger;
+- a paired benchmark with a noise-aware release gate;
+- code health and the remaining security residuals.
 
-### Phase 5 — Long-Horizon Verification, Benchmarks & Production Packaging (COMPLETED — `v1.0.0`)
+- [Overview](phase-10-prevent-and-prove/overview.md) ·
+  [Implementation plan](phase-10-prevent-and-prove/phase_10_implementation_plan.md)
+  - [Sprint 1 — Pre-Execution Command Rewriter](phase-10-prevent-and-prove/sprint-1-pre-execution-command-rewriter.md) (4 tickets)
+  - [Sprint 2 — Pre-Tool Redirect](phase-10-prevent-and-prove/sprint-2-pre-tool-redirect.md) (2 tickets)
+  - [Sprint 3 — Log and Test-Output Templating](phase-10-prevent-and-prove/sprint-3-log-and-test-output-templating.md) (4 tickets)
+  - [Sprint 4 — Savings Ledger and Analytics](phase-10-prevent-and-prove/sprint-4-savings-ledger-and-analytics.md) (3 tickets)
+  - [Sprint 5 — Paired Benchmark Harness](phase-10-prevent-and-prove/sprint-5-paired-benchmark-harness.md) (6 tickets)
+  - [Sprint 6 — Code Health](phase-10-prevent-and-prove/sprint-6-code-health.md) (11 tickets)
+  - [Sprint 7 — Security Residuals](phase-10-prevent-and-prove/sprint-7-security-residuals.md) (6 tickets)
 
-**Goal:** Verify Infinity-Context on multi-million-token Needle-in-a-Haystack / OOLONG simulations, validate `>= 94%` prompt prefix-cache hit ratios, close all AHTL exactness items, and ship the `v1.0.0` `icx` CLI (`doctor`, `benchmark`, `status`, `proxy`, systemd user service).  
-**Exit Criterion:** 100% pass rate on multi-million-token passkey retrieval and multi-agent chaos tests; `icx benchmark` and `icx doctor` report all SLOs green.  
-**Estimated Duration:** 2 weeks  
+### Phase 11 — v1.9.0: Govern and distribute
 
-- [Phase 5 Overview](phase-5-verification-benchmarks-and-release/overview.md) · [Phase 5 Implementation Plan](phase-5-verification-benchmarks-and-release/phase_5_implementation_plan.md)
-  - [Sprint 1 — Multi-Million-Token Needle-in-a-Haystack & Prefix-Cache Simulator (COMPLETED)](phase-5-verification-benchmarks-and-release/sprint-1-nih-and-prefix-cache-sim.md)
-  - [Sprint 2 — CLI Tooling, `icx doctor`, `icx benchmark` & Release Packaging (COMPLETED)](phase-5-verification-benchmarks-and-release/sprint-2-cli-doctor-and-packaging.md)
+Goal: governance, distribution and polish. This includes:
 
----
+- privacy tags and a per-project policy file;
+- a timeline query and a repository map;
+- a local viewer;
+- packaging for plugins, the MCP Registry and package managers;
+- clap, a config file and the daemon API;
+- library and supply-chain work, the documentation site, and Markdown export.
 
-## Cross-Phase Dependencies
+- [Overview](phase-11-govern-and-distribute/overview.md) ·
+  [Implementation plan](phase-11-govern-and-distribute/phase_11_implementation_plan.md)
+  - [Sprint 1 — Privacy and Policy](phase-11-govern-and-distribute/sprint-1-privacy-and-policy.md) (5 tickets)
+  - [Sprint 2 — Timeline and Repo Map](phase-11-govern-and-distribute/sprint-2-timeline-and-repo-map.md) (3 tickets)
+  - [Sprint 3 — Local Viewer](phase-11-govern-and-distribute/sprint-3-local-viewer.md) (3 tickets)
+  - [Sprint 4 — Packaging and Distribution](phase-11-govern-and-distribute/sprint-4-packaging-and-distribution.md) (6 tickets)
+  - [Sprint 5 — Standards and Approvals](phase-11-govern-and-distribute/sprint-5-standards-and-approvals.md) (3 tickets)
+  - [Sprint 6 — CLI, Config and Daemon API](phase-11-govern-and-distribute/sprint-6-cli-config-and-daemon-api.md) (6 tickets)
+  - [Sprint 7 — Library and Supply Chain](phase-11-govern-and-distribute/sprint-7-library-and-supply-chain.md) (6 tickets)
+  - [Sprint 8 — Documentation Site](phase-11-govern-and-distribute/sprint-8-documentation-site.md) (8 tickets)
+  - [Sprint 9 — Markdown Export and Import](phase-11-govern-and-distribute/sprint-9-markdown-export-and-import.md) (4 tickets)
 
-- Phase 2 (`icx-codec`) depends on Phase 1 Sprint 1 (`ArtifactId`, `Blake3Digest` in `icx-core`) and Phase 3 Sprint 1 (`Hypervector` sketch in `icx-hdc`).
-- Phase 4 (`icx-adapters`, `icx-proxy`) integrates Phase 1 (`icx-core`, `icx-bus`), Phase 2 (`icx-codec`), and Phase 3 (`icx-hdc`, `icx-store`).
-- Phase 5 validates the composed 8-crate workspace end to end.
+### Phase 12 — v2.0.0: Architecture release
+
+Goal: the architecture changes that need a major release. This includes:
+
+- the opt-in memory-mapped seqlock bus `icx-shm`, built in full, which resolves issue #32 and
+  ADR-0007;
+- L1 to L4 memory tiers, and an optional neural tier;
+- a format break: 256-bit keys, a MAC on stubs, an encrypted raw tier;
+- conditional team sync.
+
+- [Overview](phase-12-architecture-v2/overview.md) ·
+  [Implementation plan](phase-12-architecture-v2/phase_12_implementation_plan.md)
+  - [Sprint 1 — `icx-shm` Design Acceptance and Scaffolding](phase-12-architecture-v2/sprint-1-shm-design-and-scaffolding.md) (10 tickets)
+  - [Sprint 2 — `icx-shm` Core Protocol](phase-12-architecture-v2/sprint-2-shm-core-protocol.md) (8 tickets)
+  - [Sprint 3 — `icx-shm` Qualification](phase-12-architecture-v2/sprint-3-shm-qualification.md) (8 tickets)
+  - [Sprint 4 — `icx-shm` Platforms and Integration](phase-12-architecture-v2/sprint-4-shm-platforms-and-integration.md) (4 tickets)
+  - [Sprint 5 — `icx-shm` Measurement, Documentation, Policy and Resolution](phase-12-architecture-v2/sprint-5-shm-measurement-policy-and-resolution.md) (8 tickets)
+  - [Sprint 6 — Memory Tiers](phase-12-architecture-v2/sprint-6-memory-tiers.md) (4 tickets)
+  - [Sprint 7 — Neural Tier (Optional, Off by Default)](phase-12-architecture-v2/sprint-7-neural-tier.md) (4 tickets)
+  - [Sprint 8 — Format Break](phase-12-architecture-v2/sprint-8-format-break.md) (6 tickets)
+  - [Sprint 9 — Sync (Conditional) and v2.0.0 Release](phase-12-architecture-v2/sprint-9-sync-conditional.md) (4 tickets)
+
+## Cross-cutting tracks
+
+- **Agent internals:** Phase 6 Sprint 1 extends `ref-docs/agent-internals/` with REA and Ghidra
+  findings, as new dated files because that corpus is immutable. It is scoped to interoperability
+  with the owner's own installs, and each vendor's terms are checked before anything ships.
+- **Issue #32 (`icx-shm`):** built in Phase 12. Three earlier phases supply prerequisites:
+  - per-hook timing of bus publish and poll (Phase 8);
+  - an arm64 CI runner and the macOS build (Phase 9);
+  - the daemon JSON-RPC API, used as the socket-routing comparison (Phase 11).
+- **Governance:** the patent, CLA and commercial terms (ICX-CODEX-074) stay with counsel. No
+  ticket here changes them.
+
+## Housekeeping (any release)
+
+- **T-H-001:** relabel the stale "v1.2.0 candidate" headers
+  (`docs/agent-adapters-and-interception.md:5`, `docs/numbers.md:1`).
+- **T-H-002:** propose removing the disowned figures from the project summary in `CLAUDE.md`
+  (sub-50 µs recall, ≥94% cache hit as a provider metric). That block is managed, so the change is
+  proposed rather than made directly.
+- **T-H-003:** decide what to do about large binaries in git history (`docs/claude/12`, lines
+  44 to 46). Decision only.
+- **T-H-004:** build the specification PDF in CI.
+
+## History: Phases 0 to 5 (v0.1.0 to v1.0.0, completed)
+
+- **Phase 0, pre-cursory setup, research and REA forensics (v0.1.0):**
+  [overview](phase-0-precursory-setup/overview.md)
+- **Phase 1, foundations: CAS, Merkle-DAG, bus and zero-`unsafe` enforcement (v0.2.0):**
+  [overview](phase-1-foundations/overview.md) ·
+  [plan](phase-1-foundations/phase_1_implementation_plan.md)
+- **Phase 2, AHTL codec and structural skeletonizers (v0.3.0):**
+  [overview](phase-2-alien-codec-and-compression/overview.md) ·
+  [plan](phase-2-alien-codec-and-compression/phase_2_implementation_plan.md)
+- **Phase 3, HDC, fractal archive and bi-temporal graph (v0.4.0):**
+  [overview](phase-3-hyperdimensional-and-fractal-index/overview.md) ·
+  [plan](phase-3-hyperdimensional-and-fractal-index/phase_3_implementation_plan.md)
+- **Phase 4, cross-agent interception, MCP pager and wire proxy (v0.5.0):**
+  [overview](phase-4-cross-agent-interception/overview.md) ·
+  [plan](phase-4-cross-agent-interception/phase_4_implementation_plan.md)
+- **Phase 5, verification, benchmarks and packaging (v1.0.0):**
+  [overview](phase-5-verification-benchmarks-and-release/overview.md) ·
+  [plan](phase-5-verification-benchmarks-and-release/phase_5_implementation_plan.md)
+
+## Cross-phase dependencies
+
+- **Phases 6 and 7:** Phase 7's compaction work uses the Phase 6 hook events (PreCompact and
+  PostCompact) and the live contract fixtures.
+- **Phases 8, 10 and 11:** Phase 8's `icx stats` storage is shared with the Phase 10 savings
+  ledger and the Phase 11 viewer.
+- **Phase 10 benchmark:** it gates every later phase, using its noise-aware rule.
+- **Phases 11 and 12:** Phase 11's Markdown export and policy file underlie the conditional sync
+  in Phase 12.
+- **Phase 12 bus:** see the issue #32 prerequisites under cross-cutting tracks.

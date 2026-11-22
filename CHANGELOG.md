@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Documentation
+
+- **Roadmap for v1.4.0 through v2.0.0.** `to-dos/ROADMAP.md` is rewritten from v1.3.2. Phases 6 to
+  12 are new: 56 files, 218 tickets, one minor release per phase and v2.0.0 last.
+  - Each sprint opens with a research gate, and each ticket carries a source and a Research line,
+    so research continues while the work is done.
+  - Phase 12 builds the opt-in `icx-shm` bus in full, which resolves issue #32 and ADR-0007.
+  - The v1.8.0 benchmark gate blocks only on a statistically significant regression across
+    repeated paired runs, and has a cost budget per run.
+
 ## [1.3.2] - 2026-11-22
 
 Fixes #33, #34, #36 and #37, plus problems found by mining four days of agent sessions for icx
