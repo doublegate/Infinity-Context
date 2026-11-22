@@ -686,8 +686,11 @@ fn default_codex_sessions_dir() -> Option<PathBuf> {
         .map(|h| PathBuf::from(h).join(".codex").join("sessions"))
 }
 
+/// Longest stretch `icx codex-ingest` ingests before saving and releasing the workspace lock.
+const CODEX_INGEST_BATCH: std::time::Duration = std::time::Duration::from_millis(1500);
+
 /// `icx codex-ingest` (T-62-003, T-62-004): ingests Codex rollouts into the workspace under the
-/// workspace lock, resuming each from its saved bookmark.
+/// workspace lock, in short batches, resuming each from its saved bookmark.
 fn run_codex_ingest(args: &[String]) -> Result<(), String> {
     const CMD: &str = "icx codex-ingest";
     const USAGE: &str = "Usage: icx codex-ingest [--sessions <DIR>] [--project <DIR> | --all-projects] [--dir <PATH>]";
@@ -752,27 +755,44 @@ fn run_codex_ingest(args: &[String]) -> Result<(), String> {
         WsState::Absent => return Err(format!("{CMD} error: workspace unavailable")),
         WsState::Refused(r) => return Err(format!("{CMD} error: {r}")),
     }
-    let lock = acquire_workspace_lock(&ws_dir).map_err(|e| format!("{CMD} error: {e}"))?;
-    let mut mmu = workspace_mmu();
-    mmu.load_workspace_dir_unlocked(&ws_dir)
-        .map_err(|e| format!("{CMD} error: failed to load workspace state: {e}"))?;
-    let mut state = icx_adapters::codex_ingest::RolloutIngestState::load(&ws_dir)
-        .map_err(|e| format!("{CMD} error: {e}"))?;
-    let summary = icx_adapters::codex_ingest::ingest_sessions_dir(
-        &sessions_dir,
-        project_dir.as_deref(),
-        &mut state,
-        &mut mmu,
-    )
-    .map_err(|e| format!("{CMD} error: {}: {e}", sessions_dir.display()))?;
-    // Records first, bookmarks second: a crash between the two re-reads records rather than
-    // losing them.
-    mmu.save_workspace_dir_unlocked(&ws_dir)
-        .map_err(|e| format!("{CMD} error: failed to save workspace state: {e}"))?;
-    state
-        .save(&ws_dir)
-        .map_err(|e| format!("{CMD} error: failed to save rollout bookmarks: {e}"))?;
-    drop(lock);
+    // Selection (directory walk plus each rollout's first record) needs no workspace state, so
+    // it runs before the lock is taken.
+    let selected =
+        icx_adapters::codex_ingest::select_rollouts(&sessions_dir, project_dir.as_deref())
+            .map_err(|e| format!("{CMD} error: {}: {e}", sessions_dir.display()))?;
+    let mut summary = icx_adapters::codex_ingest::IngestSummary::default();
+    let mut next = 0usize;
+    // Ingest in batches of about CODEX_INGEST_BATCH, releasing the workspace lock between them,
+    // so live hooks and the daemon are not locked out for the whole scan. Each batch reloads the
+    // store (another writer may have committed) and saves records before bookmarks: a crash
+    // between the two re-reads records rather than losing them.
+    loop {
+        let lock = acquire_workspace_lock(&ws_dir).map_err(|e| format!("{CMD} error: {e}"))?;
+        let mut mmu = workspace_mmu();
+        mmu.load_workspace_dir_unlocked(&ws_dir)
+            .map_err(|e| format!("{CMD} error: failed to load workspace state: {e}"))?;
+        let mut state = icx_adapters::codex_ingest::RolloutIngestState::load(&ws_dir)
+            .map_err(|e| format!("{CMD} error: {e}"))?;
+        let started = Instant::now();
+        while next < selected.len() && started.elapsed() < CODEX_INGEST_BATCH {
+            icx_adapters::codex_ingest::ingest_selected(
+                &selected[next],
+                &mut state,
+                &mut mmu,
+                &mut summary,
+            );
+            next += 1;
+        }
+        mmu.save_workspace_dir_unlocked(&ws_dir)
+            .map_err(|e| format!("{CMD} error: failed to save workspace state: {e}"))?;
+        state
+            .save(&ws_dir)
+            .map_err(|e| format!("{CMD} error: failed to save rollout bookmarks: {e}"))?;
+        drop(lock);
+        if next >= selected.len() {
+            break;
+        }
+    }
 
     for (path, reason) in &summary.refused {
         eprintln!("{CMD} warning: skipped {}: {reason}", path.display());

@@ -120,13 +120,13 @@ Upstream reference: the Codex hooks documentation (developers.openai.com/codex/h
 5. **`PreCompact`, `PostCompact` & `SessionEnd`:** seal the epoch and return `{"continue": true, "systemMessage": "<deterministic prefix>"}`.
 6. **`PreModelRequest` / `PostModelRequest`:** not used. Upstream defines them as diagnostic only; they cannot change the request.
 7. **Rollout ingestion (`icx codex-ingest`, v1.4.0; `codex_ingest` module):**
-   - **What it reads:** the rollouts under `$CODEX_HOME/sessions` (default `~/.codex/sessions`) whose `session_meta.cwd` is the project or lies beneath it. `--all-projects` drops the filter.
-   - **Both forms:** plain `rollout-*.jsonl` and the zstd-compressed `rollout-*.jsonl.zst` files that Codex writes for rollouts older than 7 days.
+   - **What it reads:** the rollouts under `$CODEX_HOME/sessions` (default `~/.codex/sessions`) whose `session_meta.cwd` is the project or lies beneath it, as recorded or once symlinks are resolved, including a linked git worktree of the project. `--all-projects` drops the filter. Only a bounded prefix (4 MiB) of each file is decoded to find the `cwd`.
+   - **Both forms:** plain `rollout-*.jsonl` and the zstd-compressed `rollout-*.jsonl.zst` files that Codex writes for rollouts older than 7 days. When both forms of one rollout exist, only the plain file, which Codex appends to, is read.
    - **Compressed files** are decoded by a pure-Rust decoder that verifies frame checksums. They are measured before anything is ingested and refused above 1 GiB decompressed, so a corrupt frame or a decompression bomb ingests nothing.
    - **Bookmarks:** each rollout's read position is saved in `codex-rollouts.json` in the workspace, keyed by its path without `.zst` and checked against a hash of its first 64 KiB. Ingestion resumes where it stopped when Codex recompresses a file or decompresses it again on append, and starts from the beginning for a replaced file. An incomplete trailing line is left for the next run.
    - **No double indexing:** a rollout record whose redacted output the store already holds is skipped and counted as "already stored". Usually that is the copy icx's Codex hook ingested when the tool ran. Measured on this project's live workspace: 1,403 of 1,583 rollout tool outputs were already stored. Messages and turn context, which hooks never see, are ingested as new. Copies that differ in formatting are not recognised.
    - **Safety:** symlinks and special files are refused.
-   - **Locking:** the run holds the workspace lock while it loads, ingests and saves, like a hook.
+   - **Locking:** rollouts are selected before the workspace lock is taken. Ingestion then runs in batches of about 1.5 s: each batch takes the lock, reloads the store, ingests, saves records and bookmarks, and releases it. Live hooks and the daemon are never locked out for the whole scan.
    - **Not automatic:** run `icx codex-ingest` on demand or on a schedule; hooks do not call it.
    - `CodexRolloutTailer` remains the in-process tailer for plain files.
 

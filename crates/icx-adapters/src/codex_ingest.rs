@@ -206,7 +206,11 @@ fn hash_prefix<R: Read>(reader: &mut R, len: u64) -> io::Result<(String, u64)> {
 /// Reads the working directory recorded in a rollout's first `session_meta` record.
 pub fn session_cwd(path: &Path) -> Option<PathBuf> {
     regular_file_meta(path).ok()?;
-    let reader = open_logical(path).ok()?;
+    // Bound the decoded bytes, not only the retained ones: selection runs before the
+    // decompressed-size check, so a newline-free bomb must not be decoded in full here.
+    let reader = open_logical(path)
+        .ok()?
+        .take(MAX_SESSION_META_BYTES as u64 + 1);
     let mut reader = BufReader::new(reader);
     let mut line = Vec::new();
     let (_, ended, truncated) = CodexRolloutTailer::read_bounded_jsonl_record(
@@ -225,9 +229,39 @@ pub fn session_cwd(path: &Path) -> Option<PathBuf> {
     val.get("payload")?.get("cwd")?.as_str().map(PathBuf::from)
 }
 
-/// Whether the rollout's recorded `cwd` is `project` or lies beneath it.
+/// Whether the rollout's recorded `cwd` belongs to `project` (an absolute, canonical project
+/// root): the recorded path lies beneath it as written or once symlinks are resolved, or it is
+/// a linked worktree whose main repository is `project`.
 pub fn rollout_belongs_to(path: &Path, project: &Path) -> bool {
-    session_cwd(path).is_some_and(|cwd| cwd.starts_with(project))
+    session_cwd(path).is_some_and(|cwd| cwd_belongs_to(&cwd, project))
+}
+
+fn cwd_belongs_to(cwd: &Path, project: &Path) -> bool {
+    if cwd.starts_with(project) {
+        return true;
+    }
+    // A directory that no longer exists can only match as written.
+    let Ok(real) = std::fs::canonicalize(cwd) else {
+        return false;
+    };
+    real.starts_with(project) || crate::workspace::project_root(&real) == project
+}
+
+/// Lists the rollouts under `sessions_dir` to ingest for `project` (every rollout when `project`
+/// is `None`). When a rollout exists in both forms (`X.jsonl` and `X.jsonl.zst`, as after an
+/// interrupted Codex recompression), only the plain file, which Codex appends to, is kept.
+pub fn select_rollouts(sessions_dir: &Path, project: Option<&Path>) -> io::Result<Vec<PathBuf>> {
+    let all = discover_rollouts(sessions_dir)?;
+    let plain: std::collections::BTreeSet<String> = all
+        .iter()
+        .filter(|p| !is_compressed(p))
+        .map(|p| logical_key(p))
+        .collect();
+    Ok(all
+        .into_iter()
+        .filter(|p| !(is_compressed(p) && plain.contains(&logical_key(p))))
+        .filter(|p| project.is_none_or(|project| rollout_belongs_to(p, project)))
+        .collect())
 }
 
 /// Ingests the records of one rollout that `prior` has not covered, returning the new mark and
@@ -366,32 +400,39 @@ pub fn ingest_sessions_dir(
     mmu: &mut InfinityContextMmu,
 ) -> io::Result<IngestSummary> {
     let mut summary = IngestSummary::default();
-    for path in discover_rollouts(sessions_dir)? {
-        if let Some(project) = project
-            && !rollout_belongs_to(&path, project)
-        {
-            continue;
-        }
-        summary.matched += 1;
-        let key = logical_key(&path);
-        match ingest_rollout_counted(
-            &path,
-            state.rollouts.get(&key),
-            mmu,
-            MAX_DECOMPRESSED_ROLLOUT_BYTES,
-        ) {
-            Ok((mark, n, held)) => {
-                if n > 0 {
-                    summary.updated += 1;
-                    summary.records += n;
-                }
-                summary.already_held += held;
-                state.rollouts.insert(key, mark);
-            }
-            Err(e) => summary.refused.push((path, e.to_string())),
-        }
+    for path in select_rollouts(sessions_dir, project)? {
+        ingest_selected(&path, state, mmu, &mut summary);
     }
     Ok(summary)
+}
+
+/// Ingests one rollout chosen by [`select_rollouts`], updating its bookmark in `state` and the
+/// totals in `summary`. Lets a caller ingest in batches and release the workspace lock between
+/// them.
+pub fn ingest_selected(
+    path: &Path,
+    state: &mut RolloutIngestState,
+    mmu: &mut InfinityContextMmu,
+    summary: &mut IngestSummary,
+) {
+    summary.matched += 1;
+    let key = logical_key(path);
+    match ingest_rollout_counted(
+        path,
+        state.rollouts.get(&key),
+        mmu,
+        MAX_DECOMPRESSED_ROLLOUT_BYTES,
+    ) {
+        Ok((mark, n, held)) => {
+            if n > 0 {
+                summary.updated += 1;
+                summary.records += n;
+            }
+            summary.already_held += held;
+            state.rollouts.insert(key, mark);
+        }
+        Err(e) => summary.refused.push((path.to_path_buf(), e.to_string())),
+    }
 }
 
 #[cfg(test)]
@@ -594,6 +635,91 @@ mod tests {
         wrong[0] ^= 0xFF;
         write(&bad, &wrong);
         assert!(ingest_rollout(&bad, None, &mut m).is_err());
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn when_both_forms_exist_only_the_plain_rollout_is_selected() {
+        let d = tmpdir("both-forms");
+        let text = rollout_text("/proj", &[("c1", "one")]);
+        write(&d.join("rollout-h.jsonl"), text.as_bytes());
+        write(
+            &d.join("rollout-h.jsonl.zst"),
+            &zstd_raw_frame(text.as_bytes()),
+        );
+        write(
+            &d.join("rollout-i.jsonl.zst"),
+            &zstd_raw_frame(text.as_bytes()),
+        );
+        let names: Vec<String> = select_rollouts(&d, None)
+            .unwrap()
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["rollout-h.jsonl", "rollout-i.jsonl.zst"]);
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn session_selection_decodes_a_bounded_prefix_only() {
+        // A compressed rollout whose first line never ends: selection must give up after the
+        // bounded prefix instead of decoding the whole stream.
+        let d = tmpdir("meta-bomb");
+        let p = d.join("rollout-j.jsonl.zst");
+        let huge = vec![b'x'; MAX_SESSION_META_BYTES * 3];
+        write(&p, &zstd_raw_frame(&huge));
+        assert_eq!(session_cwd(&p), None);
+        assert!(!rollout_belongs_to(&p, Path::new("/proj")));
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_and_linked_worktree_cwds_match_their_project() {
+        let d = tmpdir("cwd-match");
+        let main = d.join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&main)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        };
+        let have_git = git(&["init", "-q"])
+            && git(&[
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@example.invalid",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "init",
+            ]);
+        let project = std::fs::canonicalize(&main).unwrap();
+
+        // A symlink to the project: Codex may record the logical path.
+        let link = d.join("link");
+        std::os::unix::fs::symlink(&main, &link).unwrap();
+        assert!(
+            cwd_belongs_to(&link, &project),
+            "a symlinked cwd resolves to the project"
+        );
+
+        if have_git {
+            let wt = d.join("wt");
+            assert!(git(&["worktree", "add", "-q", wt.to_str().unwrap()]));
+            assert!(
+                cwd_belongs_to(&wt, &project),
+                "a linked worktree outside the main repository belongs to it"
+            );
+        }
+        assert!(!cwd_belongs_to(&d.join("elsewhere"), &project));
         std::fs::remove_dir_all(d).unwrap();
     }
 
