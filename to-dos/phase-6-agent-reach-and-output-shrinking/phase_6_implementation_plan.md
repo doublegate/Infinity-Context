@@ -55,9 +55,10 @@ ticket starts only after its research is recorded in the sprint's dated research
 - **Silent ignores.** An agent can accept a hook reply and discard the replacement (Claude Code
   #86753, #67442; Codex `updatedMCPToolOutput`). Mitigation: every replacement path has a test
   that detects whether the model-visible output actually changed.
-- **Codex `decision:"block"` semantics.** Blocking may surface as an error to the model rather
-  than as a substitute result. Mitigation: T-62-001 measures what the model sees before any code
-  is written; if it is an error, the ticket closes with the finding.
+- **Codex substitution semantics.** Sprint 1 found in the tagged source that
+  `decision:"block"` reaches the model as a failed call, while `continue:false` with a reason
+  substitutes the result without failing it. Mitigation: T-62-001 verifies both on the installed
+  Codex before any code is written, and T-62-002 builds only on `continue:false`, version-gated.
 - **Permission configs belong to other tools.** Writing another agent's permission file can
   widen what that agent may do. Mitigation: install prints the exact edit in `--dry-run`, never
   writes without explicit confirmation, and backs up the file it edits.

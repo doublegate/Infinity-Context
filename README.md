@@ -347,7 +347,7 @@ stateDiagram-v2
 
 ## Cross-Agent Interception Matrix
 
-The hook contracts below were checked against each agent's upstream documentation on 2026-11-18 (audit findings `ICX-AUD-004` to `ICX-AUD-009`). The original local binary and SQLite forensics are in [`ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md`](ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md). Configuration examples are in the [Deployment & Agent Integration Guide](docs/deployment-and-agent-integration-guide.md).
+The hook contracts below were checked against each agent's upstream documentation on 2026-11-18 (audit findings `ICX-AUD-004` to `ICX-AUD-009`). A public summary of the original local install survey is in [`ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md`](ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md). Configuration examples are in the [Deployment & Agent Integration Guide](docs/deployment-and-agent-integration-guide.md).
 
 | Agent Harness | Hook / Plugin Surface | What `icx-adapters` Returns |
 | :--- | :--- | :--- |
@@ -543,6 +543,7 @@ The documentation is also published as a searchable site: <https://doublegate.gi
 - [ADR-0005: v1.1.0 Workspace Trust, SQLite Store & Resident Daemon](docs/adr/0005-v1-1-0-workspace-trust-store-and-daemon.md) (supersedes the zero-copy parts of ADR-0004)
 - [ADR-0006: v1.2.0 Context Budgets & Compatibility](docs/adr/0006-v1-2-0-context-and-compatibility.md)
 - [ADR-0007 (proposed): Opt-in Memory-Mapped Seqlock Bus (`icx-shm`)](docs/adr/0007-opt-in-icx-shm-bus.md)
+- [ADR-0008: Reverse-Engineering Output Stays Private](docs/adr/0008-reverse-engineering-output-stays-private.md)
 
 ### Deep Research & Forensics Corpus (`ref-docs/`)
 
@@ -551,7 +552,8 @@ The research corpus is kept as written. Verified corrections to its citations an
 - [Initial Project Concept & Architectural Vision](ref-docs/initial-concept.md)
 - [Master Deep-Research Technical Report (38 Primary Sources)](ref-docs/research-report.md)
 - [arXiv Paper Index: 22 papers, 12 redistributable PDFs (`ref-docs/papers/INDEX.md`)](ref-docs/papers/INDEX.md)
-- [REA Binary & SQLite Forensics Dossier (`ev_*` Evidence Ledger)](ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md)
+- [Agent Install and Session-Storage Survey (public summary)](ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md)
+- [Below-Hook Findings, 2026-11-22](ref-docs/agent-internals/below-hook-findings-2026-11-22.md)
 - [Cross-Agent Hook & Wire Interception Matrix](ref-docs/agent-internals/cross-agent-hook-and-wire-matrix.md)
 - [GitHub & Industry Prior Art Comparative Landscape](ref-docs/prior-art/github-and-industry-landscape.md)
 - [Novel Non-Human Neural Codecs & Holographic Context Derivations](ref-docs/novel-methods/non-human-neural-codecs-and-holographic-context.md)

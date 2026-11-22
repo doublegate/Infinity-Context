@@ -11,7 +11,7 @@ confined to the opt-in `icx-shm` crate". It stays **off by default**: with the f
 builds, tests, benchmarks and binaries are identical to v1.9.
 
 Sprints 6–9 add L1–L4 memory tiers with page-in on recall fault, an optional neural tier, a
-format break (256-bit keys, keyed stub MAC, optional encrypted raw tier, ADR-0008 migration), and
+format break (256-bit keys, keyed stub MAC, optional encrypted raw tier, ADR-0009 migration), and
 a conditional sync decision.
 
 ## Changes to the v2.0 Plan from the v1.8 and v1.9 Research
@@ -40,7 +40,7 @@ Ticket IDs for Phase 10 onward use `T-<phase>-<sprint>-<nnn>` (for example `T-12
   closed with links to the PRs and the release.
 - [ ] L1–L4 tiers with page-in on recall fault ship; the neural tier ships only if it beats the
   BM25+RRF baseline, otherwise its finding is recorded.
-- [ ] ADR-0008 documents the format break, and the one-way migration tool is tested on real v1.9
+- [ ] ADR-0009 documents the format break, and the one-way migration tool is tested on real v1.9
   stores.
 - [ ] The sync decision is recorded, and sync ships only if a privacy ADR approves it.
 - [ ] No significant regression on the Phase 10 paired benchmark.

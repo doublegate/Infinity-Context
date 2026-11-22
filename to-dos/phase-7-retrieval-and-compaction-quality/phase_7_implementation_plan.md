@@ -17,9 +17,13 @@ request; the release is cut at the phase close.
 2. **Sprint 2 — Evaluation.** Build a retrieval evaluation set from real sessions, redacted and
    consented, scored by recall@k and MRR. Measure Sprint 1 against it and decide defaults. Add
    optional local embeddings (ONNX or Candle), off by default, enabled only on a measured gain.
-3. **Sprint 3 — Compaction.** Inject a resume packet (handles plus open tasks, within a byte
-   budget) via `PreCompact`/`PostCompact` for Claude Code and Codex and via Hermes
-   `select_context`. Add agent-directed, typed eviction through `fold`, following the T-64-008
+3. **Sprint 3 — Compaction.** Deliver a resume packet (handles plus open tasks, within a byte
+   budget) after compaction, through the event each agent applies to the post-compaction
+   context. Neither agent's compaction hook can carry it to the model (Phase 6 Sprint 1):
+   - **Claude Code:** `PreCompact` instructions keep the handles, and the packet goes in the
+     following `SessionStart`.
+   - **Codex:** the packet goes in the first context-carrying hook after compaction.
+   - **Hermes:** `on_session_start` then `select_context`. Add agent-directed, typed eviction through `fold`, following the T-64-008
    decision.
 4. **Sprint 4 — Redaction.** Ship `icx rescan` (dry-run default). Write the structural redactor
    ADR, then implement it with property tests and a field corpus. Close the mutation gaps in

@@ -24,24 +24,61 @@ Re-check before the sprint starts:
 
 ### Research notes
 
-_None recorded yet._
+**2026-11-22, from Sprint 1** (`ref-docs/agent-internals/below-hook-findings-2026-11-22.md`, Codex
+section and decision table). Source at `rust-v0.171.0`; the installed binary matches the tag.
+
+- **`decision:"block"`:** the model receives the reason as a *failed* tool call
+  (`registry.rs:1080-1088`). It is a no-go as a substitution.
+- **`continue:false` with `reason`/`stopReason` on PostToolUse:** the model sees only that text in
+  place of the result. The call is not marked failed, and the turn continues
+  (`registry.rs:371-393`, `1089-1096`; `post_tool_use.rs:44-49`). T-62-001 and T-62-002 now target
+  this route.
+- **Field rejections:**
+  - `updatedToolOutput` makes the whole reply fail to parse;
+  - `updatedMCPToolOutput` marks the hook Failed and drops its `additionalContext`;
+  - `suppressOutput:true` is rejected.
+- **Which calls are covered:** shell commands arrive as tool `Bash` and always count as success.
+  PostToolUse runs only for successful calls, so a failed MCP call is never seen.
+- **Rollouts:**
+  - path `~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<thread>[_<id>].jsonl`;
+  - zstd level 3 for files older than 7 days, behind `local_thread_store_compression`, and
+    `.zst` files already exist on this machine;
+  - each stored output is capped at 64 KiB.
+- **`additionalContextLimit`:** defaults to about 2,500 tokens. Text over the limit is spilled to
+  a file and only a preview reaches the model (new ticket T-62-006).
+
+**2026-11-22, upstream re-scan at Sprint 1 close:**
+
+- **Releases:** 0.171.0 is still the latest stable release; 0.173.0 is in alpha (alpha.4,
+  2026-11-21).
+- **Hook change in the alpha:** a per-handler `onFailure` setting (openai/codex#62831). Its
+  default, `continue`, keeps today's behaviour; `block` withholds a tool's result when its
+  PostToolUse hook fails.
+- **What icx must do:** keep `onFailure` unset (fail-open) in the hook config it writes. Check this
+  in T-62-001 and in `icx install` (T-65-004) once the setting reaches a stable release.
+- **No other changes:** nothing else in the hooks or rollout code since the tag changes the
+  Sprint 1 findings.
 
 ## Tickets
 
-### T-62-001 — Verify `decision:"block"` substitution on the installed Codex
+### T-62-001 — Verify `continue:false` substitution on the installed Codex
 
-**Description:** Run a controlled Codex session with a hook that returns `decision:"block"` and
-a replacement reason, and record exactly what the model sees for shell and MCP tool calls.
+**Description:** Run a controlled Codex session with a PostToolUse hook that returns
+`continue:false` and the icx stub as `reason`, and record exactly what the model sees for shell
+and MCP tool calls. Run `decision:"block"` alongside it as the control.
 
-**Research:** Hypothesis: on the installed Codex, `decision:"block"` replaces the whole tool
-result with the hook's text, and the model treats it as the result rather than as an error.
+**Research:** Hypothesis, from the tagged source (Sprint 1): on the installed Codex,
+`continue:false` plus `reason` replaces the whole tool result with the hook's text, the call is
+not shown as failed, and the turn continues, while `decision:"block"` shows as a failed call.
 Confirmed if the rollout and the model's next turn show the stub in place of the raw output for
 both tool kinds; rejected otherwise, and the ticket closes with the finding.
 
 **Acceptance Criteria:**
 
 - [ ] Codex version, hook config and raw rollout excerpts recorded in the research notes.
-- [ ] Result per tool kind (shell, MCP): substituted, shown as error, or ignored.
+- [ ] Result per tool kind (shell, MCP) and per reply (`continue:false`, `decision:"block"`):
+  substituted, shown as error, or ignored.
+- [ ] Whether the rollout stores the substitute or the original recorded.
 - [ ] Decision recorded: proceed to T-62-002, or close with the finding.
 
 **Dependencies:** T-61-003
@@ -53,17 +90,20 @@ Codex hooks documentation
 
 ---
 
-### T-62-002 — Implement block-based substitution behind a flag
+### T-62-002 — Implement `continue:false` substitution behind a flag
 
 **Description:** If T-62-001 confirms substitution, add an opt-in mode in `CodexAdapter` that
-returns `decision:"block"` with the icx stub for outputs over the stub threshold. Default stays
-non-replacing.
+returns `continue:false` with the icx stub as `reason`, for outputs over the stub threshold. The
+default stays non-replacing.
 
-**Research:** Re-run T-62-001 on the Codex version current at coding time.
+**Research:** Re-run T-62-001 on the Codex version current at coding time. The behaviour relies
+on a side effect of `continue:false`, so the mode is version-gated to versions where T-62-001
+passed.
 
 **Acceptance Criteria:**
 
 - [ ] Opt-in flag (env and config), off by default; default output byte-identical to v1.3.2.
+- [ ] Version-gated: on an unverified Codex version the mode stays off and logs why.
 - [ ] The stub carries the `#icx:<hash>` handle and dereferences losslessly.
 - [ ] Contract test pins the reply shape; a live-run test detects a silent ignore.
 - [ ] Saving on a recorded Codex session measured and published in `docs/numbers.md`.
@@ -133,12 +173,44 @@ When it lands, add a version-gated replacement path and flip the capability for 
 **Acceptance Criteria:**
 
 - [ ] A dated watch entry in the research notes at each sprint close of this phase.
+- [ ] Until support lands, the existing tests that keep `updatedToolOutput` and
+  `updatedMCPToolOutput` out of every Codex reply stay in place. On 0.171.0 either field breaks
+  the reply (Sprint 1).
 - [ ] If support lands: version-gated path, contract test, and capability matrix update.
 - [ ] If not by phase close: the ticket carries over to the next phase with its status.
 
 **Dependencies:** None
 
-**Reference:** ICX-AUD-005; `docs/agent-adapters-and-interception.md` lines 110-114
+**Reference:** ICX-AUD-005; `docs/agent-adapters-and-interception.md` lines 110-114;
+`ref-docs/agent-internals/below-hook-findings-2026-11-22.md`
+
+**Estimated Complexity:** S
+
+---
+
+### T-62-006 — Keep Codex `additionalContext` within `additionalContextLimit`
+
+**Description:** Codex spills `additionalContext` over the per-handler `additionalContextLimit`
+(default about 2,500 tokens) to a file, and the model sees only a preview and the path. Budget
+every Codex `additionalContext` reply so the recall and tail-slot content stays under the limit,
+and document the handler-side setting for users who raise it.
+
+**Research:** Confirm the default and the token estimate Codex uses on the installed version
+(`output_spill.rs:13`, `discovery.rs:695-712` at `rust-v0.171.0`). Measure the current reply
+sizes on recorded sessions.
+
+**Acceptance Criteria:**
+
+- [ ] Codex replies are budgeted below the default limit, using Codex's own token estimate or a
+  documented conservative bound.
+- [ ] Truncation keeps every `#icx:` handle intact and is deterministic.
+- [ ] Property test: no reply exceeds the budget for any input.
+- [ ] Deployment guide documents `additionalContextLimit` (0 disables the limit).
+
+**Dependencies:** None
+
+**Reference:** `ref-docs/agent-internals/below-hook-findings-2026-11-22.md` (Codex
+`additionalContext`); Codex `codex-rs/hooks/src/output_spill.rs`
 
 **Estimated Complexity:** S
 

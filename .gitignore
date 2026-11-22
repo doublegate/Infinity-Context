@@ -67,3 +67,34 @@ CLAUDE.local.md
 
 # Local archives of files no longer needed in the repository (kept on disk only)
 archive/
+
+# Reverse-engineering output: never published (owner policy, 2026-11-22). Decompiled or
+# disassembled code, REA evidence bundles and snapshots, analysis databases and string dumps
+# of agent builds stay on disk only. Public docs carry interoperability conclusions only.
+ref-docs/agent-internals/private/
+**/rea-evidence/
+**/rea-output/
+**/.rea/
+*.rea.json
+*.rea-snapshot
+*-evidence-bundle.json
+# Ghidra, IDA, Binary Ninja, Hopper, radare2/rizin and Cutter projects and databases
+*.gpr
+*.rep/
+**/ghidra_projects/
+*.i64
+*.idb
+*.id0
+*.id1
+*.id2
+*.nam
+*.til
+*.bndb
+*.hop
+*.r2
+*.rzdb
+# Extracted agent bundles, decompiler output and raw string dumps
+**/extracted-bundles/
+**/decompiled/
+**/disassembly/
+*.strings.txt

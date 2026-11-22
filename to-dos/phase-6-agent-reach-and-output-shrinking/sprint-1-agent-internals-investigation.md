@@ -25,7 +25,34 @@ Re-check before the sprint starts:
 
 ### Research notes
 
-_None recorded yet._
+**2026-11-22, research gate:**
+
+- **Installed versions:**
+  - Claude Code 2.1.330, native ELF at `~/.local/share/claude/versions/2.1.330`;
+  - Codex CLI 0.171.0, static musl;
+  - agy 1.5.14, ELF;
+  - Muse Code 1.4.25 (`1.4.25-R9361.1`), static ELF;
+  - Hermes v0.23.3, source checkout at `caafe5389ae` (2026-11-19). That commit differs from the
+    `dc394c6` that the adapters doc records.
+- **Terms review and scope (T-61-001):**
+  - Codex is Apache-2.0 and Hermes is MIT.
+  - The per-agent terms review and the owner's scope decisions are recorded in the private notes
+    (ADR-0008), not in this file.
+- **Public sources used to corroborate the findings:**
+  - Codex (`openai/codex` at the installed tag);
+  - Hermes (`NousResearch/hermes-agent` at `caafe5389ae`);
+  - Claude Code (`anthropics/claude-code`: CHANGELOG, documentation and issues);
+  - agy and Muse (public documentation and changelog).
+
+**2026-11-22, investigation complete:**
+
+- **Dossier:** `ref-docs/agent-internals/below-hook-findings-2026-11-22.md`, which holds the scope,
+  the per-agent findings, the go/no-go table and the versions.
+- **Private evidence:** the evidence is kept in the gitignored
+  `ref-docs/agent-internals/private/`, per ADR-0008. That is where the "evidence bundle recorded"
+  criteria below are met.
+- **Follow-up planning:** Sprints 2, 4 and 5 and Phase 7 Sprint 3 were adjusted. Sprint 3 needed
+  no change. New tickets: T-62-006, T-65-007, T-65-008, T-65-009.
 
 ## Tickets
 
@@ -41,10 +68,12 @@ which are open source (Codex, Hermes) so that source reading replaces binary ins
 
 **Acceptance Criteria:**
 
-- [ ] A scope table per agent: licence, terms clause relied on, allowed methods (source read,
+- [x] A scope table per agent: licence, terms clause relied on, allowed methods (source read,
   REA, Ghidra), and excluded methods.
-- [ ] Any agent whose terms forbid inspection is marked out of scope, with the reason.
-- [ ] The scope table is the first section of the T-61-006 dossier.
+- [x] Any agent whose terms forbid inspection is marked out of scope, with the reason.
+- [x] The scope table is the first section of the T-61-006 dossier. Amended by owner decision
+  (2026-11-22): the table is kept in the private notes, and the public dossier's first section
+  states the scope without it.
 
 **Dependencies:** None
 
@@ -67,10 +96,10 @@ built-in tool in the installed bundle.
 
 **Acceptance Criteria:**
 
-- [ ] Installed version, bundle path and REA evidence bundle recorded.
-- [ ] Per built-in tool: where the result is shaped, and whether a hook replacement is applied.
-- [ ] Compaction trigger and summary path described, with the inputs it reads.
-- [ ] Findings feed T-64-001 and T-64-007.
+- [x] Installed version, bundle path and REA evidence bundle recorded.
+- [x] Per built-in tool: where the result is shaped, and whether a hook replacement is applied.
+- [x] Compaction trigger and summary path described, with the inputs it reads.
+- [x] Findings feed T-64-001 and T-64-007.
 
 **Dependencies:** T-61-001
 
@@ -93,9 +122,9 @@ the source for the installed tag.
 
 **Acceptance Criteria:**
 
-- [ ] Installed version and source tag recorded.
-- [ ] Hook-response handling documented per field, with file and line in the tagged source.
-- [ ] Rollout file naming and compression documented for T-62-003 and T-62-004.
+- [x] Installed version and source tag recorded.
+- [x] Hook-response handling documented per field, with file and line in the tagged source.
+- [x] Rollout file naming and compression documented for T-62-003 and T-62-004.
 
 **Dependencies:** T-61-001
 
@@ -118,10 +147,10 @@ determined on the installed version), and how agy handles `user_markdown`.
 
 **Acceptance Criteria:**
 
-- [ ] Installed versions and REA evidence bundles recorded.
-- [ ] Muse's MCP tool-approval key identified on the installed version, or recorded as not
+- [x] Installed versions and REA evidence bundles recorded.
+- [x] Muse's MCP tool-approval key identified on the installed version, or recorded as not
   found with the search method.
-- [ ] agy `user_markdown` handling described for T-65-003.
+- [x] agy `user_markdown` handling described for T-65-003.
 
 **Dependencies:** T-61-001
 
@@ -143,9 +172,9 @@ recorded in the adapters doc (`dc394c6`).
 
 **Acceptance Criteria:**
 
-- [ ] Commit recorded; interface signatures quoted with file and line.
-- [ ] Plugin load path and failure behaviour described.
-- [ ] Findings feed T-65-002 and T-73-003.
+- [x] Commit recorded; interface signatures quoted with file and line.
+- [x] Plugin load path and failure behaviour described.
+- [x] Findings feed T-65-002 and T-73-003.
 
 **Dependencies:** T-61-001
 
@@ -165,11 +194,11 @@ corpus is immutable, so existing files are not edited; the new file cross-links 
 
 **Acceptance Criteria:**
 
-- [ ] New file `ref-docs/agent-internals/below-hook-findings-<date>.md` with the scope table,
+- [x] New file `ref-docs/agent-internals/below-hook-findings-<date>.md` with the scope table,
   per-agent findings, evidence references and agent versions.
-- [ ] No vendor source, binary excerpt beyond what interoperability needs, or secret in the
+- [x] No vendor source, binary excerpt beyond what interoperability needs, or secret in the
   file; gitleaks clean.
-- [ ] markdownlint clean and REUSE annotated.
+- [x] markdownlint clean and REUSE annotated.
 
 **Dependencies:** T-61-002, T-61-003, T-61-004, T-61-005
 
@@ -189,9 +218,9 @@ later sprint; every no-go item records its reason.
 
 **Acceptance Criteria:**
 
-- [ ] A decision table in the dossier: candidate, agent, decision, reason, follow-up ticket.
-- [ ] Any go item is off by default and version-gated in its follow-up ticket.
-- [ ] Sprints 2 to 5 adjusted to the decisions.
+- [x] A decision table in the dossier: candidate, agent, decision, reason, follow-up ticket.
+- [x] Any go item is off by default and version-gated in its follow-up ticket.
+- [x] Sprints 2 to 5 adjusted to the decisions.
 
 **Dependencies:** T-61-006
 
@@ -201,9 +230,10 @@ later sprint; every no-go item records its reason.
 
 ## Sprint exit
 
-- [ ] Gates green: `cargo fmt --all -- --check`,
+- [x] Gates green: `cargo fmt --all -- --check`,
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and
-  coverage `>= 95%`.
-- [ ] Docs and CHANGELOG updated for any user-visible change.
-- [ ] Upstream re-scan done for Sprint 2 (Codex releases and hooks docs), and its tickets
+  coverage `>= 95%`. On 2026-11-22: 358 tests pass, line coverage 95.43%. No Rust changed in
+  this sprint.
+- [x] Docs and CHANGELOG updated for any user-visible change.
+- [x] Upstream re-scan done for Sprint 2 (Codex releases and hooks docs), and its tickets
   adjusted.

@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Security
+
+- **Reverse-engineering output stays private** (ADR-0008).
+  - Raw REA and Ghidra output, evidence bundles, analysis projects and string dumps of agent
+    builds are gitignored, and so is `ref-docs/agent-internals/private/`.
+  - The 2026-11-16 binary survey is now a public summary that keeps only its interoperability
+    conclusions. The full ledger is kept on disk only.
+
 ### Build
 
 - **CI runs only what a pull request needs.** Documentation-only pull requests skip the Rust
@@ -16,12 +24,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Documentation
 
 - **Roadmap for v1.4.0 through v2.0.0.** `to-dos/ROADMAP.md` is rewritten from v1.3.2. Phases 6 to
-  12 are new: 56 files, 219 tickets, one minor release per phase and v2.0.0 last.
+  12 are new: 56 files, 223 tickets, one minor release per phase and v2.0.0 last.
   - Each sprint opens with a research gate, and each ticket carries a source and a Research line,
     so research continues while the work is done.
   - Phase 12 builds the opt-in `icx-shm` bus in full, which resolves issue #32 and ADR-0007.
   - The v1.8.0 benchmark gate blocks only on a statistically significant regression across
     repeated paired runs, and has a cost budget per run.
+- **Below-hook findings** (Phase 6 Sprint 1, issue #40): a new dated page,
+  `ref-docs/agent-internals/below-hook-findings-2026-11-22.md`. It covers what each supported agent
+  accepts beyond its documented hooks, and a go/no-go decision per candidate integration.
+  Findings that change the plan:
+  - **Codex:** `decision:"block"` reaches the model as a failed call. Stub substitution moves to
+    `continue:false` with a reason (T-62-001, T-62-002).
+  - **Claude Code:** plan mode holds MCP tools before it reads allow rules, so `readOnlyHint` is
+    the only way to stop the icx prompts there (T-64-007). The `additionalContext` cap on icx's
+    hook path is 8,000 characters and 200 lines (T-64-006).
+  - **agy:** `user_markdown: ""` does not hide injected steps (T-65-003).
+  - **New tickets:** T-62-006, T-65-007, T-65-008 and T-65-009.
 
 ## [1.3.2] - 2026-11-22
 

@@ -24,7 +24,28 @@ Re-check before the sprint starts:
 
 ### Research notes
 
-_None recorded yet._
+**2026-11-22, from Phase 6 Sprint 1**
+(`ref-docs/agent-internals/below-hook-findings-2026-11-22.md`). Re-check each item at sprint
+start.
+
+- **Claude Code 2.1.330:**
+  - PreCompact stdout is appended to the summarizer's instructions, up to 10,000 characters, so
+    an instruction to keep `#icx:` handles reaches the summary.
+  - PostCompact output reaches the user only, so the resume packet must be re-injected from the
+    SessionStart that follows compaction (T-73-002).
+- **Codex 0.171.0:**
+  - No hook can change the compaction summary; only `compact_prompt` and
+    `experimental_compact_prompt_file` can.
+  - PreCompact is useful only to seal an epoch and take a snapshot (T-73-002).
+- **Hermes `caafe5389ae`:**
+  - `on_session_start` is called after every committed compaction, with
+    `boundary_reason="compression"`.
+  - A request-only `select_context` then carries the packet without persisting it, and fails
+    open (T-73-003).
+- **agy 1.5.14 and Muse 1.4.25:**
+  - agy has no compaction hook;
+  - Muse has PreCompact and PostCompact, but their payloads are undocumented.
+  - Neither is in scope for this sprint.
 
 ## Tickets
 
@@ -53,16 +74,29 @@ Claude Code, the `additionalContext` limit handled in T-64-006).
 
 ### T-73-002 — Inject the resume packet in Claude Code and Codex
 
-**Description:** Emit the resume packet from `PreCompact` and/or `PostCompact` for Claude Code
-and Codex, whichever the installed version applies to the post-compaction context.
+**Description:** Deliver the resume packet after compaction through the event each agent applies
+to the post-compaction context. Sprint 1 found that neither compaction hook can carry it to the
+model:
 
-**Research:** Hypothesis: a resume packet injected at compaction reduces the number of
-re-reads of already-seen artifacts in the turns after compaction. Measured on recorded sessions
-with and without the packet, counting repeated tool calls for the same file or command.
+- **Claude Code:** `PreCompact` stdout tells the summarizer to keep every `#icx:` handle, and the
+  packet itself goes in the `additionalContext` of the `SessionStart` that follows compaction.
+  `PostCompact` output reaches the user only.
+- **Codex:** no hook can change the summary, so `PreCompact` only seals the epoch and takes a
+  snapshot. The packet goes in the `additionalContext` of the first hook after compaction that
+  carries it (`SessionStart` if Codex fires one after compaction, otherwise the next
+  `UserPromptSubmit`), within `CODEX_INLINE_CONTEXT_MAX_BYTES` (T-62-006).
+
+**Research:**
+
+- **Re-confirm the routes on the installed versions:** Claude Code's post-compaction
+  `SessionStart`, and which Codex event first follows compaction.
+- **Hypothesis:** a resume packet delivered after compaction reduces re-reads of
+  already-seen artifacts in the turns that follow. Measured on recorded sessions with and
+  without the packet, counting repeated tool calls for the same file or command.
 
 **Acceptance Criteria:**
 
-- [ ] The event and field that work are recorded per agent version.
+- [ ] The event and field that carry the packet are recorded per agent version.
 - [ ] Contract tests over live-run fixtures.
 - [ ] Re-read counts with and without the packet measured and published in `docs/numbers.md`.
 - [ ] Opt-out switch documented.
