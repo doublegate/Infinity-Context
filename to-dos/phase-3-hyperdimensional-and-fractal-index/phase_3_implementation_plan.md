@@ -22,6 +22,7 @@ Accomplish **Phase 3 — Hyperdimensional (`HDC`), Fractal (`FCGA`) & Bi-Tempora
 
 > [!IMPORTANT]
 > **Standing Invariants & Release Versioning (`v0.4.0`):**
+>
 > - **Permanent Zero-`unsafe` Policy (`std` allowed):** All 8 workspace crates remain `std`-based with `unsafe_code = "forbid"` permanently enforced by Cargo lints and CI (`0` `unsafe` blocks anywhere in the repository).
 > - **Codecov `>= 95%` Gate:** Every sprint PR (`PR #11`, `PR #12`, `PR #13`) must pass `cargo llvm-cov --workspace --all-targets --lcov --output-path lcov.info --fail-under-lines 95` and `codecov/patch`.
 > - **10,000-Node `< 50 µs` Associative Recall SLO:** `HdcAssociativeIndex::query_associative` will use a two-stage spectral/sketch (`sketch_256` + 64-bit lexical Bloom filter + Fractal orthant signature) pre-filter followed by exact 10,240-bit `hamming_distance_simd` and `shared_suffix_depth` refinement on the top candidates, eliminating per-node heap allocations during search and achieving `< 50 µs` over 10,000 nodes.
@@ -65,10 +66,12 @@ flowchart LR
 ### Component 1: Sprint 3.1 — 10,240-Bit HDC/HRR Engine, Infini-Attention Delta Bundler & Two-Stage Associative Index (`T-31-001`, `T-31-002`)
 
 #### [MODIFY] [hv.rs](../../crates/icx-hdc/src/hv.rs)
+
 - **Domain-Separated & Role-Filler Algebra (`T-31-001`):**
   - Implement `core::ops::BitXor` and `core::ops::BitXorAssign` for `Hypervector` and `&Hypervector`.
   - Add `Hypervector::unbind(&self, role_or_key: &Self) -> Self` (self-inverse XOR unbinding).
   - Add `Hypervector::inverse_permute(&self, shift: usize) -> Self` inverting `permute(shift)`:
+
     ```rust
     #[inline]
     pub fn inverse_permute(&self, shift: usize) -> Self {
@@ -82,6 +85,7 @@ flowchart LR
         Self { words: out }
     }
     ```
+
   - Add `Hypervector::bind_role_filler(role: &str, filler: &str) -> Self`, `Hypervector::encode_sequence(items: &[Self]) -> Self`, `Hypervector::popcount(&self) -> u32`, and `Hypervector::cosine_bipolar(&self, other: &Self) -> f32` ($\in [-1.0, +1.0]$).
 - **Infini-Attention Delta-Rule Bundler (`T-31-002` — `HdcBundler`):**
   - Enhance `HdcBundler::add` and `HdcBundler::add_weighted` so that:
@@ -90,6 +94,7 @@ flowchart LR
   - Add `HdcBundler::count(&self) -> usize`, `HdcBundler::reset(&mut self)`, and `HdcBundler::unbind_query(&self, role: &Hypervector) -> Hypervector`.
 
 #### [MODIFY] [lib.rs](../../crates/icx-hdc/src/lib.rs)
+
 - Define and implement the normative `AssociativeMemoryIndex` trait (`docs/interfaces.md` §3) on `HdcAssociativeIndex`.
 - Precompute per-entry metadata at `observe_event` time (`sketch_256: [u64; 4]`, `lexical_bloom: u64`, `subject_lower: String`) and implement a two-stage associative search in `HdcAssociativeIndex::query_associative`:
   - **Stage 1 (Zero-Allocation Spectral + Lexical Bloom Pre-Filter):** For $N > 64$, computes a fast upper-bound score over `sketch_256` (4 `u64` `XOR + POPCNT` instructions), `lexical_bloom` (1 `u64` bitwise `AND + POPCNT`), `fractal_coord.quadrant_signature_u16()`, and `surprise`, selecting the top $M = \max(4 \cdot \text{top\_k}, 32)$ candidates with zero heap allocations.
@@ -101,6 +106,7 @@ flowchart LR
 ### Component 2: Sprint 3.2 — Contractive IFS Fractal Chaos-Game Archive (`FCGA`) & `TitansSurpriseGate` (`T-32-001`, `T-32-002`)
 
 #### [MODIFY] [fractal.rs](../../crates/icx-hdc/src/fractal.rs)
+
 - **Morton Z-Order Prefix Code, `Q1.14` Fixed-Point, Octal `@o1:o2` Address & Euclidean Metric (`T-32-001`):**
   - Add `morton_z64: u64` to `FractalCoord` (updated on every `step` via `self.morton_z64 = (self.morton_z64 >> 16) | ((orthant_u16 as u64) << 48)`), packing the 4 most recent 16-bit orthant signatures into a 64-bit Z-order word so `morton_shared_suffix(&self, other: &Self) -> u32` computes `((self.morton_z64 ^ other.morton_z64).leading_zeros() / 16).min(self.depth).min(other.depth)` in a single `LZCNT` instruction.
   - Add `FractalCoord::euclidean_distance(&self, other: &Self) -> f64` verifying Theorem 3.2 ($d_2(\vec{z}_A, \vec{z}_B) \le 4 d_\infty(\vec{z}_A, \vec{z}_B) \le 2^{3-K}$).
@@ -109,6 +115,7 @@ flowchart LR
   - Implement `FractalTrajectoryArchive` (`docs/hyperdimensional-and-fractal-index.md` §3) storing `(ArtifactId, FractalCoord)` indexed by Morton Z-order prefix for fast trajectory suffix recall across $K \in 1..=32$.
 
 #### [MODIFY] [surprise.rs](../../crates/icx-hdc/src/surprise.rs)
+
 - **Enhanced `TitansSurpriseGate` (`T-32-002`):**
   - Add `RetentionTier::PinVerbatim` associated constant alias (`pub const PinVerbatim: Self = Self::PinHighResolution;`) to match `sprint-2-fractal-ifs-and-surprise-gate.md`.
   - Expand `TitansSurpriseGate` with configurable forgetting/decay rate `alpha: f32` (`default = 0.05` per `docs/hyperdimensional-and-fractal-index.md` §4), `observe_with_exit_code(&mut self, hv: &Hypervector, raw_text: &str, exit_code: Option<i32>, force_anomaly: bool) -> SurpriseVerdict`, `apply_idle_decay(&mut self, steps: u32)`, and accessors `momentum(&self) -> f32`, `events_seen(&self) -> u64`, and `memory_trace(&self) -> Hypervector`.
@@ -119,6 +126,7 @@ flowchart LR
 ### Component 3: Sprint 3.3 — Bi-Temporal CSR Knowledge Graph, HippoRAG Personalized PageRank (`PPR`) & `v0.4.0` Closeout (`T-33-001`, `T-33-002`)
 
 #### [MODIFY] [graph.rs](../../crates/icx-store/src/graph.rs)
+
 - **Strict Functional Contradiction Invalidation & Bi-Temporal Queries (`T-33-001`):**
   - Fix `BiTemporalGraph::upsert_edge` so that when `is_functional` is `true`, any existing active edge (`t_invalid.is_none()`) with the same `(source_entity, relation)` is superseded (`t_invalid = Some(now_ms)`, `t_tx_end = Some(now_ms)`), guaranteeing at most one active edge per functional `(source_entity, relation)` pair at all times.
   - Add `query_edges_to(&self, target_entity: &str, at_ms: Option<u64>) -> Vec<&BiTemporalEdge>`, `query_relation(&self, source_entity: &str, relation: &str, at_ms: Option<u64>) -> Vec<&BiTemporalEdge>`, `invalidate_edge(&mut self, edge_id: u64, now_ms: u64) -> bool`, `entity_count(&self) -> usize`, and atomic snapshot persistence (`save_to_dir` / `load_from_dir`).
@@ -133,13 +141,16 @@ flowchart LR
   - Cache the active (`at_ms == None`) `CsrGraphSnapshot` inside `BiTemporalGraph` (lazily built or updated when dirty) and expose `BiTemporalGraph::build_csr(&self, at_ms: Option<u64>) -> CsrGraphSnapshot` so `personalized_pagerank` executes power iteration over flat contiguous CSR slices.
 
 #### [MODIFY] [mmu.rs](../../crates/icx-adapters/src/mmu.rs)
+
 - Expand `InfinityContextMmu::ingest_payload` to recursively extract `AhtlClause::causal_chain` (`⇒`) edges and classify `status`, `test_status`, `return_type`, `fail`, `pass`, and `exit_code` as functional relations in `BiTemporalGraph`.
 - Persist and load `bitemporal_graph.json` alongside `cas_store.json` when `.icx/` directory persistence is used.
 
 #### [MODIFY] [main.rs](../../crates/icx-cli/src/main.rs)
+
 - Update `run_benchmark()` to benchmark 10,000-node `HdcAssociativeIndex::query_associative` (`< 50 µs` target) and CSR `BiTemporalGraph::personalized_pagerank` alongside the 1,000-node raw Hamming scan, AHTL compression, and 50-turn NIH Prefix-Cache simulation.
 
 #### [MODIFY] Workspace Manifest, Documentation & `AHTL v1.0` Volume (`v0.4.0` Closeout)
+
 - Bump `[workspace.package] version = "0.4.0"` in [Cargo.toml](../../Cargo.toml).
 - Update [README.md](../../README.md), [CHANGELOG.md](../../CHANGELOG.md), [.gitignore](../../.gitignore), [ROADMAP.md](../../to-dos/ROADMAP.md), `to-dos/phase-3-hyperdimensional-and-fractal-index/`, [hyperdimensional-and-fractal-index.md](../../docs/hyperdimensional-and-fractal-index.md), `docs/ahtl/*.md`, and regenerate [AHTL_v1_Complete_Technical_Specification_Volume.pdf](../../docs/ahtl/AHTL_v1_Complete_Technical_Specification_Volume.pdf).
 
@@ -148,6 +159,7 @@ flowchart LR
 ## Verification Plan
 
 ### Automated Tests & Quality Gates (Run Before Every Sprint PR)
+
 ```bash
 # 1. Permanent zero-unsafe check across all 8 workspace crates
 ! grep -rnE '(allow|expect)\(unsafe_code\)|\bunsafe[[:space:]]*(\(|(async[[:space:]]+)?(\{|fn\b|trait\b|impl\b|extern\b))' crates/

@@ -16,6 +16,7 @@ SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commerci
 The foundational guarantee of **Infinity-Context (`icx`)** is **100% Lossless Context Management (`LCM`, `arXiv:2605.04050`) over sanitized artifacts**: compressing a 30 KB compiler log or source file into a 39-token `AHTL v1.0` stub never discards a single byte of the post-redaction (`SecretRedactor::sanitize`) artifact. Every `AHTL` packet embeds a cryptographic virtual memory pointer (`#icx:<16-hex>`, or `#icx:<12-hex>` in the Phase 1 Sprint 1.1 extension) that resolves deterministically in `CasStore` to the exact sanitized byte stream or 1-based line slice in **$< 50\,\mu\text{s}$**.
 
 To achieve multi-gigabyte-per-second ingestion throughput with sub-file deduplication and fail-closed tamper detection, `icx-core` combines:
+
 1. **Gear-Hash Content-Defined Chunking (`FastCDC`)** to split large artifacts along content-determined boundaries (`2 KiB..64 KiB`).
 2. **The `BLAKE3` Cryptographic Hash Function** (7-round ChaCha ARX permutation over a 1,024-byte Left-Full binary Merkle tree) to seal every chunk, artifact, turn, folded branch, and cache epoch.
 3. **The Single-Tool Polymorphic MCP Pager (`McpPagerServer`)** to expose `deref`, `slice`, `grep`, `recall`, `fold`, `xagent`, and `status` behind a single `< 180 token` tool schema.

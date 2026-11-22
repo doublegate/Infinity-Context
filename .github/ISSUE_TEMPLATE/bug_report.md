@@ -7,6 +7,7 @@ labels: bug
 ## Summary
 
 ## Agent Harness & Version
+
 - Agent (`claude`, `codex`, `agy`, `hermes`):
 - OS / Arch:
 

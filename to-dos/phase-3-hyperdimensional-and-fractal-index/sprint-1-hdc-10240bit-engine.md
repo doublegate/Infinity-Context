@@ -11,6 +11,7 @@
 **Description:** Implement `Hypervector::from_seed`, `from_seed_framed`, `from_u64_seed`, `bind` (`^`), `unbind`, `bind_role_filler`, `permute`, `inverse_permute`, `encode_sequence`, `popcount`, `hamming_distance_simd`, `similarity`, `cosine_bipolar`, `sub_hypervector_64`, and `sketch_u32` in `crates/icx-hdc/src/hv.rs`.
 
 **Acceptance Criteria:**
+
 - [x] Unrelated seeds produce quasi-orthogonal hypervectors with `similarity < 0.05` and `|cosine_bipolar| < 0.05`.
 - [x] `A.bind(&B).bind(&B) == A` (`(A ^ B) ^ B == A`) and `A.permute(k).inverse_permute(k) == A` hold for all hypervectors and shift indices.
 - [x] `permute(k)` preserves Hamming distance between any pair of hypervectors, and `encode_sequence` is non-commutative.
@@ -26,6 +27,7 @@
 **Description:** Implement `HdcBundler` in `crates/icx-hdc/src/hv.rs` weighting incoming hypervectors by their novelty relative to the current memory readout (`arXiv:2404.07143`) with seen-digest deduplication and coordinate-parity tie-breaking so repeated boilerplate cannot saturate the bundle, and implement `AssociativeMemoryIndex` with two-stage 16-byte L2-cache `EntrySummary` pre-screening in `crates/icx-hdc/src/lib.rs`.
 
 **Acceptance Criteria:**
+
 - [x] Bundling 100 identical boilerplate vectors alongside 1 novel anomaly vector via `HdcBundler::add` (in either order) allows the anomaly vector to be retrieved above the similarity threshold (`> 0.25`).
 - [x] `HdcAssociativeIndex` implements `AssociativeMemoryIndex` and executes two-stage spectral/Bloom + 10,240-bit POPCNT associative recall.
 

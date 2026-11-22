@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 DoubleGate
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Documentation site (Zensical). Build through scripts/build_docs_site.py, which stages docs/
+# and the root pages, rewrites links that leave the site, and adds the navigation:
+#   python3 scripts/build_docs_site.py && zensical build --clean --strict -f .site-src/zensical.toml
+# Published to GitHub Pages by .github/workflows/docs.yml.
+
+[project]
+site_name = "Infinity-Context (icx)"
+site_description = "Cross-agent virtual context manager for AI coding agents: compact AHTL packets, exact stored bytes behind every handle, shared across Claude Code, Codex, Antigravity, Hermes and Muse."
+site_author = "DoubleGate"
+site_url = "https://doublegate.github.io/Infinity-Context/"
+repo_url = "https://github.com/doublegate/Infinity-Context"
+repo_name = "doublegate/Infinity-Context"
+edit_uri = "edit/main/docs/"
+copyright = "Code GPL-3.0-or-later / AGPL-3.0-or-later; specifications and diagrams CC-BY-NC-ND-4.0. See Licensing."
+docs_dir = "docs"
+site_dir = "site"
+strict = true
+
+[project.theme]
+logo = "_repo/assets/icons/png/icon-128.png"
+favicon = "_repo/assets/web/favicon-32x32.png"
+features = [
+  "content.code.copy",
+  "content.action.view",
+  "navigation.indexes",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.footer",
+  "search.highlight",
+  "toc.follow",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "indigo"
+accent = "cyan"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "indigo"
+accent = "cyan"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+# Setting markdown_extensions replaces Zensical's defaults, so the full set is listed. Heading
+# anchors use GitHub-style slugs so in-page links written for GitHub keep working.
+[project.markdown_extensions]
+abbr = {}
+admonition = {}
+attr_list = {}
+def_list = {}
+footnotes = {}
+md_in_html = {}
+tables = {}
+toc.permalink = true
+toc.slugify.object = "pymdownx.slugs.slugify"
+toc.slugify.kwds.case = "lower"
+"pymdownx.arithmatex".generic = true
+"pymdownx.betterem" = {}
+"pymdownx.details" = {}
+"pymdownx.highlight".anchor_linenums = true
+"pymdownx.highlight".line_spans = "__span"
+"pymdownx.highlight".pygments_lang_class = true
+"pymdownx.inlinehilite" = {}
+"pymdownx.keys" = {}
+"pymdownx.mark" = {}
+"pymdownx.tilde" = {}
+"pymdownx.superfences".custom_fences = [{ name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" }]
+"pymdownx.tabbed".alternate_style = true
+"pymdownx.tasklist".custom_checkbox = true

@@ -44,7 +44,7 @@ GitHub PR event ──▶ self-hosted runner (YOUR machine, systemd --user)
 Files in this template:
 
 | File | Goes where | Purpose |
-|------|-----------|---------|
+| ------ | ----------- | --------- |
 | `.github/workflows/antigravity-review.yml` | **copy → target repo** | trigger + job definition |
 | `scripts/agy-review.sh` | **copy → target repo** | the reviewer (diff → prompt → `agy` → comment) |
 | `scripts/_agy_print.sh` | **copy → target repo** | PTY fallback helper (only if `unbuffer` is absent) |
@@ -270,7 +270,7 @@ runner, so disable fork workflows there or gate them the same way.
 ## Configuration (workflow `env:`)
 
 | Variable | Default | Meaning |
-|----------|---------|---------|
+| ---------- | --------- | --------- |
 | `AGY_MODEL` | *(agy default)* | e.g. `gemini-3-pro`; run `agy models` to see IDs |
 | `AGY_EFFORT` | `high` | reasoning effort: `low` / `medium` / `high` |
 | `AGY_PRINT_TIMEOUT` | `5m` | base wait for a single `agy --print`; raised for a large diff (next row). Setting it pins it and turns the raise off |

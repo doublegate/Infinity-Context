@@ -11,6 +11,7 @@
 **Description:** Simulate a long-horizon coding session with planted high-surprise passkeys, memory addresses, and failing assertions buried amidst hundreds of kilobytes of passing build logs and file reads.
 
 **Acceptance Criteria:**
+
 - [x] Active context window stays strictly within budget while ingesting `> 500 KB` of raw tool outputs.
 - [x] 100% of planted passkeys and panic locations are retrieved via `query_associative` / `PPR` and losslessly dereferenced from `CasStore`.
 - [x] Prefix-cache hit ratio across turns is `>= 94.0%`.
@@ -26,6 +27,7 @@
 **Description:** Verify end-to-end cross-agent state propagation from `ClaudeCodeAdapter` (`PostToolUse`) -> `SeqlockTelemetryBus` -> `AntigravityAdapter` (`PreInvocation`) & `CodexAdapter` (`UserPromptSubmit`) -> `McpPagerServer` (`deref`).
 
 **Acceptance Criteria:**
+
 - [x] Latency from publish to sibling agent read is `< 100 µs`.
 - [x] Sibling agent receives the exact `⟦Θ:...⟧` telepathy frame and dereferences the raw artifact byte-for-byte.
 

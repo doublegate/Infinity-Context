@@ -3,6 +3,7 @@
 **Target Workspace:** `./` (Repository Root)  
 **Phase Scope:** `Phase 2` (`Sprint 2.1` through `Sprint 2.3`, Tickets `T-21-001`..`T-23-001`)  
 **Complete `docs/ahtl/` & `docs/` Specification Inventory Analyzed:**
+
 - [docs/ahtl/README.md](../../docs/ahtl/README.md) — Master Specification Overview & Dual-Profile Architecture (`Profile A` vs. `Profile B`)
 - [01-formal-grammar-and-packet-specification.md](../../docs/ahtl/01-formal-grammar-and-packet-specification.md) — EBNF Wire Grammar, Disjoint Unicode Operator Codepoints, `AhtlWirePacketV1` (`Profile A`), and `AhtlPacket` (`Profile B`)
 - [02-braille-256-spectral-bijection.md](../../docs/ahtl/02-braille-256-spectral-bijection.md) — $\mathbb{F}_2^8 \leftrightarrow [\text{U+2800}, \text{U+28FF}]$ Isometric Bijection, 1-Lipschitz 64-Band Projection ($\pi_{10240 \to 512}$), and 8-Byte Channel B Bit Layout (`B[0..7]`)
@@ -20,6 +21,7 @@
 
 > [!IMPORTANT]
 > Every Sprint in Phase 2 (`Sprint 2.1`, `Sprint 2.2`, `Sprint 2.3`) enforces the permanent project invariants established in Phase 1:
+>
 > 1. **Rust Edition `2024`, MSRV `1.100` (`rust-version = "1.100"`):** Maintained across all 8 workspace crates.
 > 2. **Permanent Zero-`unsafe` Policy (`std` allowed):** `unsafe_code = "forbid"` in `[workspace.lints.rust]` and verified by CI across all 8 crates (`icx-core`, `icx-hdc`, `icx-codec`, `icx-store`, `icx-bus`, `icx-adapters`, `icx-proxy`, `icx-cli`).
 > 3. **Codecov `>= 95%` Line Coverage Gate:** Every Sprint PR must pass `cargo llvm-cov --workspace --all-targets --lcov --output-path lcov.info --fail-under-lines 95`.
@@ -40,6 +42,7 @@ flowchart LR
 **Sprint Spec:** [sprint-1-ahtl-grammar-and-braille.md](../../to-dos/phase-2-alien-codec-and-compression/sprint-1-ahtl-grammar-and-braille.md)
 
 ### 2.1 Ticket `T-21-001` — Closed-Form Braille-256 (`8-Byte` & `64-Byte`) Bijection, `fc:<64-hex>` / `hv:<16-hex>` Helpers & 1-Lipschitz Spectral Projection
+
 - **Files to Modify:**
   - [hv.rs](../../crates/icx-hdc/src/hv.rs)
   - [fractal.rs](../../crates/icx-hdc/src/fractal.rs)
@@ -70,6 +73,7 @@ flowchart LR
      - `FractalCoord` `fc:<64-hex>` round-trip and `quadrant_signature_u16()` orthant tests.
 
 ### 2.2 Ticket `T-21-002` — Dual-Profile `AHTL` Parser/Serializer (`Profile A` & `Profile B`), Slice Hints, Causal Clauses & `ContextCodec` Trait
+
 - **Files to Modify:**
   - [ahtl.rs](../../crates/icx-codec/src/ahtl.rs)
   - [lib.rs](../../crates/icx-codec/src/lib.rs)
@@ -97,17 +101,18 @@ flowchart LR
 **Sprint Spec:** [sprint-2-structural-skeletonizers.md](../../to-dos/phase-2-alien-codec-and-compression/sprint-2-structural-skeletonizers.md)
 
 ### 3.1 Ticket `T-22-001` — Multi-Language Source Code & Unified Diff Structural Skeletonizer
+
 - **Files to Modify:**
   - [skeleton.rs](../../crates/icx-codec/src/skeleton.rs)
 - **Implementation Details:**
   1. **Multi-Language Source AST / Lexical Skeletonizer ([05-structural-ast-skeletonization-and-redaction.md](../../docs/ahtl/05-structural-ast-skeletonization-and-redaction.md) §§1–2):**
-     - **Module & Import Header Folding:** Extract module/package declarations (`pub mod `, `mod `, `package `, `namespace `) into `§mod@L<n>` clauses and collapse contiguous import blocks (`use `, `import `, `from ... import`, `#include `) into a single `§imports:L<start>-<end>(N)` summary clause instead of repeating boilerplate imports.
+     - **Module & Import Header Folding:** Extract module/package declarations (`pub mod`, `mod`, `package`, `namespace`) into `§mod@L<n>` clauses and collapse contiguous import blocks (`use`, `import`, `from ... import`, `#include`) into a single `§imports:L<start>-<end>(N)` summary clause instead of repeating boilerplate imports.
      - **Signature & Exact Line-Span (`L<start>-<end>`) Extraction Across 5 Language Families:**
-       - **Rust:** `pub fn`, `pub async fn`, `pub const fn`, `pub(crate) fn`, `fn `, `const fn `, `async fn `, `pub struct`, `struct `, `pub enum`, `enum `, `pub trait`, `trait `, `impl`, `pub type `, `type `, `macro_rules!`.
-       - **Python:** `def `, `async def `, `class `, `@dataclass`.
-       - **TypeScript / JavaScript:** `export function`, `export async function`, `export default function`, `function `, `export class`, `class `, `export interface`, `interface `, `export type `, `type `.
-       - **Go:** `func `, `type ... struct`, `type ... interface`.
-       - **C / C++:** `struct `, `class `, `enum `, `template<`, and top-level typed function definitions.
+       - **Rust:** `pub fn`, `pub async fn`, `pub const fn`, `pub(crate) fn`, `fn`, `const fn`, `async fn`, `pub struct`, `struct`, `pub enum`, `enum`, `pub trait`, `trait`, `impl`, `pub type`, `type`, `macro_rules!`.
+       - **Python:** `def`, `async def`, `class`, `@dataclass`.
+       - **TypeScript / JavaScript:** `export function`, `export async function`, `export default function`, `function`, `export class`, `class`, `export interface`, `interface`, `export type`, `type`.
+       - **Go:** `func`, `type ... struct`, `type ... interface`.
+       - **C / C++:** `struct`, `class`, `enum`, `template<`, and top-level typed function definitions.
      - **Block Span Resolution (`L<start>-<end>`):** Track brace depth (`{ ... }`) for C-family/Rust/TS/Go and indentation level for Python so elided function/struct/class bodies emit `⊕sig@L<start>-<end>:<signature>` (enabling targeted `icx({ op: "slice", id: "#icx:...", range: [start, end] })` retrieval) and automatically populate `AhtlPacket.line_range` with the span of the extracted definitions.
      - **Semantic Pins:** Extract `INVARIANT`, `PASSKEY`, `SAFETY:`, `TODO`, and `FIXME` annotations as `✓pin@L<n>` clauses.
   2. **Unified `git diff` Skeletonizer (`skeletonize_diff`):**
@@ -116,11 +121,12 @@ flowchart LR
      - Unit and corpus compression tests across realistic Rust, Python, TypeScript, Go, C++, and unified `git diff` inputs confirming `>= 6x–12x` source compression and `100%` preservation of top-level public signatures and line spans.
 
 ### 3.2 Ticket `T-22-002` — Multi-Ecosystem Compiler & Test-Suite Log Skeletonizer (`cargo`, `pytest`, `tsc`/`vitest`, `go test`)
+
 - **Files to Modify:**
   - [skeleton.rs](../../crates/icx-codec/src/skeleton.rs)
 - **Implementation Details:**
   1. **Multi-Ecosystem Log Detection (`looks_like_test_or_build_log`):**
-     - Detect logs from **Rust** (`running N tests`, `test ... ok`, `test ... FAILED`, `error[E`, `Compiling `, `Finished `), **Python `pytest`** (`=== test session starts ===`, `PASSED`, `FAILED `, `=== FAILURES ===`, `Traceback (most recent call last):`), **TypeScript / JS (`tsc`, `vitest`, `jest`)** (`error TS`, `PASS `, `FAIL `, `Test Files `, `AssertionError`), and **Go (`go test`)** (`=== RUN`, `--- PASS:`, `--- FAIL:`, `FAIL\t`).
+     - Detect logs from **Rust** (`running N tests`, `test ... ok`, `test ... FAILED`, `error[E`, `Compiling`, `Finished`), **Python `pytest`** (`=== test session starts ===`, `PASSED`, `FAILED`, `=== FAILURES ===`, `Traceback (most recent call last):`), **TypeScript / JS (`tsc`, `vitest`, `jest`)** (`error TS`, `PASS`, `FAIL`, `Test Files`, `AssertionError`), and **Go (`go test`)** (`=== RUN`, `--- PASS:`, `--- FAIL:`, `FAIL\t`).
   2. **High-Compression Log Skeletonization (`skeletonize_log`):**
      - **Aggregate Passing Boilerplate:** Collapse all passing tests (`test ... ok`, `PASSED`, `--- PASS:`, `✓`) into a single `✓pass:<count>` clause and overall status `status:PASS|FAIL`.
      - **Pin Failing Tests, Error Codes, Causal Implications & Workspace Stack Frames (`100%` Recall):**
@@ -139,6 +145,7 @@ flowchart LR
 **Sprint Spec:** [sprint-3-secret-redaction-and-safety.md](../../to-dos/phase-2-alien-codec-and-compression/sprint-3-secret-redaction-and-safety.md)
 
 ### 4.1 Ticket `T-23-001` — 4-Tier Pre-Ingestion `SecretRedactor` & Shannon Entropy Gate
+
 - **Files to Modify:**
   - [redact.rs](../../crates/icx-codec/src/redact.rs)
   - [mmu.rs](../../crates/icx-adapters/src/mmu.rs)
@@ -173,6 +180,7 @@ flowchart LR
      - Zero-leakage end-to-end test in `InfinityContextMmu::ingest_payload`: ingest payloads containing PEM blocks, `.env` files, JSON/YAML secrets, CLI flags, JWTs, database URLs, all vendor prefixes, high-entropy unprefixed secrets, and delimiter-spoofing strings (`⟪ICX:v1...⟫`, `⟦Ω:INVARIANT...⟧`), asserting **zero** secret substrings exist in `CasStore`, `MerkleContextDag`, `HdcAssociativeIndex`, `BiTemporalGraph`, or `SeqlockTelemetryBus`!
 
 ### 4.2 Phase 2 Comprehensive Documentation & Repository Closeout (Included in `PR #10`)
+
 - Update [README.md](../../README.md) with Phase 2 completion status, Dual-Profile AHTL (`Profile A` & `Profile B`) support, `Braille-64` 1-Lipschitz spectral projection, multi-language AST/Diff/Log skeletonizers, and 4-Tier `SecretRedactor` + Shannon Entropy Gate capabilities.
 - Update [CHANGELOG.md](../../CHANGELOG.md) under `[Unreleased]` with detailed Sprint 2.1, Sprint 2.2, and Sprint 2.3 entries.
 - Update [ROADMAP.md](../../to-dos/ROADMAP.md) and all checklists in `to-dos/phase-2-alien-codec-and-compression/` (`overview.md`, `sprint-1-ahtl-grammar-and-braille.md`, `sprint-2-structural-skeletonizers.md`, `sprint-3-secret-redaction-and-safety.md`) to mark `T-21-001` through `T-23-001` complete (`[x]`).

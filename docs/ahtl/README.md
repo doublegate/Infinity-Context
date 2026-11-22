@@ -75,6 +75,7 @@ The `docs/ahtl/` specification synthesizes and cross-links four primary archival
 All diagrams and illustrations in `docs/ahtl/images/` are self-contained and organized into three dedicated subdirectories:
 
 ### 4.1 First-Party Master & Subsystem Diagrams ([`images/generated/`](images/generated/))
+
 - [`AHTL_v1_Master_System_Architecture.{svg,png}`](images/generated/AHTL_v1_Master_System_Architecture.png) — End-to-end 5-stage `AHTL v1.0` system pipeline.
 - [`AHTL_v1_Bit_Byte_Token_Memory_Map.{svg,png}`](images/generated/AHTL_v1_Bit_Byte_Token_Memory_Map.png) — Bit, UTF-8 byte, and BPE token memory map for Profile A & Profile B.
 - [`AHTL_v1_Encoding_State_Machine_and_Pipeline.{svg,png}`](images/generated/AHTL_v1_Encoding_State_Machine_and_Pipeline.png) — Deterministic encoder dataflow & parser finite state machine (`FSM`).
@@ -93,11 +94,13 @@ All diagrams and illustrations in `docs/ahtl/images/` are self-contained and org
 - [`abstract_syntax_tree_skeleton_reduction.{svg,png}`](images/generated/abstract_syntax_tree_skeleton_reduction.png) — Homomorphic AST tree pruning ($\pi_{\text{skel}}: \mathcal{T}_{\text{AST}} \to \text{AhtlPacket}$).
 
 ### 4.2 High-Resolution Technical Illustrations ([`images/illustrations/`](images/illustrations/))
+
 - [`AHTL_Holographic_Lattice_Concept.png`](images/illustrations/AHTL_Holographic_Lattice_Concept.png) — Architectural visualization of AST-to-AHTL holographic projection and KV-cache epochs.
 - [`Hypercube_10240_to_Braille_256_Projection.png`](images/illustrations/Hypercube_10240_to_Braille_256_Projection.png) — Visualization of the $Q_{10240}$ Boolean lattice across 20 AVX-512 lanes folding into an ISO 11548-1 Braille cell.
 - [`BLAKE3_Merkle_CAS_and_Fractal_Attractor_Plane.png`](images/illustrations/BLAKE3_Merkle_CAS_and_Fractal_Attractor_Plane.png) — Dual-plane visualization of FastCDC/BLAKE3 CAS and the $[-1,+1]^{16}$ IFS Chaos-Game Attractor.
 
 ### 4.3 Curated Archival Reference Diagrams ([`images/retrieved/`](images/retrieved/))
+
 - **Braille Standards:** [`Braille8dotCellNumbering.{svg,png}`](images/retrieved/Braille8dotCellNumbering.png), [`BrailleValues.{svg,png}`](images/retrieved/BrailleValues.png), [`Braille_N.{svg,png}`](images/retrieved/Braille_N.png).
 - **BLAKE3 & ChaCha:** [`ChaCha20_Quarter_Round.{svg,png}`](images/retrieved/ChaCha20_Quarter_Round.png), [`BLAKE3_Merkle_Tree_Bao.{svg,png}`](images/retrieved/BLAKE3_Merkle_Tree_Bao.png).
 - **Hypercube & Hamming Geometry:** [`Dimension_levels.{svg,png}`](images/retrieved/Dimension_levels.png), [`4D_Tesseract_Projection.{svg,png}`](images/retrieved/4D_Tesseract_Projection.png), [`8D_Octeract_Petrie_Projection.{svg,png}`](images/retrieved/8D_Octeract_Petrie_Projection.png), [`Gray_code_tesseract_432.{svg,png}`](images/retrieved/Gray_code_tesseract_432.png), [`Hypercubestar.{svg,png}`](images/retrieved/Hypercubestar.png), [`Hamming_Distance_3D_Cube.{svg,png}`](images/retrieved/Hamming_Distance_3D_Cube.png), [`Hamming_distance_4_bit_binary.{svg,png}`](images/retrieved/Hamming_distance_4_bit_binary.png).

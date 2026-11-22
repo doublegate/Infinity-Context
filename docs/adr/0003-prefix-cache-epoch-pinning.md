@@ -12,6 +12,7 @@ Per `arXiv:2610.28577` (*Cache Engineering for Agents*), mutating or trimming me
 ## Decision
 
 We enforce **Append-Only Cache-Epoch Pinning (`CacheEpochController`)**:
+
 1. Historical turns are sealed into immutable, cryptographically hashed **Cache Epochs (`E_0 .. E_{k-1}`)** only when the active unsealed window exceeds `epoch_rollover_threshold` (default `16,384` tokens).
 2. Once sealed, an epoch's byte sequence is never modified on subsequent turns.
 3. All per-turn dynamic associative recall (`HDC`, `FCGA`, `PPR`) and cross-agent `/dev/shm` telepathy packets are placed **exclusively in the Ephemeral Tail Slot** at the very end of the outbound prompt after the cached prefix.

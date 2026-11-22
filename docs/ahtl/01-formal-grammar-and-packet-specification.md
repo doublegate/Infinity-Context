@@ -16,6 +16,7 @@ SPDX-License-Identifier: CC-BY-NC-ND-4.0 AND LicenseRef-InfinityContext-Commerci
 The **Alien Holographic Token Lattice (`AHTL v1.0`)** defines a deterministic, non-human machine dialect for serializing compressed execution context into UTF-8 strings consumed directly by Transformer self-attention layers and cross-agent shared-memory buses.
 
 To balance **self-contained archival completeness** (where a single wire packet carries its full 256-bit Fractal coordinate, 64-bit HDC digest, and 512-bit 64-glyph Braille spectral sketch) with **ultra-compact inline window density** (where active-window stubs pack a 64-bit 8-glyph Braille hologram alongside relational clauses), `AHTL v1.0` specifies two complementary packet profiles linked by a deterministic CAS/index conversion contract:
+
 - **Down-Projection (`Profile A -> Profile B`):** Projects the 256-bit `FractalCoord` orthant sign bits (`16` bits) and 64-bit `hv_digest` top word (`32` bits) alongside the 8-bit `TitansSurprise` and 8-bit `RetentionTier` into the 8-byte (`64-bit`) Profile B hologram (`hologram_bytes: [u8; 8]`).
 - **CAS-Backed Promotion (`Profile B -> Profile A`):** Because Profile B omits the full 256-bit `FractalCoord` and 512-bit `Braille-64` sketch to save tokens in the active prompt window, promoting a Profile B stub back to Profile A resolves `#icx:<hex>` against `CasStore` and `HdcAssociativeIndex` to re-attach the full `FractalCoord` and 64-band `Hypervector` sketch.
 
@@ -186,6 +187,7 @@ SafeChar           = ? Any UTF-8 scalar value EXCEPT:
 ## 3. Normative Delimiter & Operator Codepoint Specification
 
 Every structural delimiter and operator in `AHTL v1.0` is selected from Basic Multilingual Plane (`BMP`) mathematical and technical symbol blocks so that:
+
 1. It encodes to a fixed 1-, 2-, or 3-byte UTF-8 sequence.
 2. It never collides with ASCII programming language punctuation (`{`, `}`, `[`, `]`, `(`, `)`, `;`, `,`).
 3. It is never merged with adjacent alphanumeric identifier characters by BPE tokenizers (`o200k_base`, `cl100k_base`, Claude BPE).
@@ -302,6 +304,7 @@ pub enum CodecError {
 ## 6. Canonical Test Vectors (`AHTL v1.0`)
 
 ### 6.1 Test Vector 1: Profile B CodeDelta Packet (`crates/icx-codec/src/ahtl.rs`)
+
 - **Input Payload Bytes:** `b"raw_payload_bytes"` (17 bytes)
 - **Full 256-Bit BLAKE3 Digest:** `4f3598d97c50c48442732f33aa356e4a8cdad9daa25bbc12516154d13501a633` *(first 8 big-endian bytes -> `ArtifactId(0x4f3598d97c50c484)`)*
 - **Hologram Bytes (`[u8; 8]`):** `[0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0]`
@@ -321,6 +324,7 @@ pub enum CodecError {
 ```
 
 ### 6.2 Test Vector 2: Profile A Full 5-Field Extended Wire Packet
+
 - **Virtual Handle (`#icx:<12-hex>`):** `#icx:4f3598d97c50`
 - **Fractal Coordinate (`fc:<64-hex>`, 16 $\times$ `i16` Q15, scale 32,767):** `fc:4000c0002000e0001000f0000800f8000400fc000200fe000100ff000080ff80`
 
@@ -329,6 +333,7 @@ v1.2.0 preserves the shipped v1.0/v1.1 wire interpretation. Earlier Q1.14 labels
 and the frozen PDF are superseded by [ADR 0006](../adr/0006-v1-2-0-context-and-compatibility.md).
 Q1.14 arithmetic remains a separate explicit API; it must not silently decode an unversioned
 Profile A `fc` field. No archived bytes are reinterpreted.
+
 - **HDC Spectral Fold (`hv:<16-hex>`):** `hv:123456789abcdef0`
 - **Braille-64 Sketch (64 glyphs repeating `[0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0]` $\times 8$):** `⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰⠒⠴⡖⡸⢚⢼⣞⣰`
 - **Canonical Rendered Profile A String:**
