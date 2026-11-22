@@ -158,3 +158,21 @@ mod properties {
         }
     }
 }
+
+/// Security review of 1360669: separated key names are classified by their segments like the
+/// line rules do, and a JSON line that opens a private-key block keeps the key-block handling.
+#[test]
+fn separated_keys_and_key_block_banners() {
+    for line in [
+        r#"{"db.password":"aaaa"}"#,
+        r#"{"auth token":"aaaa"}"#,
+        r#"{"svc/api_key":"aaaa"}"#,
+        r#"{"x-api-key":"aaaa"}"#,
+    ] {
+        let clean = once(line);
+        assert!(!clean.contains("aaaa"), "{line} -> {clean}");
+    }
+    let input = "{\"key\":\"-----BEGIN RSA PRIVATE KEY-----\"}\nMIIEaaaabbbbcccc\n-----END RSA PRIVATE KEY-----\n";
+    let clean = SecretRedactor::redact(input);
+    assert!(!clean.contains("MIIEaaaabbbbcccc"), "{clean:?}");
+}

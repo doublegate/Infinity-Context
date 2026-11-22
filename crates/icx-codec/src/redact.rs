@@ -102,7 +102,9 @@ impl SecretRedactor {
             // A line that is a complete JSON object or array is redacted structurally (v1.3.1,
             // #29): the values of sensitive keys are hidden and everything else is kept, instead
             // of hiding the rest of the line from the first quote.
+            // A line opening a private-key block keeps the key-block handling below.
             if pending_value.is_none()
+                && KeyBlock::begins(body).is_none()
                 && let Some(json) = Self::redact_json_line(body)
             {
                 out.push_str(&json);
@@ -1960,6 +1962,20 @@ fn split_line_ending(segment: &str) -> (&str, &str) {
     }
 }
 
+/// The `[A-Za-z0-9_-]` segments of a JSON key (`db.password` -> `db`, `password`).
+fn json_key_segments(key: &str) -> impl Iterator<Item = &str> {
+    key.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+        .filter(|s| !s.is_empty())
+}
+
+/// Whether a JSON key names a secret: the whole key or any of its segments (`db.password`,
+/// `auth token`, `svc/api_key`), as the line rules classify a key's tail (security review of
+/// PR #31).
+fn json_key_is_sensitive(key: &str) -> bool {
+    SecretRedactor::is_sensitive_key_name(key)
+        || json_key_segments(key).any(SecretRedactor::is_sensitive_key_name)
+}
+
 /// Deepest JSON nesting the structural redactor accepts; deeper lines use the line rules.
 const MAX_JSON_DEPTH: usize = 128;
 
@@ -2099,11 +2115,10 @@ impl JsonScan<'_> {
         let clean = match key {
             None => SecretRedactor::redact(raw),
             Some(k) => {
-                let ident: String = k
-                    .chars()
-                    .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
-                    .collect();
-                let prefix = format!("{}: ", if ident.is_empty() { "value" } else { &ident });
+                // The last segment of a separated key (`db.port` -> `port`), as the line rules
+                // see it.
+                let ident = json_key_segments(k).last().unwrap_or("value");
+                let prefix = format!("{ident}: ");
                 let redacted = SecretRedactor::redact(&format!("{prefix}{raw}"));
                 match redacted.strip_prefix(&prefix) {
                     Some(v) => v.to_owned(),
@@ -2129,7 +2144,7 @@ impl JsonScan<'_> {
             // An undecodable key is treated as sensitive (fail closed).
             let sensitive = self
                 .decode(j, key_end)
-                .is_none_or(|k| SecretRedactor::is_sensitive_key_name(&k));
+                .is_none_or(|k| json_key_is_sensitive(&k));
             let key_text = self.decode(j, key_end);
             if !check && !sensitive {
                 self.redact_string(j, key_end, None);
