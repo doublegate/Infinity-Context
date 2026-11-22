@@ -1,0 +1,125 @@
+# Sprint 2 — Evaluation
+
+**Phase:** Phase 7 — Retrieval and Compaction Quality
+
+**Release:** v1.5.0
+
+**Sprint Goal:** Measure retrieval on real sessions, decide the default ranking from that
+measurement, and evaluate optional local embeddings against the same set.
+
+**Estimated Duration:** 2 weeks
+
+## Research gate
+
+Re-check before the sprint starts:
+
+- **External docs and versions:** `ort` (ONNX Runtime) and `candle` via Context7, including
+  their `unsafe` and native-library footprint; small code-aware embedding models and their
+  licences.
+- **Installed agent behaviour:** the session log formats of Claude Code, Codex and agy on the
+  installed versions, for extracting queries and the artifacts that answered them.
+- **Project evidence:** `docs/numbers.md` lines 8-13 (27-row synthetic corpus, recall@1/@5);
+  `docs/releases/v1.2.0/evidence/retrieval.csv`; Sprint 1 rankers.
+
+### Research notes
+
+_None recorded yet._
+
+## Tickets
+
+### T-72-001 — Real-session retrieval evaluation set
+
+**Description:** Build an evaluation set from real agent sessions: queries the agent made (or
+needed), and the artifacts that answered them. Every session is consented, and all text is
+redacted before it is stored.
+
+**Research:** Decide the judgement method (recorded `deref` after `recall`, or manual labels)
+and check how many queries are needed for a usable train and held-out split.
+
+**Acceptance Criteria:**
+
+- [ ] Consent and redaction procedure documented; gitleaks clean over the set.
+- [ ] Set size, sources and split recorded; held-out split never used for tuning.
+- [ ] If raw text cannot be published, only derived queries and judgements are committed, and
+  the private part is documented as such.
+
+**Dependencies:** None
+
+**Reference:** `docs/numbers.md` lines 8-13 (synthetic corpus limits); plan Phase 7 Sprint 2
+
+**Estimated Complexity:** L
+
+---
+
+### T-72-002 — recall@k and MRR evaluation harness
+
+**Description:** Add a harness that scores any ranker on a query set by recall@1, recall@5,
+recall@10 and MRR, and writes a result file with commit, seed and set size.
+
+**Research:** None beyond agreeing the metric definitions with `docs/testing-strategy.md`.
+
+**Acceptance Criteria:**
+
+- [ ] Harness runs on the synthetic set and on the T-72-001 set.
+- [ ] Output is machine-readable and feeds `docs/numbers.md`.
+- [ ] Deterministic for a fixed seed (test).
+
+**Dependencies:** None
+
+**Reference:** `docs/numbers.md` lines 8-13; `docs/testing-strategy.md`
+
+**Estimated Complexity:** M
+
+---
+
+### T-72-003 — Optional local embeddings, off by default
+
+**Description:** Add an optional embedding ranker (ONNX or Candle) behind a Cargo feature and a
+config switch, both off by default, and fuse it into RRF when enabled.
+
+**Research:** Hypothesis: a small local embedding model improves recall@5 on the real-session
+held-out split over BM25 plus HDC with RRF. Measured with T-72-002. If rejected, the feature is
+not merged, and the finding is recorded.
+
+**Acceptance Criteria:**
+
+- [ ] Feature off: build, tests and binaries unchanged.
+- [ ] Model licence, size and source recorded; no download without explicit user action.
+- [ ] recall@k, MRR, ingest time and memory measured and published in `docs/numbers.md`.
+
+**Dependencies:** T-71-002, T-72-001, T-72-002
+
+**Reference:** Plan Phase 7 Sprint 2; `ref-docs/research-report.md`
+
+**Estimated Complexity:** L
+
+---
+
+### T-72-004 — Default ranking decision
+
+**Description:** Using the held-out split, decide the default for `recall.ranking` and for
+embeddings, and record the decision with the numbers.
+
+**Research:** Re-run every ranker on the final set at the release commit.
+
+**Acceptance Criteria:**
+
+- [ ] Decision recorded as an ADR with the measured results.
+- [ ] A ranking becomes the default only if it beats `legacy` on the held-out split and does
+  not lower recall@1 on the synthetic set.
+- [ ] `docs/numbers.md` updated with the final table.
+
+**Dependencies:** T-71-002, T-71-003, T-72-001, T-72-002
+
+**Reference:** Plan Phase 7 Sprints 1 and 2
+
+**Estimated Complexity:** S
+
+## Sprint exit
+
+- [ ] Gates green: `cargo fmt --all -- --check`,
+  `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and
+  coverage `>= 95%`.
+- [ ] Docs and CHANGELOG updated for any user-visible change.
+- [ ] Upstream re-scan done for Sprint 3 (compaction hooks in Claude Code, Codex and Hermes),
+  and its tickets adjusted.
