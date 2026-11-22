@@ -30,20 +30,6 @@ Adds Meta Muse Code as a fifth agent. Release notes:
   `field(default="...")`, `unwrap_or(x, "...")`) has every quoted literal in its argument list
   redacted, not only one directly after the first `(`; union type annotations
   (`str | None = "..."`) keep their literal defaults redacted (review of #25).
-- Redaction (review of #27): literals in chained calls (`env::var("K").unwrap_or("...")`,
-  `... or SecretStr("...")`) and in unions led by `None`/`null`/`undefined` stay redacted; Rust
-  lifetimes (`&'a str`, but not a quoted `&'...'`) are not treated as quotes; only exact
-  redactor markers count as already redacted, so redaction stays idempotent without letting an
-  input that merely starts with `[REDACTED:` hide a secret.
-- Redaction: under a secret-looking key, any value that holds a quote, other than a lone plain
-  quoted literal, is replaced as a whole, from its start to the next field (`token=...`,
-  `user: value`, `--flag`, only after a finished value and outside brackets) or the end of the
-  line: calls, chains, prefixed literals (`b"..."`, `f"..."`), keyword-led and unary expressions,
-  and ternaries alike. Quote and lifetime tracking only decides where the next field starts, so a mistake can
-  over-redact but cannot leave a literal visible. A dotted bare value (`v1.secret`) is not
-  code-shaped and keeps the plain value rule. Typed `SecretStr`/`SecretBytes` fields (also
-  `pydantic.SecretStr`; dotted paths count only for these, with lowercase module names) and union
-  annotations keep their defaults redacted.
 - CLI: a `--dir` with no value (trailing, followed by another flag, or empty) is rejected instead
   of falling back to the default workspace; every `icx hook` fail-open path replies with the
   agent's own no-op for that event (agy: `allow` on PreToolUse, `stop` on Stop).
@@ -53,6 +39,11 @@ Adds Meta Muse Code as a fifth agent. Release notes:
 - Deployment guide (review of #26): the ai-memory MCP JSON example carries `--server-url` and an
   expanded path; the agy wrapper requirement sits next to the global `hooks.json` example; the
   daemon save-failure text matches v1.2.2.
+
+### Known limitations
+
+- Redaction of quoted secrets inside code-shaped values (chained calls, operator chains, template
+  and prefixed literals, lambdas) is incomplete, as in v1.2.2; the redesign is tracked in #29.
 
 ### Compatibility
 

@@ -391,3 +391,21 @@ fn structured_error_objects_are_kept() {
     let stored = String::from_utf8(mmu.cas.deref_bytes(id).unwrap()).unwrap();
     assert!(stored.contains("disk quota exceeded"), "{stored:?}");
 }
+
+/// Review of #27 (01:01 UTC): a Bash result without `output` keeps its exit code.
+#[test]
+fn bash_exit_code_without_output_is_kept() {
+    let mut mmu = InfinityContextMmu::default();
+    let mut f = base("PostToolUseFailure");
+    f["tool_name"] = json!("bash");
+    f["tool_input"] = json!({"command": "sleep 99"});
+    f["tool_response"] = json!(r#"{"output":null,"exit_code":124}"#);
+    let _ = reply(&mut mmu, "PostToolUseFailure", &f);
+    let entry = mmu.hdc_index.latest_entry().expect("indexed");
+    let stored = String::from_utf8(mmu.cas.deref_bytes(entry.artifact_id).unwrap()).unwrap();
+    // Unwrapped (not the raw JSON text), with the failure text in place of the missing output.
+    assert!(
+        !stored.contains("exit_code") && stored.contains("tool call failed"),
+        "{stored:?}"
+    );
+}

@@ -678,12 +678,15 @@ fn dispatch_agent_hook(
 fn non_replacing_hook_response(agent: AgentKind, event: &str) -> String {
     match agent {
         // agy's no-op depends on the event (AntigravityAdapter's replies).
-        AgentKind::AntigravityCli => match event {
-            "PreToolUse" | "pre-tool-use" => r#"{"decision":"allow"}"#.to_owned(),
-            "Stop" | "stop" => r#"{"decision":"stop"}"#.to_owned(),
-            "PostToolUse" | "post-tool-use" | "SessionEnd" | "session-end" => "{}".to_owned(),
-            _ => r#"{"injectSteps":[],"terminationBehavior":""}"#.to_owned(),
-        },
+        // Event names are matched ignoring case and `-`/`_` (`STOP`, `pre_tool_use`).
+        AgentKind::AntigravityCli => {
+            match event.to_ascii_lowercase().replace(['-', '_'], "").as_str() {
+                "pretooluse" => r#"{"decision":"allow"}"#.to_owned(),
+                "stop" => r#"{"decision":"stop"}"#.to_owned(),
+                "posttooluse" | "sessionend" => "{}".to_owned(),
+                _ => r#"{"injectSteps":[],"terminationBehavior":""}"#.to_owned(),
+            }
+        }
         // Muse validates hook replies strictly; an empty object is always accepted.
         AgentKind::Muse => "{}".to_owned(),
         _ => r#"{"continue":true}"#.to_owned(),

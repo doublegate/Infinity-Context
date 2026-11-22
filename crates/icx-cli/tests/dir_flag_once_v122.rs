@@ -112,6 +112,11 @@ fn trailing_valueless_dir_is_rejected() {
         String::from_utf8_lossy(&stop.stdout).contains(r#""decision":"stop""#),
         "{stop:?}"
     );
+    let upper = run(&["hook", "--agent", "agy", "--event", "STOP", "--dir"]);
+    assert!(
+        String::from_utf8_lossy(&upper.stdout).contains(r#""decision":"stop""#),
+        "{upper:?}"
+    );
     let end = run(&["hook", "--agent", "agy", "--event", "SessionEnd", "--dir"]);
     assert_eq!(String::from_utf8_lossy(&end.stdout).trim(), "{}", "{end:?}");
     // `--agent` without a value does not swallow `--event`.

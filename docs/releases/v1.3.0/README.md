@@ -36,15 +36,18 @@ and recalls it, and shares it with the other agents in the same project, as it d
 
 These come from the automated reviews of #25 and #26 and apply to every agent:
 
-- **Values with quotes are redacted whole.** Under a secret-looking key, any value that contains a
-  quote, other than a lone plain quoted literal, is replaced entirely, up to the next field (`name=`, `name: value`,
-  `--flag`) or the end of the line: calls (`pydantic.SecretStr("...")`, `env::var("K").unwrap_or("...")`),
-  chains (`settings.api_key or "..."`), concatenation and ternaries. The trade-off is deliberate:
-  harmless code on such a line is hidden too, for example all of `password = getenv("DB_PASSWORD")`,
-  in exchange for a rule that cannot leave a literal visible. A later `user="admin"` field on the
-  same line is left as it was.
+- **More quoted text inside function calls is redacted.** A secret-looking key whose value starts
+  with a call now has every quoted literal in that call's arguments hidden: dotted calls
+  (`pydantic.SecretStr("...")`), keyword arguments (`field(default="...")`) and later arguments
+  (`unwrap_or(x, "...")`). The trade-off is deliberate: harmless names in such a call are hidden
+  too, for example the variable name in `password = getenv("DB_PASSWORD")`.
 - **Union type annotations** (`str | None = "..."`, `string | null = '...'`) keep their literal
   default redacted; `= None` stays visible.
+- **Known limitation: secrets inside code-shaped values.** When the value under a secret-looking
+  key is code rather than a plain literal (a chained call, an `or`/`??` chain, a template or
+  prefixed literal, a lambda), a quoted secret in it can stay visible, as in v1.2.2. The review of
+  this release found these shapes; a dedicated redesign is tracked in
+  [#29](https://github.com/doublegate/Infinity-Context/issues/29) for v1.3.1.
 - **`--dir` without a folder is an error.** `icx init --dir` or `icx status --dir` used to fall
   back to the default workspace silently; now the command fails. `icx hook` still fails open,
   with the agent's own no-op reply.

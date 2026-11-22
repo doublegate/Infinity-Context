@@ -580,199 +580,77 @@ impl SecretRedactor {
         Self::redact_high_entropy_tokens(&current)
     }
 
-    /// `String::from("...")`, `pydantic.SecretStr("...")`, `env::var("K").unwrap_or("...")`,
-    /// `x or "..."`, `a + "..."`: a code-shaped value under a sensitive key (a head followed by a
-    /// call, index or generic, or an operator). When the value holds any quote, the whole value is
-    /// replaced, from its start up to the next field (`name=`, `name: value`, `--flag`) or the end
-    /// of the line (v1.2.1–v1.3.0). Replacing the whole value rather than individual literals is
-    /// deliberate: quote, lifetime and bracket tracking in arbitrary code is a heuristic, and here
-    /// it only decides where the next field starts, so a mistake can over-redact but cannot leave a
-    /// literal visible. Returns the position after the replacement, or `None` when the value is not
-    /// code-shaped or holds no quote (the plain value and code-expression rules then decide).
+    /// `String::from("...")`, `Some('...')`, `Secret::new("...")`: a value that wraps quoted
+    /// literals in a call. Replaces every quoted literal up to the closing parenthesis (v1.2.1;
+    /// the unquoted span used to stop at the opening quote and leave the literal visible).
+    /// Returns the position after the call, or `None` when the value has another shape.
     fn redact_call_wrapped_literals(
         out: &mut String,
         val_start: usize,
         replacement: &str,
     ) -> Option<usize> {
         let rest = out.get(val_start..)?;
-        let first = *rest.as_bytes().first()?;
-        // A lone plain literal (`"x"`, `'x'` followed by nothing code-like) keeps the plain value
-        // rule. Every other value is scanned, and hidden whole when it holds a quote: prefixed
-        // literals (`b"..."`, `f"..."`), keyword-led expressions (`new X("...")`, `not a and
-        // "..."`), unary operators, ternaries. Deciding what "looks like code" was the source of
-        // every bypass in review, so that decision is gone (fail closed).
-        // An escaped-quote value (`\"x\"`, `\'x\'`) is the plain value rule's (v1.2.0).
-        if first == b'\\' {
+        // A call head (`Some(`, `pydantic.SecretStr(`, `field(`), then every quoted literal in its
+        // argument list, wherever it sits and however deeply it is nested (v1.2.2, v1.3.0).
+        if !rest.as_bytes().first().is_some_and(u8::is_ascii_alphabetic) {
             return None;
         }
-        if matches!(first, b'"' | b'\'' | b'`') {
-            let after = Self::after_leading_literal(rest)?;
-            let code_like = !Self::starts_new_field(after)
-                && (after.starts_with('.')
-                    || Self::continuation_len(after).is_some()
-                    || Self::starts_with_operator(after));
-            if !code_like {
-                return None;
-            }
+        let name_len = rest
+            .bytes()
+            .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b':' | b'.'))
+            .count();
+        if !rest[name_len..].starts_with('(') {
+            return None;
         }
-        let bytes = rest.as_bytes();
+        let mut depth = 1usize;
+        let open = val_start + name_len + 1;
         let mut quote: Option<u8> = None;
-        let mut saw_quote = false;
-        // Open brackets: a `key=` inside them is an argument, not a new field. An unclosed
-        // bracket keeps the value open to the end of the line (fail closed).
-        let mut depth = 0usize;
-        // A Rust lifetime makes quote tracking unreliable: the value then runs to the end of
-        // the line rather than letting a mis-tracked quote move the field boundary.
-        let mut no_split = false;
-        let mut i = 0;
+        let mut spans = Vec::new();
+        let mut lit_start = 0usize;
+        let mut close = None;
+        let bytes = out.as_bytes();
+        let mut i = open;
         while i < bytes.len() && bytes[i] != b'\n' {
             let b = bytes[i];
             match quote {
-                Some(_) if b == b'\\' && bytes.get(i + 1).is_some_and(|&n| n != b'\n') => i += 1,
-                Some(q) if b == q => quote = None,
-                None if b == b'\'' && i > 0 && matches!(bytes[i - 1], b'&' | b'<') => {
-                    no_split = true;
-                    if !Self::is_lifetime_quote(bytes, i) {
-                        quote = Some(b);
-                        saw_quote = true;
+                // Skip the escaped byte, but never past the end of the input or the line.
+                Some(_) if b == b'\\' && bytes.get(i + 1).is_some_and(|&n| n != b'\n') => {
+                    i += 1;
+                }
+                Some(q) if b == q => {
+                    spans.push((lit_start, i));
+                    quote = None;
+                }
+                None if b == b'"' || b == b'\'' => {
+                    quote = Some(b);
+                    lit_start = i + 1;
+                }
+                None if b == b'(' => depth += 1,
+                None if b == b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(i);
+                        break;
                     }
                 }
-                None if matches!(b, b'"' | b'\'' | b'`') => {
-                    quote = Some(b);
-                    saw_quote = true;
-                }
-                None if matches!(b, b'(' | b'[' | b'{') => depth += 1,
-                None if matches!(b, b')' | b']' | b'}') => depth = depth.saturating_sub(1),
-                // A new field follows a finished value (`... x user=...`), never an operator
-                // (`cond ? x: "..."`).
-                None if !no_split
-                    && depth == 0
-                    && (b == b' ' || b == b'\t')
-                    && rest[..i]
-                        .trim_end_matches([' ', '\t'])
-                        .bytes()
-                        .last()
-                        .is_some_and(|c| {
-                            c.is_ascii_alphanumeric()
-                                || matches!(c, b'"' | b'\'' | b'`' | b')' | b']' | b'}' | b'_')
-                        })
-                    && Self::starts_new_field(&rest[i..]) =>
-                {
-                    break;
-                }
                 _ => {}
             }
             i += 1;
         }
-        let value = rest[..i].trim_end_matches([' ', '\t']);
-        if !saw_quote || Self::is_redaction_marker(value) {
+        let i = i.min(bytes.len());
+        // An unterminated literal is hidden to the end of the line.
+        if quote.is_some() {
+            spans.push((lit_start, i));
+        }
+        if spans.is_empty() {
             return None;
         }
-        let len = value.len();
-        out.replace_range(val_start..val_start + len, replacement);
-        Some(val_start + replacement.len())
-    }
-
-    /// The text after a leading quoted literal (honouring backslash escapes on its line), or
-    /// `None` when the literal is not closed on that line.
-    fn after_leading_literal(text: &str) -> Option<&str> {
-        let bytes = text.as_bytes();
-        let q = *bytes.first()?;
-        let mut i = 1;
-        while i < bytes.len() && bytes[i] != b'\n' {
-            match bytes[i] {
-                b'\\' => i += 1,
-                b if b == q => return text.get(i + 1..),
-                _ => {}
-            }
-            i += 1;
+        let end = close.map_or(i, |c| c + 1);
+        let removed: usize = spans.iter().map(|&(a, b)| b - a).sum();
+        for &(a, b) in spans.iter().rev() {
+            out.replace_range(a..b, replacement);
         }
-        None
-    }
-
-    /// Whether `text` (starting at whitespace) begins a new field after a value: an identifier
-    /// followed by `=` (not `==`) or by `:` and whitespace, or a `--flag`.
-    fn starts_new_field(text: &str) -> bool {
-        let t = text.trim_start_matches([' ', '\t']);
-        if t.starts_with("--") {
-            return true;
-        }
-        let n = t
-            .bytes()
-            .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
-            .count();
-        if n == 0 || !t.as_bytes()[0].is_ascii_alphabetic() {
-            return false;
-        }
-        let r = &t[n..];
-        (r.starts_with('=') && !r.starts_with("=="))
-            || r.strip_prefix(':')
-                .is_some_and(|x| x.starts_with([' ', '\t']))
-    }
-
-    /// Whether `text` (after the value's head) continues with an operator: `+ - * / % ? | &` or
-    /// a Python `if`, so the value is an expression rather than a plain token.
-    fn starts_with_operator(text: &str) -> bool {
-        let t = text.trim_start_matches([' ', '\t']);
-        t.len() < text.len()
-            && (t.starts_with(['+', '-', '*', '/', '%', '?', '|', '&'])
-                || t.strip_prefix("if")
-                    .is_some_and(|r| r.starts_with([' ', '\t'])))
-    }
-
-    /// When `text` continues an expression, the length of that continuation: leading spaces or
-    /// tabs, then `or`/`and` followed by whitespace, `??` or `||` (each with the whitespace after
-    /// it), or a `.`, `#` or `//` (not included, so the scan carries on there). `None` otherwise;
-    /// `Some` is at least 1 whenever `text` starts with whitespace.
-    fn continuation_len(text: &str) -> Option<usize> {
-        let ws = |t: &str| t.len() - t.trim_start_matches([' ', '\t']).len();
-        let lead = ws(text);
-        let t = &text[lead..];
-        // A `.` method call, or a `#` / `//` that sends the scan to the end of the line.
-        if t.starts_with(['.', '#']) || t.starts_with("//") {
-            return (lead > 0).then_some(lead);
-        }
-        let op = ["or", "and", "??", "||"].into_iter().find(|op| {
-            t.strip_prefix(op).is_some_and(|r| {
-                !op.starts_with(|c: char| c.is_ascii_alphabetic()) || r.starts_with([' ', '\t'])
-            })
-        })?;
-        let rest = &t[op.len()..];
-        Some(lead + op.len() + ws(rest))
-    }
-
-    /// Whether `text` is exactly one marker this redactor emits (`[REDACTED:ENV_SECRET]`), not an
-    /// input that merely starts like one.
-    fn is_redaction_marker(text: &str) -> bool {
-        text.strip_prefix("[REDACTED:")
-            .and_then(|r| r.strip_suffix(']'))
-            .is_some_and(|kind| {
-                !kind.is_empty() && kind.bytes().all(|b| b.is_ascii_uppercase() || b == b'_')
-            })
-    }
-
-    /// Whether the `'` at `i` opens a Rust lifetime (`&'a str`, `<'a>`, `&'static`): it follows
-    /// `&` or `<`, an identifier follows it, and no closing `'` comes right after that identifier
-    /// (`&'secret'` is a quoted literal).
-    fn is_lifetime_quote(bytes: &[u8], i: usize) -> bool {
-        if i == 0 || !matches!(bytes[i - 1], b'&' | b'<') {
-            return false;
-        }
-        let ident = bytes[i + 1..]
-            .iter()
-            .take_while(|b| b.is_ascii_alphanumeric() || **b == b'_')
-            .count();
-        // Fail closed: only a delimiter a lifetime can be followed by, and no later `'` on the
-        // line (otherwise `&'abc def'` / `&'my-secret.value'` would hide a literal).
-        let after = i + 1 + ident;
-        let delimiter_ok = bytes
-            .get(after)
-            .is_none_or(|b| matches!(b, b' ' | b'\t' | b'>' | b',' | b')' | b']' | b';' | b'\n'));
-        let line_end = bytes[after..]
-            .iter()
-            .position(|&b| b == b'\n')
-            .map_or(bytes.len(), |p| after + p);
-        ident > 0 && delimiter_ok && !bytes[after..line_end].contains(&b'\'')
+        Some((end + spans.len() * replacement.len() - removed).min(out.len()))
     }
 
     fn redact_value_span(
@@ -1166,8 +1044,6 @@ impl SecretRedactor {
             "char",
             "Duration",
             "SecretString",
-            "SecretStr",
-            "SecretBytes",
             "string",
             "number",
             "boolean",
@@ -1199,19 +1075,11 @@ impl SecretRedactor {
             // `&'a mut T`: `mut` follows the lifetime (v1.2.2).
             r.strip_prefix("mut ").unwrap_or(r)
         });
-        // Dotted type paths (`pydantic.SecretStr`) are checked by their last segment.
         let name_len = s
             .bytes()
-            .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'.')
+            .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
             .count();
-        // Dotted paths count only for the Secret* types with lowercase module segments
-        // (`pydantic.SecretStr`); `sk_live_x.str` is a value, not a type (fail closed).
-        let base = Self::annotation_type_name(&s[..name_len])?;
-        let null_led = matches!(base, "None" | "null" | "undefined")
-            && s[name_len..]
-                .trim_start_matches([' ', '\t'])
-                .starts_with('|');
-        if !TYPES.contains(&base) && !null_led {
+        if !TYPES.contains(&&s[..name_len]) {
             return None;
         }
         s = &s[name_len..];
@@ -1225,9 +1093,9 @@ impl SecretRedactor {
             let after = after.trim_start_matches([' ', '\t']);
             let n = after
                 .bytes()
-                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'.')
+                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
                 .count();
-            let member = Self::annotation_type_name(&after[..n])?;
+            let member = &after[..n];
             if !(TYPES.contains(&member) || matches!(member, "None" | "null" | "undefined")) {
                 return None;
             }
@@ -1238,24 +1106,6 @@ impl SecretRedactor {
             || s.starts_with(['=', ',', ')', ';', '{', '>', '\n', '\r'])
             || s.starts_with("->"))
         .then(|| rest.len() - s.len())
-    }
-
-    /// The type name of an annotation path: the path itself, or for a dotted path the last segment
-    /// when it is a `Secret*` type under lowercase module segments (`pydantic.SecretStr`). Any
-    /// other dotted path (`sk_live_x.str`) is a value, not a type (fail closed).
-    fn annotation_type_name(path: &str) -> Option<&str> {
-        match path.rsplit_once('.') {
-            None => Some(path),
-            Some((modules, last))
-                if last.starts_with("Secret")
-                    && modules.split('.').all(|m| {
-                        !m.is_empty() && m.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
-                    }) =>
-            {
-                Some(last)
-            }
-            Some(_) => None,
-        }
     }
 
     /// Skips one balanced Rust/TS `<...>` or Python `[...]` generic argument list at the start of
@@ -1297,29 +1147,15 @@ impl SecretRedactor {
     /// which a code binding may assign without it being a secret. A bare word, number or quoted
     /// value is treated as a literal and keeps the key rule (v1.2.1).
     fn is_code_expression(rhs: &str) -> bool {
-        // The first `;` or newline outside brackets (`(() => { a(); return "x"; })()`).
-        let mut depth = 0usize;
-        let end = rhs
-            .bytes()
-            .position(|b| {
-                match b {
-                    b'(' | b'[' | b'{' => depth += 1,
-                    b')' | b']' | b'}' => depth = depth.saturating_sub(1),
-                    _ => {}
-                }
-                b == b'\n' || (b == b';' && depth == 0)
-            })
-            .unwrap_or(rhs.len());
+        let end = rhs.find([';', '\n']).unwrap_or(rhs.len());
         let expr = rhs[..end].trim();
         let starts_ok = expr
             .chars()
             .next()
             .is_some_and(|c| c.is_ascii_alphabetic() || matches!(c, '_' | '&' | '*' | '('));
-        // A `'` right after `&` or `<` is a Rust lifetime (`&'a str`), not a string quote.
-        let has_literal = expr.char_indices().any(|(i, c)| {
-            matches!(c, '"' | '`') || (c == '\'' && !Self::is_lifetime_quote(expr.as_bytes(), i))
-        });
-        starts_ok && !has_literal && (expr.contains(['(', '.', '&', '*']) || expr.contains("::"))
+        starts_ok
+            && !expr.contains(['"', '\'', '`'])
+            && (expr.contains(['(', '.', '&', '*']) || expr.contains("::"))
     }
 
     /// `let q_tokens = f(...)`, `const MAX_TOKENS = 4096`: a source-code binding, not an env

@@ -56,13 +56,16 @@ fn unwrap_muse_tool_response(tool_name: &str, response: Option<&Value>) -> (Stri
             _ => None,
         };
         if let Some(Value::Object(obj)) = parsed {
-            if let Some(output) = obj.get("output").and_then(Value::as_str) {
-                let code = obj
-                    .get("exit_code")
-                    .or_else(|| obj.get("exitCode"))
-                    .and_then(Value::as_i64)
-                    .and_then(|n| i32::try_from(n).ok());
-                return (output.to_owned(), code);
+            // The exit code is kept even when a failed command has no `output`.
+            let code = obj
+                .get("exit_code")
+                .or_else(|| obj.get("exitCode"))
+                .and_then(Value::as_i64)
+                .and_then(|n| i32::try_from(n).ok());
+            match obj.get("output") {
+                Some(Value::String(output)) => return (output.clone(), code),
+                None | Some(Value::Null) if code.is_some() => return (String::new(), code),
+                _ => {}
             }
         }
     }
