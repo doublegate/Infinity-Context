@@ -489,3 +489,20 @@ fn resources_and_links_keep_the_mcp_result_whole() {
     .unwrap();
     assert!(out.contains("updatedMCPToolOutput"));
 }
+
+#[test]
+fn structured_mcp_json_with_its_own_type_fields_is_still_replaced_whole() {
+    // A domain object's `type` is data, not a content block (review of #88).
+    let items: Vec<Value> = (0..400)
+        .map(|i| json!({"type": "issue", "id": i, "title": format!("issue number {i}")}))
+        .collect();
+    let response = json!({"type": "FeatureCollection", "items": items});
+    let mut mmu = InfinityContextMmu::default();
+    let out = ClaudeCodeAdapter::handle_hook(
+        "PostToolUse",
+        &post_tool_use("mcp__tracker__list", &response).to_string(),
+        &mut mmu,
+    )
+    .unwrap();
+    assert!(out.contains("updatedMCPToolOutput"), "{out}");
+}

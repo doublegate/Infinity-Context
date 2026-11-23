@@ -164,29 +164,27 @@ impl ClaudeCodeAdapter {
                             res.compressed_ahtl.len(),
                             res.compressed_ahtl
                         );
-                        // `None`: nothing in the result can take the stub without losing data (an
-                        // image, or only small text beside binary data), so the result is stored
-                        // and reaches the model unchanged (review of #88).
-                        match claude_shape_preserving_replacement(builtin, tool_response, &stub) {
-                            Some(replacement) => {
-                                mmu.record_emitted(&stub);
-                                let mut hso = json!({
-                                    "hookEventName": "PostToolUse",
-                                    "updatedToolOutput": replacement
-                                });
-                                // A string replaces the whole MCP result, so it is sent only when
-                                // every content block is text: images, audio, resources and resource
-                                // links would otherwise be lost (review of #88).
-                                if tool_name.starts_with("mcp__")
-                                    && !tool_response.is_some_and(has_non_text_block)
-                                {
-                                    hso["updatedMCPToolOutput"] = Value::String(stub);
-                                }
-                                json!({ "hookSpecificOutput": hso })
+                        // Two independent replacements (review of #88):
+                        // - `updatedToolOutput` keeps the result's shape; `None` when no field can
+                        //   take the stub without losing data (an image) or without growing;
+                        // - `updatedMCPToolOutput` is one string for the whole MCP result, so it
+                        //   is sent only when every content block is text and nothing is binary.
+                        let shaped =
+                            claude_shape_preserving_replacement(builtin, tool_response, &stub);
+                        let whole = tool_name.starts_with("mcp__")
+                            && !tool_response.is_some_and(has_non_text_block);
+                        if shaped.is_none() && !whole {
+                            json!({ "hookSpecificOutput": { "hookEventName": "PostToolUse" } })
+                        } else {
+                            mmu.record_emitted(&stub);
+                            let mut hso = json!({ "hookEventName": "PostToolUse" });
+                            if let Some(replacement) = shaped {
+                                hso["updatedToolOutput"] = replacement;
                             }
-                            None => json!({
-                                "hookSpecificOutput": { "hookEventName": "PostToolUse" }
-                            }),
+                            if whole {
+                                hso["updatedMCPToolOutput"] = Value::String(stub);
+                            }
+                            json!({ "hookSpecificOutput": hso })
                         }
                     } else {
                         json!({})
@@ -657,18 +655,34 @@ fn is_binary_entry(m: &serde_json::Map<String, Value>, key: &str) -> bool {
                     .any(|k| m.get(*k).is_some_and(Value::is_string))))
 }
 
-/// Whether `v` holds anything a single text stub cannot stand in for: binary data (the rule the
-/// replacement uses), or a typed block other than `text` (`resource`, `resource_link`, ...).
+/// Whether `v` holds anything a single text stub cannot stand in for: binary data anywhere (the
+/// rule the replacement uses), or an MCP content block other than `text` (`resource`,
+/// `resource_link`, ...). Only content blocks, the elements of a top-level array or of `content`,
+/// are judged by their `type`; a domain object's own `type` field is data (review of #88).
 fn has_non_text_block(v: &Value) -> bool {
+    let blocks = match v {
+        Value::Array(a) => Some(a),
+        Value::Object(m) => m.get("content").and_then(Value::as_array),
+        _ => None,
+    };
+    let non_text_block = blocks.is_some_and(|blocks| {
+        blocks.iter().any(|b| {
+            b.get("type")
+                .and_then(Value::as_str)
+                .is_some_and(|t| t != "text")
+        })
+    });
+    non_text_block || contains_binary(v)
+}
+
+/// Whether `v` holds binary data anywhere.
+fn contains_binary(v: &Value) -> bool {
     match v {
-        Value::Array(a) => a.iter().any(has_non_text_block),
+        Value::Array(a) => a.iter().any(contains_binary),
         Value::Object(m) => {
             is_binary_block(m)
                 || m.keys().any(|k| is_binary_entry(m, k))
-                || m.get("type")
-                    .and_then(Value::as_str)
-                    .is_some_and(|t| t != "text")
-                || m.values().any(has_non_text_block)
+                || m.values().any(contains_binary)
         }
         _ => false,
     }
