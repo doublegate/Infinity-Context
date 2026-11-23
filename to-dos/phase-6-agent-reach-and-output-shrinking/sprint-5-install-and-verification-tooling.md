@@ -376,5 +376,5 @@ decision table)
   and coverage `>= 95%` (95.04% lines, 2026-11-23).
 - [x] Docs and CHANGELOG updated for any user-visible change; v1.4.0 release notes drafted
   (`docs/releases/v1.4.0/README.md`).
-- [ ] Upstream re-scan done for Phase 7 Sprint 1 (ranking crates and comparable tools), and its
-  tickets adjusted.
+- [x] Upstream re-scan done for Phase 7 Sprint 1 (ranking crates and comparable tools), and its
+  tickets adjusted (recorded in that sprint's research notes).
