@@ -434,3 +434,50 @@ fn hermes_gets_both_plugins_and_its_yaml_is_left_alone() {
     let again = run(&h, &["--agent", "hermes", "--yes"]);
     assert!(out(&again).contains("no file changes"), "{}", out(&again));
 }
+
+#[test]
+fn argument_errors_are_reported() {
+    let h = home("args");
+    let bin = env!("CARGO_BIN_EXE_icx");
+    let run_raw = |args: &[&str], with_home: bool| {
+        let mut c = Command::new(bin);
+        c.arg("install").args(args).stdin(Stdio::null());
+        if with_home {
+            c.env("HOME", &h);
+        } else {
+            c.env_remove("HOME");
+        }
+        c.env_remove("XDG_CONFIG_HOME")
+            .env_remove("HERMES_HOME")
+            .output()
+            .unwrap()
+    };
+    let o = run_raw(&["--bogus"], true);
+    assert!(
+        !o.status.success() && out(&o).contains("unexpected argument"),
+        "{}",
+        out(&o)
+    );
+    let o = run_raw(&["--dry-run"], true);
+    assert!(
+        !o.status.success() && out(&o).contains("--agent is required"),
+        "{}",
+        out(&o)
+    );
+    let o = run_raw(&["--agent", "codex", "--dry-run"], false);
+    assert!(
+        !o.status.success() && out(&o).contains("HOME is not set"),
+        "{}",
+        out(&o)
+    );
+    // Without --icx the hooks run the binary that did the install, by absolute path.
+    let o = run_raw(&["--agent", "codex", "--dry-run"], true);
+    assert!(o.status.success(), "{}", out(&o));
+    let exe = std::fs::canonicalize(bin).unwrap();
+    assert!(
+        out(&o).contains(&format!("{} hook --agent codex", exe.display())),
+        "{}",
+        out(&o)
+    );
+    assert!(snapshot(&h).is_empty(), "dry runs write nothing");
+}

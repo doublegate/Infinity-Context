@@ -799,6 +799,27 @@ mod record_filter_tests {
     }
 
     #[test]
+    fn an_oversized_tool_output_record_is_skipped_by_its_prefix() {
+        // Larger than a record may be, so it cannot be parsed; its opening bytes decide, here
+        // with an outer event type before the item (review of #88).
+        let mut line = String::from(
+            r#"{"type":"item.completed","item":{"type":"function_call_output","output":""#,
+        );
+        line.push_str(&"x".repeat(super::MAX_ROLLOUT_RECORD_BYTES + 16));
+        line.push_str("\"}}\n");
+        let mut reader = std::io::Cursor::new(line.into_bytes());
+        let mut mmu = crate::InfinityContextMmu::default();
+        let filter = super::RecordFilter {
+            skip_held: true,
+            skip_tool_outputs: true,
+        };
+        let counts =
+            super::CodexRolloutTailer::ingest_jsonl_records(&mut reader, &mut mmu, filter).unwrap();
+        assert_eq!((counts.tool_outputs, counts.ingested), (1, 0));
+        assert_eq!(mmu.cas.artifact_count(), 0);
+    }
+
+    #[test]
     fn prefix_test_reads_only_the_opening_bytes_on_a_char_boundary() {
         let late = format!(
             "{}\"payload\":{{\"type\":\"function_call_output\"",

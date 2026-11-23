@@ -1048,4 +1048,180 @@ mod tests {
             assert!(!is_icx_hook_command(c, "codex", "PostToolUse"), "{c}");
         }
     }
+
+    fn opts(home: &Path) -> Opts {
+        Opts {
+            home: home.to_path_buf(),
+            config_home: home.join(".config"),
+            codex_home: home.join(".codex"),
+            claude_home: home.join(".claude"),
+            icx: "/opt/icx".to_owned(),
+            approve: true,
+        }
+    }
+
+    fn scratch(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("icx-install-unit-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn json_helpers_reject_wrong_shapes() {
+        let mut n = J::Num(1.into());
+        assert!(n.obj_mut("k").is_err());
+        assert!(n.arr_mut("k").is_err());
+        let mut o = j(serde_json::json!({"a": 1, "b": [true, null, -3, 1.5, "s", {"c": "d"}]}));
+        assert!(o.obj_mut("a").is_err(), "a number is not an object");
+        assert!(o.arr_mut("a").is_err(), "a number is not an array");
+        o.insert("a", s("x"));
+        assert_eq!(o.get("a").and_then(J::as_str), Some("x"));
+        assert_eq!(J::Null.as_str(), None);
+        assert_eq!(J::Null.get("x"), None);
+        // Numbers of every kind, null and a repeated key round-trip (the last value wins).
+        let v: J =
+            serde_json::from_str(r#"{"n": -4, "f": 2.5, "z": null, "k": 1, "k": 2}"#).unwrap();
+        let back: serde_json::Value = serde_json::from_str(&json_text(&v)).unwrap();
+        assert_eq!(
+            back,
+            serde_json::json!({"n": -4, "f": 2.5, "z": null, "k": 2})
+        );
+        assert!(serde_json::from_str::<J>("[1, 2").is_err());
+    }
+
+    #[test]
+    fn broken_or_odd_configs_get_notes_not_edits() {
+        let h = scratch("odd");
+        let o = opts(&h);
+        fs::create_dir_all(h.join(".codex")).unwrap();
+        // A TOML file that does not parse.
+        fs::write(h.join(".codex/config.toml"), "model = [unclosed").unwrap();
+        let p = plan("codex", &o).unwrap();
+        assert!(
+            p.notes.iter().any(|n| n.contains("does not parse")),
+            "{:?}",
+            p.notes
+        );
+        assert!(!p.edits.iter().any(|e| e.path.ends_with("config.toml")));
+        // `mcp_servers` that is not a table.
+        fs::write(h.join(".codex/config.toml"), "mcp_servers = 3\n").unwrap();
+        let p = plan("codex", &o).unwrap();
+        assert!(
+            p.notes.iter().any(|n| n.contains("is not a table")),
+            "{:?}",
+            p.notes
+        );
+        // A server-wide approval already present is reported.
+        fs::write(
+            h.join(".codex/config.toml"),
+            "[mcp_servers.icx]\ncommand = \"icx\"\ndefault_tools_approval_mode = \"approve\"\n",
+        )
+        .unwrap();
+        let p = plan("codex", &o).unwrap();
+        assert!(
+            p.notes
+                .iter()
+                .any(|n| n.contains("also approves icx_write"))
+        );
+        // A JSON file that is valid but not an object, and one whose `hooks` is not an object.
+        fs::create_dir_all(h.join(".claude")).unwrap();
+        fs::write(h.join(".claude/settings.json"), "[1, 2]").unwrap();
+        let p = plan("claude-code", &o).unwrap();
+        assert!(
+            p.notes
+                .iter()
+                .any(|n| n.contains("does not hold a JSON object"))
+        );
+        fs::write(h.join(".claude/settings.json"), r#"{"hooks": 5}"#).unwrap();
+        let p = plan("claude-code", &o).unwrap();
+        assert!(
+            p.notes.iter().any(|n| n.contains("is not an object")),
+            "{:?}",
+            p.notes
+        );
+        let _ = fs::remove_dir_all(&h);
+    }
+
+    #[test]
+    fn registered_agy_and_cursor_hooks_are_kept_and_plans_merge_per_file() {
+        let h = scratch("present");
+        let o = opts(&h);
+        fs::create_dir_all(h.join(".gemini/config")).unwrap();
+        let events = [
+            "SessionStart",
+            "PreInvocation",
+            "PostInvocation",
+            "PostToolUse",
+            "Stop",
+        ];
+        let mut group = serde_json::Map::new();
+        for e in events {
+            group.insert(
+                e.to_owned(),
+                serde_json::json!([{"type": "command", "command": format!("icx hook --agent agy --event {e}")}]),
+            );
+        }
+        fs::write(
+            h.join(".gemini/config/hooks.json"),
+            serde_json::json!({"mine": group}).to_string(),
+        )
+        .unwrap();
+        let p = plan("agy", &o).unwrap();
+        assert!(
+            !p.edits.iter().any(|e| e.path.ends_with("hooks.json")),
+            "already registered"
+        );
+        fs::create_dir_all(h.join(".cursor")).unwrap();
+        fs::write(
+            h.join(".cursor/hooks.json"),
+            r#"{"version": 1, "hooks": {"postToolUse": [{"command": "icx hook --agent cursor --event postToolUse"}]}}"#,
+        )
+        .unwrap();
+        let p = plan("cursor", &o).unwrap();
+        let hooks = p
+            .edits
+            .iter()
+            .find(|e| e.path.ends_with("hooks.json"))
+            .unwrap();
+        assert_eq!(hooks.after.matches("--event postToolUse\"").count(), 1);
+        // Two edits of one file in one plan merge into one.
+        let mut plan = Plan::default();
+        let f = h.join("x.json");
+        plan.set(&f, None, "a".into());
+        plan.set(&f, None, "b".into());
+        assert_eq!(plan.edits.len(), 1);
+        assert_eq!(plan.current(&f).as_deref(), Some("b"));
+        let _ = fs::remove_dir_all(&h);
+    }
+
+    #[test]
+    fn a_write_that_fails_is_reported_and_leaves_no_temporary_file() {
+        let h = scratch("fail");
+        // The target is a directory, so the rename over it fails.
+        let target = h.join("cfg.json");
+        fs::create_dir_all(target.join("inner")).unwrap();
+        let plan = Plan {
+            edits: vec![FileEdit {
+                path: target.clone(),
+                before: None,
+                after: "{}".into(),
+            }],
+            notes: Vec::new(),
+        };
+        let err = apply(&plan, 1).unwrap_err();
+        assert!(
+            ["writing", "backing up", "reading"]
+                .iter()
+                .any(|w| err.contains(w)),
+            "{err}"
+        );
+        let leftovers: Vec<_> = fs::read_dir(&h)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().contains("icx-tmp"))
+            .collect();
+        assert!(leftovers.is_empty());
+        let _ = fs::remove_dir_all(&h);
+    }
 }
