@@ -1825,7 +1825,8 @@ fn mentions_icx_hook(text: &str, agent: &str) -> bool {
         })
         .filter(|t| !t.is_empty())
         .collect();
-    let is_icx = |t: &str| t.rsplit('/').next() == Some("icx");
+    // A `KEY=/x/icx` assignment names a path, not the program (review of #88).
+    let is_icx = |t: &str| !t.contains('=') && t.rsplit('/').next() == Some("icx");
     // `icx` must be the program, never an argument (review of #88): it is not the value of a
     // long option (`--dir /x/icx`), and no `hook` word comes before it in the same command.
     // Wrappers stay recognised (`sh -c "icx hook ..."`, `env -u VAR icx hook ...`), and a
@@ -3784,6 +3785,14 @@ mod tests {
         }
         assert!(!mentions_icx_hook(
             "icx status&&other hook --agent cursor",
+            "cursor"
+        ));
+        assert!(!mentions_icx_hook(
+            "ICX_DIR=/tmp/icx other hook --agent cursor",
+            "cursor"
+        ));
+        assert!(mentions_icx_hook(
+            "ICX_DIR=/tmp/w icx hook --agent cursor",
             "cursor"
         ));
         // A later JSON key does not lend its words to an earlier command.

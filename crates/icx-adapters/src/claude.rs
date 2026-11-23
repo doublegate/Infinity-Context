@@ -646,9 +646,21 @@ fn is_binary_block(m: &serde_json::Map<String, Value>) -> bool {
 
 /// Whether `key` of object `m` holds binary data, which a stub must never replace: `base64`
 /// anywhere, and `data` or `blob` beside a MIME type, a `uri`, or in a binary block.
+///
+/// Only a string value can be binary data, and a `text/` MIME type marks text, not binary (review
+/// of #88).
 fn is_binary_entry(m: &serde_json::Map<String, Value>, key: &str) -> bool {
+    if !m.get(key).is_some_and(Value::is_string) {
+        return false;
+    }
+    let text_mime = ["mimeType", "media_type", "mime_type"].iter().any(|k| {
+        m.get(*k)
+            .and_then(Value::as_str)
+            .is_some_and(|t| t.starts_with("text/"))
+    });
     key == "base64"
         || (matches!(key, "data" | "blob")
+            && !text_mime
             && (is_binary_block(m)
                 || ["mimeType", "media_type", "mime_type", "uri"]
                     .iter()
@@ -660,16 +672,22 @@ fn is_binary_entry(m: &serde_json::Map<String, Value>, key: &str) -> bool {
 /// `resource_link`, ...). Only content blocks, the elements of a top-level array or of `content`,
 /// are judged by their `type`; a domain object's own `type` field is data (review of #88).
 fn has_non_text_block(v: &Value) -> bool {
-    let blocks = match v {
-        Value::Array(a) => Some(a),
-        Value::Object(m) => m.get("content").and_then(Value::as_array),
-        _ => None,
+    // In a `content` array any non-text type is a content block; a bare top-level array may be
+    // domain data (`[{"type": "issue"}]`), so there only MCP's non-text block types count.
+    let (blocks, any_type) = match v {
+        Value::Array(a) => (Some(a), false),
+        Value::Object(m) => (m.get("content").and_then(Value::as_array), true),
+        _ => (None, false),
     };
     let non_text_block = blocks.is_some_and(|blocks| {
         blocks.iter().any(|b| {
-            b.get("type")
-                .and_then(Value::as_str)
-                .is_some_and(|t| t != "text")
+            b.get("type").and_then(Value::as_str).is_some_and(|t| {
+                if any_type {
+                    t != "text"
+                } else {
+                    matches!(t, "image" | "audio" | "resource" | "resource_link")
+                }
+            })
         })
     });
     non_text_block || contains_binary(v)

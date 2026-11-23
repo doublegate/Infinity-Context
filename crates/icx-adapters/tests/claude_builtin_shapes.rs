@@ -506,3 +506,25 @@ fn structured_mcp_json_with_its_own_type_fields_is_still_replaced_whole() {
     .unwrap();
     assert!(out.contains("updatedMCPToolOutput"), "{out}");
 }
+
+#[test]
+fn binary_detection_needs_a_binary_string() {
+    // Non-string values and text MIME types are not binary (review of #88): the large text is
+    // replaced and the whole-result string is still sent.
+    for response in [
+        json!({"base64": false, "text": lines(800, "body")}),
+        json!({"uri": "https://x.invalid", "data": {"body": lines(800, "body")}}),
+        json!({"mimeType": "text/plain", "data": lines(800, "body")}),
+        json!([{"type": "issue", "title": lines(800, "body")}]),
+    ] {
+        let mut mmu = InfinityContextMmu::default();
+        let out = ClaudeCodeAdapter::handle_hook(
+            "PostToolUse",
+            &post_tool_use("mcp__svc__get", &response).to_string(),
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(out.contains("updatedMCPToolOutput"), "{response}: {out}");
+        assert!(out.contains("updatedToolOutput"), "{response}");
+    }
+}
