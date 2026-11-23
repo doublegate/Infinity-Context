@@ -1,0 +1,16 @@
+{
+  "cwd": "/home/user/project",
+  "hook_event_name": "PostToolUse",
+  "model": "muse-wonder-1.0",
+  "model_provider": "meta",
+  "permission_mode": "default",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "tool_input": {
+    "op": "status"
+  },
+  "tool_name": "mcp__icxtest__icx",
+  "tool_response": "\u27eaICX:STATUS\u2502cas_artifacts=0\u2502redacted_artifacts=0\u2502unique_chunks=0\u2502dag_nodes=0\u2502sealed_epochs=0\u2502hdc_entries=0\u2502graph_edges=0\u2502shm_seq=0\u27eb",
+  "tool_use_id": "call_01a206e61b4e70d3b3eba9b983952fc5",
+  "transcript_path": null,
+  "turn_id": "00000000-0000-4000-8000-000000000002"
+}

@@ -8,9 +8,14 @@
 
 ## 1. Purpose
 
-`crates/icx-adapters` and `crates/icx-proxy` connect the **Infinity-Context (`icx`)** Virtual Context MMU to agent CLIs. They implement five native hook adapters (**Claude Code**, **OpenAI Codex CLI**, **Google Antigravity CLI (`agy`)**, **Hermes Agent**, **Meta Muse Code**), the single-tool MCP pager (`McpPagerServer`), and an **HTTP/1.1 & SSE Cache-Epoch reverse proxy** (`WireProxyTransformer`).
+`crates/icx-adapters` and `crates/icx-proxy` connect the **Infinity-Context (`icx`)** Virtual Context MMU to agent CLIs. They implement eight hook adapters (**Claude Code**, **OpenAI Codex CLI**, **Google Antigravity CLI (`agy`)**, **Hermes Agent**, **Meta Muse Code**, **Google Gemini CLI**, **Cursor** and **OpenCode**), the MCP pager (`McpPagerServer`, tools `icx` and `icx_write`), and an **HTTP/1.1 & SSE Cache-Epoch reverse proxy** (`WireProxyTransformer`).
 
-Hook contracts below were checked against upstream documentation on 2026-11-18 (Claude Code 2.1.328, codex-cli 0.170.0, agy 1.5.11, Hermes source `dc394c6`). `crates/icx-adapters/tests/claude_contract.rs` pins the Claude Code output shapes; the other adapters are covered by unit tests, not by fixtures captured from live agent runs.
+**Live coverage (v1.4.0).** Contract tests replay payloads captured from live runs and sanitized by `scripts/sanitize-hook-fixtures.py`, under `crates/icx-adapters/tests/fixtures/<agent>/<version>/`:
+
+- **Codex CLI 0.171.0** (`codex_fixtures.rs`), **agy 1.5.14** (`agy_fixtures.rs`) and **Muse Code 1.4.25** (`muse_fixtures.rs`).
+- **Claude Code 2.1.330:** output shapes from live runs pinned in `claude_builtin_shapes.rs` and `claude_contract.rs`; `scripts/live-claude-replacement-check.sh` repeats the live check.
+- **OpenCode v2.2.7:** verified live (Sprint 3); its contract tests use the plugin's payload format.
+- **Following the documented contract only, live runs deferred to v1.5.0 (#89):** Hermes (the gateway stays stopped), Gemini CLI (not installed) and Cursor (tool-call capture blocked by its usage limit; its session events were captured live).
 
 The v1.2.0 Codex correction is also pinned by `protocol_validation.rs` and the local
 Codex 0.171 diagnostic: tool-output replacement is unsupported. The tests exercise adapter

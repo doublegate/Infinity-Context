@@ -1,0 +1,24 @@
+{
+  "cwd": "/home/user/project",
+  "hook_event_name": "PostToolUse",
+  "model": "gpt-6.1-sol",
+  "permission_mode": "default",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "tool_input": {
+    "op": "fold",
+    "q": "begin:codex-prompt"
+  },
+  "tool_name": "mcp__icx__icx_write",
+  "tool_response": {
+    "content": [
+      {
+        "text": "\u27eaICX:BRANCH_OPENED\u2502codex-prompt\u27eb",
+        "type": "text"
+      }
+    ],
+    "isError": false
+  },
+  "tool_use_id": "exec-00000000-0000-4000-8000-000000000005",
+  "transcript_path": "/home/user/.codex/sessions/2026/11/23/rollout-2026-11-23T00-31-15-00000000-0000-4000-8000-000000000001.jsonl",
+  "turn_id": "00000000-0000-4000-8000-000000000002"
+}

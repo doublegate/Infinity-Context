@@ -1,0 +1,10 @@
+{
+  "cwd": "/home/user/project",
+  "hook_event_name": "SessionEnd",
+  "model": "muse-wonder-1.0",
+  "model_provider": "meta",
+  "permission_mode": "default",
+  "reason": "other",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": null
+}

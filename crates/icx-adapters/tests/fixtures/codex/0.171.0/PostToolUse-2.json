@@ -1,0 +1,23 @@
+{
+  "cwd": "/home/user/project",
+  "hook_event_name": "PostToolUse",
+  "model": "gpt-6.1-sol",
+  "permission_mode": "default",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "tool_input": {
+    "op": "status"
+  },
+  "tool_name": "mcp__icx__icx",
+  "tool_response": {
+    "content": [
+      {
+        "text": "\u27eaICX:STATUS\u2502cas_artifacts=0\u2502redacted_artifacts=0\u2502unique_chunks=0\u2502dag_nodes=0\u2502sealed_epochs=0\u2502hdc_entries=0\u2502graph_edges=0\u2502shm_seq=0\u27eb",
+        "type": "text"
+      }
+    ],
+    "isError": false
+  },
+  "tool_use_id": "exec-00000000-0000-4000-8000-000000000004",
+  "transcript_path": "/home/user/.codex/sessions/2026/11/23/rollout-2026-11-23T00-31-15-00000000-0000-4000-8000-000000000001.jsonl",
+  "turn_id": "00000000-0000-4000-8000-000000000002"
+}

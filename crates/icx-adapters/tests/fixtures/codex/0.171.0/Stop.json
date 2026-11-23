@@ -1,0 +1,11 @@
+{
+  "cwd": "/home/user/project",
+  "hook_event_name": "Stop",
+  "last_assistant_message": "1\n\u27eaICX:STATUS\u2502cas_artifacts=0\u2502redacted_artifacts=0\u2502unique_chunks=0\u2502dag_nodes=0\u2502sealed_epochs=0\u2502hdc_entries=0\u2502graph_edges=0\u2502shm_seq=0\u27eb\n\u27eaICX:BRANCH_OPENED\u2502codex-prompt\u27eb",
+  "model": "gpt-6.1-sol",
+  "permission_mode": "default",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "stop_hook_active": false,
+  "transcript_path": "/home/user/.codex/sessions/2026/11/23/rollout-2026-11-23T00-31-15-00000000-0000-4000-8000-000000000001.jsonl",
+  "turn_id": "00000000-0000-4000-8000-000000000002"
+}

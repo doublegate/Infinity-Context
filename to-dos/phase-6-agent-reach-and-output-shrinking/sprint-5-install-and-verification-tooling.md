@@ -56,11 +56,28 @@ of each agent, and replace hand-written test inputs with these fixtures.
 
 **Acceptance Criteria:**
 
-- [ ] One fixture set per agent under `crates/icx-adapters/tests/fixtures/<agent>/<version>/`
+**Live captures (2026-11-23).** Each agent ran in a scratch project with a capture hook that
+recorded every payload before forwarding it to icx, and with scratch `ICX_*` state, so the
+owner's global icx hooks also wrote only to the scratch store.
+
+- **Codex 0.171.0:** hooks were passed inline (`-c hooks.<Event>=...`, with the documented
+  `--dangerously-bypass-hook-trust`), because Codex ignores an untrusted project's
+  `.codex/hooks.json`. Codex ran its own memory-consolidation task in the same process; those
+  events and their output, the owner's private memories, were excluded by session and deleted.
+- **agy 1.5.14:** project `.agents/hooks.json`, narrow `--settings` permissions
+  (`mcp(icx/*)`). `--dangerously-skip-permissions` was refused by the session's safety classifier
+  and is not used.
+- **Muse 1.4.25:** project `.muse/hooks.json` with `--trust-workspace` (this run only). Muse
+  refuses to override a configured server name per run, so the new build ran as server `icxtest`.
+
+- [x] One fixture set per agent under `crates/icx-adapters/tests/fixtures/<agent>/<version>/`
   for Codex, agy and Muse. Hermes is deferred to v1.5.0 (#89): the gateway stays stopped.
-- [ ] Contract tests run against the fixtures; gitleaks clean.
-- [ ] A script re-captures fixtures for a new agent version.
-- [ ] Adapters doc line 13 updated to state which agents are pinned by live fixtures.
+- [x] Contract tests run against the fixtures (`codex_fixtures.rs`, `agy_fixtures.rs`,
+  `muse_fixtures.rs`); gitleaks clean.
+- [x] A script turns captures into fixtures for a new agent version:
+  `scripts/sanitize-hook-fixtures.py` (paths, UUIDs and e-mail addresses replaced; fails if a real
+  path survives). The capture setup per agent is recorded above.
+- [x] Adapters doc updated to state which agents are pinned by live fixtures.
 
 **Dependencies:** T-62-002, T-63-004, T-64-001
 

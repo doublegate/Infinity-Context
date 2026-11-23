@@ -1,0 +1,17 @@
+{
+  "cwd": "/home/user/project",
+  "hook_event_name": "PostToolUse",
+  "model": "muse-wonder-1.0",
+  "model_provider": "meta",
+  "permission_mode": "default",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "tool_input": {
+    "op": "fold",
+    "q": "begin:muse-check"
+  },
+  "tool_name": "mcp__icxtest__icx_write",
+  "tool_response": "\u27eaICX:BRANCH_OPENED\u2502muse-check\u27eb",
+  "tool_use_id": "call_01a206e6257b704b94ffc54ed7705b0f",
+  "transcript_path": null,
+  "turn_id": "00000000-0000-4000-8000-000000000002"
+}
