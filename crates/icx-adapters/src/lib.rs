@@ -13,6 +13,7 @@ pub mod mcp;
 pub mod mmu;
 pub mod muse;
 pub mod opencode;
+pub mod shell;
 pub mod store;
 pub mod workspace;
 

@@ -929,6 +929,7 @@ fn run_install(args: &[String]) -> Result<(), String> {
         config_home: non_empty("XDG_CONFIG_HOME").unwrap_or_else(|| home.join(".config")),
         codex_home: non_empty("CODEX_HOME").unwrap_or_else(|| home.join(".codex")),
         claude_home: non_empty("CLAUDE_CONFIG_DIR").unwrap_or_else(|| home.join(".claude")),
+        hermes_home: non_empty("HERMES_HOME").unwrap_or_else(|| home.join(".hermes")),
         home,
         icx,
         approve,

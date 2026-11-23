@@ -39,6 +39,10 @@ fn small_failed_and_empty_results_pass_through() {
         json!({"command": "icx deref '#icx:0123456789abcdef'", "output": big(), "returncode": 0}),
         json!({"command": "ICX_DIR=/w /home/u/.local/bin/icx deref x", "output": big(), "returncode": 0}),
         json!({"command": "cat log", "output": format!("⟪ICX:PROVENANCE│id=x⟫\n{}", big()), "returncode": 0}),
+        // An unknown exit status keeps its output, and a quoted icx path is still icx.
+        json!({"command": "seq 1 3000", "output": big()}),
+        json!({"command": "seq 1 3000", "output": big(), "returncode": null}),
+        json!({"command": "'/opt/my tools/icx' deref x", "output": big(), "returncode": 0}),
     ] {
         assert_eq!(reply(&payload, &mut mmu), json!({}), "{payload}");
     }

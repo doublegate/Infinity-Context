@@ -636,12 +636,16 @@ pub(crate) fn shape_preserving_replacement(original: Option<&Value>, stub: &str)
 
 /// Whether object `m` is a binary content block, which a stub never enters: an `image` or `audio`
 /// block (MCP makes `mimeType` optional, so the type alone decides), an Anthropic `base64` source,
-/// or a resource holding a `blob`.
+/// or resource contents holding a `blob` (beside a `uri` or a MIME type; a domain object's own
+/// `blob` field is data).
 fn is_binary_block(m: &serde_json::Map<String, Value>) -> bool {
     m.get("type")
         .and_then(Value::as_str)
         .is_some_and(|t| matches!(t, "image" | "audio" | "base64"))
-        || m.get("blob").is_some_and(Value::is_string)
+        || (m.get("blob").is_some_and(Value::is_string)
+            && ["uri", "mimeType", "media_type", "mime_type"]
+                .iter()
+                .any(|k| m.get(*k).is_some_and(Value::is_string)))
 }
 
 /// Whether `key` of object `m` holds binary data, which a stub must never replace: `base64`
@@ -653,21 +657,20 @@ fn is_binary_entry(m: &serde_json::Map<String, Value>, key: &str) -> bool {
     if !m.get(key).is_some_and(Value::is_string) {
         return false;
     }
-    // MIME types are case-insensitive. A resource `blob` is base64 whatever its MIME type, so
-    // only `data` can be marked text by one (review of #91).
+    // MIME types are case-insensitive. A `blob` in a binary context is base64 whatever its MIME
+    // type, so only `data` can be marked text by one (review of #91).
     let text_mime = ["mimeType", "media_type", "mime_type"].iter().any(|k| {
         m.get(*k)
             .and_then(Value::as_str)
             .is_some_and(|t| t.to_ascii_lowercase().starts_with("text/"))
     });
+    let binary_context = is_binary_block(m)
+        || ["mimeType", "media_type", "mime_type", "uri"]
+            .iter()
+            .any(|k| m.get(*k).is_some_and(Value::is_string));
     key == "base64"
-        || key == "blob"
-        || (key == "data"
-            && !text_mime
-            && (is_binary_block(m)
-                || ["mimeType", "media_type", "mime_type", "uri"]
-                    .iter()
-                    .any(|k| m.get(*k).is_some_and(Value::is_string))))
+        || (key == "blob" && binary_context)
+        || (key == "data" && !text_mime && binary_context)
 }
 
 /// Whether `v` holds anything a single text stub cannot stand in for: binary data anywhere (the

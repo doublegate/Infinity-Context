@@ -15,11 +15,9 @@ const TERMINAL_INIT: &str = include_str!("../../../integrations/hermes/icx-termi
 const TERMINAL_MANIFEST: &str =
     include_str!("../../../integrations/hermes/icx-terminal/plugin.yaml");
 
-/// Hermes's home: `$HERMES_HOME`, or `~/.hermes`.
+/// Hermes's home, as resolved into [`Opts`].
 pub(crate) fn hermes_home(o: &Opts) -> PathBuf {
-    std::env::var_os("HERMES_HOME")
-        .filter(|v| !v.is_empty())
-        .map_or_else(|| o.home.join(".hermes"), PathBuf::from)
+    o.hermes_home.clone()
 }
 
 pub(crate) fn plan(p: &mut Plan, o: &Opts) {

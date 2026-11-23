@@ -516,6 +516,8 @@ fn binary_detection_needs_a_binary_string() {
         json!({"uri": "https://x.invalid", "data": {"body": lines(800, "body")}}),
         json!({"mimeType": "text/plain", "data": lines(800, "body")}),
         json!([{"type": "issue", "title": lines(800, "body")}]),
+        // A domain `blob` key outside any binary context is ordinary data.
+        json!({"sha": "abc", "blob": lines(800, "body")}),
     ] {
         let mut mmu = InfinityContextMmu::default();
         let out = ClaudeCodeAdapter::handle_hook(

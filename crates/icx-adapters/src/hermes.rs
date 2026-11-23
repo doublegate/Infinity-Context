@@ -1026,18 +1026,17 @@ impl HermesAdapter {
                 // icx's own commands (`icx deref ...` run through the shell) and output that is
                 // already an icx frame are never stored again: a dereferenced artifact would
                 // otherwise come back as another stub (review of #91).
-                let program = command
-                    .split_whitespace()
-                    .find(|w| *w != "env" && (!w.contains('=') || w.starts_with('-')))
-                    .and_then(|w| w.trim_matches(|c| c == '\'' || c == '"').rsplit('/').next());
-                let own = matches!(program, Some("icx" | "icx-hook"))
-                    || output.trim_start().starts_with("⟪ICX:");
+                let own =
+                    crate::shell::runs_icx(command) || output.trim_start().starts_with("⟪ICX:");
                 if output.is_empty() || own {
                     json!({})
                 } else {
                     let subject =
                         format!("terminal:{}", command.chars().take(120).collect::<String>());
                     let failed = exit_code.is_some_and(|c| c != 0);
+                    // Only a known success is stubbed: an unknown status keeps its output too
+                    // (review of #91).
+                    let succeeded = exit_code == Some(0);
                     let res = mmu.ingest_payload_for_subagent(
                         AgentKind::Hermes,
                         &subject,
@@ -1046,7 +1045,7 @@ impl HermesAdapter {
                         failed,
                         None,
                     );
-                    if !failed && res.was_virtualized {
+                    if succeeded && res.was_virtualized {
                         let total_lines = mmu
                             .cas
                             .get_meta(res.artifact_id)

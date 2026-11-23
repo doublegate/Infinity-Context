@@ -42,8 +42,9 @@ gateway stays stopped, Gemini CLI is not installed, and Cursor's usage limit blo
   for the tool that produced them. Binary data (images) is never replaced. `CwdChanged` moves the
   agent to the new project's workspace without loading the store. `additionalContext` is bounded
   to 8,000 characters and 200 lines.
-- **Every adapter seals the cache epoch at compaction and session end**, and Claude Code at a
-  model switch.
+- **Compaction and session end seal the cache epoch** in Claude Code, Codex, Muse, Gemini
+  CLI, Cursor and OpenCode, Hermes seals at `on_pre_compress`, and Claude Code also at a model
+  switch. agy fires neither event; its `Stop` seals only on `max_steps_exceeded` or an error.
 - **agy:** icx's own MCP replies are no longer ingested when agy loads the tool lazily
   (`call_mcp_tool`); the docs no longer claim injected steps are invisible.
 

@@ -66,6 +66,9 @@ pub struct Opts {
     pub icx: String,
     /// Also pre-approve icx's read-only `icx` tool where the agent supports it (T-65-005).
     pub approve: bool,
+    /// Hermes's home (`$HERMES_HOME`, default `~/.hermes`), resolved by the caller like the
+    /// other config roots.
+    pub hermes_home: PathBuf,
 }
 
 /// One file the plan would change.
@@ -393,14 +396,11 @@ fn edit_json(
 /// Whether `command` runs icx (`icx`, or the `icx-hook` wrapper, at any path) for `agent` and
 /// `event`, in any flag order.
 pub fn is_icx_hook_command(command: &str, agent: &str, event: &str) -> bool {
-    let owned = shell_words(command);
-    // Leading `env` and `KEY=value` assignments (`ICX_CURSOR_STUB=1 icx hook ...`) are not the
-    // program (review of #91).
-    let words: Vec<&str> = owned
-        .iter()
-        .map(String::as_str)
-        .skip_while(|w| *w == "env" || (w.contains('=') && !w.starts_with('-')))
-        .collect();
+    // Leading `KEY=value` assignments and an `env` wrapper with its options
+    // (`ICX_CURSOR_STUB=1 icx hook ...`, `env -u VAR icx hook ...`) are not the program.
+    let owned = icx_adapters::shell::shell_words(command);
+    let start = icx_adapters::shell::program_index(&owned).unwrap_or(owned.len());
+    let words: Vec<&str> = owned[start..].iter().map(String::as_str).collect();
     let program = words.first().and_then(|w| w.rsplit('/').next());
     if !matches!(program, Some("icx" | "icx-hook")) {
         return false;
@@ -418,39 +418,6 @@ pub fn is_icx_hook_command(command: &str, agent: &str, event: &str) -> bool {
     };
     value_of("--agent") == Some(agent)
         && value_of("--event").is_some_and(|e| e.eq_ignore_ascii_case(event))
-}
-
-/// Splits a command line into words, honouring single and double quotes, so a quoted program
-/// path with a space stays one word.
-fn shell_words(command: &str) -> Vec<String> {
-    let mut words = Vec::new();
-    let mut cur = String::new();
-    let mut in_word = false;
-    let mut quote: Option<char> = None;
-    for c in command.chars() {
-        match quote {
-            Some(q) if c == q => quote = None,
-            Some(_) => cur.push(c),
-            None if c == '"' || c == '\'' => {
-                quote = Some(c);
-                in_word = true;
-            }
-            None if c.is_whitespace() => {
-                if in_word {
-                    words.push(std::mem::take(&mut cur));
-                    in_word = false;
-                }
-            }
-            None => {
-                cur.push(c);
-                in_word = true;
-            }
-        }
-    }
-    if in_word {
-        words.push(cur);
-    }
-    words
 }
 
 /// Whether any command string anywhere in `v` is an icx hook for `agent` and `event`.
@@ -685,15 +652,24 @@ fn codex(p: &mut Plan, o: &Opts) {
                 t.set_implicit(true);
                 toml_edit::Item::Table(t)
             });
+            let inline_note = format!(
+                "Codex: a `tools` entry under [mcp_servers.icx] in {} is not a standard table; add \
+                 [mcp_servers.icx.tools.icx] approval_mode = \"approve\" by hand.",
+                config.display()
+            );
             if let Some(tools) = tools.as_table_mut() {
                 let tool = tools
                     .entry("icx")
                     .or_insert_with(|| toml_edit::Item::Table(toml_edit::Table::new()));
-                if let Some(tool) = tool.as_table_mut()
-                    && !tool.contains_key("approval_mode")
-                {
-                    tool["approval_mode"] = toml_edit::value("approve");
+                match tool.as_table_mut() {
+                    Some(tool) if !tool.contains_key("approval_mode") => {
+                        tool["approval_mode"] = toml_edit::value("approve");
+                    }
+                    Some(_) => {}
+                    None => p.notes.push(inline_note),
                 }
+            } else {
+                p.notes.push(inline_note);
             }
         } else if servers.contains_key("icx") {
             // An inline table (`icx = { ... }`) or another form icx does not rewrite.
@@ -993,7 +969,7 @@ pub fn render(plan: &Plan) -> String {
 pub fn apply(plan: &Plan, stamp: u64) -> Result<Vec<PathBuf>, String> {
     let mut backups = Vec::new();
     for e in &plan.edits {
-        let target = write_target(&e.path);
+        let target = write_target(&e.path)?;
         let parent = target
             .parent()
             .ok_or_else(|| format!("{} has no parent directory", target.display()))?;
@@ -1007,19 +983,29 @@ pub fn apply(plan: &Plan, stamp: u64) -> Result<Vec<PathBuf>, String> {
             let contents =
                 fs::read(&target).map_err(|err| format!("reading {}: {err}", target.display()))?;
             // A unique name: two installs in one second, or one file in two plans, never collide.
-            let mut backup = target.with_file_name(format!("{name}.icx-backup-{stamp}"));
-            let mut n = 1;
-            while fs::symlink_metadata(&backup).is_ok() {
-                backup = target.with_file_name(format!("{name}.icx-backup-{stamp}-{n}"));
-                n += 1;
-            }
-            write_new(&backup, &contents, mode).map_err(|err| {
-                format!(
-                    "backing up {} to {}: {err}",
-                    target.display(),
-                    backup.display()
-                )
-            })?;
+            // A unique name, claimed by the create itself (`O_EXCL`), so concurrent installs and
+            // installs in the same second never collide (review of #91).
+            let mut n = 0;
+            let backup = loop {
+                let candidate = if n == 0 {
+                    target.with_file_name(format!("{name}.icx-backup-{stamp}"))
+                } else {
+                    target.with_file_name(format!("{name}.icx-backup-{stamp}-{n}"))
+                };
+                match write_new(&candidate, &contents, mode) {
+                    Ok(()) => break candidate,
+                    Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists && n < 1000 => {
+                        n += 1;
+                    }
+                    Err(err) => {
+                        return Err(format!(
+                            "backing up {} to {}: {err}",
+                            target.display(),
+                            candidate.display()
+                        ));
+                    }
+                }
+            };
             backups.push(backup);
         }
         let tmp = target.with_file_name(format!(".{name}.icx-tmp-{}", std::process::id()));
@@ -1049,7 +1035,8 @@ pub fn apply(plan: &Plan, stamp: u64) -> Result<Vec<PathBuf>, String> {
 
 /// The file an edit of `path` writes: the final target of a symlinked config, even one whose
 /// target does not exist yet (a dangling dotfiles link), so the link itself is never replaced.
-fn write_target(path: &Path) -> PathBuf {
+/// A link chain longer than 40 hops (a loop) is an error, never overwritten.
+fn write_target(path: &Path) -> Result<PathBuf, String> {
     let mut current = path.to_path_buf();
     for _ in 0..40 {
         match fs::read_link(&current) {
@@ -1060,10 +1047,13 @@ fn write_target(path: &Path) -> PathBuf {
                     current.parent().map_or(link.clone(), |d| d.join(&link))
                 };
             }
-            Err(_) => break,
+            Err(_) => return Ok(fs::canonicalize(&current).unwrap_or(current)),
         }
     }
-    fs::canonicalize(&current).unwrap_or(current)
+    Err(format!(
+        "{}: too many levels of symbolic links",
+        path.display()
+    ))
 }
 
 /// The permission bits of `path` (special bits dropped), or `0o600` when it does not exist yet.
@@ -1150,6 +1140,7 @@ mod tests {
             claude_home: home.join(".claude"),
             icx: "/opt/icx".to_owned(),
             approve: true,
+            hermes_home: home.join(".hermes"),
         }
     }
 
@@ -1397,6 +1388,58 @@ mod tests {
         let stop = v["infinity-context"]["Stop"].as_array().unwrap();
         assert_eq!(stop.len(), 2, "{stop:?}");
         assert_eq!(stop[0]["command"], "other-tool");
+        let _ = fs::remove_dir_all(&h);
+    }
+
+    #[test]
+    fn a_quoted_icx_path_round_trips_into_the_hook_matcher() {
+        // The review of #91 case: `shell_quote` writes `'\''`, which must read back as one word.
+        for icx in ["/it's/icx", "/opt/my tools/icx", "/plain/icx"] {
+            let mut o = opts(Path::new("/h"));
+            o.icx = icx.to_owned();
+            let cmd = hook_cmd(&o, "codex", "PostToolUse");
+            assert!(is_icx_hook_command(&cmd, "codex", "PostToolUse"), "{cmd}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_loop_is_refused() {
+        let h = scratch("loop");
+        let a = h.join("a.json");
+        let b = h.join("b.json");
+        std::os::unix::fs::symlink(&b, &a).unwrap();
+        std::os::unix::fs::symlink(&a, &b).unwrap();
+        let plan = Plan {
+            edits: vec![FileEdit {
+                path: a.clone(),
+                before: None,
+                after: "{}".into(),
+            }],
+            notes: Vec::new(),
+        };
+        let err = apply(&plan, 3).unwrap_err();
+        assert!(err.contains("symbolic links"), "{err}");
+        assert!(fs::symlink_metadata(&a).unwrap().file_type().is_symlink());
+        let _ = fs::remove_dir_all(&h);
+    }
+
+    #[test]
+    fn inline_codex_tool_tables_get_a_note() {
+        let h = scratch("inline");
+        let o = opts(&h);
+        fs::create_dir_all(h.join(".codex")).unwrap();
+        fs::write(
+            h.join(".codex/config.toml"),
+            "[mcp_servers.icx]\ncommand = \"icx\"\ntools = { icx = { approval_mode = \"prompt\" } }\n",
+        )
+        .unwrap();
+        let p = plan("codex", &o).unwrap();
+        assert!(
+            p.notes.iter().any(|n| n.contains("not a standard table")),
+            "{:?}",
+            p.notes
+        );
         let _ = fs::remove_dir_all(&h);
     }
 }

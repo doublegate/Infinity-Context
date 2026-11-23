@@ -165,7 +165,7 @@ fn agents() -> Vec<Agent> {
             session_end: None,
             verified: "documented contract, stand-in tests; live deferred (#89)",
             fixtures: None,
-            shrink_route: Some("opt-in plugin `icx-terminal`; live check deferred (#89)"),
+            shrink_route: Some("plugin `icx-terminal`; live check deferred, #89"),
             approval: "MCP is optional; no rule written",
         },
         Agent {
@@ -235,7 +235,7 @@ fn row(a: &Agent) -> String {
     let ingests = mmu.cas.artifact_count() > before;
     let shrinks = if plain.contains("ICX:STUB") {
         a.shrink_route
-            .map_or_else(|| "yes".to_owned(), |r| format!("yes, via the {r}"))
+            .map_or_else(|| "yes".to_owned(), |r| format!("opt-in ({r})"))
     } else if let Some((h, flag)) = a.opt_in {
         let mut mmu = InfinityContextMmu::default();
         let on = h(event, &payload.to_string(), &mut mmu, true).unwrap_or_default();
@@ -299,10 +299,12 @@ fn generate() -> String {
         out.push('\n');
     }
     out.push_str(
-        "\nA \"yes\" in the shrink column is backed by a test that fails when the agent ignores \
-         the replacement: `scripts/live-claude-replacement-check.sh` for Claude Code (live, by \
-         hand) and the Sprint 3 live run for OpenCode. Codex, agy and Muse were checked live and \
-         ignore or refuse replacement, so icx only ingests there.\n",
+        "\nThe one \"yes\" in the shrink column, Claude Code, is backed by a test that fails \
+         when the agent ignores the replacement (`scripts/live-claude-replacement-check.sh`, run \
+         live by hand). Of the opt-in routes, OpenCode's was checked live in Sprint 3; Hermes, \
+         Gemini CLI and Cursor follow their documented contracts until the live checks in #89. \
+         Codex, agy and Muse were checked live and ignore or refuse replacement, so icx only \
+         ingests there.\n",
     );
     out
 }

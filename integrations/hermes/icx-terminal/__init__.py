@@ -26,6 +26,7 @@ import json
 import logging
 import math
 import os
+import shlex
 import shutil
 import subprocess
 from typing import Any
@@ -36,15 +37,22 @@ _MAX_PAYLOAD_BYTES = 64 * 1024 * 1024
 _STUB_PREFIX = "⟪ICX:STUB│#icx:"
 
 
+def _is_program(path: str) -> bool:
+    return os.path.isfile(path) and os.access(path, os.X_OK)
+
+
 def _icx_bin() -> str | None:
     explicit = os.environ.get("ICX_BIN")
     if explicit:
-        return explicit if os.access(explicit, os.X_OK) else None
+        # A bare name is looked up on PATH; a directory is never a program.
+        if "/" not in explicit:
+            return shutil.which(explicit)
+        return explicit if _is_program(explicit) else None
     found = shutil.which("icx")
     if found:
         return found
     fallback = os.path.expanduser("~/.local/bin/icx")
-    return fallback if os.access(fallback, os.X_OK) else None
+    return fallback if _is_program(fallback) else None
 
 
 def _env_number(name: str, default: float, floor: float) -> float:
@@ -57,11 +65,24 @@ def _env_number(name: str, default: float, floor: float) -> float:
 
 
 def _is_own_command(command: str) -> bool:
-    """icx's own commands (`icx deref ...`), whose output must never be stubbed again."""
-    for word in command.split():
-        if word == "env" or ("=" in word and not word.startswith("-")):
-            continue
-        return word.strip("'\"").rsplit("/", 1)[-1] in ("icx", "icx-hook")
+    """icx's own commands (`icx deref ...`), whose output must never be stubbed again: the first
+    word past `KEY=value` assignments and an `env` wrapper with its options, quotes honoured."""
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        words = command.split()
+    i = 0
+    while i < len(words):
+        w = words[i]
+        name, eq, _ = w.partition("=")
+        if eq and name and name.replace("_", "").isalnum():
+            i += 1
+        elif w == "env" or w.endswith("/env"):
+            i += 1
+            while i < len(words) and words[i].startswith("-"):
+                i += 2 if words[i] in ("-u", "--unset", "-C", "--chdir", "-S") else 1
+        else:
+            return w.rsplit("/", 1)[-1] in ("icx", "icx-hook")
     return False
 
 

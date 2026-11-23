@@ -27,12 +27,14 @@ icx calls), ``ICX_HERMES_TIMEOUT`` (seconds, default 10).
 
 from __future__ import annotations
 
+import functools
 import inspect
 import json
 import logging
 import math
 import os
 import queue
+import re
 import shutil
 import subprocess
 import threading
@@ -70,15 +72,22 @@ _COMPRESSION_KEYS = {
 }
 
 
+def _is_program(path: str) -> bool:
+    return os.path.isfile(path) and os.access(path, os.X_OK)
+
+
 def _icx_bin() -> str | None:
     explicit = os.environ.get("ICX_BIN")
     if explicit:
-        return explicit if os.access(explicit, os.X_OK) else None
+        # A bare name is looked up on PATH; a directory is never a program (review of #91).
+        if "/" not in explicit:
+            return shutil.which(explicit)
+        return explicit if _is_program(explicit) else None
     found = shutil.which("icx")
     if found:
         return found
     fallback = os.path.expanduser("~/.local/bin/icx")
-    return fallback if os.access(fallback, os.X_OK) else None
+    return fallback if _is_program(fallback) else None
 
 
 def _timeout() -> float:
@@ -90,17 +99,25 @@ def _timeout() -> float:
     return max(1.0, value) if math.isfinite(value) else 10.0
 
 
-def call_icx(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-    """Runs one icx hook; returns the parsed reply, or None on any failure (fail open)."""
+def encode(payload: dict[str, Any]) -> bytes | None:
+    """The payload as icx's stdin, or None when it cannot be serialized."""
+    try:
+        return json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        logger.debug("icx payload not serializable: %s", exc)
+        return None
+
+
+def call_icx(event: str, payload: dict[str, Any] | bytes) -> dict[str, Any] | None:
+    """Runs one icx hook; returns the parsed reply, or None on any failure (fail open). An
+    already encoded payload is sent as is."""
     if os.environ.get("ICX_HERMES_DISABLE") == "1":
         return None
     binary = _icx_bin()
     if binary is None:
         return None
-    try:
-        data = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
-    except (TypeError, ValueError) as exc:
-        logger.debug("icx %s: payload not serializable: %s", event, exc)
+    data = payload if isinstance(payload, bytes) else encode(payload)
+    if data is None:
         return None
     if len(data) > _MAX_PAYLOAD_BYTES:
         logger.debug(
@@ -176,6 +193,12 @@ class _Worker:
 
 
 WORKER = _Worker()
+# Guards each engine's tail slot against a fetch racing a newer session start or a reset.
+# Module-level, so `clone_for_agent()`'s deep copy of the engine never meets a lock.
+_TAIL_LOCK = threading.Lock()
+# Opening and closing `icx-context` tags in any case or spacing, which untrusted text must not
+# be able to write (review of #91).
+_FRAME_TAG = re.compile(r"<(\s*/?\s*icx-context)", re.IGNORECASE)
 
 
 def _hermes_config() -> dict[str, Any]:
@@ -257,15 +280,12 @@ class IcxContextEngine(ContextCompressor):
             super().on_turn_complete(messages, usage=usage, **kwargs)
         finally:
             new = self._delta(messages or [])
-            if new:
-                # A copy, taken now: Hermes may change its message dicts before the worker runs.
-                try:
-                    new = json.loads(json.dumps(new, ensure_ascii=False, default=str))
-                except (TypeError, ValueError):
-                    new = []
-            if new:
-                WORKER.submit(lambda: call_icx("on_turn_complete", {"messages": new}))
+            # Encoded now, once: Hermes may change its message dicts before the worker runs.
+            data = encode({"messages": new}) if new else None
+            if data is not None:
+                WORKER.submit(lambda: call_icx("on_turn_complete", data))
 
+    @functools.wraps(ContextCompressor.compress)
     def compress(
         self, messages: list[dict[str, Any]], *args: Any, **kwargs: Any
     ) -> list[dict[str, Any]]:
@@ -287,21 +307,24 @@ class IcxContextEngine(ContextCompressor):
         finally:
             if kwargs.get("boundary_reason") != "compression":
                 self._icx_ingested = 0
-            self._icx_tail = None
-            self._icx_tail_generation += 1
-            generation = self._icx_tail_generation
+            with _TAIL_LOCK:
+                self._icx_tail = None
+                self._icx_tail_generation += 1
+                generation = self._icx_tail_generation
 
             def fetch() -> None:
                 reply = call_icx("SessionStart", {"session_id": session_id})
                 tail = reply.get("systemMessage") if reply else None
-                # A newer session start supersedes this fetch.
-                if (
+                if not (
                     isinstance(tail, str)
                     and tail.strip()
                     and len(tail) <= _MAX_TAIL_CHARS
-                    and generation == self._icx_tail_generation
                 ):
-                    self._icx_tail = tail.strip()
+                    return
+                # A newer session start or a reset supersedes this fetch.
+                with _TAIL_LOCK:
+                    if generation == self._icx_tail_generation:
+                        self._icx_tail = tail.strip()
 
             WORKER.submit(fetch)
 
@@ -309,9 +332,10 @@ class IcxContextEngine(ContextCompressor):
         try:
             super().on_session_reset()
         finally:
-            self._icx_tail = None
-            self._icx_ingested = 0
-            self._icx_tail_generation += 1
+            with _TAIL_LOCK:
+                self._icx_tail = None
+                self._icx_ingested = 0
+                self._icx_tail_generation += 1
 
     def select_context(
         self,
@@ -324,11 +348,20 @@ class IcxContextEngine(ContextCompressor):
         """Prepends the session's icx tail slot, labelled as untrusted data, to the first user
         message of the request (request-only, fail open). Returns None to leave the request
         unchanged."""
-        tail = getattr(self, "_icx_tail", None)
-        if not tail or not request_messages:
+        with _TAIL_LOCK:
+            tail = getattr(self, "_icx_tail", None)
+            generation = getattr(self, "_icx_tail_generation", 0)
+            # Decided once per session, at its first request: a tail that arrives later is not
+            # added to a first message already sent, which would change the cached prompt
+            # prefix (review of #91).
+            if getattr(self, "_icx_tail_decided", None) != generation:
+                self._icx_tail_decided = generation
+                self._icx_tail_inject = bool(tail)
+            inject = getattr(self, "_icx_tail_inject", False)
+        if not inject or not tail or not request_messages:
             return None
-        # Untrusted text cannot close the frame early (review of #91).
-        safe_tail = tail.replace("</icx-context", "<\\/icx-context")
+        # Untrusted text cannot open or close the frame, in any case or spacing.
+        safe_tail = _FRAME_TAG.sub(lambda m: "&lt;" + m.group(1), tail)
         block = (
             f"{_TAIL_OPEN}\n"
             "Shared working context from icx (recent activity of this and other agents, and recall "
