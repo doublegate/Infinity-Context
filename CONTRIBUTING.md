@@ -15,6 +15,11 @@
    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
    cargo run --release -p icx-cli -- benchmark
    uvx reuse lint
+   # Agent plugins (when integrations/ changes): OpenCode needs Bun
+   cargo build -p icx-cli
+   ICX_BIN=target/debug/icx bun test integrations/opencode
+   ICX_BIN=target/debug/icx python3 -I -m unittest discover -s integrations/hermes/tests
+   uvx ruff check integrations/hermes && uvx ruff format --check integrations/hermes
    ```
 
 ## Licensing & Contributor License Agreement (CLA)

@@ -23,6 +23,8 @@ icx-hdc.workspace = true
 icx-proxy.workspace = true
 icx-store.workspace = true
 serde_json.workspace = true
+toml_edit.workspace = true
+similar.workspace = true
 
 # Only the Unix-socket daemon (`src/daemon.rs`, `#[cfg(unix)]`) uses these.
 [target.'cfg(unix)'.dependencies]

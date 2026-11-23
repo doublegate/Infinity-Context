@@ -1,0 +1,10 @@
+{
+  "cwd": "/home/user/project",
+  "hook_event_name": "UserPromptSubmit",
+  "model": "gpt-6.1-sol",
+  "permission_mode": "default",
+  "prompt": "Do exactly three tool calls, in order, then stop: (1) run the shell command seq 1 3000 (2) call the MCP tool icx with {\"op\":\"status\"} (3) call the MCP tool icx_write with {\"op\":\"fold\",\"q\":\"begin:codex-prompt\"}. Then reply with three lines: the first line each call returned, or DENIED with the reason for one that did not run.",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "/home/user/.codex/sessions/2026/11/23/rollout-2026-11-23T00-31-15-00000000-0000-4000-8000-000000000001.jsonl",
+  "turn_id": "00000000-0000-4000-8000-000000000002"
+}

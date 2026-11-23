@@ -23,7 +23,33 @@ Re-check before the sprint starts:
 
 ### Research notes
 
-_None recorded yet._
+**2026-11-23, research gate** (Phase 6 Sprint 5 exit re-scan; crates.io metadata, dependency
+trees resolved in a scratch crate, upstream sources):
+
+| Option | Version (date) | License | Footprint | Fit |
+| --- | --- | --- | --- | --- |
+| SQLite FTS5 in the existing store | bundled SQLite 3.54.1 (`rusqlite` 0.43, `bundled`) | public domain | no new crate | `porter unicode61 remove_diacritics 2` and `trigram` tokenizers both available (checked in a probe test); the index lives in `icx.sqlite3` and updates per insert |
+| `tantivy` | 0.27.0 (2026-10-17) | MIT | 118+ dependencies | BM25 and RAM directory, but no trigram tokenizer and no serialise-to-bytes API; heavy |
+| `bm25` | 2.3.2 (2025-09-07) | MIT | 4 dependencies without `default_tokenizer` | BM25 only; no trigram, no serde (rebuild on load) |
+| `probly-search` | 2.0.1 (2024-07-03) | MIT | 12 | dormant; no trigram |
+| `fst` | 0.4.7 (2021-06-06) | Unlicense/MIT | 2 | immutable term dictionary; a building block only |
+| `seekstorm` | 5.1.0 (2026-11-15) | Apache-2.0 | 277, with licenses outside the `cargo deny` allowlist | rejected |
+
+- **RRF:** score = Σ 1/(k + rank), k = 60 (Cormack, Clarke and Büttcher, SIGIR 2009). Elastic's
+  tuning found k insensitive (about 5% between best and worst) and that a weighted linear
+  combination beats RRF only with labelled queries (about 40 sufficed on one set). Plain RRF is
+  the default without labels.
+- **context-mode** (HEAD `0fe3f5d`, v2.2.2; Elastic-2.0, so ideas only, no code): SQLite FTS5 with
+  a porter `unicode61` table and a separate `trigram` table, both ranked by `bm25()`, fused by
+  RRF with `RRF_K = 60`; no diversity re-ranking.
+- **rust-memex** 0.6.4: weighted RRF (lexical 0.4, vector 0.6, k = 60) and at most 3 results per
+  source, a diversity cap worth evaluating.
+- **Not verified:** the paper's text (the PDF did not extract; k = 60 is confirmed by secondary
+  sources).
+
+**Ticket changes:** T-71-001 uses SQLite FTS5 tables in the workspace store instead of a separate
+crate or snapshot index. T-71-002 starts from plain RRF at k = 60 and adds per-list weights and a
+per-source cap only if the evaluation set (Sprint 2) shows a gain.
 
 ## Tickets
 
@@ -38,10 +64,11 @@ synthetic set and then on the real-session set.
 
 **Acceptance Criteria:**
 
-- [ ] Index built at ingest and loaded with the snapshot; rebuildable from the CAS.
+- [ ] Index kept in SQLite FTS5 tables of the workspace store (a porter `unicode61` table for
+  BM25, a `trigram` table for substrings), written at ingest; rebuildable from the CAS.
 - [ ] Tokenizer handles code identifiers (camelCase, snake_case, paths) with tests.
 - [ ] Ingest and query time measured and published in `docs/numbers.md`.
-- [ ] Snapshot format change versioned and documented.
+- [ ] Store schema change versioned through a migration and documented.
 
 **Dependencies:** None
 
@@ -63,6 +90,8 @@ training split only.
 
 **Acceptance Criteria:**
 
+- [ ] RRF with k = 60 by default (research gate, 2026-11-23); per-list weights and a per-source
+  cap only if Sprint 2's evaluation set shows a gain.
 - [ ] Fusion is deterministic for equal scores (stable tie-break by handle).
 - [ ] `legacy` output is byte-identical to v1.4.0.
 - [ ] recall@k and MRR for each ranker and for RRF measured and published in `docs/numbers.md`.

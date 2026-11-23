@@ -65,8 +65,9 @@ check() { # $1: label, $2: settings file, $3: allowed tools (comma-separated), $
 ASK='Then reply with only the first line of the result exactly as you received it.'
 check "Bash" "$ROOT/plain.json" Bash "Use the Bash tool to run exactly: seq 1 3000. $ASK"
 check "Read" "$ROOT/plain.json" Read "Use the Read tool once to read big.txt. $ASK"
-# REPL is the Code Mode tool; Bash is allowed too, in case Code Mode is off for the account.
-check "Code Mode script" "$ROOT/codemode.json" REPL,Bash \
+# Only REPL, the Code Mode tool, is allowed: a direct Bash call would pass without exercising the
+# script path, so with Code Mode off this check fails rather than passing on Bash.
+check "Code Mode script" "$ROOT/codemode.json" REPL \
     "Run the shell command seq 1 3000 once, using whatever tool you normally would. $ASK"
 
 if [ "$errors" -gt 0 ]; then
@@ -77,4 +78,5 @@ if [ "$failures" -gt 0 ]; then
     echo "$failures check(s) failed: Claude Code may be ignoring updatedToolOutput" >&2
     exit 1
 fi
-echo "all checks passed (Claude Code $(claude --version 2>/dev/null | head -1))"
+version=$(claude --version 2>/dev/null || true)
+echo "all checks passed (Claude Code ${version%%$'\n'*})"

@@ -8,9 +8,16 @@
 
 ## 1. Purpose
 
-`crates/icx-adapters` and `crates/icx-proxy` connect the **Infinity-Context (`icx`)** Virtual Context MMU to agent CLIs. They implement five native hook adapters (**Claude Code**, **OpenAI Codex CLI**, **Google Antigravity CLI (`agy`)**, **Hermes Agent**, **Meta Muse Code**), the single-tool MCP pager (`McpPagerServer`), and an **HTTP/1.1 & SSE Cache-Epoch reverse proxy** (`WireProxyTransformer`).
+`crates/icx-adapters` and `crates/icx-proxy` connect the **Infinity-Context (`icx`)** Virtual Context MMU to agent CLIs. They implement eight hook adapters (**Claude Code**, **OpenAI Codex CLI**, **Google Antigravity CLI (`agy`)**, **Hermes Agent**, **Meta Muse Code**, **Google Gemini CLI**, **Cursor** and **OpenCode**), the MCP pager (`McpPagerServer`, tools `icx` and `icx_write`), and an **HTTP/1.1 & SSE Cache-Epoch reverse proxy** (`WireProxyTransformer`).
 
-Hook contracts below were checked against upstream documentation on 2026-11-18 (Claude Code 2.1.328, codex-cli 0.170.0, agy 1.5.11, Hermes source `dc394c6`). `crates/icx-adapters/tests/claude_contract.rs` pins the Claude Code output shapes; the other adapters are covered by unit tests, not by fixtures captured from live agent runs.
+**Capability matrix:** [`capability-matrix.md`](capability-matrix.md), generated from the adapters by `tests/capability_matrix.rs` (CI fails when it is out of date).
+
+**Live coverage (v1.4.0).** Contract tests replay payloads captured from live runs and sanitized by `scripts/sanitize-hook-fixtures.py`, under `crates/icx-adapters/tests/fixtures/<agent>/<version>/`:
+
+- **Codex CLI 0.171.0** (`codex_fixtures.rs`), **agy 1.5.14** (`agy_fixtures.rs`) and **Muse Code 1.4.25** (`muse_fixtures.rs`).
+- **Claude Code 2.1.330:** output shapes from live runs pinned in `claude_builtin_shapes.rs` and `claude_contract.rs`; `scripts/live-claude-replacement-check.sh` repeats the live check.
+- **OpenCode v2.2.7:** verified live (Sprint 3); its contract tests use the plugin's payload format.
+- **Following the documented contract only, live runs deferred to v1.5.0 (#89):** Hermes (the gateway stays stopped), Gemini CLI (not installed) and Cursor (tool-call capture blocked by its usage limit; its session events were captured live).
 
 The v1.2.0 Codex correction is also pinned by `protocol_validation.rs` and the local
 Codex 0.171 diagnostic: tool-output replacement is unsupported. The tests exercise adapter
@@ -77,9 +84,9 @@ writes the text to a file and the model sees a preview. Every icx reply stays wi
      2. Chunks and commits the bytes into `CasStore`, obtaining `#icx:<16-hex>`.
      3. Runs `StructuralSkeletonizer`, the Titans-inspired `TitansSurpriseGate` heuristic, and `AhtlEncoder` to produce a compact stub.
      4. Publishes a summary frame on the bus.
-     5. Returns `updatedToolOutput` **in the tool's own output shape**. Claude Code ignores a replacement whose shape does not match the tool's output. For Bash the object `{stdout, stderr, interrupted, isImage}` is returned with the stub in `stdout`; for other object outputs all fields are kept and the largest string leaf is replaced. MCP tools (`mcp__*`) additionally get `updatedMCPToolOutput` (string).
-        - **Verified live on 2.1.330** (T-64-001) for Bash, Read, Grep, Glob, WebSearch and Agent, and in Code Mode for a Bash call inside a script and for the script (`REPL`) itself: in each case the model saw the stub. An Agent report's content blocks are replaced by one stub block. `scripts/live-claude-replacement-check.sh` repeats the check after a Claude Code update.
-        - **What is stored:** the tool's text, so a stub's line range is real: Read's `file.content`, Grep's `content` (or its file list), Glob's `filenames` one per line, and a script's `result` plus labelled `stdout`/`stderr`. Image reads and unknown shapes are stored as JSON.
+     5. Returns `updatedToolOutput` **in the tool's own output shape**. Claude Code ignores a replacement whose shape does not match the tool's output. For Bash the object `{stdout, stderr, interrupted, isImage}` is returned with the stub in `stdout`; for a built-in tool (`Read`, `Grep`, `Glob`, `WebFetch`, `Agent`, `REPL`, identified by `tool_name`) the stub replaces exactly the field that was stored; for other object outputs every field is kept and the largest text value is replaced. Binary data is never replaced: `image`, `audio` and `base64` blocks and `blob` resources are left whole, and when no text value can take the stub (an image `Read`, an image-only report), no replacement is sent and the result is only stored. MCP tools (`mcp__*`) also get `updatedMCPToolOutput`, a string for the whole result, but only when every content block is text and nothing is binary, so images, resources and resource links are never dropped.
+        - **Verified live on 2.1.330** (T-64-001) for Bash, Read, Grep, Glob, WebSearch and Agent, and in Code Mode for a Bash call inside a script and for the script (`REPL`) itself: in each case the model saw the stub. An Agent report's text blocks are replaced by one stub block; its image and resource blocks are kept. `scripts/live-claude-replacement-check.sh` repeats the check after a Claude Code update.
+        - **What is stored:** the tool's text, so a stub's line range is real: Read's `file.content`, Grep's `content` (or its file list), Glob's `filenames` one per line, WebFetch's `result`, an Agent report's text blocks, and a script's `result` plus labelled `stdout`/`stderr`. Image reads and other shapes are stored as JSON.
         - **Code Mode scripts:** a `REPL` result (`{code, result, stdout, stderr}`, plus `toolsUsed` when it called a tool) gets the stub in `result`, with `code` left as is. Claude Code elides a script result above about 30,000 characters before the hook sees it.
 
        Example:
@@ -183,7 +190,7 @@ Upstream reference: <https://antigravity.google/docs/hooks>. Hooks are configure
      }
      ```
 
-   - The `metadata.user_markdown` key is intended to keep the frame out of the chat UI; it is not documented upstream, so that effect is unverified.
+   - **Injected steps are visible to the user.** The `metadata.user_markdown` key was meant to keep the frame out of the chat UI, but on agy 1.5.14 it hides nothing: the terminal UI never reads it and the web UI treats an empty value as unset (Sprint 1, T-65-003). `renderInfo.hidden` is untested in the terminal UI, so icx does not emit it.
    - `PostInvocation` never sets `force_continue` (v1.0.x did when the input carried `forceContinue`).
 2. **`PreToolUse`:**
    - agy requires a `decision`. icx always returns `{"decision": "allow"}`, expressing no opinion, and never modifies the tool call. v1.0.x echoed `decision` / `overwrite` from its input; that was removed. Registering this hook is unnecessary.
@@ -207,8 +214,8 @@ Upstream reference: <https://antigravity.google/docs/hooks>. Hooks are configure
 
 Target: the Hermes `ContextEngine` ABC (`agent/context_engine.py`) and `MemoryProvider.on_pre_compress` (`agent/memory_provider.py`).
 
-- `HermesAdapter` implements the context-engine logic in Rust: `select_context`, `prune_tool_results_only`, `compress`, `on_turn_complete`, `on_pre_compress` (checkpoint API version 2), and `SessionStart`, all reachable through `icx hook --agent hermes --event <name>` with a JSON payload on stdin. The JSON contract is listed in the [deployment guide §2.5](deployment-and-agent-integration-guide.md#25-hermes-agent-configuration-contextengine-plugin).
-- **No Python plugin or shim ships in this repository.** To use icx with Hermes, a user must write a `ContextEngine` plugin that calls `icx hook --agent hermes ...`. The plugin must implement the abstract `name` property, `update_from_response`, `should_compress`, and `compress`; `select_context`, `on_turn_complete`, and `prune_tool_results_only` are optional. Hermes loads context-engine plugins from `plugins/context_engine/<name>/` or `$HERMES_HOME/plugins/<name>/`, selected by `context.engine` in `~/.hermes/config.yaml`.
+- `HermesAdapter` implements the context-engine logic in Rust: `select_context`, `prune_tool_results_only`, `compress`, `on_turn_complete`, `on_pre_compress` (checkpoint API version 2), `SessionStart` and `transform_terminal_output`, all reachable through `icx hook --agent hermes --event <name>` with a JSON payload on stdin. The JSON contract is listed in the [deployment guide §2.5](deployment-and-agent-integration-guide.md#25-hermes-agent-configuration-contextengine-plugin).
+- **Shipped plugins (v1.4.0, T-65-002/009):** `integrations/hermes/icx/` is a `ContextEngine` plugin (Hermes's built-in compressor with the user's `compression:` settings, plus per-turn delta ingestion on one bounded worker, an `on_pre_compress` checkpoint before each compaction and a background tail-slot fetch injected by `select_context` as untrusted user-turn data); `integrations/hermes/icx-terminal/` is an optional general plugin that answers `transform_terminal_output` through the adapter's `transform_terminal_output` event (`{"output": stub}` for a large successful result, `{}` otherwise). Both are pinned to Hermes `>=0.23.3,<0.24`, fail open, and are tested against stand-ins (`integrations/hermes/tests/`); live verification is deferred to v1.5.0 (#89). The shipped engine does not use the adapter's own `select_context` / `prune_tool_results_only` rewrites, because Hermes persists pruned history through its session database.
 - Hermes has no `hooks.yaml`. Its shell hooks (under `hooks:` in `config.yaml`, snake_case events such as `pre_tool_call` and `on_session_start`) and gateway hooks (`~/.hermes/hooks/<name>/HOOK.yaml`) are not handled by icx.
 - `select_context` replaces middle-history messages with one `icx_cache_epoch` system message plus an `icx_tail_slot` message, without touching Hermes's `state.db` `messages` table. Preserved verbatim: the protected head and tail, `icx` pager results, messages with structured non-text content, and complete `tool_calls` groups.
 

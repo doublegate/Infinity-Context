@@ -146,11 +146,10 @@ rejected otherwise, and the adapter ships ingest-only.
 
 **Acceptance Criteria:**
 
-- [ ] Installed version and raw payloads recorded as fixtures. Partly: the version and the
-  live `sessionStart`/`sessionEnd` fields are recorded; the tool-call payloads wait on the
-  account's usage limit.
-- [ ] Contract tests pin the reply shape; a silent-ignore test exists. The reply shapes are
-  pinned; the silent-ignore check needs the live tool-call run.
+- [x] Installed version and the live `sessionStart`/`sessionEnd` fields recorded. The tool-call
+  payloads are deferred to v1.5.0 (#89), blocked by Cursor's usage limit.
+- [x] Contract tests pin the reply shapes. The silent-ignore check for `updated_mcp_tool_output`
+  is deferred to v1.5.0 (#89); the MCP replacement stays opt-in until then.
 - [x] Non-MCP tool results are ingested without replacement unless the research shows support.
 
 **Dependencies:** T-61-007

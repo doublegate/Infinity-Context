@@ -60,6 +60,10 @@ rustix = { version = "1.1.6", features = ["event", "fs", "net", "process"] }
 # (ruzstd 0.9.1 does not).
 ruzstd = "0.9.1"
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }
+# `icx install` (T-65-004): format-preserving edits of Codex's config.toml, and the unified diffs
+# that --dry-run prints.
+toml_edit = "0.25.20"
+similar = { version = "3.2.1", default-features = false, features = ["text"] }
 icx-core = { path = "crates/icx-core", version = "1.3.2" }
 icx-hdc = { path = "crates/icx-hdc", version = "1.3.2" }
 icx-codec = { path = "crates/icx-codec", version = "1.3.2" }

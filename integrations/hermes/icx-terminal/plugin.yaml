@@ -1,0 +1,8 @@
+name: icx-terminal
+version: 1.4.0
+description: "Infinity-Context (icx) shell-output stubbing: a large successful terminal result is stored in icx and replaced by its #icx stub, which the icx MCP tool dereferences losslessly. Off until listed in plugins.enabled. Fails open."
+author: "DoubleGate"
+license: "GPL-3.0-or-later AND AGPL-3.0-or-later"
+requires_hermes: ">=0.23.3,<0.24"
+provides_hooks:
+  - transform_terminal_output

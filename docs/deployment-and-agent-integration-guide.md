@@ -27,7 +27,7 @@ contract; no live paid-provider acceptance is claimed.
 ## Table of Contents
 
 1. [Executive Architectural Overview & Memory Tier Matrix](#1-executive-architectural-overview--memory-tier-matrix)
-2. [End-to-End Setup & Configuration Guide (Mode A: Standalone `icx`)](#2-end-to-end-setup--configuration-guide-mode-a-standalone-icx)
+2. [End-to-End Setup & Configuration Guide (Mode A: Standalone `icx`)](#2-end-to-end-setup--configuration-guide-mode-a-standalone-icx); [automated install with `icx install`](#211-automated-install-icx-install-v140)
 3. [Dual-Stack Integration (`icx` + `ai-memory` Coexistence Architecture — Mode B)](#3-dual-stack-integration-icx--ai-memory-coexistence-architecture--mode-b)
 4. [Co-Existence with Native Agent Context Windows & Compaction Behavior](#4-co-existence-with-native-agent-context-windows--compaction-behavior)
 5. [Recommendations & Best Practices for Use](#5-recommendations--best-practices-for-use)
@@ -248,7 +248,7 @@ Register only the events icx handles. `PreToolUse` and `Stop` are omitted: icx m
     ],
     "PostToolUse": [
       {
-        "matcher": "^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!icx__).+)$",
+        "matcher": "^(Bash|BashOutput|Read|Grep|Glob|WebFetch|WebSearch|Agent|Task|REPL|mcp__(?!icx__).+)$",
         "hooks": [
           { "type": "command", "command": "icx hook --agent claude-code --event PostToolUse" }
         ]
@@ -477,15 +477,57 @@ agy launches MCP servers from the project directory (verified: the `icx` MCP `st
 
 ### 2.5 Hermes Agent Configuration (`ContextEngine` Plugin)
 
-The Rust `HermesAdapter` implements the context-engine logic, but **this repository does not ship a Hermes plugin or Python shim.** To use icx with Hermes you must write a small `ContextEngine` plugin that calls `icx hook --agent hermes --event <EVENT>` with a JSON payload on stdin and parses the JSON reply.
+icx ships two Hermes plugins in `integrations/hermes/`, written against Hermes v0.23.3 (commit
+`caafe5389ae`). Their manifests require `>=0.23.3,<0.24`, so another Hermes release refuses
+them until they are re-checked and Hermes uses its built-in compressor.
 
-Requirements on the Hermes side (from `agent/context_engine.py` in the Hermes source):
+**Verification status (v1.4.0):** both plugins are tested against stand-ins for the Hermes
+interfaces they use (`integrations/hermes/tests/`, run in CI with the real `icx` binary). They
+have not run inside a live Hermes session: the Hermes gateway stays stopped for this release, and
+the live check is deferred to v1.5.0 (#89).
 
-- The abstract members `name` (property), `update_from_response`, `should_compress`, and `compress` must be implemented, or the class cannot be instantiated. `select_context`, `on_turn_complete`, and `prune_tool_results_only` are optional.
-- Context-engine plugins are loaded from the bundled `plugins/context_engine/<name>/` or from `$HERMES_HOME/plugins/<name>/`, and selected with `context.engine` in `~/.hermes/config.yaml`.
-- Hermes has no `~/.hermes/hooks.yaml`. Its shell hooks live under `hooks:` in `config.yaml` and use snake_case event names (for example `pre_tool_call` and `on_session_start`; unknown names are refused). Gateway hooks use `~/.hermes/hooks/<name>/HOOK.yaml`. icx does not handle either kind of hook event.
+**Install** with `icx install --agent hermes` (it copies both plugins into
+`$HERMES_HOME/plugins/`, default `~/.hermes/plugins/`, with backups), or copy the two directories
+by hand. Then edit `~/.hermes/config.yaml` yourself; icx does not rewrite YAML:
 
-Events `icx hook --agent hermes` handles, and their JSON contract:
+```yaml
+context:
+  engine: icx            # the icx context engine
+plugins:
+  enabled: [icx-terminal] # optional: shell-output stubbing
+```
+
+**`icx`, the context engine** (`integrations/hermes/icx/`):
+
+- It is Hermes's built-in `ContextCompressor`, built with your `compression:` settings (threshold,
+  protected messages, target ratio, prune and tail settings). Hermes passes those settings only to
+  its own compressor, so the engine reads them from Hermes's config itself.
+- `on_turn_complete`: the messages added since the last ingested turn go to icx on one
+  background worker with a bounded queue. A full queue drops the batch rather than blocking.
+- `compress`: before Hermes summarizes, icx checkpoints the full history, so what the summary
+  drops stays retrievable with the `icx` MCP tool.
+- `on_session_start`: the icx tail slot is fetched in the background, at start and after each
+  compaction, so Hermes never waits for icx.
+- `select_context`: once fetched, the tail slot is prepended to the first user message of each
+  request in `<icx-context trust="untrusted-data">`. It quotes tool output and other agents'
+  commands, so it never goes into the system prompt, and it is never written to the session
+  database.
+
+**`icx-terminal`, shell-output stubbing** (`integrations/hermes/icx-terminal/`, off until listed
+in `plugins.enabled`):
+
+- It registers `transform_terminal_output`, the only Hermes seam that replaces shell output. A
+  context engine cannot register it, hence the separate plugin.
+- A successful result of at least `ICX_HERMES_STUB_MIN_BYTES` (default 2048) bytes is stored in
+  icx and replaced by its stub; the `#icx:` handle dereferences to the full output. A failed
+  command keeps its output, so the model sees the error. Hermes applies its output limit after
+  the replacement.
+
+**Both fail open:** if icx is missing, errors, or takes longer than `ICX_HERMES_TIMEOUT` seconds
+(default 10), Hermes behaves as without them. `ICX_HERMES_DISABLE=1` turns every icx call off;
+`ICX_BIN` names the binary (default: `icx` on `PATH`, then `~/.local/bin/icx`). `ICX_HERMES_TAIL_WAIT` (seconds, default 2) is how long a session's first request waits for the tail slot; a tail that arrives later is used from the next session or compaction on.
+
+**The `icx hook --agent hermes` events**, for anyone writing their own integration:
 
 | `--event` | stdin fields | stdout |
 | :--- | :--- | :--- |
@@ -495,8 +537,12 @@ Events `icx hook --agent hermes` handles, and their JSON contract:
 | `on_turn_complete` | `messages` | `{"ingested_count": N}` |
 | `on_pre_compress` | `messages` | `{"checkpoint_version": 2, "checkpoint": "..."}` |
 | `SessionStart` | — | `{"systemMessage": "<tail slot>"}` |
+| `transform_terminal_output` | `command`, `output`, `returncode` | `{"output": "<stub>"}`, or `{}` to keep the output |
 
-A shim should fail open: if `icx` exits non-zero or prints nothing, return the messages unchanged. The MCP pager can be registered under `mcp_servers` in `~/.hermes/config.yaml` (`command: icx`, `args: ["mcp-serve"]`).
+Hermes has no `~/.hermes/hooks.yaml`. Its shell hooks live under `hooks:` in `config.yaml` with
+snake_case event names, and gateway hooks use `~/.hermes/hooks/<name>/HOOK.yaml`; icx handles
+neither. The MCP pager can be registered under `mcp_servers` in `~/.hermes/config.yaml`
+(`command: icx`, `args: ["mcp-serve"]`).
 
 ---
 
@@ -680,6 +726,59 @@ Any MCP client can connect to the `icx` stdio server (`icx mcp-serve`), which of
 
 ---
 
+### 2.11 Automated Install (`icx install`, v1.4.0)
+
+`icx install` writes the hook and MCP registrations from sections 2.2 to 2.9 for you.
+
+```bash
+icx install --agent all --dry-run                  # show every change as a diff; write nothing
+icx install --agent codex --agent cursor           # show the diffs, then ask before writing
+icx install --agent all --yes --approve-tools      # write without asking; also pre-approve icx
+```
+
+- **`--agent all`** covers only the agents found on this machine: the program is on `PATH`, in
+  `~/.local/bin` or `~/.opencode/bin`, or, for Hermes, `~/.hermes` exists. A named agent is
+  installed regardless.
+- **Confirmation:** without `--yes` it asks on a terminal, and it refuses to write when there is
+  no terminal to ask on. `--dry-run` never writes.
+- **Safety:**
+  - every file that existed is copied to `<file>.icx-backup-<unix time>` before it is replaced,
+    and the replacement is written through a temporary file and a rename. The backup and the
+    temporary file are created new with the original's mode (`0600` for a file icx creates), so
+    a config holding tokens is never readable by others, even briefly. A config that is a
+    symlink, such as a dotfiles link, is written at its target and stays a link;
+  - a hook is added only when no hook running `icx` or the `icx-hook` wrapper for that agent and
+    event is registered; an MCP server or permission entry only when it is missing; so a second
+    run changes nothing;
+  - JSON files keep their keys and key order, and a file with nothing to add is left byte for
+    byte; Codex's `config.toml` is edited with comments and layout kept;
+  - a file that does not parse, such as JSON with comments, is never rewritten: the output names
+    the step to do by hand.
+- **Not edited:** Claude Code's `~/.claude.json` (the output prints the `claude mcp add` command),
+  Muse's trust file, and Hermes's YAML config (the output prints the change).
+- **Hook command:** the absolute path of the `icx` that ran the install, or `--icx <path>`.
+
+**Tool pre-approval (`--approve-tools`, T-65-005).** Only the read-only `icx` tool is approved;
+`icx_write` (`fold`, broadcasts) keeps asking:
+
+| Agent | What is written | To remove it |
+| :--- | :--- | :--- |
+| Claude Code | `"mcp__icx__icx"` in `permissions.allow` of `~/.claude/settings.json` (skipped when `"mcp__icx"` already allows the whole server) | delete the entry |
+| Codex | `[mcp_servers.icx.tools.icx] approval_mode = "approve"` in `~/.codex/config.toml` | delete that table |
+| agy | `"mcp(icx/icx)"` in `permissions.allow` of `~/.gemini/antigravity-cli/settings.json` | delete the entry |
+| Cursor | `"Mcp(icx:icx)"` in `permissions.allow` of `~/.cursor/cli-config.json` | delete the entry |
+| Muse | nothing: Muse runs a tool its server marks read-only without a prompt | not applicable |
+| Gemini CLI | nothing: Gemini CLI trusts a whole server, which would include `icx_write` | not applicable |
+| OpenCode | nothing yet: its permission format is not verified on the installed version | not applicable |
+
+Verification status of the approvals (2026-11-23): agy's `mcp(server/tool)` form was verified
+live in Sprint 1. Claude Code's rule form is its documented MCP permission syntax. Codex's
+per-tool `approval_mode` follows its documentation: `codex exec` runs MCP tools without asking
+whatever the approval mode, so a non-interactive run cannot show the difference. Cursor's rule is
+from its documentation; its live check waits on the deferred Cursor capture (#89).
+
+---
+
 ## 3. Dual-Stack Integration (`icx` + `ai-memory` Coexistence Architecture — Mode B)
 
 In **Mode B**, **Infinity-Context (`icx`)** and **`ai-memory`** run side by side. Their responsibilities are orthogonal:
@@ -702,7 +801,7 @@ Where an agent does run hooks sequentially, order them within each event as foll
 3. **`PostToolUse` (`icx` first for virtualization, `ai-memory` second for observation):**
    - `icx` virtualizes bulky outputs (`>= 512` bytes by default), redacts secrets, commits the bytes to the workspace store, and emits the stub (`⟪ICX:STUB│#icx:<16-hex>│...⟫`).
    - **MCP Tool Exemption Rule:** `InfinityContextMmu::is_icx_pager_tool` always exempts the `icx` tool (`mcp__icx__icx`) so dereferenced pages reach the model verbatim.
-   - **Recommended Claude Code matcher:** set `icx`'s `PostToolUse` matcher to `^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!ai[-_]memory__|icx__).+)$`. Bulk comes from shell, web, and MCP output; `Read`, `Grep`, `Glob`, `Edit`, and `Agent` results are never stubbed, so file editing and subagent reports stay intact, and `ai-memory` wiki reads are exempt too. The broader alternative `^(?!mcp__ai[-_]memory__).+` also stubs `Read`/`Grep`/`Glob`/`Edit`/`Agent` results, which saves more context but means the model must page file contents and subagent reports back through `icx` before acting on them.
+   - **Recommended Claude Code matcher:** set `icx`'s `PostToolUse` matcher to `^(Bash|BashOutput|Read|Grep|Glob|WebFetch|WebSearch|Agent|Task|REPL|mcp__(?!ai[-_]memory__|icx__).+)$` (what `icx install` writes, plus the `ai-memory` exemption). It covers the tools icx shrinks: shell, file reads and searches, web, subagent reports, Code Mode scripts and MCP output. `Edit` and `Write` results are not matched, so edit confirmations stay intact, and `ai-memory` wiki reads are exempt. A large `Read` or `Agent` result reaches the model as a stub, which the model pages back through `icx` (`slice`, `grep`) when it needs the text; to keep those whole, drop `Read|Grep|Glob|Agent|Task` from the matcher.
 4. **`PreCompact`, `PostCompact` & `SessionEnd` (`icx` first, `ai-memory` second):**
    - `icx` folds open subagent branches and seals an `L3` `CacheEpochNode` first, then `ai-memory` records the session boundary.
 
@@ -789,7 +888,7 @@ Hooks go in `~/.claude/settings.json`:
     ],
     "PostToolUse": [
       {
-        "matcher": "^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!ai[-_]memory__|icx__).+)$",
+        "matcher": "^(Bash|BashOutput|Read|Grep|Glob|WebFetch|WebSearch|Agent|Task|REPL|mcp__(?!ai[-_]memory__|icx__).+)$",
         "hooks": [
           { "type": "command", "command": "icx hook --agent claude-code --event PostToolUse" }
         ]
@@ -961,7 +1060,7 @@ For Codex and agy, replace the first bullet with: "Tool output is captured into 
 ### 4.3 Google Antigravity CLI (`agy`): Context Injection, `transcriptPath` Ingestion & `Stop`
 
 1. **`PreInvocation` & `PostInvocation` injection:**
-   - Before each model call, `AntigravityAdapter` injects the tail slot as `injectSteps[].systemMessage` with `"metadata": {"user_markdown": ""}`. The intent is to keep the frame out of the chat UI; that `user_markdown` key is not documented upstream, so whether it hides the frame is unverified.
+   - Before each model call, `AntigravityAdapter` injects the tail slot as `injectSteps[].systemMessage` with `"metadata": {"user_markdown": ""}`. The step is visible to the user: on agy 1.5.14 `user_markdown` hides nothing (T-65-003).
    - If `agy` has summarized earlier steps, the model still receives the relevant `#icx:<16-hex>` handles in the tail slot and can retrieve the stored step through the `icx` MCP tool.
    - `PostInvocation` always returns `"terminationBehavior": ""`. icx does not force the agent to continue.
 2. **`PreToolUse` & `PostToolUse`:**

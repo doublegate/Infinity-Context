@@ -7,6 +7,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Generated agent capability matrix** (`docs/capability-matrix.md`, T-65-006): per agent,
+  whether icx ingests, shrinks (by default or opt-in) and injects context, whether compaction and
+  session end seal the epoch, how the agent's side was verified, and the pre-approval rule. A
+  test builds it by running each adapter and fails when the committed file is out of date.
+- **Hermes plugins ship** in `integrations/hermes/` (T-65-002, T-65-009; ICX-AUD-006 fixed),
+  written against Hermes v0.23.3 and pinned to `>=0.23.3,<0.24`. `icx install --agent hermes`
+  copies them; Hermes's `config.yaml` is not edited.
+  - `icx`, the context engine: Hermes's built-in compressor built with your `compression:`
+    settings, which Hermes does not pass to a plugin engine. It ingests only the messages added
+    since the last turn on one bounded background worker, checkpoints history before each
+    compaction, and fetches the tail slot in the background, so Hermes never waits for icx.
+    Fixed from the hand-installed plugin: the invalid `kind: context_engine`, whole-transcript
+    re-sends with one thread per turn, a blocking session start, and ignored `compression:`
+    settings.
+  - `icx-terminal`, off until listed in `plugins.enabled`: stubs large successful shell results
+    through Hermes's `transform_terminal_output` hook (new `icx hook --agent hermes` event of the
+    same name). A failed command, or one with an unknown exit status, keeps its output, and icx's
+    own commands (`icx deref` through the shell) and output already in an icx frame are never
+    stubbed again. The engine escapes `</icx-context` inside the tail slot, so untrusted text
+    cannot open or close its frame. A session's first request waits up to
+    `ICX_HERMES_TAIL_WAIT` seconds (default 2) for the tail slot, which is then fixed for the
+    session so the prompt-cache prefix stays stable; session start itself never waits.
+  - Verified by stand-in tests with the real icx binary, run in CI with the OpenCode plugin
+    tests. They have not run in a live Hermes session; that check is deferred to v1.5.0 (#89).
+- **`icx install --agent <name|all>`** (T-65-004, T-65-005) registers icx's hooks and MCP server
+  with Claude Code, Codex, agy, Muse, Gemini CLI, Cursor, OpenCode and Hermes.
+  - Every change is printed as a unified diff first. `--dry-run` stops there; otherwise it asks
+    on a terminal, `--yes` skips the question, and with no terminal it refuses to write.
+  - Each edited file is backed up to `<file>.icx-backup-<unix time>` and replaced atomically.
+    Backups and temporary files are created new with the original's mode (`0600` for new files),
+    and a symlinked config is written at its target.
+    A file icx cannot read as text (not UTF-8, unreadable) is left alone with a note, never
+    taken for a missing one. The hook command quotes the icx path when it needs quoting, and an
+    existing hook with an `env` or `KEY=value` prefix is recognised. A dangling dotfiles link is
+    written at its target; backups never collide; a path already at the temporary name is
+    refused and left alone.
+  - Edits are additive and idempotent: an existing icx hook (`icx` or the `icx-hook` wrapper) is
+    never duplicated, a second run changes nothing, and a file with nothing to add is left byte
+    for byte. JSON key order and unknown keys are kept; Codex's `config.toml` keeps its comments.
+    A file that does not parse is never rewritten.
+  - `--agent all` covers only the agents installed here.
+  - `--approve-tools` pre-approves only the read-only `icx` tool, where the agent supports it
+    (deployment guide section 2.11 lists each rule and how to remove it).
+- **`icx hook --agent agy` finds the project itself** from the payload's `workspacePaths[0]`, so
+  agy needs no wrapper script that changes directory first.
 - **`icx codex-ingest`** (T-62-003, T-62-004) reads Codex rollouts into the workspace.
   - It reads both plain `rollout-*.jsonl` files and the zstd-compressed `.jsonl.zst` files Codex
     writes for rollouts older than 7 days.
@@ -64,6 +109,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **agy: icx no longer ingests its own MCP replies when agy loads the tool lazily** (T-65-008).
+  agy then names the call `call_mcp_tool` with `ServerName`/`ToolName` (recorded live on 1.5.14),
+  which the own-tool exemption did not recognise.
+- **agy: the docs no longer claim injected steps are invisible** (T-65-003). On 1.5.14
+  `metadata.user_markdown: ""` hides nothing; the steps are visible to the user.
+- **agy stays ingest-only** (T-65-007): a PostToolUse `overwriteResult` did not replace the result
+  the model saw on 1.5.14.
+- **Live contract fixtures for agy 1.5.14** (T-65-001) under
+  `crates/icx-adapters/tests/fixtures/agy/1.5.14/`, written by the new
+  `scripts/sanitize-hook-fixtures.py`, which replaces home and project paths, UUIDs and e-mail
+  addresses and refuses output in which a real path survives.
 - **The MCP server offers two tools** (T-64-008, ADR-0009).
   - **`icx`** is now read-only: `deref`, `slice`, `grep`, `recall`, `expand`, `status`, and
     `xagent` as a poll. It carries `readOnlyHint`, so Claude Code's plan mode runs it without a
@@ -105,8 +161,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `scripts/live-claude-replacement-check.sh` repeats the check after a Claude Code update
     (billed, run by hand). It exits 1 if the model saw raw output, and 2 if `claude` itself
     failed (its stderr is shown).
-- **Compaction and session end always seal the cache epoch**, in every adapter (Claude Code,
-  Codex, agy, Muse, Gemini CLI, Cursor and OpenCode).
+- **Compaction and session end always seal the cache epoch** in Claude Code, Codex, Muse,
+  Gemini CLI, Cursor and OpenCode, and Hermes's `on_pre_compress` seals too. agy fires neither
+  event: its `Stop` seals only on `max_steps_exceeded` or an error (the adapter's `SessionEnd`
+  handler is there for callers that send one).
   - Before, these events sealed only an epoch that had reached its token threshold, although the
     docs said they always sealed it. Compaction rewrites the conversation, so the old cached
     prefix is gone whatever the epoch's size.
@@ -153,6 +211,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Build
 
+- **CI runs the agent plugin tests:** the OpenCode plugin (`bun test`, Bun from the SHA-pinned
+  `oven-sh/setup-bun` v2.2.0) and the Hermes stand-in tests (`python3 -m unittest`), both against
+  the debug `icx` binary. Changes under `integrations/` now trigger the Rust jobs, because
+  `icx-cli` embeds those files.
+- **New dependencies** for `icx install`: `toml_edit` 0.25.20 and `similar` 3.2.1 (`cargo deny`
+  clean).
+- **`.gitignore`** covers `icx install` backups and temporary files (`*.icx-backup-*`,
+  `.*.icx-tmp-*`) and local Bun artifacts (`node_modules/`, `bun.lock`, `bun.lockb`).
 - **CI runs only what a pull request needs.** Documentation-only pull requests skip the Rust
   build, tests, benchmark, coverage and `cargo deny`, while the secret scan and REUSE still run.
   - Pushes to `main` and manual runs keep the full suite, which the release gate requires.
@@ -161,6 +227,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Documentation
 
+- **README:** Getting Started and CLI Usage show `icx install`; the interception matrix has rows
+  for Gemini CLI, Cursor and OpenCode, the shipped Hermes plugins, and the two MCP tools; the
+  repository map lists `integrations/`.
+- **Specifications:** `docs/interfaces.md` (the `install` command and the new environment
+  variables), `docs/testing-strategy.md` (live fixtures, plugin and installer tests),
+  `docs/security-and-threat-model.md` (§4.6, agent configuration written by `icx install`), the
+  adapters doc (which agents are pinned by live fixtures; the Hermes plugins), and the
+  deployment guide (§2.5 Hermes rewritten, §2.11 automated install).
+- **Deferred to v1.5.0 (#89):** live runs for Hermes (the gateway stays stopped), Gemini CLI (not
+  installed) and Cursor tool calls (blocked by its usage limit). Their v1.4.0 support follows the
+  documented contracts, and the Phase 6 exit criteria say so.
+- **Known issue (#90):** the redactor blanks non-secret values after key names containing
+  `token`, `key` or `session` (for example `current_tokens: int = None`), to the end of the line.
+  It over-redacts and never leaks; the Phase 7 structural redactor fixes it.
 - **Roadmap for v1.4.0 through v2.0.0.** `to-dos/ROADMAP.md` is rewritten from v1.3.2. Phases 6 to
   12 are new: 56 files, 223 tickets, one minor release per phase and v2.0.0 last.
   - Each sprint opens with a research gate, and each ticket carries a source and a Research line,

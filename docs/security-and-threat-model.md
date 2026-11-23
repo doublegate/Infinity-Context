@@ -41,7 +41,7 @@ the file-backed telepathy ring (`icx-fabric-v1.shm`).
 
 | Boundary | Trust level | Notes |
 | :--- | :--- | :--- |
-| **Agent processes** (Claude Code, Codex, `agy`, Hermes, Muse, MCP clients) | Trusted to send well-formed hook JSON; their *content* is untrusted | Hook stdin is written by the agent itself, but it carries tool output and file content the agent read. |
+| **Agent processes** (Claude Code, Codex, `agy`, Hermes, Muse, Gemini CLI, Cursor, OpenCode, MCP clients) | Trusted to send well-formed hook JSON; their *content* is untrusted | Hook stdin is written by the agent itself, but it carries tool output and file content the agent read. |
 | **Repository content**, including cloned third-party repositories | Untrusted | A repository can ship files intended to be read by `icx`, including a prepared `.icx/` directory. |
 | **Tool output** (shell commands, file reads, web fetches, logs) | Untrusted | May contain secrets, and may contain text that imitates `icx` packet delimiters (`⟦ ⟧ ⟪ ⟫`) or instructions. |
 | **Network peers** of the proxy | Untrusted | Any process or host that can reach the proxy port. |
@@ -98,7 +98,25 @@ the file-backed telepathy ring (`icx-fabric-v1.shm`).
 | A planted symlink, FIFO or foreign file is used as the bus file (ICX-AUD-019). | The bus file is opened with `O_NOFOLLOW` and `O_CLOEXEC`, created `0600`, and refused if it is not a regular file, is owned by another uid, or has any group/other permission bits. | `crates/icx-bus/src/ring.rs` (`open_shared_file`) |
 | A FIFO or symlink as `agy` `transcriptPath` hangs or redirects the hook (ICX-AUD-018). | The transcript is opened non-blocking without following symlinks, and only regular files are read. | `crates/icx-adapters/src/antigravity.rs` |
 
-### 4.6 Resource exhaustion
+### 4.6 Agent configuration written by `icx install` (v1.4.0)
+
+`icx install` edits other programs' configuration files, some of which hold tokens (MCP server
+environments, provider settings).
+
+- **Nothing is written without consent:** every change is printed as a diff first; `--dry-run`
+  never writes, and without `--yes` it asks on a terminal and refuses when there is none.
+- **No exposure while writing:** backups and temporary files are created new (`O_EXCL`, so an
+  existing path or a planted symlink is refused, never followed) with the original's mode, or
+  `0600` for a new file, from the start. A replacement is an atomic rename. A config that is
+  itself a symlink is written at its target.
+- **No silent widening:** edits are additive. `--approve-tools` approves only the read-only
+  `icx` tool; it never adds a wildcard, approves `icx_write`, or trusts a whole server (Gemini
+  CLI, whose approval is per server, gets a note instead). A file that does not parse is never
+  rewritten.
+- **Not touched:** Claude Code's `~/.claude.json`, Muse's trust file, Codex trust hashes, and
+  Hermes's YAML. The commands for those are printed for the user to run.
+
+### 4.7 Resource exhaustion
 
 | Threat | Control | Implementation |
 | :--- | :--- | :--- |
@@ -107,7 +125,7 @@ the file-backed telepathy ring (`icx-fabric-v1.shm`).
 | Quadratic SSE re-scanning on chunked responses. | Chunked SSE line splitting is linear (scan cursor, one drain per chunk); SSE lines are bounded at 16 MiB. | `wire.rs` (`MAX_SSE_LINE_BYTES`) |
 | A hostile HDC snapshot in the store exhausts memory on load or forges derived state. | The decoder reads `ICXHDC03`, `ICXHDC04` and `ICXHDC05`, bounds counts before allocation and validates finite/range and derived-state consistency. New snapshots use 05; the MMU rebuilds legacy 03/04 postings from preserved events. A fuzz target covers decoding. | `crates/icx-hdc/src/snapshot.rs`; `fuzz/fuzz_targets/hdc_snapshot.rs` |
 
-### 4.7 Memory safety and supply chain
+### 4.8 Memory safety and supply chain
 
 The v1.2.0 redactor recognizes sensitive YAML literal/folded block headers, optional indentation
 and chomping indicators, and same-line tag/anchor properties. Indented block contents are

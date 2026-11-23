@@ -114,7 +114,7 @@ replacement field; the original native output remains visible. See
    Header and best recall are prioritized; oversized subjects can use compact recoverable
    handles. Unsent sibling events do not advance the read cursor. The slot is returned via:
    - Claude Code and Codex: `hookSpecificOutput.additionalContext`;
-   - Antigravity CLI: `injectSteps[].systemMessage` with `metadata.user_markdown: ""`;
+   - Antigravity CLI: `injectSteps[].systemMessage` (visible to the user; `metadata.user_markdown: ""` does not hide it);
    - Hermes: the `ContextEngine.select_context()` tail message.
 
 ### 3.3 Flow C: Workspace Resolution and the Resident Daemon

@@ -47,7 +47,7 @@ table):
 
 ## Tickets
 
-### T-65-001 — Contract fixtures from live runs for Codex, agy, Hermes and Muse
+### T-65-001 — Contract fixtures from live runs for Codex, agy and Muse
 
 **Description:** Capture hook input and expected output for every handled event from live runs
 of each agent, and replace hand-written test inputs with these fixtures.
@@ -56,10 +56,28 @@ of each agent, and replace hand-written test inputs with these fixtures.
 
 **Acceptance Criteria:**
 
-- [ ] One fixture set per agent under `crates/icx-adapters/tests/fixtures/<agent>/<version>/`.
-- [ ] Contract tests run against the fixtures; gitleaks clean.
-- [ ] A script re-captures fixtures for a new agent version.
-- [ ] Adapters doc line 13 updated to state which agents are pinned by live fixtures.
+**Live captures (2026-11-23).** Each agent ran in a scratch project with a capture hook that
+recorded every payload before forwarding it to icx, and with scratch `ICX_*` state, so the
+owner's global icx hooks also wrote only to the scratch store.
+
+- **Codex 0.171.0:** hooks were passed inline (`-c hooks.<Event>=...`, with the documented
+  `--dangerously-bypass-hook-trust`), because Codex ignores an untrusted project's
+  `.codex/hooks.json`. Codex ran its own memory-consolidation task in the same process; those
+  events and their output, the owner's private memories, were excluded by session and deleted.
+- **agy 1.5.14:** project `.agents/hooks.json`, narrow `--settings` permissions
+  (`mcp(icx/*)`). `--dangerously-skip-permissions` was refused by the session's safety classifier
+  and is not used.
+- **Muse 1.4.25:** project `.muse/hooks.json` with `--trust-workspace` (this run only). Muse
+  refuses to override a configured server name per run, so the new build ran as server `icxtest`.
+
+- [x] One fixture set per agent under `crates/icx-adapters/tests/fixtures/<agent>/<version>/`
+  for Codex, agy and Muse. Hermes is deferred to v1.5.0 (#89): the gateway stays stopped.
+- [x] Contract tests run against the fixtures (`codex_fixtures.rs`, `agy_fixtures.rs`,
+  `muse_fixtures.rs`); gitleaks clean.
+- [x] A script turns captures into fixtures for a new agent version:
+  `scripts/sanitize-hook-fixtures.py` (paths, UUIDs and e-mail addresses replaced; fails if a real
+  path survives). The capture setup per agent is recorded above.
+- [x] Adapters doc updated to state which agents are pinned by live fixtures.
 
 **Dependencies:** T-62-002, T-63-004, T-64-001
 
@@ -74,22 +92,33 @@ of each agent, and replace hand-written test inputs with these fixtures.
 **Description:** Ship a Hermes plugin that implements the `ContextEngine` interface found in
 T-61-005 and calls icx, and verify it in a live Hermes session.
 
-**Research:** Hypothesis: the shim loads on the installed Hermes commit and its context reaches
-the model. Confirmed by a live session log showing the shim's output in the assembled context.
+**Research:** Hypothesis: the shim loads on the installed Hermes and its context reaches the
+model. The live session that would confirm it is deferred to v1.5.0 (#89); v1.4.0 tests the shim
+against the documented `ContextEngine` interface.
 
 **Acceptance Criteria:**
 
-- [ ] Shim source in the repository, pinned to a Hermes commit range.
-- [ ] Fails open: if icx is unavailable, Hermes runs unchanged.
-- [ ] The four defects found in the hand-installed plugin (Sprint 1) are fixed:
+**Outcome (2026-11-23):** shipped as `integrations/hermes/icx/`. Interfaces were re-read from the
+installed Hermes v0.23.3 source (static only; Hermes stays stopped). Two facts beyond Sprint 1:
+Hermes passes `compression:` settings only to its built-in compressor (`agent/agent_init.py`,
+`_build_context_engine`), and a manifest without `kind` is `standalone`, while `exclusive` would
+hand activation to category discovery.
+
+- [x] Shim source in the repository, pinned to a Hermes version range (`requires_hermes:
+  ">=0.23.3,<0.24"`, which Hermes enforces at load).
+- [x] Fails open: if icx is unavailable, Hermes runs unchanged (tested).
+- [x] The four defects found in the hand-installed plugin (Sprint 1) are fixed (each tested):
   - the manifest uses a valid kind (`exclusive`, or no kind field) instead of
     `context_engine`;
   - `on_turn_complete` sends only the delta since the last ingested turn, on one bounded
     worker instead of one thread per turn;
   - `on_session_start` does not block Hermes for up to 10 s at init and after each compaction;
   - the user's `compression:` settings are read rather than silently ignored.
-- [ ] Live verification recorded; contract fixture added.
-- [ ] Deployment guide Hermes section rewritten; ICX-AUD-006 moved to fixed.
+- [x] Verified by stand-in tests that drive the shim through the documented `ContextEngine`
+  interface (`integrations/hermes/tests/`, with the real icx binary; in CI). Live verification
+  and a live fixture are deferred to v1.5.0 (#89): the Hermes gateway stays stopped (owner
+  decision, 2026-11-23).
+- [x] Deployment guide Hermes section rewritten; ICX-AUD-006 moved to fixed.
 
 **Dependencies:** T-61-005
 
@@ -113,11 +142,16 @@ or rejected by a live session in the terminal UI and the web UI.
 
 **Acceptance Criteria:**
 
-- [ ] Behaviour of `user_markdown` and `renderInfo.hidden` recorded with the agy version, per UI.
-- [ ] The "completely invisible" claim removed from the adapter's module docs, the adapters doc
-  and the deployment guide; they state that injected steps are visible.
-- [ ] `renderInfo.hidden` emitted only if the live test shows it hides the step.
-- [ ] Contract fixture added.
+**Outcome (2026-11-23):** the claim is corrected everywhere. `renderInfo.hidden` stays
+unemitted: a headless `agy -p` run cannot show what the terminal UI renders, so the UI check is
+not done.
+
+- [x] Behaviour of `user_markdown` recorded with the agy version (Sprint 1: hides nothing in
+  either UI). `renderInfo.hidden` not tested: it needs an interactive session.
+- [x] The "completely invisible" claim removed from the adapter's module docs, the adapters doc,
+  the deployment guide and the architecture doc; they state that injected steps are visible.
+- [x] `renderInfo.hidden` emitted only if the live test shows it hides the step: not emitted.
+- [x] Contract fixture added (`tests/fixtures/agy/1.5.14/`, `tests/agy_fixtures.rs`).
 
 **Dependencies:** T-61-004
 
@@ -138,10 +172,19 @@ backs up every file before editing it.
 
 **Acceptance Criteria:**
 
-- [ ] Supported agents: Claude Code, Codex, agy, Muse, Hermes, Gemini CLI, Cursor, OpenCode.
-- [ ] `--dry-run` output is a diff per file; no file is written in dry-run mode (tested).
-- [ ] A real install backs up each edited file and is idempotent (second run makes no change).
-- [ ] Unknown keys and comments in agent configs are preserved.
+**Outcome (2026-11-23):** shipped (`crates/icx-cli/src/install.rs`, `tests/install_cli.rs`).
+Config paths and formats were checked on the installed versions (Claude Code, Codex, agy, Muse,
+Cursor and OpenCode configs on this machine); Gemini CLI's follow its docs. `icx init` is
+unchanged: it creates the workspace, and `icx install` registers the agents. A dry run against
+the owner's real configs recognised every existing `icx-hook` registration and planned only the
+missing pieces.
+
+- [x] Supported agents: Claude Code, Codex, agy, Muse, Hermes, Gemini CLI, Cursor, OpenCode.
+  Hermes installs its plugins once T-65-002 ships them, and prints its one YAML change.
+- [x] `--dry-run` output is a diff per file; no file is written in dry-run mode (tested).
+- [x] A real install backs up each edited file and is idempotent (second run makes no change).
+- [x] Unknown keys and comments in agent configs are preserved (JSON keys and order; TOML
+  comments). A file that does not parse, such as JSON with comments, is left alone with a note.
 
 **Dependencies:** T-63-004
 
@@ -172,12 +215,20 @@ whether a pre-approval key has been documented since 1.4.25. If none has, the st
 
 **Acceptance Criteria:**
 
-- [ ] The step prints the exact edit per agent and writes only after an explicit confirmation
-  (interactive prompt or a dedicated flag); a test proves that nothing is written otherwise.
-- [ ] The approval covers only the icx server, never a wildcard over all servers or tools.
-- [ ] Each edited file is backed up; the edit is idempotent.
-- [ ] Each key is verified on a live run and recorded with the agent version.
-- [ ] Deployment guide documents the approvals and how to remove them.
+**Live checks (2026-11-23):** `codex exec` (0.171.0) ran `icx_write` with
+`default_tools_approval_mode` set to `writes` and to `prompt` alike, so a non-interactive run
+cannot tell approval modes apart. Muse 1.4.25's default LLM approval judge also let `icx_write`
+run. Since the ADR-0009 split, the per-tool keys approve only the read-only tool.
+
+- [x] The step prints the exact edit per agent and writes only after an explicit confirmation
+  (interactive prompt or `--yes`); a test proves that nothing is written otherwise.
+- [x] The approval covers only icx's read-only tool (`mcp__icx__icx`, Codex
+  `tools.icx.approval_mode`, `mcp(icx/icx)`, `Mcp(icx:icx)`), never a wildcard.
+- [x] Each edited file is backed up; the edit is idempotent.
+- [ ] Each key is verified on a live run and recorded with the agent version. Partly: agy's form
+  live (Sprint 1); Claude Code's by its documented syntax; Codex's cannot be shown by `codex
+  exec`; Cursor's deferred with #89.
+- [x] Deployment guide documents the approvals and how to remove them (section 2.11).
 
 **Dependencies:** T-65-004, T-61-004, T-64-007
 
@@ -197,9 +248,18 @@ context, seals epoch) from the contract tests, and publish it in the adapters do
 
 **Acceptance Criteria:**
 
-- [ ] Matrix generated by a test or script from the contract-test results, not hand-written.
-- [ ] CI fails when the committed matrix differs from the generated one.
-- [ ] Every "shrinks" cell is backed by a silent-ignore test.
+**Outcome (2026-11-23):** `docs/capability-matrix.md`, generated by
+`crates/icx-adapters/tests/capability_matrix.rs`. Each cell comes from running the adapter (a
+3,000-line tool result, a context event, compaction, session end), with the opt-in stub flag off
+then on. The §E layout was extended with verification and pre-approval columns.
+
+- [x] Matrix generated by a test from the adapters' behaviour, not hand-written; "live fixtures"
+  claims are checked against the fixture directories.
+- [x] CI fails when the committed matrix differs from the generated one (`cargo test`; a stale
+  file was confirmed to fail).
+- [x] Every "shrinks" cell is backed by a silent-ignore test, or says it is not: Claude Code
+  (live check script) and OpenCode (Sprint 3 live run) are backed; the Hermes, Gemini CLI and
+  Cursor routes are marked opt-in with their live checks deferred (#89).
 
 **Dependencies:** T-65-001
 
@@ -224,11 +284,17 @@ ingest-only.
 
 **Acceptance Criteria:**
 
-- [ ] agy version, hook config and the model-visible result per tool kind recorded.
-- [ ] If confirmed: opt-in flag, off by default, enabled only on verified agy versions; default
-  output unchanged.
-- [ ] A live-run test detects a silent ignore; contract fixture added.
-- [ ] Adapters doc and capability matrix updated.
+**Outcome (2026-11-23): rejected; agy stays ingest-only.** On agy 1.5.14, a project
+`.agents/hooks.json` command hook answered PostToolUse with `{"overwriteResult": "<marker>"}` for
+a shell call (`run_command`) and an MCP call (`call_mcp_tool`). The model quoted the original
+results (`1`, and the icx status line), not the marker. The public hooks docs list no such field
+either. Caveat: the owner's global hooks (ai-memory, icx) also answered PostToolUse with `{}`, and
+how agy merges several replies is not documented.
+
+- [x] agy version, hook config and the model-visible result per tool kind recorded.
+- [x] ~~If confirmed: opt-in flag~~: not confirmed, so nothing ships.
+- [x] Contract fixture added; no silent-ignore test is needed, since agy is ingest-only.
+- [x] Adapters doc and capability matrix updated (with T-65-006).
 
 **Dependencies:** T-61-004
 
@@ -251,9 +317,16 @@ identify the server and tool.
 
 **Acceptance Criteria:**
 
-- [ ] Both name forms recorded from a live session with the agy version.
-- [ ] The pager exemption holds for both forms (contract tests over recorded payloads).
-- [ ] `icx init` and `icx install` write matchers that cover both forms.
+**Live result (2026-11-23, agy 1.5.14):** a lazily loaded icx call arrived as
+`toolCall.name: "call_mcp_tool"` with `args.ServerName: "icx"`, `args.ToolName: "icx"` and
+`args.Arguments`; the shell tool is `run_command`. The adapter now exempts icx's own tools in that
+form too: before, `call_mcp_tool` was ingested, icx's own replies included.
+
+- [x] Both name forms recorded: `call_mcp_tool` live; `mcp_<server>_<tool>` from Sprint 1 and the
+  public MCP docs.
+- [x] The pager exemption holds for both forms and for `icx_write` (`tests/agy_fixtures.rs`).
+- [ ] `icx init` and `icx install` write matchers that cover both forms: the recommended matcher
+  is `""` (every tool), which covers both (with T-65-004).
 
 **Dependencies:** T-61-004
 
@@ -277,10 +350,17 @@ handle dereferences losslessly. Confirmed by a live Hermes session. Check the pl
 
 **Acceptance Criteria:**
 
-- [ ] Separate general plugin, off by default, pinned to a Hermes commit range.
-- [ ] Fails open: on error or timeout the raw output passes through unchanged.
-- [ ] Live verification recorded; contract fixture added.
-- [ ] Deployment guide Hermes section documents enabling it.
+**Outcome (2026-11-23):** shipped as `integrations/hermes/icx-terminal/` plus the
+`transform_terminal_output` event of `icx hook --agent hermes`. The hook also receives
+`tool_call_id` on v0.23.3; the plugin accepts extra keywords. The icx timeout (10 s default) is
+below Hermes's plugin timeout.
+
+- [x] Separate general plugin, off by default (`plugins.enabled`), pinned to `>=0.23.3,<0.24`.
+- [x] Fails open: on error or timeout the raw output passes through unchanged; a failed command
+  keeps its output.
+- [x] Verified by stand-in tests, including a lossless `icx deref` of the stub; live
+  verification deferred to v1.5.0 (#89).
+- [x] Deployment guide Hermes section documents enabling it.
 
 **Dependencies:** T-65-002
 
@@ -291,9 +371,10 @@ decision table)
 
 ## Sprint exit
 
-- [ ] Gates green: `cargo fmt --all -- --check`,
-  `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and
-  coverage `>= 95%`.
-- [ ] Docs and CHANGELOG updated for any user-visible change; v1.4.0 release notes drafted.
-- [ ] Upstream re-scan done for Phase 7 Sprint 1 (ranking crates and comparable tools), and its
-  tickets adjusted.
+- [x] Gates green: `cargo fmt --all -- --check`,
+  `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (481 passed),
+  and coverage `>= 95%` (95.04% lines, 2026-11-23).
+- [x] Docs and CHANGELOG updated for any user-visible change; v1.4.0 release notes drafted
+  (`docs/releases/v1.4.0/README.md`).
+- [x] Upstream re-scan done for Phase 7 Sprint 1 (ranking crates and comparable tools), and its
+  tickets adjusted (recorded in that sprint's research notes).

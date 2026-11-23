@@ -1,0 +1,11 @@
+{
+  "cwd": "/home/user/project",
+  "hook_event_name": "UserPromptSubmit",
+  "model": "muse-wonder-1.0",
+  "model_provider": "meta",
+  "permission_mode": "default",
+  "prompt": "Use only the MCP server named icxtest. Do exactly two tool calls, in order, then stop: (1) its icx tool with {\"op\":\"status\"} (2) its icx_write tool with {\"op\":\"fold\",\"q\":\"begin:muse-check\"}. Then reply with two lines: the first line each call returned, or DENIED with the reason for one that did not run.",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": null,
+  "turn_id": "00000000-0000-4000-8000-000000000002"
+}

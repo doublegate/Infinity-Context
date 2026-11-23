@@ -87,6 +87,9 @@ zero) and over-redacted bytes, before and after.
 **Acceptance Criteria:**
 
 - [ ] Every existing redaction test passes unchanged.
+- [ ] The false positives in #90 are fixed and in the corpus: key names containing `token`,
+  `key` or `session` no longer blank `None`, `null`, `""`, numbers, booleans or call expressions,
+  and a redaction covers the value only, not the rest of the line.
 - [ ] Property tests: no secret from a generated set survives in any supported format; output
   never panics on arbitrary input.
 - [ ] Missed secrets (zero required) and over-redacted bytes measured and published in
@@ -95,7 +98,7 @@ zero) and over-redacted bytes, before and after.
 
 **Dependencies:** T-74-002
 
-**Reference:** Plan Phase 7 Sprint 4; issue #29
+**Reference:** Plan Phase 7 Sprint 4; issues #29 and #90
 
 **Estimated Complexity:** XL
 

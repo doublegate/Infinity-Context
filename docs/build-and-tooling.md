@@ -43,6 +43,11 @@ cargo llvm-cov --workspace --all-targets --lcov --output-path lcov.info --fail-u
 # 7. Dependency advisories, licenses, bans and sources
 cargo deny --workspace check
 
+# 8. Agent plugins, against the debug binary (OpenCode needs Bun 1.3.4; CI pins it)
+cargo build -p icx-cli
+ICX_BIN=target/debug/icx bun test integrations/opencode
+ICX_BIN=target/debug/icx python3 -I -m unittest discover -s integrations/hermes/tests
+
 # 8. Synthetic benchmark and SLO gates
 cargo run --release -p icx-cli -- benchmark
 
@@ -59,7 +64,7 @@ cargo +nightly fuzz run ahtl_stream    # also: hdc_snapshot, mcp_jsonrpc, redact
 
 | Workflow / job | Runs |
 | :--- | :--- |
-| `ci.yml` main job | `cargo fmt --check`, zero-`unsafe` policy check, `cargo clippy -D warnings`, `cargo test --workspace`, `cargo doc` with `-D warnings`, `icx benchmark`, `icx doctor`, reviewer and CLA script self-tests |
+| `ci.yml` main job | `cargo fmt --check`, zero-`unsafe` policy check, `cargo clippy -D warnings`, `cargo test --workspace`, `cargo doc` with `-D warnings`, `icx benchmark`, `icx doctor`, the OpenCode and Hermes plugin tests, reviewer and CLA script self-tests |
 | `ci.yml` `deny` | `cargo deny --workspace check` with `cargo-deny@0.21.0` and the policy in `deny.toml`; `cargo-about@0.9.3` generates the third-party notices, so a dependency whose license text cannot be collected fails here rather than at release time |
 | `ci.yml` coverage | `cargo llvm-cov` (`cargo-llvm-cov@0.9.1`) with `--fail-under-lines 95`; uploads to Codecov |
 | `ci.yml` secret scan | gitleaks (pinned version, SHA-256-verified download) over the git history |

@@ -146,9 +146,20 @@ cargo install --path crates/icx-cli
 
 ### 2. Connect your agents
 
-Each agent calls `icx` from its lifecycle hooks and can query it through the `icx` MCP tool. The
-[Deployment & Agent Integration Guide](docs/deployment-and-agent-integration-guide.md) has the
-configuration for each one:
+Each agent calls `icx` from its lifecycle hooks and queries it through the read-only `icx` MCP
+tool (`icx_write` holds the few ops that change state). `icx install` writes the registrations for
+you and shows every change as a diff first:
+
+```bash
+icx install --agent all --dry-run           # every agent installed here; writes nothing
+icx install --agent codex --agent cursor    # show the diffs, then ask before writing
+icx install --agent all --yes --approve-tools  # also pre-approve the read-only icx tool
+```
+
+It backs up each file it changes and never duplicates an existing icx hook
+([guide §2.11](docs/deployment-and-agent-integration-guide.md#211-automated-install-icx-install-v140)).
+The [Deployment & Agent Integration Guide](docs/deployment-and-agent-integration-guide.md) has the
+configuration for each agent, for setting it up by hand:
 
 | Agent | Setup |
 | :--- | :--- |
@@ -169,6 +180,7 @@ long-term memory server; the guide covers both setups.
 
 ```bash
 icx init       # create and seal this project's workspace (run inside the project)
+icx install --agent all --dry-run   # see what registering your agents would change
 icx doctor     # check agent installations and workspace integrity
 icx status     # show what the workspace holds
 ```
@@ -350,6 +362,8 @@ stateDiagram-v2
 
 ## Cross-Agent Interception Matrix
 
+What icx does per agent (ingest, shrink, context, epoch seals, verification, pre-approval) is in the generated [capability matrix](docs/capability-matrix.md).
+
 The hook contracts below were checked against each agent's upstream documentation on 2026-11-18 (audit findings `ICX-AUD-004` to `ICX-AUD-009`). A public summary of the original local install survey is in [`ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md`](ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md). Configuration examples are in the [Deployment & Agent Integration Guide](docs/deployment-and-agent-integration-guide.md).
 
 | Agent Harness | Hook / Plugin Surface | What `icx-adapters` Returns |
@@ -357,9 +371,12 @@ The hook contracts below were checked against each agent's upstream documentatio
 | **Claude Code CLI** (`claude`) | `~/.claude/settings.json` hooks: `PostToolUse`, `PreToolUse`, `SessionStart`, `UserPromptSubmit`, `SubagentStart`, `SubagentStop`, `PreCompact`, `PostCompact` | `PostToolUse`: `hookSpecificOutput.updatedToolOutput` in the tool's own output shape (for Bash, `{stdout, stderr, interrupted, isImage}`), plus `updatedMCPToolOutput` for MCP tools. `SessionStart`, `UserPromptSubmit`, `SubagentStart`: `additionalContext`. `PreCompact`: compaction instructions on plain stdout (Claude Code accepts fewer than 10,000 characters; icx caps them at 9,000). `PostCompact` stores `compact_summary`; `SubagentStop` reads `last_assistant_message`; both return `{}`. `PreToolUse` returns no decision. |
 | **OpenAI Codex CLI** (`codex`) | `~/.codex/hooks.json` + `OPENAI_BASE_URL` wire proxy + MCP | Under Codex, icx does not shrink tool output: it ingests outputs so they can be recalled and dereferenced later. `PostToolUse` no longer appends `additionalContext`, which duplicated tokens next to the full native output. icx still emits `updatedMCPToolOutput` for MCP tools, but the Codex hooks documentation describes that field as not yet supported. `hooks.json` uses PascalCase event names, a string `command` and `timeout` in seconds. `SubagentStop` reads `last_assistant_message`. `PreToolUse` returns no decision. |
 | **Google Antigravity CLI** (`agy`) | `hooks.json` at workspace `.agents/hooks.json` or global `~/.gemini/config/hooks.json`; events `SessionStart`, `PreToolUse`, `PostToolUse`, `PreInvocation`, `PostInvocation`, `Stop` | `PreToolUse`: always `{"decision":"allow"}`. `PostToolUse`: `{}`. `PostInvocation` never sets `force_continue`. `Stop`: always `{"decision":"stop"}`, so a user's token or invocation budget is never overridden; it seals an epoch on `max_steps_exceeded` or error. `transcriptPath` is opened non-blocking, without following symlinks, regular files only. |
-| **Hermes Agent** (`hermes`) | `ContextEngine` plugin (`agent/context_engine.py`); there is no `hooks.yaml` integration | The Rust `HermesAdapter` implements the logic. This repository ships no Python shim: Hermes needs a small `ContextEngine` plugin that calls `icx hook --agent hermes --event ...`. |
+| **Hermes Agent** (`hermes`) | `ContextEngine` plugin `icx` and optional general plugin `icx-terminal` (`integrations/hermes/`, Hermes v0.23.3); there is no `hooks.yaml` integration | The engine is Hermes's built-in compressor with your `compression:` settings, plus per-turn delta ingestion, a checkpoint before each compaction and the tail slot as untrusted user-turn data. `icx-terminal` stubs large successful shell results through `transform_terminal_output`. Tested against stand-ins; live check deferred to v1.5.0 (#89). |
+| **Google Gemini CLI** (`gemini`) | `~/.gemini/settings.json` hooks: `SessionStart`, `BeforeAgent`, `AfterTool`, `PreCompress`, `SessionEnd` | `AfterTool`: ingest; with `ICX_GEMINI_STUB=1`, a large result is replaced through the documented deny route. Follows the documented contract; live run deferred (#89). |
+| **Cursor** (`cursor-agent`) | `~/.cursor/hooks.json`: `postToolUse`, `postToolUseFailure`, `preCompact`, `sessionEnd` | Ingest; with `ICX_CURSOR_STUB=1`, `updated_mcp_tool_output` for MCP tools. Session events verified live; tool-call capture deferred (#89). |
+| **OpenCode** (`opencode`) | Plugin `integrations/opencode/icx.ts` (prompt, `tool.execute.after`, compaction, `session.deleted`) | Legend and tail slot appended to the user turn; with `ICX_OPENCODE_STUB=1`, a large completed result is replaced (verified live on v2.2.7). |
 | **Meta Muse Code** (`muse`) | `~/.config/muse/settings.json` hooks (Claude-Code shape): `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `SubagentStart`, `SubagentStop`, `PreCompact`, `PostCompact`, `SessionEnd` + MCP (`muse mcp add icx --user -- icx mcp-serve`) | `SessionStart`/`UserPromptSubmit`: tail slot and recall in `additionalContext`. `PostToolUse`: output captured (Bash JSON unwrapped) but not replaced, because Muse rejects replacement; everything else `{}`. Muse loads MCP servers only in a trusted workspace ([adapter spec](docs/agent-adapters-and-interception.md)). |
-| **MCP Clients** | `icx mcp-serve` (JSON-RPC 2.0 over stdio) | One tool, `icx` (ops `deref`, `slice`, `grep`, `recall`, `fold`, `expand`, `xagent`, `status`). Legacy `initialize` negotiates 2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05; protocol 2026-07-28 clients use `server/discover` and per-request `_meta` versions. Fold depth is at most 64; input lines are bounded at 4 MiB. |
+| **MCP Clients** | `icx mcp-serve` (JSON-RPC 2.0 over stdio) | Two tools (ADR-0009): `icx`, marked `readOnlyHint` (ops `deref`, `slice`, `grep`, `recall`, `expand`, `status`, `xagent` poll), and `icx_write` (`fold`, `xagent` broadcast). Each refuses the other's ops. Legacy `initialize` negotiates 2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05; protocol 2026-07-28 clients use `server/discover` and per-request `_meta` versions. Fold depth is at most 64; input lines are bounded at 4 MiB. |
 
 ---
 
@@ -423,9 +440,13 @@ Infinity-Context/
 │   ├── icx-codec/              # AhtlPacket, Braille-256 bijection, StructuralSkeletonizer, SecretRedactor
 │   ├── icx-store/              # BiTemporalGraph & HippoRAG PersonalizedPageRank (PPR)
 │   ├── icx-bus/                # SeqlockTelemetryBus: in-process atomic ring (256 x 4,096 B) + file-backed pread/pwrite variant
-│   ├── icx-adapters/           # InfinityContextMmu, Claude/Codex/agy/Hermes/Muse adapters, McpPagerServer
+│   ├── icx-adapters/           # InfinityContextMmu, eight agent adapters, McpPagerServer (icx, icx_write)
 │   ├── icx-proxy/              # WireProxyTransformer + token-authenticated loopback proxy
-│   └── icx-cli/                # `icx` binary (init, trust, daemon, deref, hook, mcp-serve, proxy, benchmark, doctor, ...)
+│   └── icx-cli/                # `icx` binary (init, install, trust, daemon, deref, hook, mcp-serve, proxy, benchmark, doctor, ...)
+│       └── ...                 # (adapter contract fixtures from live runs: crates/icx-adapters/tests/fixtures/)
+├── integrations/
+│   ├── opencode/               # OpenCode plugin (icx.ts) and its Bun tests
+│   └── hermes/                 # Hermes context engine (icx), shell-output plugin (icx-terminal), stand-in tests
 ├── fuzz/                       # cargo-fuzz targets: ahtl_stream, hdc_snapshot, mcp_jsonrpc, redact
 ├── images/                     # High-resolution logos & Graphviz (.dot / .png / .svg) relationship graphs
 ├── assets/                     # Multi-size icon packs (PNG/SVG/ICO), banners, web manifest & Social Preview card
@@ -454,6 +475,7 @@ Infinity-Context/
 
 ```bash
 icx init                # create and seal this project's workspace
+icx install --agent all --dry-run  # register icx with the agents installed here (diffs first)
 icx doctor              # inspect agent installations and workspace integrity
 icx status              # MMU, Merkle-DAG and HDC index status
 icx benchmark           # built-in synthetic benchmark suite
@@ -496,7 +518,8 @@ icx deref "#icx:7bf8239fb7c504f1" --raw
 ### Agent Hook, MCP Server & Proxy Commands
 
 ```bash
-# Run as a synchronous lifecycle hook for Claude Code, Codex, Antigravity (agy), Hermes or Muse
+# Run as a synchronous lifecycle hook (agents: claude-code, codex, agy, hermes, muse,
+# gemini-cli, cursor, opencode)
 icx hook --agent claude-code --event PostToolUse < tool_event.json
 icx hook --agent agy --event PreInvocation < agy_event.json
 
