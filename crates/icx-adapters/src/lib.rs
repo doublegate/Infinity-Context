@@ -2110,7 +2110,12 @@ unprefixed_secret = {unpref_sec}
     #[test]
     fn sprint_4_3_single_tool_mcp_pager_provenance_and_ambiguity_conformance() {
         let mut mmu = InfinityContextMmu::default();
-        assert!(McpPagerServer::schema_token_estimate() < 180);
+        assert!(McpPagerServer::schema_token_estimate() < 360);
+        assert!(
+            McpPagerServer::per_tool_token_estimates()
+                .iter()
+                .all(|&t| t < 180)
+        );
 
         // 1. Verify `notifications/initialized` (JSON-RPC 2.0 notification returns Null without `id`) and `ping`
         let ping_resp = McpPagerServer::handle_jsonrpc(

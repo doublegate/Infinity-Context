@@ -142,7 +142,8 @@ finding.
 
 **Acceptance Criteria:**
 
-- [ ] Types and their semantics specified; the tool surface follows the T-64-008 decision.
+- [ ] Types and their semantics specified. Per the T-64-008 decision (ADR-0009), typed folds are
+  an operation of the state-changing `icx_write` tool, never of the read-only `icx` tool.
 - [ ] Every fold is reversible with `expand`; no content is lost (Merkle-verified test).
 - [ ] Context size and success rate measured and published in `docs/numbers.md`.
 

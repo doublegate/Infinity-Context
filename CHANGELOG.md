@@ -64,6 +64,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **The MCP server offers two tools** (T-64-008, ADR-0009).
+  - **`icx`** is now read-only: `deref`, `slice`, `grep`, `recall`, `expand`, `status`, and
+    `xagent` as a poll. It carries `readOnlyHint`, so Claude Code's plan mode runs it without a
+    prompt (measured on 2.1.330: an allow rule alone does not lift the plan-mode hold).
+  - **`icx_write`** takes `fold`, and `xagent` with a message.
+  - **Deprecation:** `fold` and broadcasts sent to `icx` still run through v1.4.x and add a
+    `⟪ICX:DEPRECATED│...⟫` note; `icx` stops accepting them in v1.5.0. Update instructions that
+    tell agents to fold with the `icx` tool.
+  - Every hook adapter treats both tools as icx's own and never ingests their output.
+- **The OpenCode plugin sends the legend again after a compaction**, since the summary may drop
+  the prompt that carried it.
 - **Claude Code `CwdChanged` moves the agent to the new directory's workspace** (T-64-003,
   verified live on 2.1.330). The workspace is resolved from `new_cwd`, so the agent's icx MCP
   server follows a `cd` into another repository or worktree on its next call (#34). Register the

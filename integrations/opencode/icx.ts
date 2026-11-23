@@ -17,7 +17,8 @@
 //                  what the model sees.
 //   compaction     seals icx's cache epoch; OpenCode still writes its own summary.
 //   session.deleted (ctx.event.subscribe) ends the session's icx branches.
-// The legend is appended on a session's first prompt only, since each append stays in history.
+// The legend is appended on a session's first prompt, and again after each compaction, since
+// each append stays in history and a compaction summary may drop it.
 //
 // Environment: ICX_BIN (path to the icx binary, default "icx"), ICX_PLUGIN_TIMEOUT_MS (default
 // 10000; a hook on a store of several hundred MB can take seconds), and the usual icx
@@ -124,6 +125,9 @@ const IcxPlugin: Plugin.Plugin = {
     const compaction = await ctx.session.hook("compaction", async (event) => {
       // Never set event.result: OpenCode writes its own summary.
       icxHook("compaction", { sessionID: event?.sessionID });
+      // The summary may drop the prompt that carried the legend, so the next prompt sends it
+      // again.
+      legendSent.delete(typeof event?.sessionID === "string" ? event.sessionID : "");
     });
 
     return async () => {

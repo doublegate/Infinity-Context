@@ -114,8 +114,10 @@ impl OpenCodeAdapter {
                     .get("tool")
                     .and_then(Value::as_str)
                     .unwrap_or("opencode_tool");
+                // OpenCode names MCP tools `<server>_<tool>`.
                 if InfinityContextMmu::is_icx_pager_tool(tool)
                     || tool.eq_ignore_ascii_case("icx_icx")
+                    || tool.eq_ignore_ascii_case("icx_icx_write")
                 {
                     json!({})
                 } else {

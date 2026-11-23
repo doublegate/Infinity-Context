@@ -120,6 +120,11 @@ test("the legend is appended on a session's first prompt only", async () => {
   expect(second.prompt.text).not.toContain("⟪ICX:LEGEND");
   expect(second.prompt.text).toContain("⟪ICX:TAIL_SLOT");
   expect(other.prompt.text).toContain("⟪ICX:LEGEND");
+  // A compaction may drop the prompt that carried the legend, so the next prompt sends it again.
+  await hooks["session:compaction"]({ sessionID: "s9", messages: [] });
+  const afterCompaction = { sessionID: "s9", prompt: { text: "four" } };
+  await hooks["session:prompt"](afterCompaction);
+  expect(afterCompaction.prompt.text).toContain("⟪ICX:LEGEND");
   await dispose();
 });
 

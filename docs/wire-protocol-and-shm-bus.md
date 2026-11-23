@@ -16,8 +16,9 @@ event records with seqlock-validated reads.
 
 1. The **telepathy ring** (`crates/icx-bus/src/ring.rs`), with an in-process backend and a
    file-backed backend (§2).
-2. A **single-tool MCP pager** (`icx mcp-serve`, `crates/icx-adapters/src/mcp.rs`) that gives MCP
-   clients dereference, slicing, search, recall, folding and bus access through one tool (§3).
+2. An **MCP pager** (`icx mcp-serve`, `crates/icx-adapters/src/mcp.rs`) that gives MCP clients
+   dereference, slicing, search, recall and bus polling through the read-only `icx` tool, and
+   folding and bus broadcasts through `icx_write` (§3, ADR-0009).
 
 The resident daemon's Unix socket (`icx daemon`, `crates/icx-cli/src/daemon.rs`) carries hook
 requests only; it is described in [docs/architecture.md](architecture.md) §3.3. There is no
@@ -151,29 +152,28 @@ lock can take up to about 250 ms before failing.
 
 ---
 
-## 3. Single-Tool MCP Pager (`icx mcp-serve`)
+## 3. MCP Pager (`icx mcp-serve`)
 
-`icx mcp-serve` runs a JSON-RPC 2.0 server over stdio, one JSON message per line. It registers one
-tool, `icx`, whose schema is estimated at under 180 tokens
-(`McpPagerServer::schema_token_estimate`):
+`icx mcp-serve` runs a JSON-RPC 2.0 server over stdio, one JSON message per line. It registers two
+tools (v1.4.0, ADR-0009), each estimated at under 180 tokens
+(`McpPagerServer::per_tool_token_estimates`):
+
+- **`icx`**, read-only, with `annotations.readOnlyHint: true`: `deref`, `slice`, `grep`,
+  `recall`, `expand`, `status`, and `xagent` as a poll. Claude Code's plan mode runs a
+  read-only MCP tool without holding it, and only the hint lifts that hold (T-64-007).
+- **`icx_write`**, state-changing, without the hint: `fold`, and `xagent` with a message.
 
 ```json
 {
   "name": "icx",
-  "description": "Infinity-Context MMU syscall: deref #icx:<id>, slice lines, grep cold CAS, associative recall, fold/expand branch, or poll/broadcast /dev/shm bus.",
+  "annotations": { "readOnlyHint": true },
   "inputSchema": {
     "type": "object",
     "required": ["op"],
     "properties": {
-      "op": {
-        "type": "string",
-        "enum": ["deref", "slice", "grep", "recall", "fold", "expand", "xagent", "status"]
-      },
+      "op": { "type": "string", "enum": ["deref", "slice", "grep", "recall", "expand", "xagent", "status"] },
       "id": { "type": "string" },
-      "q": {
-        "type": "string",
-        "description": "Search pattern for grep/recall, 'begin:<label>' or '<summary>' for fold, or message for xagent."
-      },
+      "q": { "type": "string", "description": "Pattern for grep or recall." },
       "range": { "type": "array", "items": { "type": "integer" } },
       "k": { "type": "integer" },
       "provenance": { "type": "boolean" }
@@ -182,20 +182,47 @@ tool, `icx`, whose schema is estimated at under 180 tokens
 }
 ```
 
+```json
+{
+  "name": "icx_write",
+  "inputSchema": {
+    "type": "object",
+    "required": ["op", "q"],
+    "properties": {
+      "op": { "type": "string", "enum": ["fold", "xagent"] },
+      "q": { "type": "string" }
+    }
+  }
+}
+```
+
+(Descriptions omitted here; see `McpPagerServer::tool_schema`.)
+
+**Routing:**
+
+- A read operation sent to `icx_write` is refused with `isError: true`, naming `icx`.
+- A write operation (`fold`, or `xagent` with a non-empty `q`) sent to `icx` still runs in v1.4.x
+  and its reply ends with `⟪ICX:DEPRECATED│...⟫` naming `icx_write`. `icx` stops accepting them in
+  v1.5.0.
+- Hook adapters treat both tools as icx's own, in every agent's naming form, and never ingest
+  their output.
+
 ### 3.1 Operations
 
 - `deref`: full stored text of `id` (`#icx:<16-hex>` or `#icx:<12-hex>`), framed (§3.3).
 - `slice`: lines `range[0]..=range[1]` (1-based, inclusive) of `id`, framed.
 - `grep`: pattern `q` over `id`, or over all artifacts in the workspace when `id` is omitted.
 - `recall`: associative recall for `q` (HDC two-stage index), returning AHTL packets and handles;
-  `k` limits the result count.
-- `fold`: `q = "begin:<label>"` opens a sub-trajectory branch; `q = "<summary>"` closes the
-  innermost open branch into an `L2` folded node.
+  `k` limits the result count. It advances the bus-delivery cursors, which is bookkeeping, so it
+  stays on the read-only tool.
+- `fold` (`icx_write`): `q = "begin:<label>"` opens a sub-trajectory branch; `q = "<summary>"`
+  closes the innermost open branch into an `L2` folded node.
 - `expand`: expands a folded branch.
-- `xagent`: publishes a message to, or polls, the telepathy ring for the current workspace.
+- `xagent`: polls the telepathy ring for the current workspace (`icx`), or publishes `q` to it
+  (`icx_write`).
 - `status`: DAG, epoch, index and ring status.
 
-The tool description says `/dev/shm`; the ring is at the configured path (§1.1).
+The ring is at the configured path (§1.1).
 
 ### 3.2 Protocol Versions (ICX-AUD-008)
 

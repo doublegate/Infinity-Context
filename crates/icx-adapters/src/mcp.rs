@@ -1,7 +1,9 @@
-//! Single-Tool Polymorphic MCP Pager (`McpPagerServer`).
+//! Polymorphic MCP Pager (`McpPagerServer`).
 //!
-//! Exposes the entire Infinity-Context MMU syscall surface (`deref`, `slice`, `grep`, `recall`,
-//! `fold`, `expand`, `xagent`, `status`) behind a single `< 180 token` MCP tool named `icx`.
+//! Exposes the Infinity-Context MMU syscall surface through two tools, each under 180 tokens
+//! (ADR-0009): the read-only `icx` (`deref`, `slice`, `grep`, `recall`, `expand`, `status`, and
+//! `xagent` as a poll), which carries `readOnlyHint`, and the state-changing `icx_write` (`fold`,
+//! and `xagent` with a message).
 
 use crate::mmu::InfinityContextMmu;
 use icx_core::{AgentKind, IcxError};
@@ -12,6 +14,13 @@ pub const MODERN_PROTOCOL_VERSIONS: &[&str] = &["2026-07-28"];
 /// MCP revisions served through the legacy `initialize` handshake, newest first.
 pub const LEGACY_PROTOCOL_VERSIONS: &[&str] =
     &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
+
+/// The read-only tool (ADR-0009), carrying `readOnlyHint`.
+pub const READ_TOOL: &str = "icx";
+/// The state-changing tool (ADR-0009): `fold`, and `xagent` broadcasts.
+pub const WRITE_TOOL: &str = "icx_write";
+/// Appended when a write op arrives on the read-only tool, which still runs it for one release.
+const DEPRECATED_WRITE_ON_READ: &str = "\n⟪ICX:DEPRECATED│fold and xagent broadcasts moved to the `icx_write` tool; `icx` accepts them until v1.5.0⟫";
 
 /// Maximum number of simultaneously open `fold begin:` branches (ICX-AUD-014).
 pub const MAX_FOLD_DEPTH: usize = 64;
@@ -95,35 +104,44 @@ impl McpPagerServer {
         let params = req.get("params")?;
         let name = params.get("name")?.as_str()?;
         let args = params.get("arguments")?;
-        (name == "icx" && Self::validate_arguments(args).is_ok()).then_some(args)
+        (Self::validate_arguments(args).is_ok() && Self::route(name, args).is_ok()).then_some(args)
     }
 
-    /// Returns the compact single-tool `tools/list` schema payload.
+    /// Returns the `tools/list` payload: the read-only `icx` tool and the state-changing
+    /// `icx_write` tool (ADR-0009). Only `icx` carries `readOnlyHint`, so Claude Code's plan mode
+    /// runs it without holding it (T-64-007).
     pub fn tool_schema() -> Value {
         json!({
             "tools": [
                 {
-                    "name": "icx",
-                    "description": "Infinity-Context MMU syscall: deref #icx:<id>, slice lines, grep cold CAS, associative recall, fold/expand branch, or poll/broadcast /dev/shm bus.",
+                    "name": READ_TOOL,
+                    "description": "Infinity-Context read-only MMU syscall: deref #icx:<id>, slice lines, grep cold CAS, associative recall, expand a folded branch, status, or poll the agent bus.",
+                    "annotations": { "readOnlyHint": true },
                     "inputSchema": {
                         "type": "object",
                         "required": ["op"],
                         "properties": {
                             "op": {
                                 "type": "string",
-                                "enum": ["deref", "slice", "grep", "recall", "fold", "expand", "xagent", "status"]
+                                "enum": ["deref", "slice", "grep", "recall", "expand", "xagent", "status"]
                             },
                             "id": { "type": "string" },
-                            "q": {
-                                "type": "string",
-                                "description": "Search pattern for grep/recall, 'begin:<label>' or '<summary>' for fold, or message for xagent."
-                            },
-                            "range": {
-                                "type": "array",
-                                "items": { "type": "integer" }
-                            },
+                            "q": { "type": "string", "description": "Pattern for grep or recall." },
+                            "range": { "type": "array", "items": { "type": "integer" } },
                             "k": { "type": "integer" },
                             "provenance": { "type": "boolean" }
+                        }
+                    }
+                },
+                {
+                    "name": WRITE_TOOL,
+                    "description": "Infinity-Context state-changing MMU syscall: fold a branch ('begin:<label>', then a one-line summary), or broadcast a message to other agents.",
+                    "inputSchema": {
+                        "type": "object",
+                        "required": ["op", "q"],
+                        "properties": {
+                            "op": { "type": "string", "enum": ["fold", "xagent"] },
+                            "q": { "type": "string" }
                         }
                     }
                 }
@@ -131,10 +149,52 @@ impl McpPagerServer {
         })
     }
 
-    /// Estimates the BPE token footprint (`(chars + 3) / 4`) of `tool_schema()`, guaranteed `< 180` tokens.
+    /// Estimates the BPE token footprint (`(chars + 3) / 4`) of the whole `tool_schema()`: under
+    /// 360 tokens for both tools, each tool under 180.
     #[must_use]
     pub fn schema_token_estimate() -> usize {
         Self::tool_schema().to_string().len().div_ceil(4)
+    }
+
+    /// The same estimate for each tool in `tool_schema()`, in order.
+    #[must_use]
+    pub fn per_tool_token_estimates() -> Vec<usize> {
+        Self::tool_schema()["tools"]
+            .as_array()
+            .map(|tools| {
+                tools
+                    .iter()
+                    .map(|t| t.to_string().len().div_ceil(4))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Whether `(tool, args)` is a state-changing call: `fold`, or `xagent` with a message.
+    fn is_write_op(args: &Value) -> bool {
+        match args.get("op").and_then(Value::as_str) {
+            Some("fold") => true,
+            Some("xagent") => args
+                .get("q")
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.trim().is_empty()),
+            _ => false,
+        }
+    }
+
+    /// Checks that `op` belongs to `tool`. A read op sent to `icx_write` is refused; a write op
+    /// sent to `icx` still runs for one release, with a deprecation note (ADR-0009).
+    fn route(tool: &str, args: &Value) -> Result<Option<&'static str>, String> {
+        let write = Self::is_write_op(args);
+        match tool {
+            READ_TOOL if write => Ok(Some(DEPRECATED_WRITE_ON_READ)),
+            READ_TOOL => Ok(None),
+            WRITE_TOOL if write => Ok(None),
+            WRITE_TOOL => Err(format!(
+                "ERR: `{WRITE_TOOL}` only folds or broadcasts (`fold`, or `xagent` with `q`); use `{READ_TOOL}` for reads"
+            )),
+            _ => Err(format!("Unknown tool: {tool}")),
+        }
     }
 
     /// Returns `true` if a JSON-RPC 2.0 request line requires reading or mutating persistent MMU
@@ -337,7 +397,7 @@ impl McpPagerServer {
                     return json!({"jsonrpc":"2.0", "id":id,
                         "error":{"code":-32602, "message":"tools/call requires a string name"}});
                 };
-                if tool_name != "icx" {
+                if tool_name != READ_TOOL && tool_name != WRITE_TOOL {
                     return json!({"jsonrpc":"2.0", "id":id,
                         "error":{"code":-32602, "message":format!("Unknown tool: {tool_name}")}});
                 }
@@ -345,7 +405,21 @@ impl McpPagerServer {
                     return json!({"jsonrpc":"2.0", "id":id,
                         "error":{"code":-32602, "message":"tools/call requires arguments"}});
                 };
-                let (result_text, is_err) = Self::execute_icx_op_checked(args, mmu);
+                let (result_text, is_err) = match Self::route(tool_name, args) {
+                    // Arguments are validated before routing, so a malformed call reports its
+                    // own error, not a routing one.
+                    _ if Self::validate_arguments(args).is_err() => {
+                        Self::execute_icx_op_checked(args, mmu)
+                    }
+                    Err(message) => (message, true),
+                    Ok(note) => {
+                        let (mut text, is_err) = Self::execute_icx_op_checked(args, mmu);
+                        if let Some(note) = note {
+                            text.push_str(note);
+                        }
+                        (text, is_err)
+                    }
+                };
                 json!({
                     "jsonrpc": "2.0",
                     "id": id,

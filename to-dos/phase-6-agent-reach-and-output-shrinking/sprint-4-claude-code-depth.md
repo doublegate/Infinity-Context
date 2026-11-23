@@ -365,10 +365,12 @@ does not. But the single `icx` tool is not read-only (`fold`, `expand` and an `x
 change state), so the hint ships only with T-64-008's split.
 
 - [x] Claude Code version and the result for each of the four configurations recorded.
-- [ ] Annotations added to the tool definition only if "hint only" stops the prompt. It does;
-  shipping waits for T-64-008, so that the hint is honest.
-- [ ] Deployment guide states the working configuration, including the user-level
-  `permissions.allow` entry for sessions and worktree subagents outside the project tree.
+- [x] Annotations added to the tool definition only if "hint only" stops the prompt. It does,
+  and it ships on the read-only `icx` tool from the T-64-008 split. Live check after the split:
+  in plan mode with no allow rule, `icx status` ran and `icx_write` was not run.
+- [x] Deployment guide states the working configuration, including the user-level
+  `permissions.allow` entry for sessions and worktree subagents outside the project tree
+  (§2.2).
 
 **Dependencies:** T-61-002
 
@@ -390,11 +392,17 @@ approves multiple tools from one server, and the cost of a second tool definitio
 
 **Acceptance Criteria:**
 
-- [ ] Decision recorded as an ADR (Context, Decision, Consequences).
-- [ ] If split: the read-only tool carries `readOnlyHint`; the state-changing tool does not;
-  old `op` values keep working for one release with a deprecation note.
-- [ ] If not split: the tool carries no `readOnlyHint`, and the reason is documented.
-- [ ] Phase 7 Sprint 3 (typed eviction through `fold`) updated to match.
+**Outcome (2026-11-22): split, by owner decision (ADR-0009).** `icx` (deref, slice, grep, recall,
+expand, status, xagent poll) carries `readOnlyHint`; `icx_write` (fold, xagent broadcast) does not.
+`recall` stays read-only, since its only effect is cursor bookkeeping. Both tools stay under 180
+tokens each.
+
+- [x] Decision recorded as an ADR (`docs/adr/0009-read-only-icx-tool.md`).
+- [x] Split: the read-only tool carries `readOnlyHint`; the state-changing tool does not; `fold`
+  and broadcasts sent to `icx` keep working through v1.4.x with a `⟪ICX:DEPRECATED│...⟫` note
+  (`tests/mcp_two_tools.rs`).
+- [x] ~~If not split~~: not applicable.
+- [x] Phase 7 Sprint 3 (typed eviction through `fold`, T-73-004) updated to target `icx_write`.
 
 **Dependencies:** T-64-007
 

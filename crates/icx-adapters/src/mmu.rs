@@ -153,17 +153,19 @@ impl InfinityContextMmu {
     /// re-virtualization in `PostToolUse`.
     pub fn is_icx_pager_tool(tool_name: &str) -> bool {
         let t = tool_name.trim();
-        t.eq_ignore_ascii_case("icx")
-            || t.ends_with("__icx")
-            || t.starts_with("mcp__icx__")
+        // Both of icx's tools (ADR-0009): the read-only `icx` and the state-changing `icx_write`.
+        ["icx", "icx_write"].iter().any(|own| {
+            t.eq_ignore_ascii_case(own) || t.ends_with(&format!("__{own}"))
+        }) || t.starts_with("mcp__icx__")
             || t.starts_with("mcp__infinity_context")
             || t.starts_with("mcp__infinity-context")
             // Gemini CLI and agy name MCP tools `mcp_<server>_<tool>` (single underscores). A
             // prefix match would catch other servers whose names start with `icx_`, so only
-            // the icx tool itself, under the server names icx is registered as, matches.
-            || ["mcp_icx_icx", "mcp_infinity_context_icx", "mcp_infinity-context_icx"]
+            // icx's own tools, under the server names icx is registered as, match.
+            || ["icx", "infinity_context", "infinity-context"]
                 .iter()
-                .any(|name| t.eq_ignore_ascii_case(name))
+                .flat_map(|server| ["icx", "icx_write"].map(|tool| format!("mcp_{server}_{tool}")))
+                .any(|name| t.eq_ignore_ascii_case(&name))
     }
 
     /// Extracts a command-scoped subject (`"<tool_name>:<command>"`) from a hook JSON payload
