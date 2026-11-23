@@ -165,12 +165,12 @@ impl OpenCodeAdapter {
                 }
             }
             "compaction" => {
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             "session.end" => {
                 mmu.fold_all_open_subagents(AgentKind::OpenCode, "session_end");
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             _ => json!({}),

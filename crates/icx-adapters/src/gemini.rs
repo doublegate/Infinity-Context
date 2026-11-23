@@ -183,12 +183,12 @@ impl GeminiCliAdapter {
                 }
             }
             "PreCompress" | "pre-compress" => {
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             "SessionEnd" | "session-end" => {
                 mmu.fold_all_open_subagents(AgentKind::GeminiCli, "session_end");
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             _ => json!({}),

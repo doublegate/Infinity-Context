@@ -836,12 +836,17 @@ unprefixed_secret = {unpref_sec}
             .unwrap();
         assert_eq!(stop_a, "{}");
         assert_eq!(mmu.dag.node_count(), nodes_before_subs + 2);
-        // Stopping sub-B via Codex session-end folds any remaining open subagents
+        // Stopping sub-B via Codex session-end folds any remaining open subagents (2 nodes), then
+        // force-seals the epoch (owner decision, 2026-11-22): the L3 epoch node, plus the L4 fold
+        // node over the sealed epochs once there are two or more.
+        let sealed_before = mmu.epochs.sealed_epoch_count();
         let session_end_out = codex_trait
             .handle_hook_event("session-end", "{}", &mut mmu)
             .unwrap();
         assert!(session_end_out.contains("continue"));
-        assert_eq!(mmu.dag.node_count(), nodes_before_subs + 4);
+        assert_eq!(mmu.epochs.sealed_epoch_count(), sealed_before + 1);
+        let fold_node = usize::from(sealed_before + 1 >= 2);
+        assert_eq!(mmu.dag.node_count(), nodes_before_subs + 4 + 1 + fold_node);
 
         // Verify Clear-State Functional Supersession (failing suite -> passing suite supersedes fail & status)
         let _ = mmu.ingest_payload_with_exit_code(

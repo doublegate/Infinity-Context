@@ -211,7 +211,7 @@ impl ClaudeCodeAdapter {
                 json!({})
             }
             "PreCompact" | "pre-compact" => {
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, "pre_compact", 5);
                 // Plain stdout is used verbatim as the compaction instructions (< 10,000 chars).
                 return Ok(compaction_instructions(&tail));
@@ -230,12 +230,12 @@ impl ClaudeCodeAdapter {
                         false,
                     );
                 }
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             "SessionEnd" | "session-end" => {
                 mmu.fold_all_open_subagents(AgentKind::ClaudeCode, "session_end");
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             _ => json!({}),

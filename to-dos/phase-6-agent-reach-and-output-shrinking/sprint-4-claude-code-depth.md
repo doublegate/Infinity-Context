@@ -97,9 +97,12 @@ be read):
 adapter call `rollover_and_sync_dag_root`, which seals only when the epoch has reached its token
 threshold (`maybe_rollover`). The docs say these events "seal the epoch" unconditionally, which
 is true only of a full epoch. A model switch now forces the seal
-(`force_rollover_and_sync_dag_root`). Whether compaction should force it too (history is
-rewritten, so the old cache is gone) is an open decision, raised with the owner; until then the
-docs and the code disagree on this point.
+(`force_rollover_and_sync_dag_root`).
+
+**Decision (owner, 2026-11-22):** compaction and session end force the seal in every adapter,
+since history is rewritten and the old cache is gone. agy's ordinary `Stop` keeps the conditional
+check. Pinned by `tests/compaction_seals.rs`, which also checks that a repeated event adds no
+empty epoch.
 
 ## Tickets
 

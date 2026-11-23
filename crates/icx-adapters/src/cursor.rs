@@ -202,12 +202,12 @@ impl CursorAdapter {
                 }
             }
             "preCompact" | "PreCompact" | "pre-compact" => {
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             "sessionEnd" | "SessionEnd" | "session-end" => {
                 mmu.fold_all_open_subagents(AgentKind::Cursor, "session_end");
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             // Includes `sessionStart`: its `additional_context` lands in system context, which icx

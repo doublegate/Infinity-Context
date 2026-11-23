@@ -64,6 +64,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Compaction and session end always seal the cache epoch**, in every adapter (Claude Code,
+  Codex, agy, Muse, Gemini CLI, Cursor and OpenCode).
+  - Before, these events sealed only an epoch that had reached its token threshold, although the
+    docs said they always sealed it. Compaction rewrites the conversation, so the old cached
+    prefix is gone whatever the epoch's size.
+  - A repeated event with nothing new adds no empty epoch. agy's `Stop` keeps the conditional
+    check, except for the error reasons that already forced it.
 - **Claude Code `PostModelSwitch` seals the cache epoch** (T-64-005), since the new model starts
   a cold prompt cache. `PreModelSwitch` is not used: a failing or slow hook there blocks the
   switch.

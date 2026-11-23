@@ -174,7 +174,7 @@ impl CodexAdapter {
                 })
             }
             "PreCompact" | "pre-compact" | "PostCompact" | "post-compact" => {
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 let win = mmu.assemble_prompt_window(AgentKind::Codex, "compact_checkpoint");
                 json!({
                     "continue": true,
@@ -185,7 +185,7 @@ impl CodexAdapter {
             }
             "SessionEnd" | "session-end" => {
                 mmu.fold_all_open_subagents(AgentKind::Codex, "session_end");
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 let win = mmu.assemble_prompt_window(AgentKind::Codex, "session_end");
                 json!({
                     "continue": true,
