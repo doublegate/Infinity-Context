@@ -267,6 +267,14 @@ workspace in which a Muse event was recorded, so upgrade every agent's `icx` bef
 
 ---
 
+**Common to sections 8 to 10:**
+
+- **Stub modes** (`ICX_GEMINI_STUB`, `ICX_CURSOR_STUB`, `ICX_OPENCODE_STUB`) are read from the
+  hook's own environment. A hook that sets one runs in-process; through the daemon these
+  adapters capture only.
+- **Mixed results:** a part or content-block list that is not all text is stored as its full
+  JSON, so image and resource parts are kept.
+
 ## 8. Google Gemini CLI Adapter (`GeminiCliAdapter`, v1.4.0)
 
 `icx hook --agent gemini-cli --event <event>`. **Built from the documented contract only:**

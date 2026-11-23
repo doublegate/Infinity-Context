@@ -81,14 +81,12 @@ fn cursor_tool_text(output: Option<&Value>) -> (String, Option<i32>) {
             return (s.clone(), code);
         }
     }
-    if let Some(Value::Array(blocks)) = obj.get("content") {
-        let texts: Vec<&str> = blocks
-            .iter()
-            .filter_map(|b| b.get("text").and_then(Value::as_str))
-            .collect();
-        if !texts.is_empty() {
-            return (texts.join("\n"), code);
-        }
+    // MCP `content` blocks: text only when every block is text, else the whole JSON, so an
+    // image or resource block is kept.
+    if let Some(Value::Array(blocks)) = obj.get("content")
+        && let Some(text) = crate::text_only_parts(blocks)
+    {
+        return (text, code);
     }
     (Value::Object(obj).to_string(), code)
 }

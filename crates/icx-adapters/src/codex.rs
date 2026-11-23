@@ -323,15 +323,22 @@ fn is_tool_output_record(val: &Value) -> bool {
         .is_some_and(|t| t.ends_with("_call_output"))
 }
 
-/// The same test on the first bytes of a record too large to parse: rollout lines put `type`
-/// fields first, so a tool output names itself within its opening bytes.
+/// The same test on the first bytes of a record too large to parse. Rollout lines put the
+/// payload's `type` first (`..."payload":{"type":"function_call_output",...`), so only that
+/// field is read; a message that merely quotes `"function_call_output"` in its text does not
+/// match (review of #87).
 fn is_tool_output_prefix(line: &str) -> bool {
     let end = line.len().min(1024);
     let mut cut = end;
     while !line.is_char_boundary(cut) {
         cut -= 1;
     }
-    line[..cut].contains("_call_output\"")
+    let head = &line[..cut];
+    ["\"payload\":{\"type\":\"", "\"item\":{\"type\":\""]
+        .iter()
+        .filter_map(|marker| head.find(marker).map(|at| &head[at + marker.len()..]))
+        .filter_map(|rest| rest.split('"').next())
+        .any(|ty| ty.ends_with("_call_output"))
 }
 
 /// Maximum per-record buffer allocation (`64 MiB + 64 KiB`) before draining the remainder of an
@@ -661,5 +668,56 @@ impl CodexRolloutTailer {
         let exit_code = InfinityContextMmu::extract_exit_code(item)
             .or_else(|| InfinityContextMmu::extract_exit_code(val));
         Some((subject, body, exit_code))
+    }
+}
+
+#[cfg(test)]
+mod record_filter_tests {
+    use super::{is_tool_output_prefix, is_tool_output_record};
+    use serde_json::json;
+
+    #[test]
+    fn tool_output_records_are_recognised_by_payload_type() {
+        for ty in [
+            "function_call_output",
+            "custom_tool_call_output",
+            "mcp_tool_call_output",
+        ] {
+            let rec = json!({"type": "response_item", "payload": {"type": ty, "output": "x"}});
+            assert!(is_tool_output_record(&rec), "{ty}");
+            // Codex writes the payload's `type` first; `json!` would sort the keys.
+            let line = format!(
+                r#"{{"timestamp":"2026-11-22T00:00:00Z","type":"response_item","payload":{{"type":"{ty}","call_id":"c1","output":"x"}}}}"#
+            );
+            assert!(is_tool_output_prefix(&line), "{ty}");
+        }
+        let item = json!({"item": {"type": "function_call_output"}});
+        assert!(is_tool_output_record(&item));
+        assert!(is_tool_output_record(
+            &json!({"type": "function_call_output"})
+        ));
+        let message = json!({"type": "response_item", "payload": {"type": "message",
+            "content": "see \"type\":\"function_call_output\" and \"function_call_output\""}});
+        assert!(!is_tool_output_record(&message));
+        assert!(
+            !is_tool_output_prefix(&message.to_string()),
+            "quoted text is not the type"
+        );
+        assert!(!is_tool_output_record(
+            &json!({"payload": {"type": "function_call"}})
+        ));
+    }
+
+    #[test]
+    fn prefix_test_reads_only_the_opening_bytes_on_a_char_boundary() {
+        let late = format!(
+            "{}\"payload\":{{\"type\":\"function_call_output\"",
+            "é".repeat(600)
+        );
+        assert!(
+            !is_tool_output_prefix(&late),
+            "beyond the first 1,024 bytes"
+        );
+        assert!(!is_tool_output_prefix(""));
     }
 }

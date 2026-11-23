@@ -47,21 +47,13 @@ impl AgentHookAdapter for OpenCodeAdapter {
 }
 
 /// Text of an OpenCode tool result as the plugin forwards it: a string, or the `text` of each
-/// content part, else the JSON.
+/// content part when every part is text, else the JSON (so image or resource parts are kept).
 fn opencode_result_text(output: Option<&Value>) -> String {
     match output {
         None | Some(Value::Null) => String::new(),
         Some(Value::String(s)) => s.clone(),
         Some(Value::Array(parts)) => {
-            let texts: Vec<&str> = parts
-                .iter()
-                .filter_map(|p| p.get("text").and_then(Value::as_str).or_else(|| p.as_str()))
-                .collect();
-            if texts.is_empty() {
-                Value::Array(parts.clone()).to_string()
-            } else {
-                texts.join("\n")
-            }
+            crate::text_only_parts(parts).unwrap_or_else(|| Value::Array(parts.clone()).to_string())
         }
         Some(other) => crate::claude::tool_output_text(Some(other)),
     }

@@ -23,9 +23,7 @@
 import type { Plugin } from "@opencode/plugin";
 import { spawnSync } from "node:child_process";
 
-const ICX_BIN = process.env.ICX_BIN || "icx";
-const TIMEOUT_MS = Number(process.env.ICX_PLUGIN_TIMEOUT_MS) || 5000;
-// Bounds on what is sent to icx and read back; icx bounds its own input as well.
+// Bounds on what is sent to icx and read back, in UTF-8 bytes; icx bounds its own input as well.
 const MAX_SEND_BYTES = 64 * 1024 * 1024;
 const MAX_REPLY_BYTES = 4 * 1024 * 1024;
 
@@ -34,15 +32,18 @@ type Reply = { append?: unknown; replace?: unknown };
 /** Runs one icx hook. Any failure yields `{}`, so the caller changes nothing. */
 function icxHook(event: string, payload: Record<string, unknown>): Reply {
   try {
+    // Read per call, like the rest of the environment, so a change at run time takes effect.
+    const bin = process.env.ICX_BIN || "icx";
+    const timeout = Number(process.env.ICX_PLUGIN_TIMEOUT_MS) || 5000;
     const input = JSON.stringify(payload);
-    if (input.length > MAX_SEND_BYTES) return {};
-    const run = spawnSync(ICX_BIN, ["hook", "--agent", "opencode", "--event", event], {
+    if (Buffer.byteLength(input, "utf8") > MAX_SEND_BYTES) return {};
+    const run = spawnSync(bin, ["hook", "--agent", "opencode", "--event", event], {
       input,
       // Bun passes only its startup environment to children unless `env` is given, so changes
       // made to process.env at run time (ICX_DIR, ...) would otherwise be lost.
       env: process.env,
       encoding: "utf8",
-      timeout: TIMEOUT_MS,
+      timeout,
       maxBuffer: MAX_REPLY_BYTES,
       stdio: ["pipe", "pipe", "ignore"],
     });
@@ -68,7 +69,8 @@ const IcxPlugin: Plugin.Plugin = {
 
     const after = await ctx.tool.hook("execute.after", async (event) => {
       const completed = event?.status === "completed";
-      const result = completed ? event.result : undefined;
+      // A failed call can still carry partial output, which is stored with the error.
+      const result = event?.result;
       // The result text is `content` or `output`, depending on the tool.
       const key = result && result.content !== undefined ? "content" : "output";
       const reply = icxHook("execute.after", {
@@ -77,11 +79,15 @@ const IcxPlugin: Plugin.Plugin = {
         call_id: event?.id,
         input: event?.input,
         status: event?.status,
-        output: completed ? result?.[key] : undefined,
+        output: result?.[key],
         error: event?.status === "error" ? event?.error?.message : undefined,
       });
       if (completed && typeof reply.replace === "string" && reply.replace.length > 0) {
-        event.result = { ...result, [key]: reply.replace };
+        // An MCP `content` list stays a list of content blocks; a string stays a string.
+        const stub = Array.isArray(result?.[key])
+          ? [{ type: "text", text: reply.replace }]
+          : reply.replace;
+        event.result = { ...result, [key]: stub };
       }
     });
 

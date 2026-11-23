@@ -54,13 +54,9 @@ fn gemini_tool_text(response: Option<&Value>) -> (String, bool) {
     let parts_text = |v: &Value| -> Option<String> {
         match v {
             Value::String(s) => Some(s.clone()),
-            Value::Array(parts) => {
-                let texts: Vec<&str> = parts
-                    .iter()
-                    .filter_map(|p| p.get("text").and_then(Value::as_str).or_else(|| p.as_str()))
-                    .collect();
-                (!texts.is_empty()).then(|| texts.join("\n"))
-            }
+            // A part list with any non-text part (inline data, a file) falls through to the
+            // whole JSON, so nothing is dropped.
+            Value::Array(parts) => crate::text_only_parts(parts),
             Value::Object(o) => o.get("text").and_then(Value::as_str).map(str::to_owned),
             _ => None,
         }

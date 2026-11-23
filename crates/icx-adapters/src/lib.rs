@@ -29,6 +29,31 @@ pub use mmu::{
 pub use muse::MuseAdapter;
 pub use opencode::OpenCodeAdapter;
 
+/// The text of a content-part list, joined by `\n`, only when every part is text: a string, or
+/// an object with a string `text` and no `type` other than `"text"`. A list with any image,
+/// resource or other block returns `None`, so the caller keeps the whole JSON and nothing is
+/// dropped from the stored artifact (review of #87).
+pub(crate) fn text_only_parts(parts: &[serde_json::Value]) -> Option<String> {
+    if parts.is_empty() {
+        return None;
+    }
+    parts
+        .iter()
+        .map(|p| {
+            p.as_str().or_else(|| {
+                let typed_text = p
+                    .get("type")
+                    .and_then(serde_json::Value::as_str)
+                    .is_none_or(|t| t == "text");
+                typed_text
+                    .then(|| p.get("text").and_then(serde_json::Value::as_str))
+                    .flatten()
+            })
+        })
+        .collect::<Option<Vec<&str>>>()
+        .map(|t| t.join("\n"))
+}
+
 /// The reply an agent's hook gets when icx fails open (a bad flag, unreadable stdin, a workspace
 /// error): the same shape the agent's adapter returns as its no-op for that event, so the agent
 /// keeps its normal behaviour (v1.3.1, #30). agy event names are matched ignoring case and

@@ -49,9 +49,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     epoch at compaction. It adds no system text.
   - Replacing large results with a stub works on v2.2.7 and is opt-in (`ICX_OPENCODE_STUB=1`).
   - It fails open when icx is missing, fails or times out.
+- **Stub modes follow the hook caller.** `ICX_GEMINI_STUB`, `ICX_CURSOR_STUB` and
+  `ICX_OPENCODE_STUB` are read from the hook's own environment. A hook that asks for stubs runs
+  in-process, and through the daemon these adapters capture only, so a daemon started with
+  other settings cannot override the caller's.
+- **Mixed results are kept whole.** A Gemini CLI, Cursor or OpenCode result whose parts are not
+  all text (an image, a resource) is stored as its full JSON, so nothing is dropped.
 - **`icx doctor` checks the new agents** (T-63-004): for Gemini CLI, Cursor and OpenCode it
-  reports presence, version and whether an icx hook or plugin is registered. Only a command whose
-  program is `icx` counts, so another tool's hooks for the same agent are not mistaken for it.
+  reports presence, version and whether an icx hook or plugin is registered, in the user config
+  or the current project's.
+  - Only a command whose program is `icx` counts, so another tool's hooks for the same agent are
+    not mistaken for icx's.
+  - The OpenCode plugin is recognised in any quote style.
 
 ### Changed
 

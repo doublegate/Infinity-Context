@@ -279,3 +279,19 @@ fn tool_response_shapes_are_read_in_documented_order() {
         assert_eq!(reply("AfterTool", extra, &mut mmu, true), json!({}));
     }
 }
+
+#[test]
+fn mixed_llm_content_parts_are_kept_whole() {
+    let mut mmu = InfinityContextMmu::default();
+    let response = json!({"llmContent": [{"text": "caption"}, {"inlineData": {"mimeType": "image/png", "data": "iVBORw0KGgo"}}]});
+    reply(
+        "AfterTool",
+        json!({"tool_name": "read_many_files", "tool_response": response}),
+        &mut mmu,
+        false,
+    );
+    assert!(
+        held(&mmu, &response.to_string()),
+        "the inline data part is not dropped"
+    );
+}

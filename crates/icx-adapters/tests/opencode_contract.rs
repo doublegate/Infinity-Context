@@ -207,3 +207,21 @@ fn unusual_result_shapes_are_stored_as_text_or_json() {
     );
     assert!(mmu.cas.artifact_count() > before);
 }
+
+#[test]
+fn mixed_text_and_image_parts_are_kept_whole() {
+    let mut mmu = InfinityContextMmu::default();
+    let parts =
+        json!([{"type": "text", "text": "caption"}, {"type": "image", "data": "iVBORw0KGgo"}]);
+    reply(
+        "execute.after",
+        json!({"tool": "screenshot", "status": "completed", "output": parts}),
+        &mut mmu,
+        false,
+    );
+    assert!(
+        held(&mmu, &parts.to_string()),
+        "the image part is not dropped"
+    );
+    assert!(!held(&mmu, "caption"));
+}

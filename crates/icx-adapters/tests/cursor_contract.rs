@@ -255,3 +255,19 @@ fn tool_output_shapes_are_unwrapped_or_kept_verbatim() {
         assert_eq!(reply("postToolUse", extra, &mut mmu, true), json!({}));
     }
 }
+
+#[test]
+fn mixed_mcp_content_blocks_are_kept_whole() {
+    let mut mmu = InfinityContextMmu::default();
+    let result = json!({"content": [{"type": "text", "text": "caption"}, {"type": "image", "data": "iVBORw0KGgo", "mimeType": "image/png"}]});
+    reply(
+        "postToolUse",
+        json!({"tool_name": "mcp_shots_take", "tool_output": result.to_string()}),
+        &mut mmu,
+        false,
+    );
+    assert!(
+        held(&mmu, &result.to_string()),
+        "the image block is not dropped"
+    );
+}

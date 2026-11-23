@@ -85,6 +85,24 @@ test("execute.after replaces a large result only in stub mode", async () => {
   await dispose();
 });
 
+test("a stubbed MCP content list stays a list of content blocks", async () => {
+  if (!process.env.ICX_BIN) return;
+  const { hooks, dispose } = await load({ ICX_OPENCODE_STUB: "1" });
+  const event: any = {
+    sessionID: "s1",
+    tool: "mcp_github_search",
+    id: "c3",
+    input: {},
+    status: "completed",
+    result: { content: [{ type: "text", text: big.replace(/ok/g, "fine") }] },
+  };
+  await hooks["tool:execute.after"](event);
+  expect(Array.isArray(event.result.content)).toBe(true);
+  expect(event.result.content[0].type).toBe("text");
+  expect(event.result.content[0].text.startsWith("⟪ICX:STUB│#icx:")).toBe(true);
+  await dispose();
+});
+
 test("a missing icx binary fails open", async () => {
   const saved = process.env.ICX_BIN;
   const { hooks, dispose } = await load({ ICX_BIN: join(root, "no-such-icx") });
