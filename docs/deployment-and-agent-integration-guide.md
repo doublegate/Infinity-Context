@@ -293,10 +293,26 @@ Register only the events icx handles. `PreToolUse` and `Stop` are omitted: icx m
           { "type": "command", "command": "icx hook --agent claude-code --event SessionEnd" }
         ]
       }
+    ],
+    "CwdChanged": [
+      {
+        "hooks": [
+          { "type": "command", "command": "icx hook --agent claude-code --event CwdChanged" }
+        ]
+      }
+    ],
+    "PostModelSwitch": [
+      {
+        "hooks": [
+          { "type": "command", "command": "icx hook --agent claude-code --event PostModelSwitch" }
+        ]
+      }
     ]
   }
 }
 ```
+
+`CwdChanged` and `PostModelSwitch` (v1.4.0) take no matcher. Do not register `PreModelSwitch`, `WorktreeCreate` or `WorktreeRemove` for icx: a failing or slow `PreModelSwitch` hook blocks the switch, and a `WorktreeCreate` hook replaces Claude Code's own worktree creation.
 
 The `env` block is only needed if you use the proxy (§2.1.1); replace `<token>` with the value printed by `icx proxy`.
 
@@ -312,6 +328,8 @@ Claude Code response semantics:
 | `PostCompact` | Stores `compact_summary` in the workspace, seals the epoch, outputs `{}`. |
 | `SubagentStop` | Reads `last_assistant_message`, folds the subagent branch, outputs `{}` (a decision or `additionalContext` here would keep the subagent running). |
 | `SessionEnd` | Folds open subagents, seals the epoch, outputs `{}`. |
+| `CwdChanged` (v1.4.0) | Switches the agent to the workspace of `new_cwd`, so its icx MCP server follows a `cd` into another repository or worktree on its next call. Outputs `{}`. |
+| `PostModelSwitch` (v1.4.0) | Seals the epoch, since the new model starts a cold prompt cache. Outputs `{}`. |
 
 ---
 

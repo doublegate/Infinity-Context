@@ -200,8 +200,21 @@ installed version.
 
 **Acceptance Criteria:**
 
-- [ ] Workspace follows `CwdChanged`; the v1.3.2 heuristic stays as fallback.
-- [ ] Test covers a change into a different repository and into a worktree.
+**Live results (2026-11-22, Claude Code 2.1.330):** `CwdChanged` fired for each shell `cd`:
+into a subdirectory, into another repository (`--add-dir`), and into a git worktree. The payload
+is `session_id`, `transcript_path`, `prompt_id`, `hook_event_name`, `cwd`, `old_cwd` and
+`new_cwd`, with `cwd` equal to `new_cwd`. icx resolves the workspace from `new_cwd`. In a live
+session (hooks calling `icx` directly, no `ICX_DIR`), `icx status` from the MCP tool showed the
+project's store before a `cd` into another repository and that repository's store after it.
+
+Harness trap: a hook wrapper written in Python is not one of icx's launcher names, so the agent
+record is filed under the wrapper's PID and the MCP server cannot find it. Real installs run
+`icx hook` through `sh`, which is.
+
+- [x] Workspace follows `CwdChanged`; every other hook keeps recording its own workspace, as in
+  v1.3.2.
+- [x] Test covers a change into a different repository (`tests/cwd_changed_cli.rs`); the
+  worktree case was covered live.
 - [ ] Issue #34 notes updated with the new trigger.
 
 **Dependencies:** None
@@ -304,8 +317,25 @@ users to the allow rule.
 
 **Acceptance Criteria:**
 
-- [ ] Claude Code version and the result for each of the four configurations recorded.
-- [ ] Annotations added to the tool definition only if "hint only" stops the prompt.
+**Live results (2026-11-22).** Claude Code 2.1.330, `claude -p --permission-mode plan
+--output-format json`, scratch project, no hooks, only a scratch icx MCP server. The hint build
+was a throwaway binary with `annotations.readOnlyHint: true` on the tool; `mcp.rs` was restored
+afterwards. A held tool shows up under `-p` as a `permission_denials` entry.
+
+| Configuration | Result |
+| --- | --- |
+| No rule, no hint | Held: `permission_denials: ["mcp__icx__icx"]` |
+| Rule only (`permissions.allow: ["mcp__icx"]`) | Held |
+| Hint only | Ran (`⟪ICX:STATUS│...⟫`) |
+| Rule and hint | Ran |
+
+The hypothesis is confirmed: in plan mode only `readOnlyHint` lifts the hold, and the allow rule
+does not. But the single `icx` tool is not read-only (`fold`, `expand` and an `xagent` broadcast
+change state), so the hint ships only with T-64-008's split.
+
+- [x] Claude Code version and the result for each of the four configurations recorded.
+- [ ] Annotations added to the tool definition only if "hint only" stops the prompt. It does;
+  shipping waits for T-64-008, so that the hint is honest.
 - [ ] Deployment guide states the working configuration, including the user-level
   `permissions.allow` entry for sessions and worktree subagents outside the project tree.
 

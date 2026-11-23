@@ -64,6 +64,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Claude Code `CwdChanged` moves the agent to the new directory's workspace** (T-64-003,
+  verified live on 2.1.330). The workspace is resolved from `new_cwd`, so the agent's icx MCP
+  server follows a `cd` into another repository or worktree on its next call (#34). Register the
+  hook to use it (deployment guide §2.2).
 - **Claude Code Read, Grep, Glob and Code Mode results are stored as their text** (T-64-001,
   verified live on 2.1.330).
   - Before, Read, Grep and Glob results were stored as one line of JSON, so a stub said

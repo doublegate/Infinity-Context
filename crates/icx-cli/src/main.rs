@@ -422,10 +422,27 @@ fn init_workspace_dir(icx_dir: &Path) -> Result<(), String> {
 /// Resolves the workspace directory (`--dir` > `ICX_DIR` > per-project default under the state
 /// dir) and warns once about an ignored v1.0.x repository-local `.icx/`.
 fn resolve_workspace_dir(cli_dir: Option<&str>) -> PathBuf {
-    static LEGACY_NOTICE: AtomicBool = AtomicBool::new(false);
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    resolve_workspace_dir_from(cli_dir, &cwd)
+}
+
+/// The directory a Claude Code `CwdChanged` hook moved to (`new_cwd`), when it is an absolute,
+/// existing directory (T-64-003). The workspace is resolved from it rather than from wherever
+/// the hook process happens to run.
+fn cwd_changed_target(event: &str, stdin: &str) -> Option<PathBuf> {
+    if !event.eq_ignore_ascii_case("CwdChanged") && !event.eq_ignore_ascii_case("cwd-changed") {
+        return None;
+    }
+    let payload: serde_json::Value = serde_json::from_str(stdin).ok()?;
+    let dir = PathBuf::from(payload.get("new_cwd")?.as_str()?);
+    (dir.is_absolute() && dir.is_dir()).then_some(dir)
+}
+
+/// [`resolve_workspace_dir`] for an explicit working directory.
+fn resolve_workspace_dir_from(cli_dir: Option<&str>, cwd: &Path) -> PathBuf {
+    static LEGACY_NOTICE: AtomicBool = AtomicBool::new(false);
     let env_dir = env::var("ICX_DIR").ok();
-    match workspace::resolve(cli_dir, env_dir.as_deref(), &cwd, roots()) {
+    match workspace::resolve(cli_dir, env_dir.as_deref(), cwd, roots()) {
         Ok(ws) => {
             if let Some(legacy) = &ws.legacy_repo_local
                 && !LEGACY_NOTICE.swap(true, AtomicOrdering::Relaxed)
@@ -948,7 +965,12 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
     let agent = AgentKind::parse_agent(agent_str);
     let is_session_start = event_str.eq_ignore_ascii_case("SessionStart")
         || event_str.eq_ignore_ascii_case("session-start");
-    let ws_dir = resolve_workspace_dir(dir_str);
+    // A `CwdChanged` hook switches the agent to the workspace of the directory it moved to, so
+    // its MCP server follows on the next call (T-64-003, #34).
+    let ws_dir = match cwd_changed_target(event_str, stdin_buf) {
+        Some(new_cwd) => resolve_workspace_dir_from(dir_str, &new_cwd),
+        None => resolve_workspace_dir(dir_str),
+    };
     if matches!(workspace_state(&ws_dir, true), WsState::Ready) {
         // Lets this agent's MCP server follow the workspace its hooks use (#34).
         workspace::record_agent_workspace(&ws_dir, roots());
