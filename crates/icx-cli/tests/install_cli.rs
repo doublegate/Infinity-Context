@@ -353,3 +353,60 @@ fn a_server_wide_allow_rule_makes_the_tool_rule_redundant() {
             .unwrap();
     assert_eq!(v["permissions"]["allow"], serde_json::json!(["mcp__icx"]));
 }
+
+#[cfg(unix)]
+#[test]
+fn modes_are_kept_new_files_are_private_and_symlinks_stay_links() {
+    use std::os::unix::fs::PermissionsExt;
+    let h = home("modes");
+    fs::create_dir_all(h.join(".codex")).unwrap();
+    fs::create_dir_all(h.join("dotfiles")).unwrap();
+    // A private config, and a settings file that is a dotfiles symlink.
+    fs::write(h.join(".codex/config.toml"), "model = \"x\"\n").unwrap();
+    fs::set_permissions(
+        h.join(".codex/config.toml"),
+        fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+    fs::write(h.join("dotfiles/hooks.json"), "{}").unwrap();
+    std::os::unix::fs::symlink(h.join("dotfiles/hooks.json"), h.join(".codex/hooks.json")).unwrap();
+
+    let o = run(&h, &["--agent", "codex", "--yes"]);
+    assert!(o.status.success(), "{}", out(&o));
+    let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(
+        mode(&h.join(".codex/config.toml")),
+        0o600,
+        "the mode is kept"
+    );
+    let backups: Vec<_> = snapshot(&h)
+        .into_iter()
+        .map(|(p, _)| p)
+        .filter(|p| p.to_string_lossy().contains(".icx-backup-"))
+        .collect();
+    assert_eq!(backups.len(), 2, "{backups:?}");
+    for b in &backups {
+        if b.to_string_lossy().contains("config.toml") {
+            assert_eq!(mode(b), 0o600, "the backup is as private as the original");
+        }
+    }
+    let link = h.join(".codex/hooks.json");
+    assert!(
+        fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "still a link"
+    );
+    assert!(
+        fs::read_to_string(h.join("dotfiles/hooks.json"))
+            .unwrap()
+            .contains("--agent codex")
+    );
+
+    // A file the installer creates is private.
+    let h2 = home("newfile");
+    let o = run(&h2, &["--agent", "cursor", "--yes"]);
+    assert!(o.status.success(), "{}", out(&o));
+    assert_eq!(mode(&h2.join(".cursor/mcp.json")), 0o600);
+}

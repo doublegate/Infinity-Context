@@ -697,7 +697,10 @@ icx install --agent all --yes --approve-tools      # write without asking; also 
   no terminal to ask on. `--dry-run` never writes.
 - **Safety:**
   - every file that existed is copied to `<file>.icx-backup-<unix time>` before it is replaced,
-    and the replacement is written through a temporary file and a rename, keeping the file's mode;
+    and the replacement is written through a temporary file and a rename. The backup and the
+    temporary file are created new with the original's mode (`0600` for a file icx creates), so
+    a config holding tokens is never readable by others, even briefly. A config that is a
+    symlink, such as a dotfiles link, is written at its target and stays a link;
   - a hook is added only when no hook running `icx` or the `icx-hook` wrapper for that agent and
     event is registered; an MCP server or permission entry only when it is missing; so a second
     run changes nothing;

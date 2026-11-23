@@ -924,51 +924,86 @@ pub fn render(plan: &Plan) -> String {
     out
 }
 
-/// Writes every edit: a file that existed is first copied to `<file>.icx-backup-<stamp>`, then
-/// replaced through a temporary file and a rename, keeping its mode. Returns the backups made.
+/// Writes every edit. A file that existed is first copied to `<file>.icx-backup-<stamp>`, then
+/// replaced through a temporary file and a rename. The temporary file and the backup are created
+/// new (`O_EXCL`, so an existing path or a planted symlink is refused) with the original file's
+/// mode, or `0600` for a new file, from the start, so a config holding tokens is never readable
+/// by others, even briefly. A config that is a symlink (a dotfiles link) is written at its target,
+/// so the link stays a link. Returns the backups made.
 pub fn apply(plan: &Plan, stamp: u64) -> Result<Vec<PathBuf>, String> {
     let mut backups = Vec::new();
     for e in &plan.edits {
-        let parent = e
-            .path
+        // The file to write: the target of a symlinked config, or the path itself.
+        let target = fs::canonicalize(&e.path).unwrap_or_else(|_| e.path.clone());
+        let parent = target
             .parent()
-            .ok_or_else(|| format!("{} has no parent directory", e.path.display()))?;
+            .ok_or_else(|| format!("{} has no parent directory", target.display()))?;
         fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
-        let mode = fs::metadata(&e.path).ok().map(|m| m.permissions());
-        if e.path.exists() {
-            let name = e
-                .path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let backup = e.path.with_file_name(format!("{name}.icx-backup-{stamp}"));
-            fs::copy(&e.path, &backup)
-                .map_err(|err| format!("backing up {}: {err}", e.path.display()))?;
+        let name = target
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let mode = file_mode(&target);
+        if target.exists() {
+            let backup = target.with_file_name(format!("{name}.icx-backup-{stamp}"));
+            let contents =
+                fs::read(&target).map_err(|err| format!("reading {}: {err}", target.display()))?;
+            write_new(&backup, &contents, mode).map_err(|err| {
+                format!(
+                    "backing up {} to {}: {err}",
+                    target.display(),
+                    backup.display()
+                )
+            })?;
             backups.push(backup);
         }
-        let tmp = e.path.with_file_name(format!(
-            ".{}.icx-tmp-{}",
-            e.path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            std::process::id()
-        ));
-        let written = (|| -> std::io::Result<()> {
-            let mut f = fs::File::create(&tmp)?;
-            f.write_all(e.after.as_bytes())?;
-            f.sync_all()?;
-            if let Some(m) = &mode {
-                fs::set_permissions(&tmp, m.clone())?;
-            }
-            fs::rename(&tmp, &e.path)
-        })();
+        let tmp = target.with_file_name(format!(".{name}.icx-tmp-{}", std::process::id()));
+        let written =
+            write_new(&tmp, e.after.as_bytes(), mode).and_then(|()| fs::rename(&tmp, &target));
         if let Err(err) = written {
             let _ = fs::remove_file(&tmp);
-            return Err(format!("writing {}: {err}", e.path.display()));
+            return Err(format!("writing {}: {err}", target.display()));
         }
     }
     Ok(backups)
+}
+
+/// The permission bits of `path`, or `0o600` when it does not exist yet.
+fn file_mode(path: &Path) -> u32 {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::metadata(path).map_or(0o600, |m| m.permissions().mode() & 0o7777)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        0o600
+    }
+}
+
+/// Creates `path`, which must not exist (a symlink there is refused, not followed), with `mode`
+/// from the start, and writes `contents` to it.
+fn write_new(path: &Path, contents: &[u8], mode: u32) -> std::io::Result<()> {
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(mode);
+    }
+    #[cfg(not(unix))]
+    let _ = mode;
+    let mut f = opts.open(path)?;
+    f.write_all(contents)?;
+    f.sync_all()?;
+    // The umask may have cleared bits the original had; set the mode exactly.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Every change is printed as a unified diff first. `--dry-run` stops there; otherwise it asks
     on a terminal, `--yes` skips the question, and with no terminal it refuses to write.
   - Each edited file is backed up to `<file>.icx-backup-<unix time>` and replaced atomically.
+    Backups and temporary files are created new with the original's mode (`0600` for new files),
+    and a symlinked config is written at its target.
   - Edits are additive and idempotent: an existing icx hook (`icx` or the `icx-hook` wrapper) is
     never duplicated, a second run changes nothing, and a file with nothing to add is left byte
     for byte. JSON key order and unknown keys are kept; Codex's `config.toml` keeps its comments.
