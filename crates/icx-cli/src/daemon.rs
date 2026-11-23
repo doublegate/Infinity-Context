@@ -545,9 +545,42 @@ mod tests {
         assert!(result.is_ok(), "lock timeout ended the daemon: {result:?}");
     }
 
+    /// The measurement is a wall-clock bound on taking the workspace lock, which also takes the
+    /// process-global `WORKSPACE_IO_LOCK`; other tests in this binary (the lock-timeout scenario
+    /// holds it for ~5 s) would be measured with it, so the scenario runs in a child process.
     #[test]
     fn silent_client_does_not_hold_the_workspace_lock() {
-        let (ws, socket, server) = start_durability_fixture("silent", Some(2));
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "daemon::tests::silent_client_scenario",
+                "--ignored",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env("ICX_DAEMON_SILENT_CLIENT_CHILD", "1")
+            .status()
+            .unwrap();
+        assert!(status.success(), "silent-client scenario failed: {status}");
+    }
+
+    #[test]
+    #[ignore = "run in a child process by silent_client_does_not_hold_the_workspace_lock"]
+    fn silent_client_scenario() {
+        if std::env::var_os("ICX_DAEMON_SILENT_CLIENT_CHILD").is_none() {
+            return;
+        }
+        // Three requests: the readiness check, the silent client and the final hook.
+        let (ws, socket, server) = start_durability_fixture("silent", Some(3));
+        // One served request first: the daemon holds the lock while it loads the store at
+        // startup, which takes longer than a fixed sleep under coverage instrumentation.
+        assert!(
+            try_hook(&socket, "codex", "ingest", "").is_some(),
+            "daemon ready"
+        );
+        // The daemon may still be persisting that request under the lock; taking the lock once
+        // waits it out, so the measurement below covers only the silent client.
+        drop(InfinityContextMmu::acquire_workspace_lock(&ws));
         // Connect and send nothing: the daemon is now blocked reading this request.
         let silent = UnixStream::connect(&socket).unwrap();
         std::thread::sleep(Duration::from_millis(300));

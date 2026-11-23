@@ -9,9 +9,11 @@
 # Usage: scripts/live-claude-replacement-check.sh [path/to/icx] [model]
 set -euo pipefail
 
-ICX=$(realpath "${1:-target/release/icx}")
+ICX_ARG=${1:-target/release/icx}
 MODEL=${2:-haiku}
-[ -x "$ICX" ] || { echo "icx binary not found: $ICX" >&2; exit 2; }
+# Checked before realpath, which itself exits 1 (the "raw output" code) on a missing path.
+[ -x "$ICX_ARG" ] || { echo "icx binary not found: $ICX_ARG" >&2; exit 2; }
+ICX=$(realpath "$ICX_ARG")
 command -v claude >/dev/null || { echo "claude not on PATH" >&2; exit 2; }
 command -v jq >/dev/null || { echo "jq not on PATH" >&2; exit 2; }
 
@@ -50,11 +52,12 @@ check() { # $1: label, $2: settings file, $3: allowed tools (comma-separated), $
         echo "ERROR $1: claude exited $status"
         sed 's/^/      /' "$err" | tail -5
         errors=$((errors + 1))
-    elif printf '%s' "$reply" | grep -q 'ICX:STUB'; then
+    # No pipes on the reply: under pipefail an early-closing reader would SIGPIPE the writer.
+    elif [[ "$reply" == *ICX:STUB* ]]; then
         echo "PASS  $1"
     else
         echo "FAIL  $1: the model did not see the stub"
-        printf '      %s\n' "$(printf '%s' "$reply" | head -2)"
+        sed -n '1,2s/^/      /p' <<<"$reply"
         failures=$((failures + 1))
     fi
 }

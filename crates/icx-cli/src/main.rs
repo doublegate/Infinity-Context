@@ -1673,8 +1673,15 @@ fn is_icx_opencode_plugin(text: &str) -> bool {
 fn mentions_icx_hook(text: &str, agent: &str) -> bool {
     // Tokens of the config text: JSON quoting and escapes are separators, so a command reads as
     // its words whatever its quoting.
-    // `;` ends a word and is kept as its own token, so `--agent x;` still names agent `x`.
-    let spaced = text.replace(';', " ; ");
+    // Shell separators end a word and are kept as their own tokens, spaced or not, so
+    // `--agent x;` and `--agent x||true` still name agent `x`.
+    let spaced = text
+        .replace("&&", " \u{1} ")
+        .replace("||", " \u{2} ")
+        .replace(';', " ; ")
+        .replace('|', " | ")
+        .replace('\u{1}', "&&")
+        .replace('\u{2}', "||");
     let tokens: Vec<&str> = spaced
         .split(|c: char| {
             c.is_whitespace() || matches!(c, '"' | '\'' | '\\' | ',' | '[' | ']' | '{' | '}')
@@ -1682,15 +1689,20 @@ fn mentions_icx_hook(text: &str, agent: &str) -> bool {
         .filter(|t| !t.is_empty())
         .collect();
     let is_icx = |t: &str| t.rsplit('/').next() == Some("icx");
-    // `icx` must be the program, never an argument such as `--dir /x/icx` (review of #88): no
-    // word between the last JSON key or shell separator and it is a flag or `hook`. A quoted
-    // program path with a space (`"/opt/x y/icx"`) splits into words that are neither.
+    // `icx` must be the program, never an argument (review of #88): it is not the value of a
+    // long option (`--dir /x/icx`), and no `hook` word comes before it in the same command.
+    // Wrappers stay recognised (`sh -c "icx hook ..."`, `env -u VAR icx hook ...`), and a
+    // quoted program path with a space (`"/opt/x y/icx"`) splits into words that are neither.
     let is_program_position = |i: usize| {
-        tokens[..i]
+        let since_boundary: Vec<&&str> = tokens[..i]
             .iter()
             .rev()
             .take_while(|p| !p.ends_with(':') && !matches!(**p, "&&" | "||" | ";" | "|"))
-            .all(|p| !p.starts_with('-') && *p != "hook")
+            .collect();
+        let after_long_option = since_boundary
+            .first()
+            .is_some_and(|p| p.starts_with("--") && !p.contains('='));
+        !after_long_option && since_boundary.iter().all(|p| **p != "hook")
     };
     tokens.iter().enumerate().any(|(i, t)| {
         if !is_icx(t) || !is_program_position(i) {
@@ -3622,6 +3634,19 @@ mod tests {
         ));
         assert!(!mentions_icx_hook(
             "other --dir /x/icx hook --agent cursor",
+            "cursor"
+        ));
+        // Wrapped commands, and separators without spaces.
+        for wrapped in [
+            "sh -c \"icx hook --agent cursor\"",
+            "bash -lc 'icx hook --agent cursor'",
+            "env -u ICX_NO_DAEMON icx hook --agent cursor",
+            "icx hook --agent cursor||true",
+        ] {
+            assert!(mentions_icx_hook(wrapped, "cursor"), "{wrapped}");
+        }
+        assert!(!mentions_icx_hook(
+            "icx status&&other hook --agent cursor",
             "cursor"
         ));
         // A later JSON key does not lend its words to an earlier command.

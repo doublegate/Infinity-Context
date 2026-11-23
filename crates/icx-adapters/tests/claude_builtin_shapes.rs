@@ -321,3 +321,22 @@ fn a_small_report_beside_a_large_image_is_left_alone() {
     .unwrap();
     assert!(!out.contains("updatedToolOutput"), "{out}");
 }
+
+#[test]
+fn repl_results_that_are_not_strings_and_undefined_returns() {
+    // A non-string `result` is stored as its JSON text, and the stub (a string) takes its place:
+    // the model is told where the value went, whatever its type.
+    let value: Vec<u32> = (1..=2000).collect();
+    let response = json!({"code": "return rows", "result": value, "stdout": "", "stderr": ""});
+    let stub = check("REPL", &response, &json!(value).to_string());
+    assert!(stub["result"].as_str().unwrap().starts_with("⟪ICX:STUB"));
+    assert_eq!(stub["code"], "return rows", "the script is kept");
+
+    // A script returning `undefined` has no `result` key: it is stored and replaced as a
+    // Bash-style `{stdout, stderr}` result.
+    let printed = lines(600, "printed");
+    let response = json!({"code": "console.log(x)", "stdout": printed, "stderr": ""});
+    let stub = check("REPL", &response, &printed);
+    assert!(stub["stdout"].as_str().unwrap().starts_with("⟪ICX:STUB"));
+    assert_eq!(stub["code"], "console.log(x)");
+}

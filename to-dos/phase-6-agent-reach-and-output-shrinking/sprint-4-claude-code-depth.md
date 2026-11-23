@@ -361,8 +361,8 @@ afterwards. A held tool shows up under `-p` as a `permission_denials` entry.
 | Rule and hint | Ran |
 
 The hypothesis is confirmed: in plan mode only `readOnlyHint` lifts the hold, and the allow rule
-does not. But the single `icx` tool is not read-only (`fold`, `expand` and an `xagent` broadcast
-change state), so the hint ships only with T-64-008's split.
+does not. But the single `icx` tool was not read-only (`fold` and an `xagent` broadcast write to the
+store or the bus), so the hint ships only with T-64-008's split (ADR-0009 lists each op).
 
 - [x] Claude Code version and the result for each of the four configurations recorded.
 - [x] Annotations added to the tool definition only if "hint only" stops the prompt. It does,
@@ -414,9 +414,26 @@ pager)
 
 ## Sprint exit
 
-- [ ] Gates green: `cargo fmt --all -- --check`,
+- [x] Gates green: `cargo fmt --all -- --check`,
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and
-  coverage `>= 95%`.
-- [ ] Docs and CHANGELOG updated for any user-visible change.
-- [ ] Upstream re-scan done for Sprint 5 (every agent's release notes and config schema), and
-  its tickets adjusted.
+  coverage `>= 95%` (95.42% lines, `cargo llvm-cov`, 2026-11-23).
+- [x] Docs and CHANGELOG updated for any user-visible change.
+- [x] Upstream re-scan done for Sprint 5 (every agent's release notes and config schema), and
+  its tickets adjusted. Recorded below.
+
+**Sprint 4 exit re-scan (2026-11-22/23, public release notes, docs and config schemas):**
+
+| Agent | Version | Change that affects Sprint 5 | Ticket adjusted |
+| --- | --- | --- | --- |
+| Claude Code | 2.1.330 (current) | None beyond Sprint 4's live findings | — |
+| Codex CLI | 0.171.0 | `default_tools_approval_mode` takes `auto`, `prompt`, `writes` or `approve` (`writes` prompts only for non-read-only tools); per tool, `tools.<tool>.approval_mode`. `updatedMCPToolOutput` still fails the hook run | T-65-005 uses the per-tool key for `icx` only |
+| agy | 1.5.14 | Docs say PostToolUse returns `{}`; `overwriteResult` is undocumented. MCP config in `~/.gemini/config/mcp_config.json` or `.agents/mcp_config.json`; plugin servers are named `<plugin>_<server>` | T-65-007 tested live (rejected); T-65-008 covers the lazy `call_mcp_tool` form |
+| Muse Code | 1.4.25 (changelog lists 1.4.24) | No per-tool approval key; `readOnlyHint` auto-approves. Hooks in `.muse/hooks.json` of a trusted folder | T-65-005: Muse gets a note, not a rule |
+| Hermes | v0.23.3 | `ContextEngine` and `transform_terminal_output` signatures confirmed (Sprint 1 findings hold) | T-65-002/009 written against v0.23.3, live check deferred (#89) |
+| OpenCode | v2.3.2 (installed v2.2.7) | MCP servers under `mcp.servers.<name>`; pre-approval is a top-level `permissions` array; Code Mode groups tools by server | T-65-005: OpenCode approval left out until verified on the installed version |
+| Cursor | v2026.11.17 | Pre-approval `Mcp(icx:icx)` in `permissions.allow`; `postToolUse` now fires for `Task`; `sessionStart` gains `surface`; `disabledServers` list | T-65-005 writes `Mcp(icx:icx)`; live capture deferred (#89) |
+| Gemini CLI | v0.70.0 | Not installed (owner decision) | Deferred (#89) |
+
+A redactor false positive surfaced during the re-scan (typed defaults such as
+`current_tokens: int = None` are blanked to the end of the line). Filed as #90 for the Phase 7
+structural redactor (T-74-003).

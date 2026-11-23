@@ -74,7 +74,10 @@ function icxHookAsync(event: string, payload: Record<string, unknown>): Promise<
         ["hook", "--agent", "opencode", "--event", event],
         { env: process.env, stdio: ["pipe", "ignore", "ignore"] },
       );
+      // Neither the timer nor the child keeps the process alive at exit.
       const timer = setTimeout(() => child.kill(), timeout);
+      timer.unref?.();
+      child.unref();
       const done = () => {
         clearTimeout(timer);
         resolve();

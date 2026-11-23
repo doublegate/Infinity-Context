@@ -6,7 +6,7 @@
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -136,15 +136,21 @@ test("a deleted session is sent as session.end, and unload still works", async (
   const wrapper = join(root, "icx-logging.sh");
   writeFileSync(wrapper, `#!/bin/sh\nprintf '%s\\n' "$5" >> '${log}'\nexec '${real}' "$@"\n`);
   chmodSync(wrapper, 0o755);
-  const { hooks, dispose } = await load({ ICX_OPENCODE_STUB: "", ICX_BIN: wrapper }, [
-    { type: "session.created", data: { sessionID: "s11" } },
-    { type: "session.deleted", data: { sessionID: "s11" } },
-  ]);
-  expect(typeof hooks["session:prompt"]).toBe("function");
-  await dispose();
-  expect(hooks["session:prompt"]).toBeUndefined();
-  expect(readFileSync(log, "utf8").split("\n")).toContain("session.end");
-  process.env.ICX_BIN = real;
+  try {
+    const { hooks, dispose } = await load({ ICX_OPENCODE_STUB: "", ICX_BIN: wrapper }, [
+      { type: "session.created", data: { sessionID: "s11" } },
+      { type: "session.deleted", data: { sessionID: "s11" } },
+    ]);
+    expect(typeof hooks["session:prompt"]).toBe("function");
+    // Wait for the event to be handled rather than relying on how many awaits setup() makes.
+    const seen = () => existsSync(log) && readFileSync(log, "utf8").split("\n").includes("session.end");
+    for (let i = 0; i < 100 && !seen(); i++) await new Promise((r) => setTimeout(r, 50));
+    expect(seen()).toBe(true);
+    await dispose();
+    expect(hooks["session:prompt"]).toBeUndefined();
+  } finally {
+    process.env.ICX_BIN = real;
+  }
 });
 
 test("a missing icx binary fails open", async () => {
