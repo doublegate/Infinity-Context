@@ -77,7 +77,12 @@ writes the text to a file and the model sees a preview. Every icx reply stays wi
      2. Chunks and commits the bytes into `CasStore`, obtaining `#icx:<16-hex>`.
      3. Runs `StructuralSkeletonizer`, the Titans-inspired `TitansSurpriseGate` heuristic, and `AhtlEncoder` to produce a compact stub.
      4. Publishes a summary frame on the bus.
-     5. Returns `updatedToolOutput` **in the tool's own output shape**. Claude Code ignores a replacement whose shape does not match the tool's output. For Bash the object `{stdout, stderr, interrupted, isImage}` is returned with the stub in `stdout`; for other object outputs all fields are kept and the largest string leaf is replaced. MCP tools (`mcp__*`) additionally get `updatedMCPToolOutput` (string):
+     5. Returns `updatedToolOutput` **in the tool's own output shape**. Claude Code ignores a replacement whose shape does not match the tool's output. For Bash the object `{stdout, stderr, interrupted, isImage}` is returned with the stub in `stdout`; for other object outputs all fields are kept and the largest string leaf is replaced. MCP tools (`mcp__*`) additionally get `updatedMCPToolOutput` (string).
+        - **Verified live on 2.1.330** (T-64-001) for Bash, Read, Grep and Glob, and in Code Mode for a Bash call inside a script and for the script (`REPL`) itself: in each case the model saw the stub.
+        - **What is stored:** the tool's text, so a stub's line range is real: Read's `file.content`, Grep's `content` (or its file list), Glob's `filenames` one per line, and a script's `result` plus labelled `stdout`/`stderr`. Image reads and unknown shapes are stored as JSON.
+        - **Code Mode scripts:** a `REPL` result (`{code, result, stdout, stderr}`, plus `toolsUsed` when it called a tool) gets the stub in `result`, with `code` left as is. Claude Code elides a script result above about 30,000 characters before the hook sees it.
+
+       Example:
 
         ```json
         {

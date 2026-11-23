@@ -116,10 +116,39 @@ detects when Claude Code silently ignores the replacement.
 tool's native result (issues #86753, #67442). Confirmed by a live run per tool comparing the
 model-visible output for a matching and a non-matching shape.
 
+**Live results (2026-11-22).** Claude Code 2.1.330, model `haiku`, run as `claude -p` from a
+scratch project with only scratch hooks and MCP (`--setting-sources project --settings <file>
+--strict-mcp-config`). Code Mode was turned on with `env.CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1` in
+the `--settings` file, the only way under `-p`.
+
+| Tool | Result shape (live) | Replacement | Model saw the stub |
+| --- | --- | --- | --- |
+| Bash | `{stdout, stderr, interrupted, isImage, noOutputExpected}` | `stdout` = stub, `stderr` emptied | Yes |
+| Read (text) | `{type: "text", file: {filePath, content, numLines, startLine, totalLines}}` | `file.content` = stub | Yes |
+| Grep (content) | `{mode, numFiles, filenames, content, numLines, totalLines, appliedLimit}` | `content` = stub | Yes |
+| Glob | `{filenames[], durationMs, numFiles, truncated, totalMatches, countIsComplete}` | `filenames` = `[stub]` | Yes |
+| Bash inside a Code Mode script | as Bash; `PostToolUse` fires for the inner call | as Bash; the stub reaches the script | Yes |
+| REPL (Code Mode script) | `{code, result, stdout, stderr}`, plus `toolsUsed` when it called a tool | `result` = stub, streams emptied, `code` kept | Yes |
+
+- **Code Mode does not defeat replacement in Claude Code,** unlike Codex (T-62-001). An inner
+  tool call gets its own `PostToolUse`, and the replaced output is what the script receives.
+- **Bugs found and fixed:**
+  - Read, Grep and Glob results were stored as one line of JSON, so the stub said
+    `lines=1..1` and `slice` could not address lines. icx now stores their text.
+  - A REPL result has a `stdout` string, so it was taken for a Bash result: icx stored only
+    `stdout` and never shrank a large `result`. It is now recognised first, by `code` and
+    `result`.
+- **REPL results are elided above about 30,000 characters** by Claude Code before the hook runs
+  (`... [1892 chars elided] ...`), so icx stores what the model would otherwise see.
+- `PostToolBatch` receives the already-replaced output (the stub), not the raw result.
+- Not yet run live: WebFetch, WebSearch, Agent, Write and Edit. Write and Edit results are small,
+  so icx rarely replaces them.
+
 **Acceptance Criteria:**
 
-- [ ] A shape table per built-in tool, from T-61-002 and live runs, with the Claude Code version.
-- [ ] `claude_contract.rs` pins each shape.
+- [x] A shape table per built-in tool, from T-61-002 and live runs, with the Claude Code version
+  (above; WebFetch, WebSearch and Agent still to run).
+- [x] Each shape is pinned (`tests/claude_builtin_shapes.rs`, beside `claude_contract.rs`).
 - [ ] A silent-ignore detector: a live-run test fails if the model-visible output is unchanged.
 - [ ] Tools where replacement does not work are listed as ingest-only in the adapters doc.
 - [ ] For MCP tools, a regression test pins that `updatedToolOutput` is sent and that

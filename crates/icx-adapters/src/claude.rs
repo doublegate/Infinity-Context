@@ -302,6 +302,7 @@ pub(crate) fn tool_output_text(response: Option<&Value>) -> String {
     match response {
         None => String::new(),
         Some(Value::String(s)) => s.clone(),
+        Some(Value::Object(map)) if is_repl_result(map) => repl_result_text(map),
         Some(Value::Object(map)) if map.get("stdout").is_some_and(Value::is_string) => {
             let stdout = map.get("stdout").and_then(Value::as_str).unwrap_or("");
             match map
@@ -313,8 +314,87 @@ pub(crate) fn tool_output_text(response: Option<&Value>) -> String {
                 None => stdout.to_owned(),
             }
         }
+        Some(Value::Object(map)) => builtin_result_text(map).unwrap_or_else(|| map_json(map)),
         Some(other) => other.to_string(),
     }
+}
+
+/// A Code Mode `REPL` result, recorded live on 2.1.330: `{code, result, stdout, stderr}`, plus
+/// `toolsUsed` only when the script called a tool. It also has a `stdout` string, so it is
+/// recognised before the Bash shape.
+fn is_repl_result(map: &serde_json::Map<String, Value>) -> bool {
+    map.contains_key("code") && map.contains_key("result")
+}
+
+/// The stored text of a `REPL` result: its result, then any output streams, labelled. The
+/// echoed script is left out, since it is the tool's input.
+fn repl_result_text(map: &serde_json::Map<String, Value>) -> String {
+    let mut text = match map.get("result") {
+        Some(Value::String(s)) => s.clone(),
+        None | Some(Value::Null) => String::new(),
+        Some(other) => other.to_string(),
+    };
+    for stream in ["stdout", "stderr"] {
+        if let Some(s) = map
+            .get(stream)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            if !text.is_empty() {
+                text.push('\n');
+            }
+            text.push_str(&format!("[{stream}]\n{s}"));
+        }
+    }
+    text
+}
+
+fn map_json(map: &serde_json::Map<String, Value>) -> String {
+    Value::Object(map.clone()).to_string()
+}
+
+/// The text of a Claude Code built-in tool result, in the shapes recorded live on 2.1.330
+/// (T-64-001), so the stored artifact has the tool's real lines rather than one line of JSON:
+///
+/// - `Read` of a text file: `{"type": "text", "file": {"content", ...}}` gives `file.content`;
+/// - `Grep`: `{"mode", "content", "filenames", ...}` gives `content`, or the file names, one per
+///   line, in the file-list modes;
+/// - `Glob`: `{"filenames", "numFiles", ...}` gives the file names, one per line.
+///
+/// Any other shape (an image or notebook `Read`, an unknown tool) returns `None` and is kept as
+/// JSON.
+fn builtin_result_text(map: &serde_json::Map<String, Value>) -> Option<String> {
+    let filenames = || {
+        map.get("filenames")?
+            .as_array()?
+            .iter()
+            .map(Value::as_str)
+            .collect::<Option<Vec<&str>>>()
+            .filter(|names| !names.is_empty())
+            .map(|names| names.join("\n"))
+    };
+    if map.get("type").and_then(Value::as_str) == Some("text")
+        && let Some(content) = map
+            .get("file")
+            .and_then(|f| f.get("content"))
+            .and_then(Value::as_str)
+    {
+        return Some(content.to_owned());
+    }
+    if map.contains_key("mode") {
+        if let Some(content) = map
+            .get("content")
+            .and_then(Value::as_str)
+            .filter(|c| !c.is_empty())
+        {
+            return Some(content.to_owned());
+        }
+        return filenames();
+    }
+    if map.contains_key("numFiles") && !map.contains_key("content") {
+        return filenames();
+    }
+    None
 }
 
 /// Builds `updatedToolOutput` in the original response's shape (ICX-AUD-004): string responses
@@ -335,6 +415,18 @@ pub(crate) fn shape_preserving_replacement(original: Option<&Value>, stub: &str)
         };
     }
     match original {
+        // A Code Mode script: the stub replaces its result and its streams, never the echoed
+        // `code` (which can be the largest string).
+        Some(Value::Object(map)) if is_repl_result(map) => {
+            let mut out = map.clone();
+            out.insert("result".to_owned(), Value::String(stub.to_owned()));
+            for stream in ["stdout", "stderr"] {
+                if out.contains_key(stream) {
+                    out.insert(stream.to_owned(), Value::String(String::new()));
+                }
+            }
+            Value::Object(out)
+        }
         Some(Value::Object(map)) if map.get("stdout").is_some_and(Value::is_string) => {
             let mut out = map.clone();
             out.insert("stdout".to_owned(), Value::String(stub.to_owned()));

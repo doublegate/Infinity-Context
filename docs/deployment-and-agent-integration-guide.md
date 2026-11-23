@@ -920,6 +920,11 @@ For Codex and agy, replace the first bullet with: "Tool output is captured into 
        - Without batching: about 7 minutes and 2 GB.
        - With the batched lock release (each batch of about 1.5 s reloads and saves the whole store, so live hooks are never locked out for the whole scan): 523 s and 1.8 GB, about 23% slower, ending with an 824 MB store.
        - The default, which leaves tool outputs to the hook, ingests far fewer records.
+   - **Large stores slow every hook.** Each hook loads and saves the whole store, for every agent.
+     Measured 2026-11-22 for one `execute.after` hook: under 0.2 s on a 28 MB store, but about
+     2 s through a warm daemon and 4.5 s without one on an 825 MB store (all projects, tool
+     outputs included). Until saves become incremental (Phase 9), try `--all-projects` on a
+     scratch workspace (`--dir`) before importing into the store your agents use.
      - **A run with nothing new:** about 1.5 s.
 4. **`additionalContext` size:** Codex delivers `additionalContext` inline only up to the handler's `additionalContextLimit`, by default 2,500 tokens (about 10,000 bytes). Beyond that it writes the text to a file and the model sees a preview. icx keeps every Codex reply within the default. Setting `additionalContextLimit` on a handler changes the limit, and `0` removes it.
 
