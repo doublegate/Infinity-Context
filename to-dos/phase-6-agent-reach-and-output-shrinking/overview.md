@@ -10,19 +10,20 @@ proves each adapter against the agent the user has installed.
 
 ## Exit Criterion
 
-- [ ] Every supported agent that is installed and allowed to run (Claude Code, Codex, agy, Muse
+- [x] Every supported agent that is installed and allowed to run (Claude Code, Codex, agy, Muse
   and OpenCode) has a contract fixture captured from a live run on a recorded agent version, and
-  the capability matrix is generated from the contract tests.
-- [ ] For each agent, the matrix states whether icx shrinks tool output and whether that is
+  the capability matrix is generated from the contract tests (`docs/capability-matrix.md`;
+  OpenCode's live run is Sprint 3's, its contract tests use the plugin's payload format).
+- [x] For each agent, the matrix states whether icx shrinks tool output and whether that is
   verified live or follows the documented contract. Each live "shrinks" entry is backed by a test
   that fails when the agent silently ignores the replacement.
 - **Deferred to v1.5.0 (owner decision, 2026-11-23; #89):** live runs and live fixtures for
   Hermes (the gateway stays stopped, so Hermes is verified by stand-in tests only), Gemini CLI
   (not installed; built from the docs) and Cursor (tool-call capture blocked by its usage limit).
   In v1.4.0 the matrix marks these three as following the documented contract.
-- [ ] `icx install --agent <name> --dry-run` prints every config edit, including MCP tool
+- [x] `icx install --agent <name> --dry-run` prints every config edit, including MCP tool
   pre-approval, and writes nothing without explicit user confirmation.
-- [ ] Gates green: `cargo fmt --all -- --check`,
+- [x] Gates green: `cargo fmt --all -- --check`,
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and
   coverage `>= 95%`.
 
