@@ -6,6 +6,7 @@ pub mod antigravity;
 pub mod claude;
 pub mod codex;
 pub mod codex_ingest;
+pub mod cursor;
 pub mod gemini;
 pub mod hermes;
 pub mod mcp;
@@ -17,6 +18,7 @@ pub mod workspace;
 pub use antigravity::AntigravityAdapter;
 pub use claude::ClaudeCodeAdapter;
 pub use codex::{CODEX_INLINE_CONTEXT_MAX_BYTES, CodexAdapter, CodexRolloutTailer};
+pub use cursor::CursorAdapter;
 pub use gemini::GeminiCliAdapter;
 pub use hermes::{HermesAdapter, HermesMessage, PRE_COMPRESS_CHECKPOINT_API_VERSION};
 pub use mcp::McpPagerServer;
@@ -45,8 +47,10 @@ pub fn fail_open_reply(agent: icx_core::AgentKind, event: &str) -> String {
             }
         }
         // Hermes's plugin treats an empty object as "nothing to do"; Muse validates hook replies
-        // strictly and always accepts one; Gemini CLI documents `{}` (exit 0) as "no change".
-        AgentKind::Hermes | AgentKind::Muse | AgentKind::GeminiCli => "{}".to_owned(),
+        // strictly and always accepts one; Gemini CLI and Cursor document `{}` as "no change".
+        AgentKind::Hermes | AgentKind::Muse | AgentKind::GeminiCli | AgentKind::Cursor => {
+            "{}".to_owned()
+        }
         _ => r#"{"continue":true}"#.to_owned(),
     }
 }
