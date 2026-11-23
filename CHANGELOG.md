@@ -75,8 +75,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - A Code Mode script result (`REPL`) was taken for a Bash result: only its usually empty
     `stdout` was stored and a large `result` was never shrunk. Its `result` now gets the stub,
     and the script itself is left as is.
-  - Live, the model saw the stub for Bash, Read, Grep, Glob, a Bash call inside a Code Mode
-    script, and the script result.
+  - Live, the model saw the stub for Bash, Read, Grep, Glob, WebSearch, an Agent report, a Bash
+    call inside a Code Mode script, and the script result.
+  - An Agent report's content blocks are all replaced by one stub block; before, only the
+    largest block was, and the rest of the report still reached the model. WebFetch and Agent
+    results are stored as their text.
+  - `scripts/live-claude-replacement-check.sh` repeats the check after a Claude Code update
+    (billed, run by hand) and exits 1 if the model saw raw output.
 - **Compaction and session end always seal the cache epoch**, in every adapter (Claude Code,
   Codex, agy, Muse, Gemini CLI, Cursor and OpenCode).
   - Before, these events sealed only an epoch that had reached its token threshold, although the

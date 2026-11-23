@@ -141,18 +141,35 @@ the `--settings` file, the only way under `-p`.
 - **REPL results are elided above about 30,000 characters** by Claude Code before the hook runs
   (`... [1892 chars elided] ...`), so icx stores what the model would otherwise see.
 - `PostToolBatch` receives the already-replaced output (the stub), not the raw result.
-- Not yet run live: WebFetch, WebSearch, Agent, Write and Edit. Write and Edit results are small,
-  so icx rarely replaces them.
+- **WebFetch, WebSearch and Agent (live):**
+  - WebFetch `{bytes, code, codeText, result, durationMs, url}` gets the stub in `result`.
+  - WebSearch `{query, results[], durationSeconds, searchCount}` was replaced, and the model saw
+    the stub.
+  - Agent `{agentId, agentType, status, prompt, content[], usage, ...}`: the generic rule stubbed
+    only the largest of three content blocks, so the rest of the report still reached the model.
+    icx now replaces all the blocks with one stub block, as for MCP results. Verified live: one
+    stub covering all 2,500 lines of the report.
+  - WebFetch and Agent results were stored as JSON; icx now stores WebFetch's `result` and the
+    Agent report's text.
+  - In `-p` sessions WebFetch is a deferred tool (`ToolSearch` first), so the model may route a
+    fetch through a subagent.
+- Write and Edit results are small, so icx rarely replaces them; not run live.
+- **Repeatable check:** `scripts/live-claude-replacement-check.sh [icx] [model]` runs billed
+  Bash, Read and Code Mode checks in a throwaway project and exits 1 if the model saw raw output.
+  It passed on 2.1.330, and a negative control (hooks replying `{}`) failed all three checks.
 
 **Acceptance Criteria:**
 
 - [x] A shape table per built-in tool, from T-61-002 and live runs, with the Claude Code version
-  (above; WebFetch, WebSearch and Agent still to run).
+  (above, including WebFetch, WebSearch and Agent).
 - [x] Each shape is pinned (`tests/claude_builtin_shapes.rs`, beside `claude_contract.rs`).
-- [ ] A silent-ignore detector: a live-run test fails if the model-visible output is unchanged.
-- [ ] Tools where replacement does not work are listed as ingest-only in the adapters doc.
-- [ ] For MCP tools, a regression test pins that `updatedToolOutput` is sent and that
-  `updatedMCPToolOutput` is never empty.
+- [x] A silent-ignore detector: `scripts/live-claude-replacement-check.sh` fails if the model saw
+  raw output (billed, run by hand; proven able to fail with a no-op control).
+- [x] Tools where replacement does not work are listed as ingest-only in the adapters doc: none
+  found among those run live; Write and Edit were not run.
+- [x] For MCP tools, a regression test pins that `updatedToolOutput` is sent and that
+  `updatedMCPToolOutput` is never empty (`claude_contract.rs`,
+  `mcp_tools_receive_a_string_replacement`).
 
 **Dependencies:** T-61-002
 

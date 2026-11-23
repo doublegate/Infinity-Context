@@ -165,3 +165,38 @@ fn a_script_that_called_no_tool_has_no_tools_used_and_is_still_a_script() {
     let stub = check("REPL", &response, &result);
     assert!(stub["result"].as_str().unwrap().starts_with("⟪ICX:STUB"));
 }
+
+#[test]
+fn web_fetch_stores_its_result_text() {
+    let result = lines(900, "fetched");
+    let response = json!({"bytes": 41_738, "code": 200, "codeText": "OK", "result": result,
+        "durationMs": 900, "url": "https://example.org/rfc.txt"});
+    let stub = check("WebFetch", &response, &result);
+    assert!(stub["result"].as_str().unwrap().starts_with("⟪ICX:STUB"));
+    assert_eq!(stub["url"], response["url"]);
+}
+
+#[test]
+fn an_agent_report_becomes_one_stub_block() {
+    let parts = [
+        lines(800, "first"),
+        lines(700, "second"),
+        lines(600, "third"),
+    ];
+    let response = json!({"status": "completed", "prompt": "do it", "agentId": "a1b2c3",
+        "agentType": "general-purpose", "content": [
+            {"type": "text", "text": parts[0]},
+            {"type": "text", "text": parts[1]},
+            {"type": "text", "text": parts[2]}],
+        "totalTokens": 10, "usage": {}, "canContinueAgent": true});
+    let stub = check("Agent", &response, &parts.join("\n"));
+    let content = stub["content"].as_array().unwrap();
+    assert_eq!(content.len(), 1, "no block of the report survives");
+    assert!(
+        content[0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("⟪ICX:STUB")
+    );
+    assert_eq!(stub["agentId"], "a1b2c3");
+}

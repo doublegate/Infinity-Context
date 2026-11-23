@@ -394,7 +394,28 @@ fn builtin_result_text(map: &serde_json::Map<String, Value>) -> Option<String> {
     if map.contains_key("numFiles") && !map.contains_key("content") {
         return filenames();
     }
+    // WebFetch: `{url, code, codeText, result, bytes, durationMs}`.
+    if map.contains_key("url")
+        && map.contains_key("code")
+        && let Some(result) = map.get("result").and_then(Value::as_str)
+    {
+        return Some(result.to_owned());
+    }
+    // Agent (subagent report): `{agentId, content: [text blocks], ...}`; text only when every
+    // block is text.
+    if is_agent_result(map) {
+        return map
+            .get("content")
+            .and_then(Value::as_array)
+            .and_then(|blocks| crate::text_only_parts(blocks));
+    }
     None
+}
+
+/// A Claude Code `Agent` (subagent) result, recorded live on 2.1.330: `{agentId, agentType,
+/// status, prompt, content: [...], usage, ...}`.
+fn is_agent_result(map: &serde_json::Map<String, Value>) -> bool {
+    map.contains_key("agentId") && map.get("content").is_some_and(Value::is_array)
 }
 
 /// Builds `updatedToolOutput` in the original response's shape (ICX-AUD-004): string responses
@@ -415,6 +436,16 @@ pub(crate) fn shape_preserving_replacement(original: Option<&Value>, stub: &str)
         };
     }
     match original {
+        // A subagent report: all its content blocks become one stub block, as for MCP results,
+        // so no block of the report still reaches the model (T-64-001).
+        Some(Value::Object(map)) if is_agent_result(map) => {
+            let mut out = map.clone();
+            out.insert(
+                "content".to_owned(),
+                serde_json::json!([{"type": "text", "text": stub}]),
+            );
+            Value::Object(out)
+        }
         // A Code Mode script: the stub replaces its result and its streams, never the echoed
         // `code` (which can be the largest string).
         Some(Value::Object(map)) if is_repl_result(map) => {
