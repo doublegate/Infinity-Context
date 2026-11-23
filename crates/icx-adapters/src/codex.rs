@@ -323,22 +323,47 @@ fn is_tool_output_record(val: &Value) -> bool {
         .is_some_and(|t| t.ends_with("_call_output"))
 }
 
-/// The same test on the first bytes of a record too large to parse. Rollout lines put the
-/// payload's `type` first (`..."payload":{"type":"function_call_output",...`), so only that
-/// field is read; a message that merely quotes `"function_call_output"` in its text does not
+/// The same test on the first bytes of a record too large to parse. The record's own `type`
+/// values are read in order at any spacing, skipping wrapper kinds, so the payload's or item's
+/// type decides; a message that merely quotes `"function_call_output"` in its text does not
 /// match (review of #87).
 fn is_tool_output_prefix(line: &str) -> bool {
+    // Wrapper records name their kind first; the payload's or item's type follows.
+    const WRAPPERS: [&str; 5] = [
+        "response_item",
+        "event_msg",
+        "turn_context",
+        "session_meta",
+        "compacted",
+    ];
     let end = line.len().min(1024);
     let mut cut = end;
     while !line.is_char_boundary(cut) {
         cut -= 1;
     }
+    // The record's own `"type"` values in order, at any spacing. A `"type"` quoted inside a
+    // string value is escaped (`\"type\"`), so it is never one of these.
     let head = &line[..cut];
-    ["\"payload\":{\"type\":\"", "\"item\":{\"type\":\""]
-        .iter()
-        .filter_map(|marker| head.find(marker).map(|at| &head[at + marker.len()..]))
-        .filter_map(|rest| rest.split('"').next())
-        .any(|ty| ty.ends_with("_call_output"))
+    let mut types = Vec::new();
+    let mut rest = head;
+    while let Some(at) = rest.find("\"type\"") {
+        let escaped = at > 0 && rest.as_bytes()[at - 1] == b'\\';
+        let after = rest[at + 6..].trim_start();
+        rest = &rest[at + 6..];
+        if escaped {
+            continue;
+        }
+        let Some(value) = after.strip_prefix(':').map(str::trim_start) else {
+            continue;
+        };
+        if let Some(v) = value.strip_prefix('"').and_then(|v| v.split('"').next()) {
+            types.push(v);
+        }
+    }
+    types
+        .into_iter()
+        .find(|t| !WRAPPERS.contains(t))
+        .is_some_and(|t| t.ends_with("_call_output"))
 }
 
 /// Maximum per-record buffer allocation (`64 MiB + 64 KiB`) before draining the remainder of an
@@ -705,6 +730,25 @@ mod record_filter_tests {
         );
         assert!(!is_tool_output_record(
             &json!({"payload": {"type": "function_call"}})
+        ));
+    }
+
+    #[test]
+    fn prefix_test_tolerates_spacing_and_direct_records() {
+        assert!(is_tool_output_prefix(
+            r#"{ "type" : "response_item", "payload" : { "type" : "function_call_output" }"#
+        ));
+        assert!(is_tool_output_prefix(
+            r#"{"type":"custom_tool_call_output","output":"x"#
+        ));
+        assert!(is_tool_output_prefix(
+            r#"{"item": {"type": "function_call_output""#
+        ));
+        assert!(!is_tool_output_prefix(
+            r#"{"type":"response_item","payload":{"type":"message","content":"a \"type\":\"function_call_output\" b"#
+        ));
+        assert!(!is_tool_output_prefix(
+            r#"{"type":"event_msg","payload":{"type":"token_count"}}"#
         ));
     }
 

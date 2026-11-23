@@ -6,13 +6,13 @@
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 type Handler = (event: any) => Promise<void> | void;
 
-function fakeContext() {
+function fakeContext(events: any[] = []) {
   const hooks: Record<string, Handler> = {};
   const registration = (name: string, fn: Handler) => {
     hooks[name] = fn;
@@ -23,6 +23,11 @@ function fakeContext() {
     ctx: {
       session: { hook: async (name: string, fn: Handler) => registration(`session:${name}`, fn) },
       tool: { hook: async (name: string, fn: Handler) => registration(`tool:${name}`, fn) },
+      event: {
+        subscribe: async function* () {
+          for (const e of events) yield e;
+        },
+      },
     },
   };
 }
@@ -50,11 +55,10 @@ beforeAll(() => {
 
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-async function load(env: Record<string, string>) {
+async function load(env: Record<string, string>, events: any[] = []) {
   Object.assign(process.env, env);
-  // A fresh module instance, so ICX_BIN is read again.
   const mod = await import(`./icx.ts?${Math.random()}`);
-  const { hooks, ctx } = fakeContext();
+  const { hooks, ctx } = fakeContext(events);
   const dispose = await mod.default.setup(ctx);
   return { hooks, dispose };
 }
@@ -101,6 +105,41 @@ test("a stubbed MCP content list stays a list of content blocks", async () => {
   expect(event.result.content[0].type).toBe("text");
   expect(event.result.content[0].text.startsWith("⟪ICX:STUB│#icx:")).toBe(true);
   await dispose();
+});
+
+test("the legend is appended on a session's first prompt only", async () => {
+  if (!process.env.ICX_BIN) return;
+  const { hooks, dispose } = await load({ ICX_OPENCODE_STUB: "" });
+  const first = { sessionID: "s9", prompt: { text: "one" } };
+  const second = { sessionID: "s9", prompt: { text: "two" } };
+  const other = { sessionID: "s10", prompt: { text: "three" } };
+  await hooks["session:prompt"](first);
+  await hooks["session:prompt"](second);
+  await hooks["session:prompt"](other);
+  expect(first.prompt.text).toContain("⟪ICX:LEGEND");
+  expect(second.prompt.text).not.toContain("⟪ICX:LEGEND");
+  expect(second.prompt.text).toContain("⟪ICX:TAIL_SLOT");
+  expect(other.prompt.text).toContain("⟪ICX:LEGEND");
+  await dispose();
+});
+
+test("a deleted session is sent as session.end, and unload still works", async () => {
+  if (!process.env.ICX_BIN) return;
+  // A wrapper that records each event name, then runs the real icx.
+  const real = process.env.ICX_BIN;
+  const log = join(root, "events.log");
+  const wrapper = join(root, "icx-logging.sh");
+  writeFileSync(wrapper, `#!/bin/sh\nprintf '%s\\n' "$5" >> '${log}'\nexec '${real}' "$@"\n`);
+  chmodSync(wrapper, 0o755);
+  const { hooks, dispose } = await load({ ICX_OPENCODE_STUB: "", ICX_BIN: wrapper }, [
+    { type: "session.created", data: { sessionID: "s11" } },
+    { type: "session.deleted", data: { sessionID: "s11" } },
+  ]);
+  expect(typeof hooks["session:prompt"]).toBe("function");
+  await dispose();
+  expect(hooks["session:prompt"]).toBeUndefined();
+  expect(readFileSync(log, "utf8").split("\n")).toContain("session.end");
+  process.env.ICX_BIN = real;
 });
 
 test("a missing icx binary fails open", async () => {

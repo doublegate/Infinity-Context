@@ -16,9 +16,12 @@
 //                  through the icx MCP tool. Verified on v2.2.7; opt-in, because it changes
 //                  what the model sees.
 //   compaction     seals icx's cache epoch; OpenCode still writes its own summary.
+//   session.deleted (ctx.event.subscribe) ends the session's icx branches.
+// The legend is appended on a session's first prompt only, since each append stays in history.
 //
 // Environment: ICX_BIN (path to the icx binary, default "icx"), ICX_PLUGIN_TIMEOUT_MS (default
-// 5000), and the usual icx variables (ICX_DIR, ...), which the icx process inherits.
+// 10000; a hook on a store of several hundred MB can take seconds), and the usual icx
+// variables (ICX_DIR, ...), which the icx process inherits.
 
 import type { Plugin } from "@opencode/plugin";
 import { spawnSync } from "node:child_process";
@@ -34,7 +37,7 @@ function icxHook(event: string, payload: Record<string, unknown>): Reply {
   try {
     // Read per call, like the rest of the environment, so a change at run time takes effect.
     const bin = process.env.ICX_BIN || "icx";
-    const timeout = Number(process.env.ICX_PLUGIN_TIMEOUT_MS) || 5000;
+    const timeout = Number(process.env.ICX_PLUGIN_TIMEOUT_MS) || 10000;
     const input = JSON.stringify(payload);
     if (Buffer.byteLength(input, "utf8") > MAX_SEND_BYTES) return {};
     const run = spawnSync(bin, ["hook", "--agent", "opencode", "--event", event], {
@@ -58,14 +61,41 @@ function icxHook(event: string, payload: Record<string, unknown>): Reply {
 const IcxPlugin: Plugin.Plugin = {
   id: "icx",
   setup: async (ctx) => {
+    // Sessions that already received the legend: each append stays in the conversation, so the
+    // legend is sent once per session.
+    const legendSent = new Set<string>();
     const prompt = await ctx.session.hook("prompt", async (event) => {
       const text = event?.prompt?.text;
       if (typeof text !== "string") return;
-      const reply = icxHook("prompt", { sessionID: event.sessionID, prompt: text });
+      const session = typeof event.sessionID === "string" ? event.sessionID : "";
+      const reply = icxHook("prompt", {
+        sessionID: event.sessionID,
+        prompt: text,
+        legend: !legendSent.has(session),
+      });
       if (typeof reply.append === "string" && reply.append.length > 0) {
         event.prompt.text = `${text}\n\n${reply.append}`;
+        legendSent.add(session);
       }
     });
+
+    // A deleted session ends its icx branches. Event streams are best-effort: the plugin works
+    // without them.
+    const unload = new AbortController();
+    const events = (async () => {
+      if (typeof ctx.event?.subscribe !== "function") return;
+      try {
+        for await (const event of ctx.event.subscribe({ signal: unload.signal })) {
+          if (event?.type === "session.deleted") {
+            const id = event.data?.sessionID;
+            icxHook("session.end", { sessionID: id });
+            legendSent.delete(typeof id === "string" ? id : "");
+          }
+        }
+      } catch {
+        // The stream ended or was aborted.
+      }
+    })();
 
     const after = await ctx.tool.hook("execute.after", async (event) => {
       const completed = event?.status === "completed";
@@ -97,6 +127,8 @@ const IcxPlugin: Plugin.Plugin = {
     });
 
     return async () => {
+      unload.abort();
+      await Promise.race([events, new Promise((resolve) => setTimeout(resolve, 1000))]);
       for (const registration of [prompt, after, compaction]) {
         try {
           await registration.dispose();

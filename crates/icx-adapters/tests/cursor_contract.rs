@@ -271,3 +271,38 @@ fn mixed_mcp_content_blocks_are_kept_whole() {
         "the image block is not dropped"
     );
 }
+
+#[test]
+fn a_null_mcp_server_name_does_not_make_a_built_in_tool_mcp() {
+    let mut mmu = InfinityContextMmu::default();
+    let r = reply(
+        "postToolUse",
+        json!({"tool_name": "Shell", "mcp_server_name": null,
+            "tool_output": json!({"stdout": big_output()}).to_string()}),
+        &mut mmu,
+        true,
+    );
+    assert_eq!(r, json!({}), "built-in results are never replaced");
+    let r = reply(
+        "postToolUse",
+        json!({"tool_name": "search", "mcp_server_name": "github",
+            "tool_output": json!({"content": [{"type": "text", "text": big_output()}]}).to_string()}),
+        &mut mmu,
+        true,
+    );
+    assert!(
+        r.get("updated_mcp_tool_output").is_some(),
+        "a named server is MCP"
+    );
+    let r = reply(
+        "postToolUse",
+        json!({"tool_name": "MCP_Upper_Case",
+            "tool_output": json!({"content": [{"type": "text", "text": format!("{}\nx", big_output())}]}).to_string()}),
+        &mut mmu,
+        true,
+    );
+    assert!(
+        r.get("updated_mcp_tool_output").is_some(),
+        "the prefix ignores case"
+    );
+}

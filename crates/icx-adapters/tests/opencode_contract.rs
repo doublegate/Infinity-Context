@@ -225,3 +225,29 @@ fn mixed_text_and_image_parts_are_kept_whole() {
     );
     assert!(!held(&mmu, "caption"));
 }
+
+#[test]
+fn the_legend_is_left_out_when_the_plugin_already_sent_it() {
+    let mut mmu = InfinityContextMmu::default();
+    let first = reply(
+        "prompt",
+        json!({"sessionID": "s1", "prompt": "q"}),
+        &mut mmu,
+        false,
+    );
+    assert!(
+        first["append"]
+            .as_str()
+            .unwrap()
+            .starts_with(ICX_AHTL_LEGEND)
+    );
+    let later = reply(
+        "prompt",
+        json!({"sessionID": "s1", "prompt": "q", "legend": false}),
+        &mut mmu,
+        false,
+    );
+    let text = later["append"].as_str().unwrap();
+    assert!(!text.contains("ICX:LEGEND"), "{text}");
+    assert!(text.starts_with("⟪ICX:TAIL_SLOT"));
+}
