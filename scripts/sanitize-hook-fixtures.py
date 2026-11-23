@@ -100,6 +100,9 @@ def main() -> int:
         args.logs.glob("*.in.json"),
         key=capture_order,
     )
+    if not captures:
+        print(f"no *.in.json captures in {args.logs}", file=sys.stderr)
+        return 1
     counts: dict[str, int] = {}
     outputs: list[tuple[Path, str]] = []
     for path in captures:
@@ -130,7 +133,8 @@ def main() -> int:
         )
         if p.rstrip("/") and p.rstrip("/") not in stand_ins
     }
-    account = f"/{user}/" if user != "user" else None
+    # No account name (HOME is `/`) or the stand-in's own name: nothing to check.
+    account = f"/{user}/" if user and user != "user" else None
     leaks = [
         str(path)
         for path, text in outputs

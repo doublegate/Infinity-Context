@@ -410,7 +410,24 @@ class ReviewFixTests(ScratchIcx):
         self.assertTrue(own("icx deref x|head -n 5"))
         self.assertTrue(own("sh -c 'cd /p; icx slice x'"))
         self.assertFalse(own("echo 'icx deref'"))
+        self.assertFalse(own('grep "|" icx'))
+        self.assertFalse(own("echo ';' icx deref"))
+        self.assertTrue(own('echo "a\\"b" && icx deref x'))
         self.assertFalse(own("cat icx"))
+
+    def test_a_lone_surrogate_does_not_stop_stubbing(self) -> None:
+        out = "\ud800 " + TerminalTests.BIG
+        stub = terminal_mod.transform_terminal_output(
+            command="seq", output=out, returncode=0
+        )
+        self.assertIsNotNone(stub)
+
+    def test_engine_hooks_never_raise_into_hermes(self) -> None:
+        engine = engine_mod.IcxContextEngine({})
+        engine.on_turn_complete(iter([{"role": "user"}]))  # not sliceable
+        engine._icx_tail_generation = "not a number"  # makes the start bookkeeping fail
+        engine.on_session_start("s")
+        engine.on_session_reset()
 
     def test_non_finite_settings_fall_back(self) -> None:
         os.environ["ICX_HERMES_TIMEOUT"] = "inf"

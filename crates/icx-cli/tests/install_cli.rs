@@ -473,7 +473,8 @@ fn argument_errors_are_reported() {
     // Without --icx the hooks run the binary that did the install, by absolute path.
     let o = run_raw(&["--agent", "codex", "--dry-run"], true);
     assert!(o.status.success(), "{}", out(&o));
-    let exe = std::fs::canonicalize(bin).unwrap();
+    // The installing binary's own path, unresolved (a versioned symlink must keep working).
+    let exe = std::path::PathBuf::from(bin);
     assert!(
         out(&o).contains(&format!("{} hook --agent codex", exe.display())),
         "{}",

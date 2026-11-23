@@ -2,7 +2,13 @@
 
 ## Executive summary
 
-v1.3.2 is the current release (2026-11-22): it fixes #33, #34, #36 and #37 (stubs not found in git
+v1.4.0 is the current release (2026-11-23), closing Phase 6 (#40 to #44): Gemini CLI, Cursor and
+OpenCode adapters, the Hermes context engine and shell-output plugin, `icx install`, a read-only
+`icx` MCP tool (ADR-0009), live contract fixtures for Claude Code, Codex, agy and Muse, and a
+generated capability matrix (`docs/capability-matrix.md`). Live runs for Hermes, Gemini CLI and
+Cursor tool calls are deferred to v1.5.0 (#89); known issue #90 (redactor over-redaction).
+
+v1.3.2 (2026-11-22) fixed #33, #34, #36 and #37 (stubs not found in git
 worktrees and after a session changes directory, MCP results stored as lines, CLI and redactor
 follow-ups, docs-site hardening) and field problems found in four days of agent sessions. v1.3.1
 fixed #28, #29 and #30 on top of v1.3.0, which added the Meta Muse Code adapter.
@@ -27,7 +33,7 @@ of that pull request and published as the v1.2.0 GitHub release.
 | 2 — Retrieval and context budgets | verified; review added IDF ranking, bounded candidates and step eviction |
 | 3 — Durability and integrations | verified; review fixed daemon lock handling and Codex null replies |
 | 4 — Documentation and governance | docs reconciled; 071 resolved from v1.2.0 on by owner decision (earlier tags and history unchanged), 074 open pending counsel |
-| 5 — Assurance and release qualification | v1.3.2 qualified on its release PR; v1.3.1 on PR #31 (exact-commit CI, Codecov, gitleaks, REUSE); releases verified by checksums and build attestations |
+| 5 — Assurance and release qualification | v1.4.0 qualified on #88, #91 and its release PR; v1.3.2 on its release PR; v1.3.1 on PR #31 (exact-commit CI, Codecov, gitleaks, REUSE); releases verified by checksums and build attestations |
 
 ## Feature and capability matrix
 
@@ -47,10 +53,11 @@ full-request bound is claimed.
 
 | Metric | Value | Source / scope |
 | --- | --- | --- |
-| Current release | v1.3.2 (v1.3.1 at 10e1f63, v1.3.0 at 02daaaa) | git tags |
+| Current release | v1.4.0 (v1.3.2 at e32eb3e, v1.3.1 at 10e1f63) | git tags |
 | Audit findings | 19: 1 High/10 Medium/8 Low | `docs/codex/10-findings-register.md` |
-| Workspace tests | 354 pass, 0 fail (2 ignored: long-horizon qualification, daemon child scenario) | `cargo test --workspace`, v1.3.2 |
-| Line coverage | 95.45% at v1.3.2; floor 95% | `cargo llvm-cov` |
+| Workspace tests | 507 pass, 0 fail (3 ignored: long-horizon qualification, two daemon child scenarios) | `cargo test --workspace`, v1.4.0 |
+| Plugin tests | 6 OpenCode (Bun), 24 Hermes stand-in | CI check job, v1.4.0 |
+| Line coverage | 95.15% at v1.4.0 (empty `HOME`, as in CI); floor 95% | `cargo llvm-cov` |
 | Benchmark | 10/10 quiet-host runs pass all gates | `docs/performance.md`, evidence `benchmark-native-final-series.json` |
 | Saturated window prefix reuse | 0.94 (was 0.01) | `crates/icx-core/tests/window_eviction.rs` |
 | Frozen retrieval matrix | 27 rows, recall@1/@5 = 100% | synthetic identifiers, not general model recall |
@@ -67,6 +74,7 @@ full-request bound is claimed.
 - 2026-11-21: v1.3.0 released: Meta Muse Code adapter (fifth agent).
 - 2026-11-22: v1.3.1 released: redaction from the first quote to the end of the line after sensitive keys (#29), CLI flag values (#28), fail-open replies and Muse fixes (#30).
 - 2026-11-22: v1.3.2 released: worktree and moved-session stubs resolve (#37, #34), MCP results stored as lines, 2 KiB stub floor, recall floor, `slice`/`grep` bounds, CLI and redactor follow-ups (#33), docs-site hardening (#36).
+- 2026-11-23: v1.4.0 released: Phase 6. Gemini CLI, Cursor and OpenCode adapters; Hermes plugins; `icx install`; read-only `icx` tool and `icx_write`; live fixtures; capability matrix.
 
 ## Known issues and remaining work
 

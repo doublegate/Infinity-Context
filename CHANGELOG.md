@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-23
+
+Phase 6, agent reach and output shrinking: Gemini CLI, Cursor and OpenCode adapters, the Hermes
+plugins, `icx install`, the read-only `icx` MCP tool, live contract fixtures and a generated
+capability matrix. Release notes: [`docs/releases/v1.4.0/README.md`](docs/releases/v1.4.0/README.md).
+
+### Fixed (release review)
+
+- `icx install` refuses to overwrite a file that changed after it was read (a running agent's
+  edit), removes a partly written backup, keeps the unresolved path of the installing binary (a
+  versioned symlink survives upgrades), and no longer lists a named agent as skipped.
+- Command reading (own-command and existing-hook detection): `\"` inside double quotes, and a
+  quoted separator (`grep "|" x`) is an argument; `sh -c` nesting is capped at 8.
+- Hermes engine: hook side effects never raise into Hermes; tail-slot wait events are held
+  weakly, so finished subagent engines leave nothing behind. `icx-terminal`: output with lone
+  surrogates is still stubbed.
+- `sanitize-hook-fixtures.py` fails when no captures are found, and handles a `HOME` of `/`.
+
 ### Added
 
 - **Generated agent capability matrix** (`docs/capability-matrix.md`, T-65-006): per agent,

@@ -84,17 +84,31 @@ pub fn program_index(words: &[String]) -> Option<usize> {
     None
 }
 
-/// The simple commands of a command line, split at `&&`, `||`, `;` and `|` (spaced or not, outside
-/// quotes), each as its words. A shell wrapper's `-c` script (`sh -c "..."`) is read as commands
-/// too.
+/// The simple commands of a command line, split at `&&`, `||`, `;`, `|` and `&` outside quotes
+/// (spaced or not), each as its words. A separator inside quotes (`grep "|" x`) is an argument.
+/// A shell wrapper's `-c` script (`sh -c "..."`) is read as commands too, at most 8 levels deep.
 #[must_use]
 pub fn command_segments(command: &str) -> Vec<Vec<String>> {
-    // Separators outside quotes are spaced first, so they become words of their own.
+    segments_at(command, 0)
+}
+
+/// Marks a separator found outside quotes; a word made of it and an operator is a separator.
+const SEP: char = '\u{1}';
+
+fn segments_at(command: &str, depth: usize) -> Vec<Vec<String>> {
     let mut spaced = String::with_capacity(command.len() + 8);
     let mut quote: Option<char> = None;
     let mut chars = command.chars().peekable();
     while let Some(c) = chars.next() {
         match quote {
+            // A backslash escape inside double quotes never ends them (`"a\"b"`).
+            Some('"') if c == '\\' => {
+                spaced.push(c);
+                if let Some(n) = chars.next() {
+                    spaced.push(n);
+                }
+                continue;
+            }
             Some(q) if c == q => quote = None,
             None if c == '\'' || c == '"' => quote = Some(c),
             None if c == '\\' => {
@@ -106,6 +120,7 @@ pub fn command_segments(command: &str) -> Vec<Vec<String>> {
             }
             None if matches!(c, ';' | '|' | '&') => {
                 spaced.push(' ');
+                spaced.push(SEP);
                 spaced.push(c);
                 if matches!(chars.peek(), Some(&n) if n == c && c != ';') {
                     spaced.push(c);
@@ -122,7 +137,7 @@ pub fn command_segments(command: &str) -> Vec<Vec<String>> {
     let mut out = Vec::new();
     let mut cur = Vec::new();
     for w in shell_words(&spaced) {
-        if matches!(w.as_str(), "&&" | "||" | ";" | "|" | "&") {
+        if w.starts_with(SEP) {
             out.push(std::mem::take(&mut cur));
         } else {
             cur.push(w);
@@ -137,7 +152,7 @@ pub fn command_segments(command: &str) -> Vec<Vec<String>> {
                 .next()
                 .is_some_and(|p| matches!(p, "sh" | "bash" | "zsh" | "dash" | "fish"))
         });
-        let script = shell.and_then(|i| {
+        let script = shell.filter(|_| depth < 8).and_then(|i| {
             seg[i + 1..]
                 .iter()
                 .position(|w| w.starts_with('-') && !w.starts_with("--") && w.contains('c'))
@@ -145,7 +160,7 @@ pub fn command_segments(command: &str) -> Vec<Vec<String>> {
                 .cloned()
         });
         match script {
-            Some(inner) => expanded.extend(command_segments(&inner)),
+            Some(inner) => expanded.extend(segments_at(&inner, depth + 1)),
             None => expanded.push(seg),
         }
     }
@@ -188,7 +203,16 @@ mod tests {
             assert!(runs_icx(c), "{c}");
         }
         assert_eq!(command_segments("a 'b && c' && d").len(), 2);
-        for c in ["cat icx", "env -u icx true", "", "X=1", "echo 'icx deref'"] {
+        assert!(runs_icx(r#"echo "a\"b\"c"&&icx deref x"#), "escaped quote");
+        for c in [
+            "cat icx",
+            "env -u icx true",
+            "",
+            "X=1",
+            "echo 'icx deref'",
+            r#"grep "|" icx"#,
+            "echo ';' icx deref",
+        ] {
             assert!(!runs_icx(c), "{c}");
         }
     }

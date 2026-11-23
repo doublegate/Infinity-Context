@@ -64,26 +64,31 @@ def _env_number(name: str, default: float, floor: float) -> float:
     return max(floor, value) if math.isfinite(value) else default
 
 
-def _segments(command: str) -> list[list[str]]:
-    """The simple commands of `command`, split at `&&`, `||`, `;`, `|` and `&` outside quotes;
-    a shell's `-c` script is read as commands too."""
+def _segments(command: str, depth: int = 0) -> list[list[str]]:
+    """The simple commands of `command`, split at `&&`, `||`, `;`, `|` and `&` outside quotes
+    (a quoted `"|"` is an argument); a shell's `-c` script is read as commands too, at most 8
+    levels deep."""
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        # Non-POSIX mode keeps each word's quotes, so an operator inside quotes stays a word.
+        lexer = shlex.shlex(command, posix=False, punctuation_chars=True)
         lexer.whitespace_split = True
-        words = list(lexer)
+        raw = list(lexer)
     except ValueError:
-        words = command.split()
+        raw = command.split()
     out: list[list[str]] = [[]]
-    for w in words:
+    for w in raw:
         if w and set(w) <= set(";|&"):
             out.append([])
-        else:
+            continue
+        try:
+            out[-1].extend(shlex.split(w))
+        except ValueError:
             out[-1].append(w)
     expanded: list[list[str]] = []
     for seg in filter(None, out):
         i = _program_index(seg)
         prog = seg[i].rsplit("/", 1)[-1] if i is not None else ""
-        if prog in ("sh", "bash", "zsh", "dash", "fish"):
+        if depth < 8 and prog in ("sh", "bash", "zsh", "dash", "fish"):
             flag = next(
                 (
                     k
@@ -95,7 +100,7 @@ def _segments(command: str) -> list[list[str]]:
                 None,
             )
             if flag is not None and flag + 1 < len(seg):
-                expanded.extend(_segments(seg[flag + 1]))
+                expanded.extend(_segments(seg[flag + 1], depth + 1))
                 continue
         expanded.append(seg)
     return expanded
@@ -160,7 +165,7 @@ def transform_terminal_output(
                 "env_type": str(env_type),
             },
             ensure_ascii=False,
-        ).encode("utf-8")
+        ).encode("utf-8", errors="replace")  # lone surrogates must not drop the call
         if len(payload) > _MAX_PAYLOAD_BYTES:
             return None
         env = dict(os.environ)

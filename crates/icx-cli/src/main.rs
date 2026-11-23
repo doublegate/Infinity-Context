@@ -922,10 +922,11 @@ fn run_install(args: &[String]) -> Result<(), String> {
             return Err(format!("{CMD} error: --icx needs a path\n{USAGE}"));
         }
         Some(p) => p.to_owned(),
-        // The running binary, so hooks keep working whatever PATH the agent has.
+        // The running binary, so hooks keep working whatever PATH the agent has. Its path is not
+        // resolved: a versioned symlink (Homebrew, Nix) must keep pointing at the current
+        // version after an upgrade (review of #91).
         None => env::current_exe()
             .ok()
-            .and_then(|p| fs::canonicalize(p).ok())
             .map_or_else(|| "icx".to_owned(), |p| p.display().to_string()),
     };
     let opts = install::Opts {
@@ -939,8 +940,10 @@ fn run_install(args: &[String]) -> Result<(), String> {
     };
     if all {
         // `all` means the agents installed here; a named agent is installed regardless.
+        // A named agent is installed regardless, so it is never reported as skipped.
         let (found, missing): (Vec<&str>, Vec<&str>) = install::AGENTS
             .iter()
+            .filter(|a| !agents.iter().any(|named| named == *a))
             .partition(|a| install::is_installed(a, &opts));
         if !missing.is_empty() {
             println!("skipped (not installed): {}", missing.join(", "));

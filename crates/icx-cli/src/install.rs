@@ -340,7 +340,9 @@ fn read_json(plan: &Plan, path: &Path) -> Result<(Option<String>, J), String> {
             let v: J = serde_json::from_str(&text)
                 .map_err(|e| format!("{} is not plain JSON ({e})", path.display()))?;
             if matches!(v, J::Obj(_)) {
-                Ok((read_existing(path)?, v))
+                // The text just read; when an earlier edit of this plan supplied it, `Plan::set`
+                // keeps that edit's original instead.
+                Ok((Some(text), v))
             } else {
                 Err(format!("{} does not hold a JSON object", path.display()))
             }
@@ -1029,9 +1031,21 @@ fn apply_one(e: &FileEdit, stamp: u64, backups: &mut Vec<PathBuf>) -> Result<(),
         let _ = fs::remove_file(&tmp);
         msg
     };
-    if target.exists() {
-        let contents = fs::read(&target)
-            .map_err(|err| discard(format!("reading {}: {err}", target.display())))?;
+    // The file must still be what was planned against: another process (a running agent) may
+    // have changed it while the plan was shown, and its edit must not be overwritten (review of
+    // #91).
+    let now = match fs::read(&target) {
+        Ok(bytes) => Some(bytes),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+        Err(err) => return Err(discard(format!("reading {}: {err}", target.display()))),
+    };
+    if now.as_deref() != e.before.as_deref().map(str::as_bytes) {
+        return Err(discard(format!(
+            "{} changed after it was read; nothing written to it, run icx install again",
+            target.display()
+        )));
+    }
+    if let Some(contents) = now {
         // A unique name, claimed by the create itself, so concurrent installs and installs in
         // the same second never collide.
         let mut n = 0;
@@ -1045,6 +1059,10 @@ fn apply_one(e: &FileEdit, stamp: u64, backups: &mut Vec<PathBuf>) -> Result<(),
                 Ok(()) => break candidate,
                 Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists && n < 1000 => n += 1,
                 Err(err) => {
+                    // A partly written backup of ours is removed.
+                    if err.kind() != std::io::ErrorKind::AlreadyExists {
+                        let _ = fs::remove_file(&candidate);
+                    }
                     return Err(discard(format!(
                         "backing up {} to {}: {err}",
                         target.display(),
@@ -1365,7 +1383,7 @@ mod tests {
             edits: vec![
                 FileEdit {
                     path: first.clone(),
-                    before: None,
+                    before: Some("old".into()),
                     after: "new".into(),
                 },
                 FileEdit {
@@ -1395,18 +1413,44 @@ mod tests {
         let h = scratch("stamp");
         let target = h.join("cfg.json");
         fs::write(&target, "one").unwrap();
-        let edit = |after: &str| Plan {
+        let edit = |before: &str, after: &str| Plan {
             edits: vec![FileEdit {
                 path: target.clone(),
-                before: None,
+                before: Some(before.into()),
                 after: after.into(),
             }],
             notes: Vec::new(),
         };
-        let first = apply(&edit("two"), 9).unwrap();
-        let second = apply(&edit("three"), 9).unwrap();
+        let first = apply(&edit("one", "two"), 9).unwrap();
+        let second = apply(&edit("two", "three"), 9).unwrap();
         assert_ne!(first, second);
         assert_eq!(fs::read_to_string(&second[0]).unwrap(), "two");
+        let _ = fs::remove_dir_all(&h);
+    }
+
+    #[test]
+    fn a_file_changed_after_planning_is_not_overwritten() {
+        // Another process edited the file while the plan was shown (review of #91).
+        let h = scratch("concurrent");
+        let target = h.join("cfg.json");
+        fs::write(&target, "planned against").unwrap();
+        let plan = Plan {
+            edits: vec![FileEdit {
+                path: target.clone(),
+                before: Some("planned against".into()),
+                after: "icx's edit".into(),
+            }],
+            notes: Vec::new(),
+        };
+        fs::write(&target, "the agent's newer edit").unwrap();
+        let err = apply(&plan, 4).unwrap_err();
+        assert!(err.contains("changed after it was read"), "{err}");
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            "the agent's newer edit"
+        );
+        let leftovers = fs::read_dir(&h).unwrap().flatten().count();
+        assert_eq!(leftovers, 1, "no temporary file or backup is left behind");
         let _ = fs::remove_dir_all(&h);
     }
 

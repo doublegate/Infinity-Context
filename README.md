@@ -72,9 +72,10 @@ The inline size reduction depends on the input. In the built-in synthetic benchm
 
 ## Latest Release
 
-**v1.3.2** fixes stubs that could not be dereferenced (agents in git worktrees, and sessions that
-change directory), stores MCP docs results as real lines, leaves small outputs inline and removes
-field over-redactions. See the [v1.3.2 release notes](docs/releases/v1.3.2/README.md) and
+**v1.4.0** reaches more agents and shows exactly what icx does with each: Gemini CLI, Cursor and
+OpenCode adapters, Hermes plugins, `icx install` for one-command setup, a read-only `icx` MCP
+tool (writes move to `icx_write`), and a generated [capability matrix](docs/capability-matrix.md)
+backed by live contract fixtures. See the [v1.4.0 release notes](docs/releases/v1.4.0/README.md) and
 [`CHANGELOG.md`](CHANGELOG.md) for every release; upgrade notes are in each release's notes.
 
 ---
