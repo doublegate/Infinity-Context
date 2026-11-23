@@ -4,7 +4,7 @@
 
 use icx_adapters::{
     AntigravityAdapter, ClaudeCodeAdapter, CodexAdapter, CursorAdapter, GeminiCliAdapter,
-    InfinityContextMmu, MuseAdapter, OpenCodeAdapter,
+    HermesAdapter, InfinityContextMmu, MuseAdapter, OpenCodeAdapter,
 };
 use icx_core::AgentKind;
 
@@ -72,4 +72,14 @@ fn every_compaction_and_session_end_seals_a_small_epoch() {
             );
         }
     }
+}
+
+#[test]
+fn hermes_compression_seals_too() {
+    // Hermes compacts through its ContextEngine `compress` call (review of #88).
+    let mut mmu = InfinityContextMmu::default();
+    mmu.ingest_payload(AgentKind::Hermes, "work", "a small amount of work\n", false);
+    let before = mmu.epochs.sealed_epoch_count();
+    HermesAdapter::handle_hook("compress", r#"{"messages": []}"#, &mut mmu).unwrap();
+    assert_eq!(mmu.epochs.sealed_epoch_count(), before + 1);
 }

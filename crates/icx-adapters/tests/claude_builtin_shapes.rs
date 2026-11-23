@@ -200,3 +200,55 @@ fn an_agent_report_becomes_one_stub_block() {
     );
     assert_eq!(stub["agentId"], "a1b2c3");
 }
+
+#[test]
+fn an_object_with_code_and_result_is_not_taken_for_a_script() {
+    // WebFetch's numeric HTTP `code` and an MCP-style status code are not Code Mode scripts
+    // (review of #88): every field is kept, and nothing is replaced as if it were `result`.
+    let mut mmu = InfinityContextMmu::default();
+    let response = json!({"code": 200, "result": "ok", "items": lines(600, "item")});
+    let out = ClaudeCodeAdapter::handle_hook(
+        "PostToolUse",
+        &post_tool_use("mcp__svc__list", &response).to_string(),
+        &mut mmu,
+    )
+    .unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let stub = &v["hookSpecificOutput"]["updatedToolOutput"];
+    assert_eq!(stub["code"], 200, "the code is kept");
+    assert_eq!(stub["result"], "ok", "the small result is not overwritten");
+    assert!(stub["items"].as_str().unwrap().starts_with("⟪ICX:STUB"));
+    let id = ArtifactId::hash_bytes(response.to_string().as_bytes()).0;
+    assert!(
+        mmu.cas.get_meta(id).is_some(),
+        "stored whole, not just `result`"
+    );
+}
+
+#[test]
+fn a_mixed_agent_report_keeps_its_image_blocks() {
+    let image = json!({"type": "image", "source": {"type": "base64", "media_type": "image/png",
+        "data": "iVBORw0KGgo"}});
+    let response = json!({"status": "completed", "prompt": "p", "agentId": "a1",
+        "agentType": "general-purpose", "content": [
+            {"type": "text", "text": lines(900, "report")}, image.clone()]});
+    let mut mmu = InfinityContextMmu::default();
+    let out = ClaudeCodeAdapter::handle_hook(
+        "PostToolUse",
+        &post_tool_use("Agent", &response).to_string(),
+        &mut mmu,
+    )
+    .unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let content = v["hookSpecificOutput"]["updatedToolOutput"]["content"]
+        .as_array()
+        .unwrap();
+    assert!(
+        content[0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("⟪ICX:STUB")
+    );
+    assert_eq!(content[1], image, "the image block is kept");
+    assert_eq!(content.len(), 2);
+}

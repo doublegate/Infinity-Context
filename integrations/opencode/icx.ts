@@ -87,6 +87,8 @@ const IcxPlugin: Plugin.Plugin = {
       if (typeof ctx.event?.subscribe !== "function") return;
       try {
         for await (const event of ctx.event.subscribe({ signal: unload.signal })) {
+          // A stream that ignores the signal still stops here once unload starts.
+          if (unload.signal.aborted) break;
           if (event?.type === "session.deleted") {
             const id = event.data?.sessionID;
             icxHook("session.end", { sessionID: id });
@@ -132,7 +134,11 @@ const IcxPlugin: Plugin.Plugin = {
 
     return async () => {
       unload.abort();
-      await Promise.race([events, new Promise((resolve) => setTimeout(resolve, 1000))]);
+      // Wait at most a second for the event loop, and clear the timer either way, so unload
+      // never keeps the process alive.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([events, new Promise((resolve) => (timer = setTimeout(resolve, 1000)))]);
+      clearTimeout(timer);
       for (const registration of [prompt, after, compaction]) {
         try {
           await registration.dispose();

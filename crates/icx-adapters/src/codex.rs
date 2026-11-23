@@ -356,7 +356,10 @@ fn is_tool_output_prefix(line: &str) -> bool {
         let Some(value) = after.strip_prefix(':').map(str::trim_start) else {
             continue;
         };
-        if let Some(v) = value.strip_prefix('"').and_then(|v| v.split('"').next()) {
+        if let Some(v) = value
+            .strip_prefix('"')
+            .and_then(|v| v.split_once('"').map(|(t, _)| t))
+        {
             types.push(v);
         }
     }

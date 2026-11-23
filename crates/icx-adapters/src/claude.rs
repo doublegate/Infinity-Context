@@ -53,7 +53,8 @@ pub fn claude_bounded_context(text: &str) -> String {
     }
     let dropped = lines.len() - kept.len();
     let mut out = kept.join("\n");
-    if !out.is_empty() {
+    // Test `kept`, not `out`: a kept empty first line joins to "" and still needs its newline.
+    if !kept.is_empty() {
         out.push('\n');
     }
     out.push_str(&marker(dropped));
@@ -322,8 +323,15 @@ pub(crate) fn tool_output_text(response: Option<&Value>) -> String {
 /// A Code Mode `REPL` result, recorded live on 2.1.330: `{code, result, stdout, stderr}`, plus
 /// `toolsUsed` only when the script called a tool. It also has a `stdout` string, so it is
 /// recognised before the Bash shape.
+///
+/// All three of `code`, `stdout` and `stderr` must be strings, so another tool's `{code, result}`
+/// (WebFetch's numeric HTTP `code`, an MCP status code) is never taken for a script (review of
+/// #88).
 fn is_repl_result(map: &serde_json::Map<String, Value>) -> bool {
-    map.contains_key("code") && map.contains_key("result")
+    map.contains_key("result")
+        && ["code", "stdout", "stderr"]
+            .iter()
+            .all(|k| map.get(*k).is_some_and(Value::is_string))
 }
 
 /// The stored text of a `REPL` result: its result, then any output streams, labelled. The
@@ -436,14 +444,24 @@ pub(crate) fn shape_preserving_replacement(original: Option<&Value>, stub: &str)
         };
     }
     match original {
-        // A subagent report: all its content blocks become one stub block, as for MCP results,
-        // so no block of the report still reaches the model (T-64-001).
+        // A subagent report: its text blocks become one stub block, as for MCP results, so no
+        // text of the report still reaches the model (T-64-001). Image and resource blocks are
+        // kept as they are, so a mixed report loses nothing the stub does not stand for (review
+        // of #88).
         Some(Value::Object(map)) if is_agent_result(map) => {
-            let mut out = map.clone();
-            out.insert(
-                "content".to_owned(),
-                serde_json::json!([{"type": "text", "text": stub}]),
+            let blocks = map
+                .get("content")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let mut content = vec![serde_json::json!({"type": "text", "text": stub})];
+            content.extend(
+                blocks
+                    .into_iter()
+                    .filter(|b| crate::text_only_parts(std::slice::from_ref(b)).is_none()),
             );
+            let mut out = map.clone();
+            out.insert("content".to_owned(), Value::Array(content));
             Value::Object(out)
         }
         // A Code Mode script: the stub replaces its result and its streams, never the echoed

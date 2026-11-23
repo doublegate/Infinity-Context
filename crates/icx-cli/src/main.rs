@@ -967,13 +967,21 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
         || event_str.eq_ignore_ascii_case("session-start");
     // A `CwdChanged` hook switches the agent to the workspace of the directory it moved to, so
     // its MCP server follows on the next call (T-64-003, #34).
-    let ws_dir = match cwd_changed_target(event_str, stdin_buf) {
-        Some(new_cwd) => resolve_workspace_dir_from(dir_str, &new_cwd),
+    let cwd_changed = (agent == AgentKind::ClaudeCode)
+        .then(|| cwd_changed_target(event_str, stdin_buf))
+        .flatten();
+    let ws_dir = match &cwd_changed {
+        Some(new_cwd) => resolve_workspace_dir_from(dir_str, new_cwd),
         None => resolve_workspace_dir(dir_str),
     };
     if matches!(workspace_state(&ws_dir, true), WsState::Ready) {
         // Lets this agent's MCP server follow the workspace its hooks use (#34).
         workspace::record_agent_workspace(&ws_dir, roots());
+        // Recording the workspace is all `CwdChanged` does, so it neither loads nor locks the
+        // store (review of #88: on a large store that costs seconds per `cd`).
+        if cwd_changed.is_some() {
+            return Ok("{}".to_owned());
+        }
         #[cfg(unix)]
         if env::var_os("ICX_NO_DAEMON").is_none() {
             let socket = workspace::daemon_socket_path(&ws_dir, roots());
@@ -1671,10 +1679,14 @@ fn mentions_icx_hook(text: &str, agent: &str) -> bool {
         if !is_icx(t) {
             return false;
         }
-        // This command's words: up to the next program or JSON key, in any flag order.
+        // This command's words, in any flag order: up to a shell separator or the next JSON key.
+        // A later word that merely ends in `/icx` (`--dir /x/icx`) is an argument, not a new
+        // command (review of #88).
         let words: Vec<&str> = tokens[i + 1..]
             .iter()
-            .take_while(|w| !is_icx(w) && !w.ends_with(':'))
+            .take_while(|w| {
+                !w.ends_with(':') && !matches!(**w, "&&" | "||" | ";" | "|") && !w.ends_with(';')
+            })
             .take(32)
             .copied()
             .collect();
@@ -3576,12 +3588,71 @@ mod tests {
             "icx hook --agent=cursor --event x",
             "cursor"
         ));
+        // A flag value ending in `/icx` does not end the command; a shell separator does.
+        assert!(mentions_icx_hook(
+            "icx hook --dir /home/u/.local/state/icx --agent cursor",
+            "cursor"
+        ));
+        assert!(!mentions_icx_hook(
+            "icx status && other hook --agent cursor",
+            "cursor"
+        ));
+        assert!(!mentions_icx_hook(
+            "icx status; other hook --agent cursor",
+            "cursor"
+        ));
         // A later JSON key does not lend its words to an earlier command.
         assert!(!mentions_icx_hook(
             r#"{"a": {"command": "icx status"}, "b": {"command": "other hook --agent cursor"}}"#,
             "cursor"
         ));
         assert!(!mentions_icx_hook(icx_hooks, "gemini-cli"));
+    }
+
+    #[test]
+    fn daemon_dispatch_follows_the_stub_flag_for_every_new_adapter() {
+        // Gemini CLI, Cursor and OpenCode all take the caller's stub setting from the request
+        // (review of #88: the end-to-end test covers only OpenCode).
+        let big = (0..400)
+            .map(|i| format!("row {i}: value={}", i * 3))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let cases = [
+            (
+                AgentKind::GeminiCli,
+                "AfterTool",
+                serde_json::json!({"tool_name": "t", "tool_response": {"llmContent": big}}),
+                "deny",
+            ),
+            (
+                AgentKind::Cursor,
+                "postToolUse",
+                serde_json::json!({"tool_name": "mcp_x_y", "tool_output":
+                    serde_json::json!({"content": [{"type": "text", "text": big}]}).to_string()}),
+                "updated_mcp_tool_output",
+            ),
+            (
+                AgentKind::OpenCode,
+                "execute.after",
+                serde_json::json!({"tool": "bash", "status": "completed", "output": big}),
+                "replace",
+            ),
+        ];
+        for (agent, event, payload, marker) in cases {
+            let mut off = InfinityContextMmu::default();
+            let out =
+                daemon_dispatch_agent_hook(agent, event, &payload.to_string(), false, &mut off)
+                    .unwrap();
+            assert!(!out.contains(marker), "{agent:?} without the flag: {out}");
+            assert!(off.cas.artifact_count() > 0, "{agent:?} still ingests");
+            let mut on = InfinityContextMmu::default();
+            let out = daemon_dispatch_agent_hook(agent, event, &payload.to_string(), true, &mut on)
+                .unwrap();
+            assert!(
+                out.contains(marker) && out.contains("ICX:STUB"),
+                "{agent:?}: {out}"
+            );
+        }
     }
 
     #[cfg(unix)]

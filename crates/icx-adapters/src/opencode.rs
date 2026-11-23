@@ -114,11 +114,16 @@ impl OpenCodeAdapter {
                     .get("tool")
                     .and_then(Value::as_str)
                     .unwrap_or("opencode_tool");
-                // OpenCode names MCP tools `<server>_<tool>`.
-                if InfinityContextMmu::is_icx_pager_tool(tool)
-                    || tool.eq_ignore_ascii_case("icx_icx")
-                    || tool.eq_ignore_ascii_case("icx_icx_write")
-                {
+                // OpenCode names MCP tools `<server>_<tool>`, under any server name icx is
+                // registered as (review of #88).
+                let own = ["icx", "infinity_context", "infinity-context"]
+                    .iter()
+                    .any(|server| {
+                        ["icx", "icx_write"]
+                            .iter()
+                            .any(|t| tool.eq_ignore_ascii_case(&format!("{server}_{t}")))
+                    });
+                if InfinityContextMmu::is_icx_pager_tool(tool) || own {
                     json!({})
                 } else {
                     let failed = payload.get("status").and_then(Value::as_str) == Some("error");

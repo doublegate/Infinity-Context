@@ -144,3 +144,12 @@ fn both_tools_are_mutation_aware_and_never_ingested() {
         assert!(!InfinityContextMmu::is_icx_pager_tool(name), "{name}");
     }
 }
+
+#[test]
+fn a_whitespace_message_on_icx_is_a_poll_and_broadcasts_nothing() {
+    let mut mmu = InfinityContextMmu::default();
+    let seq = mmu.bus.write_sequence();
+    let (out, err) = call(READ_TOOL, &json!({"op": "xagent", "q": "   "}), &mut mmu);
+    assert!(!err, "{out}");
+    assert_eq!(mmu.bus.write_sequence(), seq, "nothing was broadcast");
+}

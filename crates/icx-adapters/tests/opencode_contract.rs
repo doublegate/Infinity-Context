@@ -108,7 +108,14 @@ fn errors_content_parts_and_the_icx_tool_are_handled() {
     );
 
     let before = mmu.cas.artifact_count();
-    for tool in ["icx_icx", "mcp_icx_icx", "icx"] {
+    for tool in [
+        "icx_icx",
+        "icx_icx_write",
+        "infinity-context_icx",
+        "infinity_context_icx_write",
+        "mcp_icx_icx",
+        "icx",
+    ] {
         assert_eq!(
             reply(
                 "execute.after",
