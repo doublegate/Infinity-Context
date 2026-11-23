@@ -362,6 +362,8 @@ stateDiagram-v2
 
 ## Cross-Agent Interception Matrix
 
+What icx does per agent (ingest, shrink, context, epoch seals, verification, pre-approval) is in the generated [capability matrix](docs/capability-matrix.md).
+
 The hook contracts below were checked against each agent's upstream documentation on 2026-11-18 (audit findings `ICX-AUD-004` to `ICX-AUD-009`). A public summary of the original local install survey is in [`ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md`](ref-docs/agent-internals/rea-binary-and-sqlite-forensics.md). Configuration examples are in the [Deployment & Agent Integration Guide](docs/deployment-and-agent-integration-guide.md).
 
 | Agent Harness | Hook / Plugin Surface | What `icx-adapters` Returns |

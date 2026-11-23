@@ -10,6 +10,8 @@
 
 `crates/icx-adapters` and `crates/icx-proxy` connect the **Infinity-Context (`icx`)** Virtual Context MMU to agent CLIs. They implement eight hook adapters (**Claude Code**, **OpenAI Codex CLI**, **Google Antigravity CLI (`agy`)**, **Hermes Agent**, **Meta Muse Code**, **Google Gemini CLI**, **Cursor** and **OpenCode**), the MCP pager (`McpPagerServer`, tools `icx` and `icx_write`), and an **HTTP/1.1 & SSE Cache-Epoch reverse proxy** (`WireProxyTransformer`).
 
+**Capability matrix:** [`capability-matrix.md`](capability-matrix.md), generated from the adapters by `tests/capability_matrix.rs` (CI fails when it is out of date).
+
 **Live coverage (v1.4.0).** Contract tests replay payloads captured from live runs and sanitized by `scripts/sanitize-hook-fixtures.py`, under `crates/icx-adapters/tests/fixtures/<agent>/<version>/`:
 
 - **Codex CLI 0.171.0** (`codex_fixtures.rs`), **agy 1.5.14** (`agy_fixtures.rs`) and **Muse Code 1.4.25** (`muse_fixtures.rs`).

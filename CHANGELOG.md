@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Generated agent capability matrix** (`docs/capability-matrix.md`, T-65-006): per agent,
+  whether icx ingests, shrinks (by default or opt-in) and injects context, whether compaction and
+  session end seal the epoch, how the agent's side was verified, and the pre-approval rule. A
+  test builds it by running each adapter and fails when the committed file is out of date.
 - **Hermes plugins ship** in `integrations/hermes/` (T-65-002, T-65-009; ICX-AUD-006 fixed),
   written against Hermes v0.23.3 and pinned to `>=0.23.3,<0.24`. `icx install --agent hermes`
   copies them; Hermes's `config.yaml` is not edited.

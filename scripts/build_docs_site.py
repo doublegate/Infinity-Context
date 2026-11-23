@@ -83,6 +83,7 @@ NAV = [
             "virtual-memory-and-dag-engine.md",
             "hyperdimensional-and-fractal-index.md",
             "agent-adapters-and-interception.md",
+            "capability-matrix.md",
             "wire-protocol-and-shm-bus.md",
             "data-model.md",
             "interfaces.md",
