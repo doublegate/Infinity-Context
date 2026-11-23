@@ -47,6 +47,60 @@ Code section and decision table; Claude Code 2.1.330):
   `PreModelSwitch`/`PostModelSwitch` (model ids, source, context tokens, prompt-cache warmth and
   TTL; Pre can allow, deny or ask).
 
+**2026-11-22, research gate** (Sprint 3 exit re-scan; `anthropics/claude-code` `CHANGELOG.md`):
+
+- **Version:** the installed Claude Code is 2.1.330, the latest published release, so nothing
+  has landed since the Sprint 1 findings.
+- **Code Mode exists in Claude Code** (2.1.328 and later). Tools can run inside a script, the
+  mechanism that defeated the Codex stub route (T-62-001).
+  - 2.1.328: Code Mode no longer runs `UserPromptSubmit` hooks on a script's output, and "to
+    redact that output, use a `PostToolUse` hook with `updatedToolOutput`". That suggests
+    replacement still reaches the script's tool calls.
+  - T-64-001 therefore runs its live checks with Code Mode both off and on, and records what the
+    model sees in each.
+- **Refused calls (2.1.328):** managed `PostToolUse` hooks no longer fire for a call refused
+  before it ran, while `PostToolBatch` receives most of them, not marked as refused. T-64-004
+  must not count a batch entry as a completed result without its output.
+- **Plan mode:** 2.1.328 to 2.1.330 change only which model plan mode uses. Nothing touches the
+  MCP hold that T-64-007 tests.
+- **Worktrees (2.1.330):** `ExitWorktree` no longer deletes a worktree another session is using.
+  T-64-002 must not retire a mapping while another session still reports that worktree.
+
+**2026-11-22, documented contracts** (code.claude.com/docs/en/hooks; the worktrees page could not
+be read):
+
+- **`WorktreeCreate` replaces Claude Code's own worktree creation.** The docs say:
+  - "Configuring a WorktreeCreate hook replaces that default git behavior";
+  - "A `WorktreeCreate` command hook can't return JSON, because Claude Code reads its stdout as
+    the worktree path";
+  - "Any non-zero exit code causes worktree creation to fail."
+
+  The input is `name` (a slug), with no matcher. Registering it for observation would make icx
+  responsible for creating every worktree. **T-64-002 is closed as rejected** (see the ticket).
+- **`WorktreeRemove`** takes `worktree_path`. Its JSON output is discarded, and a non-zero exit
+  fails the removal. The docs pair it with `WorktreeCreate` ("pair it with a WorktreeRemove hook
+  to control cleanup"); whether registering it alone changes removal is not stated.
+- **`CwdChanged`:** `old_cwd`, `new_cwd` plus the common fields, with no matcher and no decision
+  control. Exit 2 shows stderr to the user only.
+- **`PreModelSwitch`:** `from_model` and `to_model`. It can allow, deny or ask, `decision:
+  "block"` cancels the switch, exit 2 blocks it, and a timeout also blocks it (one read). icx
+  must therefore not register it: a slow or failing hook would block model switches.
+  **`PostModelSwitch`** has the same fields, accepts `additionalContext` only, and exit 2 only
+  shows stderr.
+- **`PostToolBatch`:** common fields plus `tool_calls[]`, each with `tool_name`, `tool_input`,
+  `tool_use_id` and `tool_response` (a string or content blocks), and no matcher. The only
+  documented output is `additionalContext` ("`PostToolBatch` hooks can inject context for
+  Claude"); `decision: "block"` and exit 2 stop the agentic loop. No replacement is documented.
+- Field types and the version that added each event are not stated.
+
+**2026-11-22, finding while building T-64-005:** the compaction and session-end events of every
+adapter call `rollover_and_sync_dag_root`, which seals only when the epoch has reached its token
+threshold (`maybe_rollover`). The docs say these events "seal the epoch" unconditionally, which
+is true only of a full epoch. A model switch now forces the seal
+(`force_rollover_and_sync_dag_root`). Whether compaction should force it too (history is
+rewritten, so the old cache is gone) is an open decision, raised with the owner; until then the
+docs and the code disagree on this point.
+
 ## Tickets
 
 ### T-64-001 — Shape-exact `updatedToolOutput` for every built-in tool
@@ -84,11 +138,17 @@ mapping that v1.3.2 derives from git control files.
 **Research:** Confirm payload fields on the installed version, and whether the events fire for
 subagent worktrees.
 
-**Acceptance Criteria:**
+**Outcome (2026-11-22): rejected.** A `WorktreeCreate` hook replaces Claude Code's own git
+worktree creation and must print the new worktree's path, so icx cannot register it just to
+observe. `WorktreeRemove` alone would not see creations, and the docs pair it with
+`WorktreeCreate`. The v1.3.2 derivation from git control files stays the only mechanism; it
+needs no hook and works on every version. The ticket closes with this finding and no feature.
 
-- [ ] Both events parsed; mapping registered on create and retired on remove.
-- [ ] The v1.3.2 git-file derivation remains the fallback for older versions.
-- [ ] Contract tests over recorded payloads.
+**Acceptance Criteria (superseded by the outcome above):**
+
+- [ ] ~~Both events parsed; mapping registered on create and retired on remove.~~
+- [x] The v1.3.2 git-file derivation remains the mechanism.
+- [ ] ~~Contract tests over recorded payloads.~~
 
 **Dependencies:** None
 
@@ -146,15 +206,19 @@ agents)
 ### T-64-005 — Handle `PreModelSwitch` and `PostModelSwitch`
 
 **Description:** Seal the cache epoch on a model switch, since a new model starts a new prompt
-cache.
+cache. Use `PostModelSwitch` only. `PreModelSwitch` blocks the switch on a non-zero exit and, by
+one reading of the docs, on a timeout, so icx does not register it.
 
 **Research:** Confirm payload fields and whether the switch invalidates the provider cache for
 the installed version.
 
 **Acceptance Criteria:**
 
-- [ ] Epoch sealed on switch; the deterministic prefix is re-emitted after.
-- [ ] Contract tests over recorded payloads.
+- [x] Epoch sealed on switch (forced, `PostModelSwitch`). On the hook path icx injects no
+  deterministic prefix, so there is nothing to re-emit; the proxy path starts a new epoch on its
+  next request.
+- [ ] Contract tests over recorded payloads. Tests use the documented fields
+  (`tests/claude_model_switch.rs`); a live recording waits for T-64-001's live runs.
 
 **Dependencies:** None
 
@@ -175,10 +239,14 @@ and drops the lowest-ranked lines. Always set `hookEventName` to the exact event
 
 **Acceptance Criteria:**
 
-- [ ] Budget enforced in characters and lines, not bytes, at the adapter boundary.
-- [ ] Every reply carries the exact `hookEventName`; a test covers each emitting event.
-- [ ] Truncation keeps every `#icx:` handle intact and is deterministic.
-- [ ] Property test: no reply exceeds the limit for any input.
+- [x] Budget enforced in characters and lines, not bytes, at the adapter boundary
+  (`claude_bounded_context`; characters as UTF-16 units, as JavaScript counts them).
+- [x] Every reply carries the exact `hookEventName`; a test covers each emitting event
+  (`SessionStart`, `UserPromptSubmit`, `SubagentStart`).
+- [x] Truncation keeps every `#icx:` handle intact and is deterministic (whole lines only).
+- [x] Property test: no reply exceeds the limit for any input (`tests/claude_context_budget.rs`).
+- [ ] Re-confirm both caps and the spill-to-file behaviour live on 2.1.330 (with T-64-001's live
+  runs).
 
 **Dependencies:** None
 

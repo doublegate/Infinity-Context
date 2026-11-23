@@ -609,7 +609,10 @@ were confirmed with a real model; compaction was not exercised.
   `servers`.
 - **Environment:**
   - `ICX_BIN`: path to `icx` (default `icx` on `PATH`).
-  - `ICX_PLUGIN_TIMEOUT_MS`: per-call timeout (default 5000).
+  - `ICX_PLUGIN_TIMEOUT_MS`: per-call timeout (default 10000). A call that times out changes
+    nothing and stores nothing. Measured 2026-11-22 for one `execute.after` hook with stubs on:
+    0.07 s through a warm daemon and 0.15 s in-process on a 28 MB store; about 2 s through a warm
+    daemon and 4.5 s in-process on an 825 MB store. Run `icx daemon` for a large store.
   - `ICX_OPENCODE_STUB=1`: turns the stub replacement on.
   - The other `icx` variables (`ICX_DIR`, ...) are passed through to icx.
 - **What it does:**

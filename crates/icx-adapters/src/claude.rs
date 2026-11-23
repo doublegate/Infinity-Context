@@ -14,6 +14,63 @@ use crate::{AdapterError, AgentHookAdapter};
 use icx_core::AgentKind;
 use serde_json::{Value, json};
 
+/// Largest `additionalContext` Claude Code delivers inline on the settings-file hook path, in
+/// JavaScript string length (UTF-16 code units); larger text is spilled to a file (Sprint 1
+/// findings, Claude Code 2.1.330; T-64-006).
+pub const CLAUDE_CONTEXT_MAX_CHARS: usize = 8_000;
+/// Largest number of `additionalContext` lines delivered inline (same source).
+pub const CLAUDE_CONTEXT_MAX_LINES: usize = 200;
+
+/// Keeps an `additionalContext` value within [`CLAUDE_CONTEXT_MAX_CHARS`] and
+/// [`CLAUDE_CONTEXT_MAX_LINES`].
+///
+/// Tail-slot lines are ranked best first, so whole lines are dropped from the end until both
+/// limits hold, and a `⟪ICX:TRUNCATED│dropped=<n>⟫` line records how many went. Whole lines go,
+/// so every `#icx:` handle that remains is intact. The result depends only on the input.
+#[must_use]
+pub fn claude_bounded_context(text: &str) -> String {
+    let units = |s: &str| s.encode_utf16().count();
+    if units(text) <= CLAUDE_CONTEXT_MAX_CHARS
+        && text.split('\n').count() <= CLAUDE_CONTEXT_MAX_LINES
+    {
+        return text.to_owned();
+    }
+    let lines: Vec<&str> = text.split('\n').collect();
+    // The marker's own size, at its widest (`dropped` = every line).
+    let marker = |n: usize| format!("⟪ICX:TRUNCATED│dropped={n}⟫");
+    let reserve = units(&marker(lines.len())) + 1;
+    let mut kept: Vec<&str> = Vec::new();
+    let mut used = 0usize;
+    for line in &lines {
+        let cost = units(line) + usize::from(!kept.is_empty());
+        if kept.len() + 1 >= CLAUDE_CONTEXT_MAX_LINES
+            || used + cost + reserve > CLAUDE_CONTEXT_MAX_CHARS
+        {
+            break;
+        }
+        kept.push(line);
+        used += cost;
+    }
+    let dropped = lines.len() - kept.len();
+    let mut out = kept.join("\n");
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out.push_str(&marker(dropped));
+    out
+}
+
+/// `hookSpecificOutput` carrying bounded `additionalContext` for `event`. Claude Code drops the
+/// context when `hookEventName` does not name the event that ran, so it is always set.
+fn context_reply(event: &str, context: &str) -> Value {
+    json!({
+        "hookSpecificOutput": {
+            "hookEventName": event,
+            "additionalContext": claude_bounded_context(context)
+        }
+    })
+}
+
 /// Native hook adapter for Claude Code (`2.1.326+`).
 #[derive(Clone, Debug, Default)]
 pub struct ClaudeCodeAdapter;
@@ -49,12 +106,7 @@ impl ClaudeCodeAdapter {
         let response = match event_name {
             "SessionStart" | "session-start" => {
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, "session_init", 3);
-                json!({
-                    "hookSpecificOutput": {
-                        "hookEventName": "SessionStart",
-                        "additionalContext": format!("{ICX_AHTL_LEGEND}\n{tail}")
-                    }
-                })
+                context_reply("SessionStart", &format!("{ICX_AHTL_LEGEND}\n{tail}"))
             }
             "UserPromptSubmit" | "user-prompt-submit" => {
                 let prompt = payload
@@ -62,12 +114,7 @@ impl ClaudeCodeAdapter {
                     .and_then(Value::as_str)
                     .unwrap_or("user_query");
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, prompt, 4);
-                json!({
-                    "hookSpecificOutput": {
-                        "hookEventName": "UserPromptSubmit",
-                        "additionalContext": tail
-                    }
-                })
+                context_reply("UserPromptSubmit", &tail)
             }
             "PreToolUse" | "pre-tool-use" => {
                 // `permissionDecision` / `updatedInput` are output-only fields; the input never
@@ -138,12 +185,7 @@ impl ClaudeCodeAdapter {
                     .unwrap_or("claude_subagent");
                 let subagent_id = mmu.begin_subagent(raw_subagent_id);
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, &subagent_id, 3);
-                json!({
-                    "hookSpecificOutput": {
-                        "hookEventName": "SubagentStart",
-                        "additionalContext": tail
-                    }
-                })
+                context_reply("SubagentStart", &tail)
             }
             "SubagentStop" | "subagent-stop" => {
                 let subagent_id = ["subagent_id", "agent_id"]
@@ -158,6 +200,14 @@ impl ClaudeCodeAdapter {
                 let summary: String = summary_raw.chars().take(240).collect();
                 let _ = mmu.finish_subagent(AgentKind::ClaudeCode, subagent_id, &summary);
                 // Any additionalContext / decision would keep the subagent running.
+                json!({})
+            }
+            // A new model starts a new prompt cache, so the epoch is sealed (T-64-005). Only the
+            // Post event is used: `PreModelSwitch` blocks the switch on a failing or slow hook.
+            // The seal is forced: the old cache is of no use to the new model, whatever the
+            // epoch's size.
+            "PostModelSwitch" | "post-model-switch" => {
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             "PreCompact" | "pre-compact" => {

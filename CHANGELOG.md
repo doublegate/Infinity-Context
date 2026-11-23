@@ -64,6 +64,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Claude Code `PostModelSwitch` seals the cache epoch** (T-64-005), since the new model starts
+  a cold prompt cache. `PreModelSwitch` is not used: a failing or slow hook there blocks the
+  switch.
+- **Stub settings reach the daemon** (review of #87). A hook whose caller sets
+  `ICX_GEMINI_STUB`, `ICX_CURSOR_STUB` or `ICX_OPENCODE_STUB` sends the setting with its daemon
+  request (protocol version 2), so it keeps the daemon's warm store instead of loading the store
+  itself.
+  - A daemon from an earlier release refuses version 2, and the hook then runs in-process.
+  - A version-1 request never asks for stubs.
+  - The OpenCode plugin's default timeout is now 10 s (`ICX_PLUGIN_TIMEOUT_MS`). Measured for
+    one stub-mode hook: about 2 s through a warm daemon and 4.5 s in-process on an 825 MB store,
+    against 0.07 s and 0.15 s on a 28 MB store.
+- **Review fixes from #87, round 2:**
+  - Cursor no longer treats `"mcp_server_name": null` as an MCP tool, and matches `mcp_`
+    case-insensitively.
+  - The OpenCode plugin sends the legend once per session, and sends `session.end` when it sees
+    `session.deleted`.
+  - `icx doctor` reads an icx hook command in any flag order and matches the agent name exactly.
+  - `icx doctor` no longer stalls on a binary that prints more than a pipe buffer.
+  - The Codex oversized-record check tolerates spacing and reads direct records.
+  - Gemini CLI ignores an empty prompt for recall.
+- **Claude Code `additionalContext` is bounded to 8,000 characters and 200 lines** (T-64-006),
+  the inline limit on the settings-file hook path, above which Claude Code spills the text to a
+  file.
+  - Characters are counted as JavaScript string length.
+  - Whole lowest-ranked lines are dropped, with a `⟪ICX:TRUNCATED│dropped=<n>⟫` line, so no
+    `#icx:` handle is cut.
 - **Codex `additionalContext` is bounded to 10,000 bytes** (T-62-006). That is Codex's default
   `additionalContextLimit` of 2,500 tokens, above which Codex spills the text to a file. The tail
   slot already fits; a larger value would be replaced whole by a diagnostic, never cut.

@@ -45,6 +45,18 @@ Upstream reference: <https://code.claude.com/docs/en/hooks>.
 
 ### 2.1 Hook Event Handling (`icx hook --agent claude-code --event <event>`)
 
+**`additionalContext` budget (v1.4.0, T-64-006).** Claude Code delivers `additionalContext`
+inline only up to 8,000 characters and 200 lines on the settings-file hook path; above that it
+writes the text to a file and the model sees a preview. Every icx reply stays within both limits.
+
+- **Counting:** characters are counted as JavaScript string length (UTF-16 units).
+- **Truncation:** tail-slot lines are ranked best first, so whole lines are dropped from the end
+  and a final `⟪ICX:TRUNCATED│dropped=<n>⟫` line says how many. No `#icx:` handle is cut, and
+  the result depends only on the input.
+- **Event name:** each reply's `hookEventName` names the event that ran, since Claude Code drops
+  context that names another event.
+- This is in addition to the tail slot's own byte budget.
+
 1. **`SessionStart`:**
    - Returns the AHTL legend and the initial tail slot in `hookSpecificOutput.additionalContext`:
 
@@ -270,8 +282,12 @@ workspace in which a Muse event was recorded, so upgrade every agent's `icx` bef
 **Common to sections 8 to 10:**
 
 - **Stub modes** (`ICX_GEMINI_STUB`, `ICX_CURSOR_STUB`, `ICX_OPENCODE_STUB`) are read from the
-  hook's own environment. A hook that sets one runs in-process; through the daemon these
-  adapters capture only.
+  hook's own environment, never the daemon's.
+  - The hook sends the setting with its daemon request (protocol version 2), so a stub-mode
+    hook keeps the daemon's warm store.
+  - A daemon from an earlier release refuses version 2, and the hook then runs in-process.
+- **The `legend` field (OpenCode):** the plugin sends `"legend": false` after a session's first
+  prompt, so the legend is appended once per session.
 - **Mixed results:** a part or content-block list that is not all text is stored as its full
   JSON, so image and resource parts are kept.
 
@@ -346,7 +362,7 @@ OpenCode v2.2.7 loads V2 plugins only. Its binary contains none of the V1 hook n
   never writes system text. Per-request system text would also defeat the provider's prompt
   cache.
 - **Fails open:** a missing `icx`, a non-zero exit, a timeout (`ICX_PLUGIN_TIMEOUT_MS`, default
-  5000) or unparseable output leaves the prompt and the result unchanged. `ICX_BIN` overrides
+  10000) or unparseable output leaves the prompt and the result unchanged. `ICX_BIN` overrides
   the binary path.
 - **Environment:** the plugin passes its environment explicitly, because Bun hands child
   processes only its start-up environment.
