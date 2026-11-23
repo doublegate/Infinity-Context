@@ -47,6 +47,63 @@ Code section and decision table; Claude Code 2.1.330):
   `PreModelSwitch`/`PostModelSwitch` (model ids, source, context tokens, prompt-cache warmth and
   TTL; Pre can allow, deny or ask).
 
+**2026-11-22, research gate** (Sprint 3 exit re-scan; `anthropics/claude-code` `CHANGELOG.md`):
+
+- **Version:** the installed Claude Code is 2.1.330, the latest published release, so nothing
+  has landed since the Sprint 1 findings.
+- **Code Mode exists in Claude Code** (2.1.328 and later). Tools can run inside a script, the
+  mechanism that defeated the Codex stub route (T-62-001).
+  - 2.1.328: Code Mode no longer runs `UserPromptSubmit` hooks on a script's output, and "to
+    redact that output, use a `PostToolUse` hook with `updatedToolOutput`". That suggests
+    replacement still reaches the script's tool calls.
+  - T-64-001 therefore runs its live checks with Code Mode both off and on, and records what the
+    model sees in each.
+- **Refused calls (2.1.328):** managed `PostToolUse` hooks no longer fire for a call refused
+  before it ran, while `PostToolBatch` receives most of them, not marked as refused. T-64-004
+  must not count a batch entry as a completed result without its output.
+- **Plan mode:** 2.1.328 to 2.1.330 change only which model plan mode uses. Nothing touches the
+  MCP hold that T-64-007 tests.
+- **Worktrees (2.1.330):** `ExitWorktree` no longer deletes a worktree another session is using.
+  T-64-002 must not retire a mapping while another session still reports that worktree.
+
+**2026-11-22, documented contracts** (code.claude.com/docs/en/hooks; the worktrees page could not
+be read):
+
+- **`WorktreeCreate` replaces Claude Code's own worktree creation.** The docs say:
+  - "Configuring a WorktreeCreate hook replaces that default git behavior";
+  - "A `WorktreeCreate` command hook can't return JSON, because Claude Code reads its stdout as
+    the worktree path";
+  - "Any non-zero exit code causes worktree creation to fail."
+
+  The input is `name` (a slug), with no matcher. Registering it for observation would make icx
+  responsible for creating every worktree. **T-64-002 is closed as rejected** (see the ticket).
+- **`WorktreeRemove`** takes `worktree_path`. Its JSON output is discarded, and a non-zero exit
+  fails the removal. The docs pair it with `WorktreeCreate` ("pair it with a WorktreeRemove hook
+  to control cleanup"); whether registering it alone changes removal is not stated.
+- **`CwdChanged`:** `old_cwd`, `new_cwd` plus the common fields, with no matcher and no decision
+  control. Exit 2 shows stderr to the user only.
+- **`PreModelSwitch`:** `from_model` and `to_model`. It can allow, deny or ask, `decision:
+  "block"` cancels the switch, exit 2 blocks it, and a timeout also blocks it (one read). icx
+  must therefore not register it: a slow or failing hook would block model switches.
+  **`PostModelSwitch`** has the same fields, accepts `additionalContext` only, and exit 2 only
+  shows stderr.
+- **`PostToolBatch`:** common fields plus `tool_calls[]`, each with `tool_name`, `tool_input`,
+  `tool_use_id` and `tool_response` (a string or content blocks), and no matcher. The only
+  documented output is `additionalContext` ("`PostToolBatch` hooks can inject context for
+  Claude"); `decision: "block"` and exit 2 stop the agentic loop. No replacement is documented.
+- Field types and the version that added each event are not stated.
+
+**2026-11-22, finding while building T-64-005:** the compaction and session-end events of every
+adapter call `rollover_and_sync_dag_root`, which seals only when the epoch has reached its token
+threshold (`maybe_rollover`). The docs say these events "seal the epoch" unconditionally, which
+is true only of a full epoch. A model switch now forces the seal
+(`force_rollover_and_sync_dag_root`).
+
+**Decision (owner, 2026-11-22):** compaction and session end force the seal in every adapter,
+since history is rewritten and the old cache is gone. agy's ordinary `Stop` keeps the conditional
+check. Pinned by `tests/compaction_seals.rs`, which also checks that a repeated event adds no
+empty epoch.
+
 ## Tickets
 
 ### T-64-001 — Shape-exact `updatedToolOutput` for every built-in tool
@@ -59,14 +116,60 @@ detects when Claude Code silently ignores the replacement.
 tool's native result (issues #86753, #67442). Confirmed by a live run per tool comparing the
 model-visible output for a matching and a non-matching shape.
 
+**Live results (2026-11-22).** Claude Code 2.1.330, model `haiku`, run as `claude -p` from a
+scratch project with only scratch hooks and MCP (`--setting-sources project --settings <file>
+--strict-mcp-config`). Code Mode was turned on with `env.CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1` in
+the `--settings` file, the only way under `-p`.
+
+| Tool | Result shape (live) | Replacement | Model saw the stub |
+| --- | --- | --- | --- |
+| Bash | `{stdout, stderr, interrupted, isImage, noOutputExpected}` | `stdout` = stub, `stderr` emptied | Yes |
+| Read (text) | `{type: "text", file: {filePath, content, numLines, startLine, totalLines}}` | `file.content` = stub | Yes |
+| Grep (content) | `{mode, numFiles, filenames, content, numLines, totalLines, appliedLimit}` | `content` = stub | Yes |
+| Glob | `{filenames[], durationMs, numFiles, truncated, totalMatches, countIsComplete}` | `filenames` = `[stub]` | Yes |
+| Bash inside a Code Mode script | as Bash; `PostToolUse` fires for the inner call | as Bash; the stub reaches the script | Yes |
+| REPL (Code Mode script) | `{code, result, stdout, stderr}`, plus `toolsUsed` when it called a tool | `result` = stub, streams emptied, `code` kept | Yes |
+
+- **Code Mode does not defeat replacement in Claude Code,** unlike Codex (T-62-001). An inner
+  tool call gets its own `PostToolUse`, and the replaced output is what the script receives.
+- **Bugs found and fixed:**
+  - Read, Grep and Glob results were stored as one line of JSON, so the stub said
+    `lines=1..1` and `slice` could not address lines. icx now stores their text.
+  - A REPL result has a `stdout` string, so it was taken for a Bash result: icx stored only
+    `stdout` and never shrank a large `result`. It is now recognised first, by `code` and
+    `result`.
+- **REPL results are elided above about 30,000 characters** by Claude Code before the hook runs
+  (`... [1892 chars elided] ...`), so icx stores what the model would otherwise see.
+- `PostToolBatch` receives the already-replaced output (the stub), not the raw result.
+- **WebFetch, WebSearch and Agent (live):**
+  - WebFetch `{bytes, code, codeText, result, durationMs, url}` gets the stub in `result`.
+  - WebSearch `{query, results[], durationSeconds, searchCount}` was replaced, and the model saw
+    the stub.
+  - Agent `{agentId, agentType, status, prompt, content[], usage, ...}`: the generic rule stubbed
+    only the largest of three content blocks, so the rest of the report still reached the model.
+    icx now replaces all the blocks with one stub block, as for MCP results. Verified live: one
+    stub covering all 2,500 lines of the report.
+  - WebFetch and Agent results were stored as JSON; icx now stores WebFetch's `result` and the
+    Agent report's text.
+  - In `-p` sessions WebFetch is a deferred tool (`ToolSearch` first), so the model may route a
+    fetch through a subagent.
+- Write and Edit results are small, so icx rarely replaces them; not run live.
+- **Repeatable check:** `scripts/live-claude-replacement-check.sh [icx] [model]` runs billed
+  Bash, Read and Code Mode checks in a throwaway project and exits 1 if the model saw raw output.
+  It passed on 2.1.330, and a negative control (hooks replying `{}`) failed all three checks.
+
 **Acceptance Criteria:**
 
-- [ ] A shape table per built-in tool, from T-61-002 and live runs, with the Claude Code version.
-- [ ] `claude_contract.rs` pins each shape.
-- [ ] A silent-ignore detector: a live-run test fails if the model-visible output is unchanged.
-- [ ] Tools where replacement does not work are listed as ingest-only in the adapters doc.
-- [ ] For MCP tools, a regression test pins that `updatedToolOutput` is sent and that
-  `updatedMCPToolOutput` is never empty.
+- [x] A shape table per built-in tool, from T-61-002 and live runs, with the Claude Code version
+  (above, including WebFetch, WebSearch and Agent).
+- [x] Each shape is pinned (`tests/claude_builtin_shapes.rs`, beside `claude_contract.rs`).
+- [x] A silent-ignore detector: `scripts/live-claude-replacement-check.sh` fails if the model saw
+  raw output (billed, run by hand; proven able to fail with a no-op control).
+- [x] Tools where replacement does not work are listed as ingest-only in the adapters doc: none
+  found among those run live; Write and Edit were not run.
+- [x] For MCP tools, a regression test pins that `updatedToolOutput` is sent and that
+  `updatedMCPToolOutput` is never empty (`claude_contract.rs`,
+  `mcp_tools_receive_a_string_replacement`).
 
 **Dependencies:** T-61-002
 
@@ -84,11 +187,17 @@ mapping that v1.3.2 derives from git control files.
 **Research:** Confirm payload fields on the installed version, and whether the events fire for
 subagent worktrees.
 
-**Acceptance Criteria:**
+**Outcome (2026-11-22): rejected.** A `WorktreeCreate` hook replaces Claude Code's own git
+worktree creation and must print the new worktree's path, so icx cannot register it just to
+observe. `WorktreeRemove` alone would not see creations, and the docs pair it with
+`WorktreeCreate`. The v1.3.2 derivation from git control files stays the only mechanism; it
+needs no hook and works on every version. The ticket closes with this finding and no feature.
 
-- [ ] Both events parsed; mapping registered on create and retired on remove.
-- [ ] The v1.3.2 git-file derivation remains the fallback for older versions.
-- [ ] Contract tests over recorded payloads.
+**Acceptance Criteria (superseded by the outcome above):**
+
+- [ ] ~~Both events parsed; mapping registered on create and retired on remove.~~
+- [x] The v1.3.2 git-file derivation remains the mechanism.
+- [ ] ~~Contract tests over recorded payloads.~~
 
 **Dependencies:** None
 
@@ -108,8 +217,21 @@ installed version.
 
 **Acceptance Criteria:**
 
-- [ ] Workspace follows `CwdChanged`; the v1.3.2 heuristic stays as fallback.
-- [ ] Test covers a change into a different repository and into a worktree.
+**Live results (2026-11-22, Claude Code 2.1.330):** `CwdChanged` fired for each shell `cd`:
+into a subdirectory, into another repository (`--add-dir`), and into a git worktree. The payload
+is `session_id`, `transcript_path`, `prompt_id`, `hook_event_name`, `cwd`, `old_cwd` and
+`new_cwd`, with `cwd` equal to `new_cwd`. icx resolves the workspace from `new_cwd`. In a live
+session (hooks calling `icx` directly, no `ICX_DIR`), `icx status` from the MCP tool showed the
+project's store before a `cd` into another repository and that repository's store after it.
+
+Harness trap: a hook wrapper written in Python is not one of icx's launcher names, so the agent
+record is filed under the wrapper's PID and the MCP server cannot find it. Real installs run
+`icx hook` through `sh`, which is.
+
+- [x] Workspace follows `CwdChanged`; every other hook keeps recording its own workspace, as in
+  v1.3.2.
+- [x] Test covers a change into a different repository (`tests/cwd_changed_cli.rs`); the
+  worktree case was covered live.
 - [ ] Issue #34 notes updated with the new trigger.
 
 **Dependencies:** None
@@ -130,9 +252,23 @@ context.
 
 **Acceptance Criteria:**
 
-- [ ] Batch payload parsed; per-tool ingestion is not duplicated when both events fire.
-- [ ] Contract test over a recorded batch.
-- [ ] Effect on lock contention measured and published in `docs/numbers.md`.
+**Outcome (2026-11-22): batch ingestion rejected; contention measured.**
+
+- **Live payload:** the common fields plus `tool_calls[]` of `{tool_name, tool_input,
+  tool_use_id, tool_response}`. `tool_response` arrives as a string holding the output after
+  `PostToolUse` replaced it, that is the icx stub, not the raw result.
+- **Why no batch ingestion:** only `PostToolUse` can replace a result, so ingestion must stay
+  per tool. A batch hook would see only stubs, and registering it would add one more locked hook
+  per batch, so icx does not register it.
+- **Measured:** six parallel `PostToolUse` hooks on a small store all finished 0.023 to 0.087 s
+  after they started, serialised by the workspace lock; the batch hook took 0.014 s. The cost is
+  N times one hook and grows with store size (about 2 s per hook at 825 MB), which explains the
+  field scan's 8 s outliers. The remedy is incremental saves (Phase 9), not this event.
+
+- [x] Batch payload recorded; per-tool ingestion is never duplicated, because the batch is not
+  ingested.
+- [ ] ~~Contract test over a recorded batch.~~ Not needed: no batch handling ships.
+- [x] Effect on lock contention measured and published in `docs/numbers.md`.
 
 **Dependencies:** None
 
@@ -146,15 +282,19 @@ agents)
 ### T-64-005 — Handle `PreModelSwitch` and `PostModelSwitch`
 
 **Description:** Seal the cache epoch on a model switch, since a new model starts a new prompt
-cache.
+cache. Use `PostModelSwitch` only. `PreModelSwitch` blocks the switch on a non-zero exit and, by
+one reading of the docs, on a timeout, so icx does not register it.
 
 **Research:** Confirm payload fields and whether the switch invalidates the provider cache for
 the installed version.
 
 **Acceptance Criteria:**
 
-- [ ] Epoch sealed on switch; the deterministic prefix is re-emitted after.
-- [ ] Contract tests over recorded payloads.
+- [x] Epoch sealed on switch (forced, `PostModelSwitch`). On the hook path icx injects no
+  deterministic prefix, so there is nothing to re-emit; the proxy path starts a new epoch on its
+  next request.
+- [ ] Contract tests over recorded payloads. Tests use the documented fields
+  (`tests/claude_model_switch.rs`); a live recording waits for T-64-001's live runs.
 
 **Dependencies:** None
 
@@ -175,10 +315,14 @@ and drops the lowest-ranked lines. Always set `hookEventName` to the exact event
 
 **Acceptance Criteria:**
 
-- [ ] Budget enforced in characters and lines, not bytes, at the adapter boundary.
-- [ ] Every reply carries the exact `hookEventName`; a test covers each emitting event.
-- [ ] Truncation keeps every `#icx:` handle intact and is deterministic.
-- [ ] Property test: no reply exceeds the limit for any input.
+- [x] Budget enforced in characters and lines, not bytes, at the adapter boundary
+  (`claude_bounded_context`; characters as UTF-16 units, as JavaScript counts them).
+- [x] Every reply carries the exact `hookEventName`; a test covers each emitting event
+  (`SessionStart`, `UserPromptSubmit`, `SubagentStart`).
+- [x] Truncation keeps every `#icx:` handle intact and is deterministic (whole lines only).
+- [x] Property test: no reply exceeds the limit for any input (`tests/claude_context_budget.rs`).
+- [ ] Re-confirm both caps and the spill-to-file behaviour live on 2.1.330 (with T-64-001's live
+  runs).
 
 **Dependencies:** None
 
@@ -204,10 +348,29 @@ users to the allow rule.
 
 **Acceptance Criteria:**
 
-- [ ] Claude Code version and the result for each of the four configurations recorded.
-- [ ] Annotations added to the tool definition only if "hint only" stops the prompt.
-- [ ] Deployment guide states the working configuration, including the user-level
-  `permissions.allow` entry for sessions and worktree subagents outside the project tree.
+**Live results (2026-11-22).** Claude Code 2.1.330, `claude -p --permission-mode plan
+--output-format json`, scratch project, no hooks, only a scratch icx MCP server. The hint build
+was a throwaway binary with `annotations.readOnlyHint: true` on the tool; `mcp.rs` was restored
+afterwards. A held tool shows up under `-p` as a `permission_denials` entry.
+
+| Configuration | Result |
+| --- | --- |
+| No rule, no hint | Held: `permission_denials: ["mcp__icx__icx"]` |
+| Rule only (`permissions.allow: ["mcp__icx"]`) | Held |
+| Hint only | Ran (`⟪ICX:STATUS│...⟫`) |
+| Rule and hint | Ran |
+
+The hypothesis is confirmed: in plan mode only `readOnlyHint` lifts the hold, and the allow rule
+does not. But the single `icx` tool was not read-only (`fold` and an `xagent` broadcast write to the
+store or the bus), so the hint ships only with T-64-008's split (ADR-0009 lists each op).
+
+- [x] Claude Code version and the result for each of the four configurations recorded.
+- [x] Annotations added to the tool definition only if "hint only" stops the prompt. It does,
+  and it ships on the read-only `icx` tool from the T-64-008 split. Live check after the split:
+  in plan mode with no allow rule, `icx status` ran and `icx_write` was not run.
+- [x] Deployment guide states the working configuration, including the user-level
+  `permissions.allow` entry for sessions and worktree subagents outside the project tree
+  (§2.2).
 
 **Dependencies:** T-61-002
 
@@ -229,11 +392,18 @@ approves multiple tools from one server, and the cost of a second tool definitio
 
 **Acceptance Criteria:**
 
-- [ ] Decision recorded as an ADR (Context, Decision, Consequences).
-- [ ] If split: the read-only tool carries `readOnlyHint`; the state-changing tool does not;
-  old `op` values keep working for one release with a deprecation note.
-- [ ] If not split: the tool carries no `readOnlyHint`, and the reason is documented.
-- [ ] Phase 7 Sprint 3 (typed eviction through `fold`) updated to match.
+**Outcome (2026-11-22): split, by owner decision (ADR-0009).** `icx` (deref, slice, grep, recall,
+expand, status, xagent poll) carries `readOnlyHint`; `icx_write` (fold, xagent broadcast) does not.
+`recall` stays read-only, since its only effect is cursor bookkeeping. Both tools stay under 180
+tokens each.
+
+- [x] Decision recorded as an ADR (`docs/adr/0009-read-only-icx-tool.md`).
+- [x] Split: the read-only tool carries `readOnlyHint`; the state-changing tool does not.
+- [ ] ~~Old `op` values keep working for one release with a deprecation note.~~ Superseded: the
+  security review found that this made the hint false for that release, and the owner chose to
+  refuse writes on `icx` at once (`tests/mcp_two_tools.rs`).
+- [x] ~~If not split~~: not applicable.
+- [x] Phase 7 Sprint 3 (typed eviction through `fold`, T-73-004) updated to target `icx_write`.
 
 **Dependencies:** T-64-007
 
@@ -244,9 +414,26 @@ pager)
 
 ## Sprint exit
 
-- [ ] Gates green: `cargo fmt --all -- --check`,
+- [x] Gates green: `cargo fmt --all -- --check`,
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and
-  coverage `>= 95%`.
-- [ ] Docs and CHANGELOG updated for any user-visible change.
-- [ ] Upstream re-scan done for Sprint 5 (every agent's release notes and config schema), and
-  its tickets adjusted.
+  coverage `>= 95%` (95.42% lines, `cargo llvm-cov`, 2026-11-23).
+- [x] Docs and CHANGELOG updated for any user-visible change.
+- [x] Upstream re-scan done for Sprint 5 (every agent's release notes and config schema), and
+  its tickets adjusted. Recorded below.
+
+**Sprint 4 exit re-scan (2026-11-22/23, public release notes, docs and config schemas):**
+
+| Agent | Version | Change that affects Sprint 5 | Ticket adjusted |
+| --- | --- | --- | --- |
+| Claude Code | 2.1.330 (current) | None beyond Sprint 4's live findings | — |
+| Codex CLI | 0.171.0 | `default_tools_approval_mode` takes `auto`, `prompt`, `writes` or `approve` (`writes` prompts only for non-read-only tools); per tool, `tools.<tool>.approval_mode`. `updatedMCPToolOutput` still fails the hook run | T-65-005 uses the per-tool key for `icx` only |
+| agy | 1.5.14 | Docs say PostToolUse returns `{}`; `overwriteResult` is undocumented. MCP config in `~/.gemini/config/mcp_config.json` or `.agents/mcp_config.json`; plugin servers are named `<plugin>_<server>` | T-65-007 tested live (rejected); T-65-008 covers the lazy `call_mcp_tool` form |
+| Muse Code | 1.4.25 (changelog lists 1.4.24) | No per-tool approval key; `readOnlyHint` auto-approves. Hooks in `.muse/hooks.json` of a trusted folder | T-65-005: Muse gets a note, not a rule |
+| Hermes | v0.23.3 | `ContextEngine` and `transform_terminal_output` signatures confirmed (Sprint 1 findings hold) | T-65-002/009 written against v0.23.3, live check deferred (#89) |
+| OpenCode | v2.3.2 (installed v2.2.7) | MCP servers under `mcp.servers.<name>`; pre-approval is a top-level `permissions` array; Code Mode groups tools by server | T-65-005: OpenCode approval left out until verified on the installed version |
+| Cursor | v2026.11.17 | Pre-approval `Mcp(icx:icx)` in `permissions.allow`; `postToolUse` now fires for `Task`; `sessionStart` gains `surface`; `disabledServers` list | T-65-005 writes `Mcp(icx:icx)`; live capture deferred (#89) |
+| Gemini CLI | v0.70.0 | Not installed (owner decision) | Deferred (#89) |
+
+A redactor false positive surfaced during the re-scan (typed defaults such as
+`current_tokens: int = None` are blanked to the end of the line). Filed as #90 for the Phase 7
+structural redactor (T-74-003).

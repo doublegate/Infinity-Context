@@ -70,6 +70,20 @@ text comes from `deref`.
 | File-backed bus, publish to visible | not measured | worst 38 µs over 200 events | two handles on one file | audit remediation measurement |
 | FastCDC mean chunk size (8 KiB target) | 13.2 KiB | 10.6 KiB | spread masks (Xia et al., ATC'16) | audit remediation measurement |
 
+**v1.4.0 measurements (2026-11-22, release build, desktop):**
+
+| Metric | Value | How measured | Source |
+| :--- | :--- | :--- | :--- |
+| One stub-mode OpenCode `execute.after` hook, 28 MB store | 0.15 s in-process; 0.07 s through a warm daemon | store from one project's Codex history | Sprint 4 notes (#43) |
+| Same hook, 825 MB store | 4.4–4.6 s in-process (1.7 GB peak); 4.2 s first daemon request, about 2.0 s warm | store from all projects' Codex history, tool outputs included | Sprint 4 notes (#43) |
+| Six parallel Claude Code `PostToolUse` hooks, small store | all done 0.023–0.087 s after start; `PostToolBatch` 0.014 s | `claude -p`, six parallel Bash calls, timing wrapper around `icx hook` | T-64-004 |
+| `icx codex-ingest --all-projects`, tool outputs included | 523 s with batched lock release; 426 s unbatched | 574 rollouts (518 compressed) | Sprint 2 notes |
+
+Hooks of one agent take the workspace lock in turn, so a batch of N parallel tool calls costs
+about N times one hook. On a small store that is milliseconds; at about 2 s per hook (825 MB), the
+last of six would wait about 12 s. The cost grows with store size until saves become incremental
+(Phase 9).
+
 ## 3. Constants and Test-Asserted Bounds
 
 ### Handles, hashing and storage

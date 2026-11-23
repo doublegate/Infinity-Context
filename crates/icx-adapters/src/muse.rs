@@ -215,7 +215,7 @@ impl MuseAdapter {
                 json!({})
             }
             "PreCompact" | "pre-compact" => {
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             "PostCompact" | "post-compact" => {
@@ -227,12 +227,12 @@ impl MuseAdapter {
                 {
                     let _ = mmu.ingest_payload(AgentKind::Muse, "compact_summary", summary, false);
                 }
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             "SessionEnd" | "session-end" => {
                 mmu.fold_all_open_subagents(AgentKind::Muse, "session_end");
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             _ => json!({}),

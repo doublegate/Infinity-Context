@@ -836,12 +836,17 @@ unprefixed_secret = {unpref_sec}
             .unwrap();
         assert_eq!(stop_a, "{}");
         assert_eq!(mmu.dag.node_count(), nodes_before_subs + 2);
-        // Stopping sub-B via Codex session-end folds any remaining open subagents
+        // Stopping sub-B via Codex session-end folds any remaining open subagents (2 nodes), then
+        // force-seals the epoch (owner decision, 2026-11-22): the L3 epoch node, plus the L4 fold
+        // node over the sealed epochs once there are two or more.
+        let sealed_before = mmu.epochs.sealed_epoch_count();
         let session_end_out = codex_trait
             .handle_hook_event("session-end", "{}", &mut mmu)
             .unwrap();
         assert!(session_end_out.contains("continue"));
-        assert_eq!(mmu.dag.node_count(), nodes_before_subs + 4);
+        assert_eq!(mmu.epochs.sealed_epoch_count(), sealed_before + 1);
+        let fold_node = usize::from(sealed_before + 1 >= 2);
+        assert_eq!(mmu.dag.node_count(), nodes_before_subs + 4 + 1 + fold_node);
 
         // Verify Clear-State Functional Supersession (failing suite -> passing suite supersedes fail & status)
         let _ = mmu.ingest_payload_with_exit_code(
@@ -2105,7 +2110,12 @@ unprefixed_secret = {unpref_sec}
     #[test]
     fn sprint_4_3_single_tool_mcp_pager_provenance_and_ambiguity_conformance() {
         let mut mmu = InfinityContextMmu::default();
-        assert!(McpPagerServer::schema_token_estimate() < 180);
+        assert!(McpPagerServer::schema_token_estimate() < 360);
+        assert!(
+            McpPagerServer::per_tool_token_estimates()
+                .iter()
+                .all(|&t| t < 180)
+        );
 
         // 1. Verify `notifications/initialized` (JSON-RPC 2.0 notification returns Null without `id`) and `ping`
         let ping_resp = McpPagerServer::handle_jsonrpc(
@@ -2253,11 +2263,16 @@ unprefixed_secret = {unpref_sec}
         assert!(!McpPagerServer::is_mutating_request(
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}"#
         ));
-        assert!(McpPagerServer::is_mutating_request(
+        // Writes belong to `icx_write` (ADR-0009); the read-only `icx` refuses them, so a write
+        // addressed to it is not a mutation.
+        assert!(!McpPagerServer::is_mutating_request(
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"icx","arguments":{"op":"fold","q":"s"}}}"#
         ));
         assert!(McpPagerServer::is_mutating_request(
-            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"icx","arguments":{"op":"xagent","q":"msg"}}}"#
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"icx_write","arguments":{"op":"fold","q":"s"}}}"#
+        ));
+        assert!(McpPagerServer::is_mutating_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"icx_write","arguments":{"op":"xagent","q":"msg"}}}"#
         ));
         assert!(!McpPagerServer::is_mutating_request(
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{"op":"xagent"}}}"#

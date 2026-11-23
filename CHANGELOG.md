@@ -64,6 +64,81 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **The MCP server offers two tools** (T-64-008, ADR-0009).
+  - **`icx`** is now read-only: `deref`, `slice`, `grep`, `recall`, `expand`, `status`, and
+    `xagent` as a poll. It carries `readOnlyHint`, so Claude Code's plan mode runs it without a
+    prompt (measured on 2.1.330: an allow rule alone does not lift the plan-mode hold).
+  - **`icx_write`** takes `fold`, and `xagent` with a message.
+  - **Breaking:** `fold` and broadcasts sent to `icx` are refused with an error naming
+    `icx_write`, so the read-only hint is never false. Update instructions that tell agents to
+    fold with the `icx` tool.
+  - Every hook adapter treats both tools as icx's own and never ingests their output.
+- **The OpenCode plugin sends the legend again after a compaction**, since the summary may drop
+  the prompt that carried it.
+- **Claude Code `CwdChanged` moves the agent to the new directory's workspace** (T-64-003,
+  verified live on 2.1.330). The workspace is resolved from `new_cwd`, so the agent's icx MCP
+  server follows a `cd` into another repository or worktree on its next call (#34). Register the
+  hook to use it (deployment guide §2.2).
+- **Claude Code Read, Grep, Glob and Code Mode results are stored as their text** (T-64-001,
+  verified live on 2.1.330).
+  - Before, Read, Grep and Glob results were stored as one line of JSON, so a stub said
+    `lines=1..1` and `slice` could not address the tool's lines.
+  - A Code Mode script result (`REPL`) was taken for a Bash result: only its usually empty
+    `stdout` was stored and a large `result` was never shrunk. Its `result` now gets the stub,
+    and the script itself is left as is.
+  - Live, the model saw the stub for Bash, Read, Grep, Glob, WebSearch, an Agent report, a Bash
+    call inside a Code Mode script, and the script result.
+  - An Agent report's text blocks are replaced by one stub block; before, only the largest
+    block was, and the rest of the report still reached the model. Image and resource blocks
+    are kept and not stored. WebFetch and Agent results are stored as their text.
+  - Binary data is never replaced: `image`, `audio` and Anthropic `base64` blocks and `blob`
+    resources are not entered (MCP's `mimeType` is optional, so the block type decides), and a
+    `base64` value, or `data`/`blob` beside a MIME type or `uri`, is skipped, and a result with no text value larger than the stub (an image `Read`, an
+    image-only report, a screenshot with a caption) reaches the model unchanged, though it is
+    still stored. `updatedMCPToolOutput`, a string that replaces the whole MCP result, is sent
+    only when every content block is text and nothing is binary, so images, audio, resources and
+    resource links are never dropped; structured JSON with its own `type` fields still gets it.
+    The two replacements are decided independently.
+  - These shapes apply only when the call names that built-in tool (`Read`, `Grep`, `Glob`,
+    `WebFetch`, `Agent` or `Task`, `REPL`), and the stub replaces exactly the field that was
+    stored. An MCP result with the same keys is stored whole, as any other JSON result.
+  - `scripts/live-claude-replacement-check.sh` repeats the check after a Claude Code update
+    (billed, run by hand). It exits 1 if the model saw raw output, and 2 if `claude` itself
+    failed (its stderr is shown).
+- **Compaction and session end always seal the cache epoch**, in every adapter (Claude Code,
+  Codex, agy, Muse, Gemini CLI, Cursor and OpenCode).
+  - Before, these events sealed only an epoch that had reached its token threshold, although the
+    docs said they always sealed it. Compaction rewrites the conversation, so the old cached
+    prefix is gone whatever the epoch's size.
+  - A repeated event with nothing new adds no empty epoch. agy's `Stop` keeps the conditional
+    check, except for the error reasons that already forced it.
+- **Claude Code `PostModelSwitch` seals the cache epoch** (T-64-005), since the new model starts
+  a cold prompt cache. `PreModelSwitch` is not used: a failing or slow hook there blocks the
+  switch.
+- **Stub settings reach the daemon** (review of #87). A hook whose caller sets
+  `ICX_GEMINI_STUB`, `ICX_CURSOR_STUB` or `ICX_OPENCODE_STUB` sends the setting with its daemon
+  request (protocol version 2), so it keeps the daemon's warm store instead of loading the store
+  itself.
+  - A daemon from an earlier release refuses version 2, and the hook then runs in-process.
+  - A version-1 request never asks for stubs.
+  - The OpenCode plugin's default timeout is now 10 s (`ICX_PLUGIN_TIMEOUT_MS`). Measured for
+    one stub-mode hook: about 2 s through a warm daemon and 4.5 s in-process on an 825 MB store,
+    against 0.07 s and 0.15 s on a 28 MB store.
+- **Review fixes from #87, round 2:**
+  - Cursor no longer treats `"mcp_server_name": null` as an MCP tool, and matches `mcp_`
+    case-insensitively.
+  - The OpenCode plugin sends the legend once per session, and sends `session.end` when it sees
+    `session.deleted`.
+  - `icx doctor` reads an icx hook command in any flag order and matches the agent name exactly.
+  - `icx doctor` no longer stalls on a binary that prints more than a pipe buffer.
+  - The Codex oversized-record check tolerates spacing and reads direct records.
+  - Gemini CLI ignores an empty prompt for recall.
+- **Claude Code `additionalContext` is bounded to 8,000 characters and 200 lines** (T-64-006),
+  the inline limit on the settings-file hook path, above which Claude Code spills the text to a
+  file.
+  - Characters are counted as JavaScript string length.
+  - Whole lowest-ranked lines are dropped, with a `⟪ICX:TRUNCATED│dropped=<n>⟫` line, so no
+    `#icx:` handle is cut.
 - **Codex `additionalContext` is bounded to 10,000 bytes** (T-62-006). That is Codex's default
   `additionalContextLimit` of 2,500 tokens, above which Codex spills the text to a file. The tail
   slot already fits; a larger value would be replaced whole by a diagnostic, never cut.

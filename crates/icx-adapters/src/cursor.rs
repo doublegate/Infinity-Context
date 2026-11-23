@@ -94,11 +94,14 @@ fn cursor_tool_text(output: Option<&Value>) -> (String, Option<i32>) {
 /// Whether a Cursor `tool_name` names an MCP tool. Cursor's MCP name form is still to be
 /// confirmed by the live capture, so the forms other agents use are all accepted.
 fn is_mcp_tool(tool_name: &str, payload: &Value) -> bool {
-    let t = tool_name.trim();
-    payload.get("mcp_server_name").is_some()
-        || t.starts_with("mcp__")
-        || t.starts_with("mcp_")
-        || t.to_ascii_lowercase().starts_with("mcp:")
+    // Cursor sends explicit `null` for absent optional fields, so only a non-empty server name
+    // counts (review of #87).
+    let named_server = payload
+        .get("mcp_server_name")
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.trim().is_empty());
+    let t = tool_name.trim().to_ascii_lowercase();
+    named_server || t.starts_with("mcp_") || t.starts_with("mcp:")
 }
 
 impl CursorAdapter {
@@ -199,12 +202,12 @@ impl CursorAdapter {
                 }
             }
             "preCompact" | "PreCompact" | "pre-compact" => {
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             "sessionEnd" | "SessionEnd" | "session-end" => {
                 mmu.fold_all_open_subagents(AgentKind::Cursor, "session_end");
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             // Includes `sessionStart`: its `additional_context` lands in system context, which icx

@@ -7,9 +7,10 @@
 //!
 //! Events (the plugin's names, not OpenCode's):
 //!
-//! - `prompt`, from `ctx.session.hook("prompt")`: icx returns the legend and the tail slot for
-//!   the prompt (`{"append": ...}`). The plugin appends it to the user's message, so icx context
-//!   reaches the model as user-turn data.
+//! - `prompt`, from `ctx.session.hook("prompt")`: icx returns the tail slot for the prompt
+//!   (`{"append": ...}`), preceded by the legend unless the payload says `"legend": false`. The
+//!   plugin appends it to the user's message, so icx context reaches the model as user-turn
+//!   data, and asks for the legend only on a session's first prompt.
 //! - The `context` hook (system text on every request) is deliberately not used. icx context is
 //!   untrusted retrieved data and never goes into the system prompt, and per-request system text
 //!   would also defeat the provider's prompt cache. A `context` event is answered with `{}`.
@@ -20,7 +21,8 @@
 //!   off by default because it changes what the model sees.
 //! - `compaction`, from `ctx.session.hook("compaction")`: seals the epoch. icx never supplies the
 //!   summary, so OpenCode still writes its own.
-//! - `session.end`: folds open subagent branches and seals.
+//! - `session.end`, sent when the plugin sees `session.deleted` on `ctx.event.subscribe`: folds
+//!   open subagent branches and seals.
 
 use crate::mmu::{ICX_AHTL_LEGEND, InfinityContextMmu};
 use crate::{AdapterError, AgentHookAdapter};
@@ -99,16 +101,29 @@ impl OpenCodeAdapter {
                     .filter(|p| !p.trim().is_empty())
                     .unwrap_or("opencode_query");
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::OpenCode, prompt, 4);
-                json!({ "append": format!("{ICX_AHTL_LEGEND}\n{tail}") })
+                // Each append stays in the conversation, so the plugin asks for the legend only
+                // on a session's first prompt (`"legend": false` afterwards).
+                if payload.get("legend").and_then(Value::as_bool) == Some(false) {
+                    json!({ "append": tail })
+                } else {
+                    json!({ "append": format!("{ICX_AHTL_LEGEND}\n{tail}") })
+                }
             }
             "execute.after" => {
                 let tool = payload
                     .get("tool")
                     .and_then(Value::as_str)
                     .unwrap_or("opencode_tool");
-                if InfinityContextMmu::is_icx_pager_tool(tool)
-                    || tool.eq_ignore_ascii_case("icx_icx")
-                {
+                // OpenCode names MCP tools `<server>_<tool>`, under any server name icx is
+                // registered as (review of #88).
+                let own = ["icx", "infinity_context", "infinity-context"]
+                    .iter()
+                    .any(|server| {
+                        ["icx", "icx_write"]
+                            .iter()
+                            .any(|t| tool.eq_ignore_ascii_case(&format!("{server}_{t}")))
+                    });
+                if InfinityContextMmu::is_icx_pager_tool(tool) || own {
                     json!({})
                 } else {
                     let failed = payload.get("status").and_then(Value::as_str) == Some("error");
@@ -157,12 +172,12 @@ impl OpenCodeAdapter {
                 }
             }
             "compaction" => {
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             "session.end" => {
                 mmu.fold_all_open_subagents(AgentKind::OpenCode, "session_end");
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             _ => json!({}),

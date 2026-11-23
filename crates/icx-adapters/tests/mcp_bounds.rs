@@ -126,8 +126,14 @@ fn slice_ends_are_clamped_and_grep_replies_are_bounded() {
     use serde_json::json;
     let mut mmu = InfinityContextMmu::default();
     let call = |mmu: &mut InfinityContextMmu, args: serde_json::Value| {
+        // `fold` belongs to the state-changing tool (ADR-0009).
+        let tool = if args["op"] == "fold" {
+            "icx_write"
+        } else {
+            "icx"
+        };
         let req = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-            "params": {"name": "icx", "arguments": args}});
+            "params": {"name": tool, "arguments": args}});
         let resp = McpPagerServer::handle_jsonrpc(&req.to_string(), mmu);
         let text = resp["result"]["content"][0]["text"]
             .as_str()

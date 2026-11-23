@@ -131,6 +131,7 @@ impl GeminiCliAdapter {
                 let prompt = payload
                     .get("prompt")
                     .and_then(Value::as_str)
+                    .filter(|p| !p.trim().is_empty())
                     .unwrap_or("gemini_query");
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::GeminiCli, prompt, 4);
                 json!({
@@ -182,12 +183,12 @@ impl GeminiCliAdapter {
                 }
             }
             "PreCompress" | "pre-compress" => {
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             "SessionEnd" | "session-end" => {
                 mmu.fold_all_open_subagents(AgentKind::GeminiCli, "session_end");
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             _ => json!({}),

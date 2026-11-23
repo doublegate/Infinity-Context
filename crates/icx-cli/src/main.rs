@@ -422,10 +422,31 @@ fn init_workspace_dir(icx_dir: &Path) -> Result<(), String> {
 /// Resolves the workspace directory (`--dir` > `ICX_DIR` > per-project default under the state
 /// dir) and warns once about an ignored v1.0.x repository-local `.icx/`.
 fn resolve_workspace_dir(cli_dir: Option<&str>) -> PathBuf {
-    static LEGACY_NOTICE: AtomicBool = AtomicBool::new(false);
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    resolve_workspace_dir_from(cli_dir, &cwd)
+}
+
+fn is_cwd_changed_event(event: &str) -> bool {
+    event.eq_ignore_ascii_case("CwdChanged") || event.eq_ignore_ascii_case("cwd-changed")
+}
+
+/// The directory a Claude Code `CwdChanged` hook moved to (`new_cwd`), when it is an absolute,
+/// existing directory (T-64-003). The workspace is resolved from it rather than from wherever
+/// the hook process happens to run.
+fn cwd_changed_target(event: &str, stdin: &str) -> Option<PathBuf> {
+    if !is_cwd_changed_event(event) {
+        return None;
+    }
+    let payload: serde_json::Value = serde_json::from_str(stdin).ok()?;
+    let dir = PathBuf::from(payload.get("new_cwd")?.as_str()?);
+    (dir.is_absolute() && dir.is_dir()).then_some(dir)
+}
+
+/// [`resolve_workspace_dir`] for an explicit working directory.
+fn resolve_workspace_dir_from(cli_dir: Option<&str>, cwd: &Path) -> PathBuf {
+    static LEGACY_NOTICE: AtomicBool = AtomicBool::new(false);
     let env_dir = env::var("ICX_DIR").ok();
-    match workspace::resolve(cli_dir, env_dir.as_deref(), &cwd, roots()) {
+    match workspace::resolve(cli_dir, env_dir.as_deref(), cwd, roots()) {
         Ok(ws) => {
             if let Some(legacy) = &ws.legacy_repo_local
                 && !LEGACY_NOTICE.swap(true, AtomicOrdering::Relaxed)
@@ -863,8 +884,8 @@ fn dispatch_agent_hook(
 }
 
 /// Whether the hook caller asked for stub replacement (`ICX_GEMINI_STUB`, `ICX_CURSOR_STUB`,
-/// `ICX_OPENCODE_STUB`). The setting belongs to the caller, so such a hook runs in-process rather
-/// than through the daemon, whose environment may differ.
+/// `ICX_OPENCODE_STUB`). The setting belongs to the caller, so it is sent to the daemon with the
+/// request rather than read from the daemon's own environment.
 fn caller_stub_mode(agent: AgentKind) -> bool {
     match agent {
         AgentKind::GeminiCli => GeminiCliAdapter::stub_mode_enabled(),
@@ -874,24 +895,25 @@ fn caller_stub_mode(agent: AgentKind) -> bool {
     }
 }
 
-/// The daemon's dispatch. It never reads stub settings from its own environment: a caller that
-/// wants stubs bypasses the daemon ([`caller_stub_mode`]), so through the daemon these adapters
-/// always capture only.
+/// The daemon's dispatch. Stub mode comes from the request (the caller's setting, see
+/// [`caller_stub_mode`]), never from the daemon's own environment, so a stub-mode hook still
+/// gets the daemon's warm store instead of loading it itself.
 fn daemon_dispatch_agent_hook(
     agent: AgentKind,
     event_str: &str,
     stdin_buf: &str,
+    stub: bool,
     mmu: &mut InfinityContextMmu,
 ) -> Result<String, serde_json::Error> {
     match agent {
         AgentKind::GeminiCli => {
-            GeminiCliAdapter::handle_hook_with_stub_mode(event_str, stdin_buf, mmu, false)
+            GeminiCliAdapter::handle_hook_with_stub_mode(event_str, stdin_buf, mmu, stub)
         }
         AgentKind::Cursor => {
-            CursorAdapter::handle_hook_with_stub_mode(event_str, stdin_buf, mmu, false)
+            CursorAdapter::handle_hook_with_stub_mode(event_str, stdin_buf, mmu, stub)
         }
         AgentKind::OpenCode => {
-            OpenCodeAdapter::handle_hook_with_stub_mode(event_str, stdin_buf, mmu, false)
+            OpenCodeAdapter::handle_hook_with_stub_mode(event_str, stdin_buf, mmu, stub)
         }
         _ => dispatch_agent_hook(agent, event_str, stdin_buf, mmu),
     }
@@ -947,14 +969,31 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
     let agent = AgentKind::parse_agent(agent_str);
     let is_session_start = event_str.eq_ignore_ascii_case("SessionStart")
         || event_str.eq_ignore_ascii_case("session-start");
-    let ws_dir = resolve_workspace_dir(dir_str);
+    // A `CwdChanged` hook switches the agent to the workspace of the directory it moved to, so
+    // its MCP server follows on the next call (T-64-003, #34).
+    let cwd_changed = (agent == AgentKind::ClaudeCode)
+        .then(|| cwd_changed_target(event_str, stdin_buf))
+        .flatten();
+    let ws_dir = match &cwd_changed {
+        Some(new_cwd) => resolve_workspace_dir_from(dir_str, new_cwd),
+        None => resolve_workspace_dir(dir_str),
+    };
     if matches!(workspace_state(&ws_dir, true), WsState::Ready) {
         // Lets this agent's MCP server follow the workspace its hooks use (#34).
         workspace::record_agent_workspace(&ws_dir, roots());
+        // Recording the workspace is all `CwdChanged` does, so it neither loads nor locks the
+        // store, even when `new_cwd` is missing or relative (review of #88: on a large store that
+        // costs seconds per `cd`).
+        if agent == AgentKind::ClaudeCode && is_cwd_changed_event(event_str) {
+            return Ok("{}".to_owned());
+        }
         #[cfg(unix)]
-        if env::var_os("ICX_NO_DAEMON").is_none() && !caller_stub_mode(agent) {
+        if env::var_os("ICX_NO_DAEMON").is_none() {
             let socket = workspace::daemon_socket_path(&ws_dir, roots());
-            if let Some(out) = daemon::try_hook(&socket, agent_str, event_str, stdin_buf) {
+            let stub = caller_stub_mode(agent);
+            if let Some(out) =
+                daemon::try_hook_with_stub(&socket, agent_str, event_str, stdin_buf, stub)
+            {
                 return Ok(out);
             }
             if env::var("ICX_DAEMON_AUTOSTART").is_ok_and(|v| v == "1") {
@@ -1561,26 +1600,44 @@ fn probe_version(bin: &Path, timeout: std::time::Duration) -> Option<String> {
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
+    // Drain stdout while waiting, keeping the first 4 KiB, so a binary that prints more than a
+    // pipe buffer cannot stall until the timeout (review of #87).
+    let mut stdout = child.stdout.take()?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut head = Vec::new();
+        let _ = (&mut stdout).take(4096).read_to_end(&mut head);
+        let _ = tx.send(head);
+        let _ = std::io::copy(&mut stdout, &mut std::io::sink());
+    });
     let started = Instant::now();
-    loop {
+    let succeeded = loop {
         match child.try_wait() {
-            Ok(Some(status)) if status.success() => break,
-            Ok(Some(_)) | Err(_) => return None,
+            Ok(Some(status)) => break status.success(),
+            Err(_) => break false,
             Ok(None) if started.elapsed() >= timeout => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return None;
+                break false;
             }
             Ok(None) => std::thread::sleep(std::time::Duration::from_millis(20)),
         }
+    };
+    if !succeeded {
+        return None;
     }
-    let mut out = String::new();
-    child
-        .stdout
-        .take()?
-        .take(4096)
-        .read_to_string(&mut out)
-        .ok()?;
+    // The first 4 KiB, or end of file, arrives once the child has exited; a grandchild that kept
+    // the pipe open cannot hold doctor past the remaining time.
+    let remaining = timeout
+        .saturating_sub(started.elapsed())
+        .max(std::time::Duration::from_millis(200));
+    let Ok(head) = rx.recv_timeout(remaining) else {
+        return None;
+    };
+    if head.is_empty() {
+        return None;
+    }
+    let out = String::from_utf8_lossy(&head);
     out.lines()
         .map(str::trim)
         .find(|l| !l.is_empty())
@@ -1614,21 +1671,57 @@ fn is_icx_opencode_plugin(text: &str) -> bool {
 
 /// Whether `text` holds a hook command running icx for `agent`.
 fn mentions_icx_hook(text: &str, agent: &str) -> bool {
-    let needle = format!(" hook --agent {agent}");
-    text.match_indices(&needle).any(|(at, _)| {
-        let after = &text[at + needle.len()..];
-        if after
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_alphanumeric() || c == '-')
-        {
-            return false; // `--agent cursor-x` is another agent
+    // Tokens of the config text: JSON quoting and escapes are separators, so a command reads as
+    // its words whatever its quoting.
+    // Shell separators end a word and are kept as their own tokens, spaced or not, so
+    // `--agent x;` and `--agent x||true` still name agent `x`.
+    let spaced = text
+        .replace("&&", " \u{1} ")
+        .replace("||", " \u{2} ")
+        .replace(';', " ; ")
+        .replace('|', " | ")
+        .replace('\u{1}', "&&")
+        .replace('\u{2}', "||");
+    let tokens: Vec<&str> = spaced
+        .split(|c: char| {
+            c.is_whitespace() || matches!(c, '"' | '\'' | '\\' | ',' | '[' | ']' | '{' | '}')
+        })
+        .filter(|t| !t.is_empty())
+        .collect();
+    let is_icx = |t: &str| t.rsplit('/').next() == Some("icx");
+    // `icx` must be the program, never an argument (review of #88): it is not the value of a
+    // long option (`--dir /x/icx`), and no `hook` word comes before it in the same command.
+    // Wrappers stay recognised (`sh -c "icx hook ..."`, `env -u VAR icx hook ...`), and a
+    // quoted program path with a space (`"/opt/x y/icx"`) splits into words that are neither.
+    let is_program_position = |i: usize| {
+        let since_boundary: Vec<&&str> = tokens[..i]
+            .iter()
+            .rev()
+            .take_while(|p| !p.ends_with(':') && !matches!(**p, "&&" | "||" | ";" | "|"))
+            .collect();
+        let after_long_option = since_boundary
+            .first()
+            .is_some_and(|p| p.starts_with("--") && !p.contains('='));
+        !after_long_option && since_boundary.iter().all(|p| **p != "hook")
+    };
+    tokens.iter().enumerate().any(|(i, t)| {
+        if !is_icx(t) || !is_program_position(i) {
+            return false;
         }
-        let program = text[..at]
-            .rsplit(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == '\\')
-            .find(|t| !t.is_empty())
-            .unwrap_or("");
-        program.rsplit('/').next() == Some("icx")
+        // This command's words, in any flag order: up to a shell separator or the next JSON key.
+        // A later word that merely ends in `/icx` (`--dir /x/icx`) is an argument, not a new
+        // command (review of #88).
+        let words: Vec<&str> = tokens[i + 1..]
+            .iter()
+            .take_while(|w| !w.ends_with(':') && !matches!(**w, "&&" | "||" | ";" | "|"))
+            .take(32)
+            .copied()
+            .collect();
+        let agent_matches = words.windows(2).any(|p| p[0] == "--agent" && p[1] == agent)
+            || words
+                .iter()
+                .any(|w| w.strip_prefix("--agent=") == Some(agent));
+        words.contains(&"hook") && agent_matches
     })
 }
 
@@ -2478,7 +2571,7 @@ mod tests {
             &long,
             daemon::DaemonOptions::default(),
             workspace_mmu(),
-            dispatch_agent_hook,
+            daemon_dispatch_agent_hook,
         )
         .unwrap_err();
         assert!(err.contains("too long"), "{err}");
@@ -2505,7 +2598,7 @@ mod tests {
                     max_requests: None,
                 },
                 workspace_mmu(),
-                dispatch_agent_hook,
+                daemon_dispatch_agent_hook,
             )
         });
         for _ in 0..400 {
@@ -2520,7 +2613,7 @@ mod tests {
             &sock,
             daemon::DaemonOptions::default(),
             workspace_mmu(),
-            dispatch_agent_hook,
+            daemon_dispatch_agent_hook,
         )
         .unwrap_err();
         assert!(dup.contains("already serving"), "{dup}");
@@ -2587,7 +2680,7 @@ mod tests {
                     max_requests: None,
                 },
                 workspace_mmu(),
-                dispatch_agent_hook,
+                daemon_dispatch_agent_hook,
             )
         });
         for _ in 0..400 {
@@ -2746,7 +2839,7 @@ mod tests {
                     max_requests: Some(3),
                 },
                 workspace_mmu(),
-                dispatch_agent_hook,
+                daemon_dispatch_agent_hook,
             )
         });
         for _ in 0..400 {
@@ -3505,41 +3598,159 @@ mod tests {
             "icx hook --agent cursor-next --event x",
             "cursor"
         ));
+        assert!(!mentions_icx_hook(
+            "icx hook --agent cursor_custom",
+            "cursor"
+        ));
+        // Any flag order, and `--agent=<name>`.
+        assert!(mentions_icx_hook(
+            r#"{"command": "icx hook --event postToolUse --agent cursor"}"#,
+            "cursor"
+        ));
+        assert!(mentions_icx_hook(
+            "/opt/icx --dir /w hook --agent cursor",
+            "cursor"
+        ));
+        assert!(mentions_icx_hook(
+            "icx hook --agent=cursor --event x",
+            "cursor"
+        ));
+        // A flag value ending in `/icx` does not end the command; a shell separator does.
+        assert!(mentions_icx_hook(
+            "icx hook --dir /home/u/.local/state/icx --agent cursor",
+            "cursor"
+        ));
+        assert!(!mentions_icx_hook(
+            "icx status && other hook --agent cursor",
+            "cursor"
+        ));
+        assert!(!mentions_icx_hook(
+            "icx status; other hook --agent cursor",
+            "cursor"
+        ));
+        assert!(mentions_icx_hook(
+            "icx hook --event PostToolUse --agent claude-code; true",
+            "claude-code"
+        ));
+        assert!(!mentions_icx_hook(
+            "other --dir /x/icx hook --agent cursor",
+            "cursor"
+        ));
+        // Wrapped commands, and separators without spaces.
+        for wrapped in [
+            "sh -c \"icx hook --agent cursor\"",
+            "bash -lc 'icx hook --agent cursor'",
+            "env -u ICX_NO_DAEMON icx hook --agent cursor",
+            "icx hook --agent cursor||true",
+        ] {
+            assert!(mentions_icx_hook(wrapped, "cursor"), "{wrapped}");
+        }
+        assert!(!mentions_icx_hook(
+            "icx status&&other hook --agent cursor",
+            "cursor"
+        ));
+        // A later JSON key does not lend its words to an earlier command.
+        assert!(!mentions_icx_hook(
+            r#"{"a": {"command": "icx status"}, "b": {"command": "other hook --agent cursor"}}"#,
+            "cursor"
+        ));
         assert!(!mentions_icx_hook(icx_hooks, "gemini-cli"));
     }
 
     #[test]
-    fn daemon_dispatch_never_stubs_the_new_adapters() {
-        // Stub mode is the hook caller's setting: a caller asking for it bypasses the daemon, so
-        // the daemon itself always captures only, whatever its own environment says.
+    fn daemon_dispatch_follows_the_stub_flag_for_every_new_adapter() {
+        // Gemini CLI, Cursor and OpenCode all take the caller's stub setting from the request
+        // (review of #88: the end-to-end test covers only OpenCode).
         let big = (0..400)
             .map(|i| format!("row {i}: value={}", i * 3))
             .collect::<Vec<_>>()
             .join("\n");
-        for (agent, event, payload) in [
-            (
-                AgentKind::OpenCode,
-                "execute.after",
-                serde_json::json!({"tool": "bash", "status": "completed", "output": big}),
-            ),
+        let cases = [
             (
                 AgentKind::GeminiCli,
                 "AfterTool",
                 serde_json::json!({"tool_name": "t", "tool_response": {"llmContent": big}}),
+                "deny",
             ),
             (
                 AgentKind::Cursor,
                 "postToolUse",
-                serde_json::json!({"tool_name": "mcp_x_y", "tool_output": serde_json::json!({"content": [{"type": "text", "text": big}]}).to_string()}),
+                serde_json::json!({"tool_name": "mcp_x_y", "tool_output":
+                    serde_json::json!({"content": [{"type": "text", "text": big}]}).to_string()}),
+                "updated_mcp_tool_output",
             ),
-        ] {
-            let mut mmu = InfinityContextMmu::default();
+            (
+                AgentKind::OpenCode,
+                "execute.after",
+                serde_json::json!({"tool": "bash", "status": "completed", "output": big}),
+                "replace",
+            ),
+        ];
+        for (agent, event, payload, marker) in cases {
+            let mut off = InfinityContextMmu::default();
             let out =
-                daemon_dispatch_agent_hook(agent, event, &payload.to_string(), &mut mmu).unwrap();
-            assert_eq!(out, "{}", "{agent:?}");
-            assert!(mmu.cas.artifact_count() > 0, "{agent:?} still ingests");
+                daemon_dispatch_agent_hook(agent, event, &payload.to_string(), false, &mut off)
+                    .unwrap();
+            assert!(!out.contains(marker), "{agent:?} without the flag: {out}");
+            assert!(off.cas.artifact_count() > 0, "{agent:?} still ingests");
+            let mut on = InfinityContextMmu::default();
+            let out = daemon_dispatch_agent_hook(agent, event, &payload.to_string(), true, &mut on)
+                .unwrap();
+            assert!(
+                out.contains(marker) && out.contains("ICX:STUB"),
+                "{agent:?}: {out}"
+            );
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_daemon_stubs_only_when_the_caller_asks() {
+        // Stub mode is the hook caller's setting: it travels in the request (version 2), and the
+        // daemon's own environment plays no part (review of #87).
+        let (_ws, sock, server) = start_daemon("stub_flag");
+        let big = (0..400)
+            .map(|i| format!("row {i}: value={}", i * 3))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let event = |n: u32| {
+            serde_json::json!({"tool": "bash", "call_id": format!("c{n}"), "status": "completed",
+                "output": format!("{big}\nrun {n}")})
+            .to_string()
+        };
+        let plain =
+            daemon::try_hook_with_stub(&sock, "opencode", "execute.after", &event(1), false)
+                .expect("daemon reply");
+        assert_eq!(plain, "{}", "capture only without the caller's flag");
+        let stubbed =
+            daemon::try_hook_with_stub(&sock, "opencode", "execute.after", &event(2), true)
+                .expect("daemon reply");
+        assert!(stubbed.contains("ICX:STUB"), "{stubbed}");
         assert!(!caller_stub_mode(AgentKind::ClaudeCode));
+        drop(server);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_version_1_request_cannot_ask_for_stubs() {
+        use std::io::{Read, Write};
+        use std::os::unix::net::UnixStream;
+        let (_ws, sock, server) = start_daemon("stub_v1");
+        let big = (0..400)
+            .map(|i| format!("row {i}: v={}", i * 5))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let payload =
+            serde_json::json!({"tool": "bash", "status": "completed", "output": big}).to_string();
+        let line = serde_json::json!({"v": 1, "agent": "opencode", "event": "execute.after",
+            "payload": payload, "stub": true});
+        let mut stream = UnixStream::connect(&sock).unwrap();
+        stream.write_all(format!("{line}\n").as_bytes()).unwrap();
+        stream.shutdown(std::net::Shutdown::Write).unwrap();
+        let mut reply = String::new();
+        stream.read_to_string(&mut reply).unwrap();
+        assert!(!reply.contains("ICX:STUB"), "{reply}");
+        drop(server);
     }
 
     #[test]
@@ -3602,6 +3813,20 @@ mod tests {
                 probe_version(&failing, std::time::Duration::from_secs(5)),
                 None
             );
+            // More than a pipe buffer of output does not stall the probe.
+            let chatty = dir.join("chatty-agent");
+            fs::write(
+                &chatty,
+                "#!/bin/sh\necho 'chatty 1.0'\nhead -c 1000000 /dev/zero | tr '\\0' x\necho\n",
+            )
+            .unwrap();
+            fs::set_permissions(&chatty, fs::Permissions::from_mode(0o755)).unwrap();
+            let started = std::time::Instant::now();
+            assert_eq!(
+                probe_version(&chatty, std::time::Duration::from_secs(5)).as_deref(),
+                Some("chatty 1.0")
+            );
+            assert!(started.elapsed() < std::time::Duration::from_secs(4));
         }
         let _ = fs::remove_dir_all(&dir);
     }

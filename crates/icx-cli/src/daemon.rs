@@ -25,8 +25,12 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-/// Protocol version carried in every request.
+/// Protocol version carried in every request that does not ask for stubs.
 pub const PROTOCOL_VERSION: u32 = 1;
+/// Version of a request that carries the caller's stub setting (`stub: true`, v1.4.0). An older
+/// daemon refuses it, so the client falls back to in-process handling and the setting is never
+/// silently dropped (review of #87).
+pub const PROTOCOL_VERSION_STUB: u32 = 2;
 /// Largest accepted request line (64 MiB payload bound plus envelope).
 pub const MAX_REQUEST_BYTES: u64 = icx_core::ICX_MAX_INGEST_BYTES as u64 + 64 * 1024;
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -37,7 +41,14 @@ struct Request {
     agent: String,
     event: String,
     payload: String,
+    /// The hook caller asked for stub replacement (version 2 only).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    stub: bool,
 }
+
+/// The daemon's hook dispatch: agent, event, payload, the caller's stub setting, and the MMU.
+pub type Dispatch =
+    fn(AgentKind, &str, &str, bool, &mut InfinityContextMmu) -> Result<String, serde_json::Error>;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Response {
@@ -52,7 +63,19 @@ fn peer_is_same_user(stream: &UnixStream) -> bool {
 
 /// Sends one hook request to a running daemon. Returns `None` (caller falls back to in-process
 /// handling) if no daemon is listening, the daemon is not ours, or anything goes wrong.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn try_hook(socket: &Path, agent: &str, event: &str, payload: &str) -> Option<String> {
+    try_hook_with_stub(socket, agent, event, payload, false)
+}
+
+/// [`try_hook`] carrying the caller's stub setting; `stub: true` is sent as version 2.
+pub fn try_hook_with_stub(
+    socket: &Path,
+    agent: &str,
+    event: &str,
+    payload: &str,
+    stub: bool,
+) -> Option<String> {
     if !socket.exists() {
         return None;
     }
@@ -63,10 +86,15 @@ pub fn try_hook(socket: &Path, agent: &str, event: &str, payload: &str) -> Optio
     stream.set_read_timeout(Some(CLIENT_TIMEOUT)).ok()?;
     stream.set_write_timeout(Some(CLIENT_TIMEOUT)).ok()?;
     let req = Request {
-        v: PROTOCOL_VERSION,
+        v: if stub {
+            PROTOCOL_VERSION_STUB
+        } else {
+            PROTOCOL_VERSION
+        },
         agent: agent.to_owned(),
         event: event.to_owned(),
         payload: payload.to_owned(),
+        stub,
     };
     let mut line = serde_json::to_vec(&req).ok()?;
     line.push(b'\n');
@@ -96,12 +124,7 @@ pub fn serve(
     socket: &Path,
     opts: DaemonOptions,
     mut mmu: InfinityContextMmu,
-    dispatch: fn(
-        AgentKind,
-        &str,
-        &str,
-        &mut InfinityContextMmu,
-    ) -> Result<String, serde_json::Error>,
+    dispatch: Dispatch,
 ) -> Result<(), String> {
     // `sockaddr_un.sun_path` is 108 bytes on Linux (104 on BSD/macOS), including the NUL.
     if socket.as_os_str().len() >= 104 {
@@ -261,12 +284,7 @@ fn handle_connection(
     ws_dir: &Path,
     mmu: &mut InfinityContextMmu,
     pristine: &InfinityContextMmu,
-    dispatch: fn(
-        AgentKind,
-        &str,
-        &str,
-        &mut InfinityContextMmu,
-    ) -> Result<String, serde_json::Error>,
+    dispatch: Dispatch,
 ) -> Outcome {
     let _ = stream.set_write_timeout(Some(CLIENT_TIMEOUT));
     let line = match read_request(&stream, CLIENT_TIMEOUT) {
@@ -278,7 +296,9 @@ fn handle_connection(
         }
     };
     let req = match serde_json::from_str::<Request>(line.trim_end()) {
-        Ok(req) if req.v == PROTOCOL_VERSION => req,
+        // Version 1 never asks for stubs, whatever it carries.
+        Ok(req) if req.v == PROTOCOL_VERSION => Request { stub: false, ..req },
+        Ok(req) if req.v == PROTOCOL_VERSION_STUB => req,
         Ok(_) => {
             write_response(stream, &failure("unsupported protocol version".into()));
             return Outcome::NotSaved;
@@ -308,7 +328,7 @@ fn handle_connection(
         return Outcome::NotSaved;
     }
     let agent = AgentKind::parse_agent(&req.agent);
-    let out = match dispatch(agent, &req.event, &req.payload, mmu) {
+    let out = match dispatch(agent, &req.event, &req.payload, req.stub, mmu) {
         Ok(out) => out,
         Err(e) => {
             // The client falls back to in-process handling and retries this request, so the
@@ -362,6 +382,7 @@ mod tests {
         agent: AgentKind,
         event: &str,
         payload: &str,
+        _stub: bool,
         mmu: &mut InfinityContextMmu,
     ) -> Result<String, serde_json::Error> {
         let body = format!("{event} fixture body\n");
@@ -524,9 +545,42 @@ mod tests {
         assert!(result.is_ok(), "lock timeout ended the daemon: {result:?}");
     }
 
+    /// The measurement is a wall-clock bound on taking the workspace lock, which also takes the
+    /// process-global `WORKSPACE_IO_LOCK`; other tests in this binary (the lock-timeout scenario
+    /// holds it for ~5 s) would be measured with it, so the scenario runs in a child process.
     #[test]
     fn silent_client_does_not_hold_the_workspace_lock() {
-        let (ws, socket, server) = start_durability_fixture("silent", Some(2));
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "daemon::tests::silent_client_scenario",
+                "--ignored",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env("ICX_DAEMON_SILENT_CLIENT_CHILD", "1")
+            .status()
+            .unwrap();
+        assert!(status.success(), "silent-client scenario failed: {status}");
+    }
+
+    #[test]
+    #[ignore = "run in a child process by silent_client_does_not_hold_the_workspace_lock"]
+    fn silent_client_scenario() {
+        if std::env::var_os("ICX_DAEMON_SILENT_CLIENT_CHILD").is_none() {
+            return;
+        }
+        // Three requests: the readiness check, the silent client and the final hook.
+        let (ws, socket, server) = start_durability_fixture("silent", Some(3));
+        // One served request first: the daemon holds the lock while it loads the store at
+        // startup, which takes longer than a fixed sleep under coverage instrumentation.
+        assert!(
+            try_hook(&socket, "codex", "ingest", "").is_some(),
+            "daemon ready"
+        );
+        // The daemon may still be persisting that request under the lock; taking the lock once
+        // waits it out, so the measurement below covers only the silent client.
+        drop(InfinityContextMmu::acquire_workspace_lock(&ws));
         // Connect and send nothing: the daemon is now blocked reading this request.
         let silent = UnixStream::connect(&socket).unwrap();
         std::thread::sleep(Duration::from_millis(300));
@@ -685,6 +739,7 @@ mod tests {
             agent: "codex".into(),
             event: "ingest".into(),
             payload: String::new(),
+            stub: false,
         })
         .unwrap();
         let rejected = raw_exchange(&socket, format!("{req}\n{req}\n").as_bytes());

@@ -174,7 +174,7 @@ impl CodexAdapter {
                 })
             }
             "PreCompact" | "pre-compact" | "PostCompact" | "post-compact" => {
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 let win = mmu.assemble_prompt_window(AgentKind::Codex, "compact_checkpoint");
                 json!({
                     "continue": true,
@@ -185,7 +185,7 @@ impl CodexAdapter {
             }
             "SessionEnd" | "session-end" => {
                 mmu.fold_all_open_subagents(AgentKind::Codex, "session_end");
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 let win = mmu.assemble_prompt_window(AgentKind::Codex, "session_end");
                 json!({
                     "continue": true,
@@ -323,22 +323,79 @@ fn is_tool_output_record(val: &Value) -> bool {
         .is_some_and(|t| t.ends_with("_call_output"))
 }
 
-/// The same test on the first bytes of a record too large to parse. Rollout lines put the
-/// payload's `type` first (`..."payload":{"type":"function_call_output",...`), so only that
-/// field is read; a message that merely quotes `"function_call_output"` in its text does not
+/// The same test on the first bytes of a record too large to parse. The record's own `type`
+/// values are read in order at any spacing, skipping wrapper kinds, so the payload's or item's
+/// type decides; a message that merely quotes `"function_call_output"` in its text does not
 /// match (review of #87).
 fn is_tool_output_prefix(line: &str) -> bool {
+    // Wrapper records name their kind first; the payload's or item's type follows.
+    const WRAPPERS: [&str; 5] = [
+        "response_item",
+        "event_msg",
+        "turn_context",
+        "session_meta",
+        "compacted",
+    ];
     let end = line.len().min(1024);
     let mut cut = end;
     while !line.is_char_boundary(cut) {
         cut -= 1;
     }
     let head = &line[..cut];
-    ["\"payload\":{\"type\":\"", "\"item\":{\"type\":\""]
+    // As in the parsed test, the `payload` or `item` object's type decides when there is one, so
+    // an outer event type (`item.completed`, `response.output_item.done`) never hides it (review
+    // of #88).
+    let inner = ["\"payload\"", "\"item\""]
         .iter()
-        .filter_map(|marker| head.find(marker).map(|at| &head[at + marker.len()..]))
-        .filter_map(|rest| rest.split('"').next())
-        .any(|ty| ty.ends_with("_call_output"))
+        .filter_map(|key| unescaped_key_value(head, key))
+        .min();
+    let types = json_type_values(inner.map_or(head, |at| &head[at..]));
+    let decisive = if inner.is_some() {
+        types.first().copied()
+    } else {
+        types.into_iter().find(|t| !WRAPPERS.contains(t))
+    };
+    decisive.is_some_and(|t| t.ends_with("_call_output"))
+}
+
+/// Where the value of the first unescaped `key` (quoted, followed by `:` at any spacing) starts.
+fn unescaped_key_value(text: &str, key: &str) -> Option<usize> {
+    let mut from = 0;
+    while let Some(rel) = text[from..].find(key) {
+        let at = from + rel;
+        from = at + key.len();
+        let escaped = at > 0 && text.as_bytes()[at - 1] == b'\\';
+        let after = &text[from..];
+        if !escaped && after.trim_start().starts_with(':') {
+            return Some(from);
+        }
+    }
+    None
+}
+
+/// The `"type"` string values in `text`, in order, at any spacing. A `"type"` quoted inside a
+/// string value is escaped (`\"type\"`), so it is never one of these.
+fn json_type_values(text: &str) -> Vec<&str> {
+    let mut types = Vec::new();
+    let mut rest = text;
+    while let Some(at) = rest.find("\"type\"") {
+        let escaped = at > 0 && rest.as_bytes()[at - 1] == b'\\';
+        let after = rest[at + 6..].trim_start();
+        rest = &rest[at + 6..];
+        if escaped {
+            continue;
+        }
+        let Some(value) = after.strip_prefix(':').map(str::trim_start) else {
+            continue;
+        };
+        if let Some(v) = value
+            .strip_prefix('"')
+            .and_then(|v| v.split_once('"').map(|(t, _)| t))
+        {
+            types.push(v);
+        }
+    }
+    types
 }
 
 /// Maximum per-record buffer allocation (`64 MiB + 64 KiB`) before draining the remainder of an
@@ -705,6 +762,39 @@ mod record_filter_tests {
         );
         assert!(!is_tool_output_record(
             &json!({"payload": {"type": "function_call"}})
+        ));
+    }
+
+    #[test]
+    fn prefix_test_tolerates_spacing_and_direct_records() {
+        assert!(is_tool_output_prefix(
+            r#"{ "type" : "response_item", "payload" : { "type" : "function_call_output" }"#
+        ));
+        assert!(is_tool_output_prefix(
+            r#"{"type":"custom_tool_call_output","output":"x"#
+        ));
+        assert!(is_tool_output_prefix(
+            r#"{"item": {"type": "function_call_output""#
+        ));
+        assert!(!is_tool_output_prefix(
+            r#"{"type":"response_item","payload":{"type":"message","content":"a \"type\":\"function_call_output\" b"#
+        ));
+        assert!(!is_tool_output_prefix(
+            r#"{"type":"event_msg","payload":{"type":"token_count"}}"#
+        ));
+        // An outer event type does not hide the item's type (review of #88).
+        for line in [
+            r#"{"type":"item.completed","item":{"type":"function_call_output","output":"x"#,
+            r#"{"type": "response.output_item.done", "item": {"type": "custom_tool_call_output""#,
+        ] {
+            assert!(is_tool_output_prefix(line), "{line}");
+        }
+        assert!(!is_tool_output_prefix(
+            r#"{"type":"item.completed","item":{"type":"agent_message","text":"x"#
+        ));
+        // A quoted `item` key inside text is not the record's item.
+        assert!(!is_tool_output_prefix(
+            r#"{"type":"response_item","payload":{"type":"message","content":"\"item\": {\"type\": \"function_call_output\""#
         ));
     }
 

@@ -16,12 +16,16 @@
 //                  through the icx MCP tool. Verified on v2.2.7; opt-in, because it changes
 //                  what the model sees.
 //   compaction     seals icx's cache epoch; OpenCode still writes its own summary.
+//   session.deleted (ctx.event.subscribe) ends the session's icx branches.
+// The legend is appended on a session's first prompt, and again after each compaction, since
+// each append stays in history and a compaction summary may drop it.
 //
 // Environment: ICX_BIN (path to the icx binary, default "icx"), ICX_PLUGIN_TIMEOUT_MS (default
-// 5000), and the usual icx variables (ICX_DIR, ...), which the icx process inherits.
+// 10000; a hook on a store of several hundred MB can take seconds), and the usual icx
+// variables (ICX_DIR, ...), which the icx process inherits.
 
 import type { Plugin } from "@opencode/plugin";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 // Bounds on what is sent to icx and read back, in UTF-8 bytes; icx bounds its own input as well.
 const MAX_SEND_BYTES = 64 * 1024 * 1024;
@@ -34,7 +38,7 @@ function icxHook(event: string, payload: Record<string, unknown>): Reply {
   try {
     // Read per call, like the rest of the environment, so a change at run time takes effect.
     const bin = process.env.ICX_BIN || "icx";
-    const timeout = Number(process.env.ICX_PLUGIN_TIMEOUT_MS) || 5000;
+    const timeout = Number(process.env.ICX_PLUGIN_TIMEOUT_MS) || 10000;
     const input = JSON.stringify(payload);
     if (Buffer.byteLength(input, "utf8") > MAX_SEND_BYTES) return {};
     const run = spawnSync(bin, ["hook", "--agent", "opencode", "--event", event], {
@@ -55,17 +59,80 @@ function icxHook(event: string, payload: Record<string, unknown>): Reply {
   }
 }
 
+/**
+ * Runs one icx hook without blocking the event loop, for events whose reply is not used. Resolves
+ * once icx exits or the timeout kills it; never rejects.
+ */
+function icxHookAsync(event: string, payload: Record<string, unknown>): Promise<void> {
+  return new Promise((resolve) => {
+    try {
+      const input = JSON.stringify(payload);
+      if (Buffer.byteLength(input, "utf8") > MAX_SEND_BYTES) return resolve();
+      const timeout = Number(process.env.ICX_PLUGIN_TIMEOUT_MS) || 10000;
+      const child = spawn(
+        process.env.ICX_BIN || "icx",
+        ["hook", "--agent", "opencode", "--event", event],
+        { env: process.env, stdio: ["pipe", "ignore", "ignore"] },
+      );
+      // Neither the timer nor the child keeps the process alive at exit.
+      const timer = setTimeout(() => child.kill(), timeout);
+      timer.unref?.();
+      child.unref();
+      const done = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      child.once("error", done);
+      child.once("close", done);
+      child.stdin?.on("error", () => {});
+      child.stdin?.end(input);
+    } catch {
+      resolve();
+    }
+  });
+}
+
 const IcxPlugin: Plugin.Plugin = {
   id: "icx",
   setup: async (ctx) => {
+    // Sessions that already received the legend: each append stays in the conversation, so the
+    // legend is sent once per session.
+    const legendSent = new Set<string>();
     const prompt = await ctx.session.hook("prompt", async (event) => {
       const text = event?.prompt?.text;
       if (typeof text !== "string") return;
-      const reply = icxHook("prompt", { sessionID: event.sessionID, prompt: text });
+      const session = typeof event.sessionID === "string" ? event.sessionID : "";
+      const reply = icxHook("prompt", {
+        sessionID: event.sessionID,
+        prompt: text,
+        legend: !legendSent.has(session),
+      });
       if (typeof reply.append === "string" && reply.append.length > 0) {
         event.prompt.text = `${text}\n\n${reply.append}`;
+        legendSent.add(session);
       }
     });
+
+    // A deleted session ends its icx branches. Event streams are best-effort: the plugin works
+    // without them.
+    const unload = new AbortController();
+    const events = (async () => {
+      if (typeof ctx.event?.subscribe !== "function") return;
+      try {
+        for await (const event of ctx.event.subscribe({ signal: unload.signal })) {
+          // A stream that ignores the signal still stops here once unload starts.
+          if (unload.signal.aborted) break;
+          if (event?.type === "session.deleted") {
+            const id = event.data?.sessionID;
+            // Asynchronous: a large store can take seconds, and nothing waits on the reply.
+            await icxHookAsync("session.end", { sessionID: id });
+            legendSent.delete(typeof id === "string" ? id : "");
+          }
+        }
+      } catch {
+        // The stream ended or was aborted.
+      }
+    })();
 
     const after = await ctx.tool.hook("execute.after", async (event) => {
       const completed = event?.status === "completed";
@@ -94,9 +161,18 @@ const IcxPlugin: Plugin.Plugin = {
     const compaction = await ctx.session.hook("compaction", async (event) => {
       // Never set event.result: OpenCode writes its own summary.
       icxHook("compaction", { sessionID: event?.sessionID });
+      // The summary may drop the prompt that carried the legend, so the next prompt sends it
+      // again.
+      legendSent.delete(typeof event?.sessionID === "string" ? event.sessionID : "");
     });
 
     return async () => {
+      unload.abort();
+      // Wait at most a second for the event loop, and clear the timer either way, so unload
+      // never keeps the process alive.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([events, new Promise((resolve) => (timer = setTimeout(resolve, 1000)))]);
+      clearTimeout(timer);
       for (const registration of [prompt, after, compaction]) {
         try {
           await registration.dispose();

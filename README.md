@@ -500,7 +500,7 @@ icx deref "#icx:7bf8239fb7c504f1" --raw
 icx hook --agent claude-code --event PostToolUse < tool_event.json
 icx hook --agent agy --event PreInvocation < agy_event.json
 
-# Launch the single-tool MCP pager over stdio
+# Launch the MCP pager (tools icx and icx_write) over stdio
 icx mcp-serve
 
 # Run the cache-epoch reverse proxy (default 127.0.0.1:49380)

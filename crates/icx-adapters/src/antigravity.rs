@@ -464,7 +464,7 @@ impl AntigravityAdapter {
             }
             "SessionEnd" | "session-end" => {
                 mmu.fold_all_open_subagents(AgentKind::AntigravityCli, "session_ended");
-                let _ = mmu.rollover_and_sync_dag_root();
+                let _ = mmu.force_rollover_and_sync_dag_root();
                 json!({})
             }
             _ => json!({}),

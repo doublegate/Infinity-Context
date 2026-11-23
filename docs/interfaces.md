@@ -161,7 +161,7 @@ icx <SUBCOMMAND> [OPTIONS]
                                       untrusted data unless --raw
   hook --agent <claude-code|codex|agy|hermes|muse|gemini-cli|cursor|opencode> --event <EVENT> [--dir <PATH>]
                                       Synchronous lifecycle hook (JSON on stdin, JSON on stdout)
-  mcp-serve [--dir <PATH>]            Single-tool MCP pager over stdio (JSON-RPC 2.0)
+  mcp-serve [--dir <PATH>]            MCP pager (icx, icx_write) over stdio (JSON-RPC 2.0)
   proxy [--listen <HOST:PORT>] [--provider <anthropic|openai|gemini>] [--upstream <URL>]
         [--dir <PATH>] [--max-requests <N>] [--allow-remote] [--insecure-no-auth]
                                       Token-authenticated HTTP/1.1 & SSE reverse proxy (default 127.0.0.1:49380)

@@ -136,6 +136,11 @@ replacement field; the original native output remains visible. See
    saved; there is no acknowledged write-behind queue. Each request revalidates the store `generation`,
    so writes by the MCP server or proxy are picked up. Filesystem and hardware synchronization
    behavior still bounds durability guarantees.
+   - **Request versions:** version 1 is `{v, agent, event, payload}`. Version 2 (v1.4.0) adds
+     `stub: true`, the hook caller's stub setting for Gemini CLI, Cursor and OpenCode; it is sent
+     only when that setting is on. A daemon from an earlier release refuses version 2, so the
+     hook falls back to in-process handling rather than losing the setting. The daemon never
+     reads stub settings from its own environment.
 4. **Fallback:** with no daemon, or on any daemon error, the hook loads the store, handles the
    event and saves in one transaction.
 

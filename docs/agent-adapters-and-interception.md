@@ -45,6 +45,18 @@ Upstream reference: <https://code.claude.com/docs/en/hooks>.
 
 ### 2.1 Hook Event Handling (`icx hook --agent claude-code --event <event>`)
 
+**`additionalContext` budget (v1.4.0, T-64-006).** Claude Code delivers `additionalContext`
+inline only up to 8,000 characters and 200 lines on the settings-file hook path; above that it
+writes the text to a file and the model sees a preview. Every icx reply stays within both limits.
+
+- **Counting:** characters are counted as JavaScript string length (UTF-16 units).
+- **Truncation:** tail-slot lines are ranked best first, so whole lines are dropped from the end
+  and a final `⟪ICX:TRUNCATED│dropped=<n>⟫` line says how many. No `#icx:` handle is cut, and
+  the result depends only on the input.
+- **Event name:** each reply's `hookEventName` names the event that ran, since Claude Code drops
+  context that names another event.
+- This is in addition to the tail slot's own byte budget.
+
 1. **`SessionStart`:**
    - Returns the AHTL legend and the initial tail slot in `hookSpecificOutput.additionalContext`:
 
@@ -65,7 +77,12 @@ Upstream reference: <https://code.claude.com/docs/en/hooks>.
      2. Chunks and commits the bytes into `CasStore`, obtaining `#icx:<16-hex>`.
      3. Runs `StructuralSkeletonizer`, the Titans-inspired `TitansSurpriseGate` heuristic, and `AhtlEncoder` to produce a compact stub.
      4. Publishes a summary frame on the bus.
-     5. Returns `updatedToolOutput` **in the tool's own output shape**. Claude Code ignores a replacement whose shape does not match the tool's output. For Bash the object `{stdout, stderr, interrupted, isImage}` is returned with the stub in `stdout`; for other object outputs all fields are kept and the largest string leaf is replaced. MCP tools (`mcp__*`) additionally get `updatedMCPToolOutput` (string):
+     5. Returns `updatedToolOutput` **in the tool's own output shape**. Claude Code ignores a replacement whose shape does not match the tool's output. For Bash the object `{stdout, stderr, interrupted, isImage}` is returned with the stub in `stdout`; for other object outputs all fields are kept and the largest string leaf is replaced. MCP tools (`mcp__*`) additionally get `updatedMCPToolOutput` (string).
+        - **Verified live on 2.1.330** (T-64-001) for Bash, Read, Grep, Glob, WebSearch and Agent, and in Code Mode for a Bash call inside a script and for the script (`REPL`) itself: in each case the model saw the stub. An Agent report's content blocks are replaced by one stub block. `scripts/live-claude-replacement-check.sh` repeats the check after a Claude Code update.
+        - **What is stored:** the tool's text, so a stub's line range is real: Read's `file.content`, Grep's `content` (or its file list), Glob's `filenames` one per line, and a script's `result` plus labelled `stdout`/`stderr`. Image reads and unknown shapes are stored as JSON.
+        - **Code Mode scripts:** a `REPL` result (`{code, result, stdout, stderr}`, plus `toolsUsed` when it called a tool) gets the stub in `result`, with `code` left as is. Claude Code elides a script result above about 30,000 characters before the hook sees it.
+
+       Example:
 
         ```json
         {
@@ -270,8 +287,12 @@ workspace in which a Muse event was recorded, so upgrade every agent's `icx` bef
 **Common to sections 8 to 10:**
 
 - **Stub modes** (`ICX_GEMINI_STUB`, `ICX_CURSOR_STUB`, `ICX_OPENCODE_STUB`) are read from the
-  hook's own environment. A hook that sets one runs in-process; through the daemon these
-  adapters capture only.
+  hook's own environment, never the daemon's.
+  - The hook sends the setting with its daemon request (protocol version 2), so a stub-mode
+    hook keeps the daemon's warm store.
+  - A daemon from an earlier release refuses version 2, and the hook then runs in-process.
+- **The `legend` field (OpenCode):** the plugin sends `"legend": false` after a session's first
+  prompt, so the legend is appended once per session.
 - **Mixed results:** a part or content-block list that is not all text is stored as its full
   JSON, so image and resource parts are kept.
 
@@ -346,7 +367,7 @@ OpenCode v2.2.7 loads V2 plugins only. Its binary contains none of the V1 hook n
   never writes system text. Per-request system text would also defeat the provider's prompt
   cache.
 - **Fails open:** a missing `icx`, a non-zero exit, a timeout (`ICX_PLUGIN_TIMEOUT_MS`, default
-  5000) or unparseable output leaves the prompt and the result unchanged. `ICX_BIN` overrides
+  10000) or unparseable output leaves the prompt and the result unchanged. `ICX_BIN` overrides
   the binary path.
 - **Environment:** the plugin passes its environment explicitly, because Bun hands child
   processes only its start-up environment.
