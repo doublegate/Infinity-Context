@@ -1,8 +1,10 @@
 //! Google Antigravity CLI (`agy`) native lifecycle hook adapter (`AntigravityAdapter`).
 //!
-//! Exploits `SessionStart`, `PreInvocation`, and `PostInvocation` `injectSteps` with
-//! `metadata.user_markdown = ""` so non-human `AHTL` frames are completely invisible in the human
-//! chat UI while injected directly into the model's context, plus `Stop` continuation across
+//! Uses `SessionStart`, `PreInvocation`, and `PostInvocation` `injectSteps` to put icx frames in
+//! the model's context. The steps carry `metadata.user_markdown = ""`, but on agy 1.5.14 that hides
+//! nothing: the terminal UI never reads it, the web UI treats an empty value as unset, and the
+//! steps are visible to the user (Sprint 1, T-65-003). Whether `renderInfo.hidden` hides a
+//! hook-injected step is untested, so it is not emitted. Also handles `Stop` continuation across
 //! `max_steps_exceeded` / `error` (and the legacy `MAX_*` reasons) by sealing an epoch; it never
 //! overrides a stop.
 
@@ -311,7 +313,22 @@ impl AntigravityAdapter {
                     .or_else(|| payload.get("toolName"))
                     .and_then(Value::as_str)
                     .unwrap_or("agy_tool");
-                if InfinityContextMmu::is_icx_pager_tool(tool_name) {
+                // agy names an eagerly loaded MCP tool `mcp_<server>_<tool>`, but a lazily loaded
+                // one arrives as `call_mcp_tool` with `args.ServerName` / `args.ToolName`
+                // (recorded live on agy 1.5.14, T-65-008). icx's own tools are exempt either way.
+                let lazy_mcp_name = (tool_name == "call_mcp_tool")
+                    .then(|| {
+                        let args = payload.get("toolCall")?.get("args")?;
+                        let server = args.get("ServerName")?.as_str()?;
+                        let tool = args.get("ToolName")?.as_str()?;
+                        Some(format!("mcp_{server}_{tool}"))
+                    })
+                    .flatten();
+                if InfinityContextMmu::is_icx_pager_tool(tool_name)
+                    || lazy_mcp_name
+                        .as_deref()
+                        .is_some_and(InfinityContextMmu::is_icx_pager_tool)
+                {
                     return serde_json::to_string(&json!({}));
                 }
                 let subject = InfinityContextMmu::extract_hook_subject(&payload, tool_name);

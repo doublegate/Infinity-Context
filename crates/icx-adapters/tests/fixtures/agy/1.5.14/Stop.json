@@ -1,0 +1,17 @@
+{
+  "artifactDirectoryPath": "/home/user/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000001",
+  "continuationActive": false,
+  "conversationId": "00000000-0000-4000-8000-000000000001",
+  "cwd": "/home/user/project",
+  "error": "",
+  "executionNum": 0,
+  "fullyIdle": true,
+  "hookEventName": "Stop",
+  "lastUserInput": "Do exactly two things, one tool call each, then stop: (1) run the shell command: seq 1 3000 (2) call the icx MCP tool with {\"op\": \"status\"}. Then reply with two lines: the first line of each result exactly as you received it, or DENIED for one you could not run.",
+  "modelName": "gemini-4-argon-medium",
+  "terminationReason": "NO_TOOL_CALL",
+  "transcriptPath": "/home/user/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000001/.system_generated/logs/transcript_full.jsonl",
+  "workspacePaths": [
+    "/home/user/project"
+  ]
+}

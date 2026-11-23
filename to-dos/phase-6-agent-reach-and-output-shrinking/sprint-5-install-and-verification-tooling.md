@@ -47,7 +47,7 @@ table):
 
 ## Tickets
 
-### T-65-001 — Contract fixtures from live runs for Codex, agy, Hermes and Muse
+### T-65-001 — Contract fixtures from live runs for Codex, agy and Muse
 
 **Description:** Capture hook input and expected output for every handled event from live runs
 of each agent, and replace hand-written test inputs with these fixtures.
@@ -56,7 +56,8 @@ of each agent, and replace hand-written test inputs with these fixtures.
 
 **Acceptance Criteria:**
 
-- [ ] One fixture set per agent under `crates/icx-adapters/tests/fixtures/<agent>/<version>/`.
+- [ ] One fixture set per agent under `crates/icx-adapters/tests/fixtures/<agent>/<version>/`
+  for Codex, agy and Muse. Hermes is deferred to v1.5.0 (#89): the gateway stays stopped.
 - [ ] Contract tests run against the fixtures; gitleaks clean.
 - [ ] A script re-captures fixtures for a new agent version.
 - [ ] Adapters doc line 13 updated to state which agents are pinned by live fixtures.
@@ -74,8 +75,9 @@ of each agent, and replace hand-written test inputs with these fixtures.
 **Description:** Ship a Hermes plugin that implements the `ContextEngine` interface found in
 T-61-005 and calls icx, and verify it in a live Hermes session.
 
-**Research:** Hypothesis: the shim loads on the installed Hermes commit and its context reaches
-the model. Confirmed by a live session log showing the shim's output in the assembled context.
+**Research:** Hypothesis: the shim loads on the installed Hermes and its context reaches the
+model. The live session that would confirm it is deferred to v1.5.0 (#89); v1.4.0 tests the shim
+against the documented `ContextEngine` interface.
 
 **Acceptance Criteria:**
 
@@ -88,7 +90,9 @@ the model. Confirmed by a live session log showing the shim's output in the asse
     worker instead of one thread per turn;
   - `on_session_start` does not block Hermes for up to 10 s at init and after each compaction;
   - the user's `compression:` settings are read rather than silently ignored.
-- [ ] Live verification recorded; contract fixture added.
+- [ ] Verified by stand-in tests that drive the shim through the documented `ContextEngine`
+  interface. Live verification and a live fixture are deferred to v1.5.0 (#89): the Hermes
+  gateway stays stopped (owner decision, 2026-11-23).
 - [ ] Deployment guide Hermes section rewritten; ICX-AUD-006 moved to fixed.
 
 **Dependencies:** T-61-005
@@ -113,11 +117,16 @@ or rejected by a live session in the terminal UI and the web UI.
 
 **Acceptance Criteria:**
 
-- [ ] Behaviour of `user_markdown` and `renderInfo.hidden` recorded with the agy version, per UI.
-- [ ] The "completely invisible" claim removed from the adapter's module docs, the adapters doc
-  and the deployment guide; they state that injected steps are visible.
-- [ ] `renderInfo.hidden` emitted only if the live test shows it hides the step.
-- [ ] Contract fixture added.
+**Outcome (2026-11-23):** the claim is corrected everywhere. `renderInfo.hidden` stays
+unemitted: a headless `agy -p` run cannot show what the terminal UI renders, so the UI check is
+not done.
+
+- [x] Behaviour of `user_markdown` recorded with the agy version (Sprint 1: hides nothing in
+  either UI). `renderInfo.hidden` not tested: it needs an interactive session.
+- [x] The "completely invisible" claim removed from the adapter's module docs, the adapters doc,
+  the deployment guide and the architecture doc; they state that injected steps are visible.
+- [x] `renderInfo.hidden` emitted only if the live test shows it hides the step: not emitted.
+- [x] Contract fixture added (`tests/fixtures/agy/1.5.14/`, `tests/agy_fixtures.rs`).
 
 **Dependencies:** T-61-004
 
@@ -224,11 +233,17 @@ ingest-only.
 
 **Acceptance Criteria:**
 
-- [ ] agy version, hook config and the model-visible result per tool kind recorded.
-- [ ] If confirmed: opt-in flag, off by default, enabled only on verified agy versions; default
-  output unchanged.
-- [ ] A live-run test detects a silent ignore; contract fixture added.
-- [ ] Adapters doc and capability matrix updated.
+**Outcome (2026-11-23): rejected; agy stays ingest-only.** On agy 1.5.14, a project
+`.agents/hooks.json` command hook answered PostToolUse with `{"overwriteResult": "<marker>"}` for
+a shell call (`run_command`) and an MCP call (`call_mcp_tool`). The model quoted the original
+results (`1`, and the icx status line), not the marker. The public hooks docs list no such field
+either. Caveat: the owner's global hooks (ai-memory, icx) also answered PostToolUse with `{}`, and
+how agy merges several replies is not documented.
+
+- [x] agy version, hook config and the model-visible result per tool kind recorded.
+- [x] ~~If confirmed: opt-in flag~~: not confirmed, so nothing ships.
+- [x] Contract fixture added; no silent-ignore test is needed, since agy is ingest-only.
+- [ ] Adapters doc and capability matrix updated (with T-65-006).
 
 **Dependencies:** T-61-004
 
@@ -251,9 +266,16 @@ identify the server and tool.
 
 **Acceptance Criteria:**
 
-- [ ] Both name forms recorded from a live session with the agy version.
-- [ ] The pager exemption holds for both forms (contract tests over recorded payloads).
-- [ ] `icx init` and `icx install` write matchers that cover both forms.
+**Live result (2026-11-23, agy 1.5.14):** a lazily loaded icx call arrived as
+`toolCall.name: "call_mcp_tool"` with `args.ServerName: "icx"`, `args.ToolName: "icx"` and
+`args.Arguments`; the shell tool is `run_command`. The adapter now exempts icx's own tools in that
+form too: before, `call_mcp_tool` was ingested, icx's own replies included.
+
+- [x] Both name forms recorded: `call_mcp_tool` live; `mcp_<server>_<tool>` from Sprint 1 and the
+  public MCP docs.
+- [x] The pager exemption holds for both forms and for `icx_write` (`tests/agy_fixtures.rs`).
+- [ ] `icx init` and `icx install` write matchers that cover both forms: the recommended matcher
+  is `""` (every tool), which covers both (with T-65-004).
 
 **Dependencies:** T-61-004
 
@@ -279,7 +301,7 @@ handle dereferences losslessly. Confirmed by a live Hermes session. Check the pl
 
 - [ ] Separate general plugin, off by default, pinned to a Hermes commit range.
 - [ ] Fails open: on error or timeout the raw output passes through unchanged.
-- [ ] Live verification recorded; contract fixture added.
+- [ ] Verified by stand-in tests; live verification deferred to v1.5.0 (#89).
 - [ ] Deployment guide Hermes section documents enabling it.
 
 **Dependencies:** T-65-002

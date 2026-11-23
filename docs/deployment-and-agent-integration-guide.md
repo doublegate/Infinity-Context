@@ -961,7 +961,7 @@ For Codex and agy, replace the first bullet with: "Tool output is captured into 
 ### 4.3 Google Antigravity CLI (`agy`): Context Injection, `transcriptPath` Ingestion & `Stop`
 
 1. **`PreInvocation` & `PostInvocation` injection:**
-   - Before each model call, `AntigravityAdapter` injects the tail slot as `injectSteps[].systemMessage` with `"metadata": {"user_markdown": ""}`. The intent is to keep the frame out of the chat UI; that `user_markdown` key is not documented upstream, so whether it hides the frame is unverified.
+   - Before each model call, `AntigravityAdapter` injects the tail slot as `injectSteps[].systemMessage` with `"metadata": {"user_markdown": ""}`. The step is visible to the user: on agy 1.5.14 `user_markdown` hides nothing (T-65-003).
    - If `agy` has summarized earlier steps, the model still receives the relevant `#icx:<16-hex>` handles in the tail slot and can retrieve the stored step through the `icx` MCP tool.
    - `PostInvocation` always returns `"terminationBehavior": ""`. icx does not force the agent to continue.
 2. **`PreToolUse` & `PostToolUse`:**

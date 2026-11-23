@@ -64,6 +64,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **agy: icx no longer ingests its own MCP replies when agy loads the tool lazily** (T-65-008).
+  agy then names the call `call_mcp_tool` with `ServerName`/`ToolName` (recorded live on 1.5.14),
+  which the own-tool exemption did not recognise.
+- **agy: the docs no longer claim injected steps are invisible** (T-65-003). On 1.5.14
+  `metadata.user_markdown: ""` hides nothing; the steps are visible to the user.
+- **agy stays ingest-only** (T-65-007): a PostToolUse `overwriteResult` did not replace the result
+  the model saw on 1.5.14.
+- **Live contract fixtures for agy 1.5.14** (T-65-001) under
+  `crates/icx-adapters/tests/fixtures/agy/1.5.14/`, written by the new
+  `scripts/sanitize-hook-fixtures.py`, which replaces home and project paths, UUIDs and e-mail
+  addresses and refuses output in which a real path survives.
 - **The MCP server offers two tools** (T-64-008, ADR-0009).
   - **`icx`** is now read-only: `deref`, `slice`, `grep`, `recall`, `expand`, `status`, and
     `xagent` as a poll. It carries `readOnlyHint`, so Claude Code's plan mode runs it without a

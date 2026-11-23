@@ -183,7 +183,7 @@ Upstream reference: <https://antigravity.google/docs/hooks>. Hooks are configure
      }
      ```
 
-   - The `metadata.user_markdown` key is intended to keep the frame out of the chat UI; it is not documented upstream, so that effect is unverified.
+   - **Injected steps are visible to the user.** The `metadata.user_markdown` key was meant to keep the frame out of the chat UI, but on agy 1.5.14 it hides nothing: the terminal UI never reads it and the web UI treats an empty value as unset (Sprint 1, T-65-003). `renderInfo.hidden` is untested in the terminal UI, so icx does not emit it.
    - `PostInvocation` never sets `force_continue` (v1.0.x did when the input carried `forceContinue`).
 2. **`PreToolUse`:**
    - agy requires a `decision`. icx always returns `{"decision": "allow"}`, expressing no opinion, and never modifies the tool call. v1.0.x echoed `decision` / `overwrite` from its input; that was removed. Registering this hook is unnecessary.
