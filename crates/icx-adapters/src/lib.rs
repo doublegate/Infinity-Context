@@ -6,22 +6,53 @@ pub mod antigravity;
 pub mod claude;
 pub mod codex;
 pub mod codex_ingest;
+pub mod cursor;
+pub mod gemini;
 pub mod hermes;
 pub mod mcp;
 pub mod mmu;
 pub mod muse;
+pub mod opencode;
 pub mod store;
 pub mod workspace;
 
 pub use antigravity::AntigravityAdapter;
 pub use claude::ClaudeCodeAdapter;
 pub use codex::{CODEX_INLINE_CONTEXT_MAX_BYTES, CodexAdapter, CodexRolloutTailer};
+pub use cursor::CursorAdapter;
+pub use gemini::GeminiCliAdapter;
 pub use hermes::{HermesAdapter, HermesMessage, PRE_COMPRESS_CHECKPOINT_API_VERSION};
 pub use mcp::McpPagerServer;
 pub use mmu::{
     DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES, ICX_AHTL_LEGEND, InfinityContextMmu, IngestResult,
 };
 pub use muse::MuseAdapter;
+pub use opencode::OpenCodeAdapter;
+
+/// The text of a content-part list, joined by `\n`, only when every part is text: a string, or
+/// an object with a string `text` and no `type` other than `"text"`. A list with any image,
+/// resource or other block returns `None`, so the caller keeps the whole JSON and nothing is
+/// dropped from the stored artifact (review of #87).
+pub(crate) fn text_only_parts(parts: &[serde_json::Value]) -> Option<String> {
+    if parts.is_empty() {
+        return None;
+    }
+    parts
+        .iter()
+        .map(|p| {
+            p.as_str().or_else(|| {
+                let typed_text = p
+                    .get("type")
+                    .and_then(serde_json::Value::as_str)
+                    .is_none_or(|t| t == "text");
+                typed_text
+                    .then(|| p.get("text").and_then(serde_json::Value::as_str))
+                    .flatten()
+            })
+        })
+        .collect::<Option<Vec<&str>>>()
+        .map(|t| t.join("\n"))
+}
 
 /// The reply an agent's hook gets when icx fails open (a bad flag, unreadable stdin, a workspace
 /// error): the same shape the agent's adapter returns as its no-op for that event, so the agent
@@ -43,8 +74,13 @@ pub fn fail_open_reply(agent: icx_core::AgentKind, event: &str) -> String {
             }
         }
         // Hermes's plugin treats an empty object as "nothing to do"; Muse validates hook replies
-        // strictly and always accepts one.
-        AgentKind::Hermes | AgentKind::Muse => "{}".to_owned(),
+        // strictly and always accepts one; Gemini CLI and Cursor document `{}` as "no change".
+        // The OpenCode plugin treats `{}` as "apply nothing".
+        AgentKind::Hermes
+        | AgentKind::Muse
+        | AgentKind::GeminiCli
+        | AgentKind::Cursor
+        | AgentKind::OpenCode => "{}".to_owned(),
         _ => r#"{"continue":true}"#.to_owned(),
     }
 }

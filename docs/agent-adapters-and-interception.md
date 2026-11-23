@@ -127,7 +127,12 @@ Upstream reference: the Codex hooks documentation (developers.openai.com/codex/h
      - **Codex's files carry no checksum** (all 518 checked locally). For them, corruption that still decodes cannot be detected.
      - **Size bound:** files are measured before anything is ingested and refused above 1 GiB decompressed, so a decompression bomb or a frame that fails to decode ingests nothing.
    - **Bookmarks:** each rollout's read position is saved in `codex-rollouts.json` in the workspace, keyed by its path without `.zst` and checked against a hash of its first 64 KiB. Ingestion resumes where it stopped when Codex recompresses a file or decompresses it again on append, and starts from the beginning for a replaced file. An incomplete trailing line is left for the next run.
-   - **No double indexing:** a rollout record whose redacted output the store already holds is skipped and counted as "already stored". Usually that is the copy icx's Codex hook ingested when the tool ran. Measured on this project's live workspace: 1,403 of 1,583 rollout tool outputs were already stored. Messages and turn context, which hooks never see, are ingested as new. Copies that differ in formatting are not recognised.
+   - **Exact repeats are skipped:** a rollout record whose redacted output the store already holds byte for byte is skipped and counted as "already stored". Measured on this project's 33 rollouts on 2026-11-22:
+     - in a brand-new store, 1,396 records were skipped: outputs repeated inside the rollouts themselves;
+     - in a copy of the live store, which already held the Codex hook's captures, 1,403 were skipped;
+     - so only about 7 hook captures matched byte for byte.
+   - **Tool outputs are left to the Codex hook by default:** the hook stores the tool's response, while the rollout stores what the model was shown, which under Code Mode is the script result with its own wrapper text. Neither the bytes nor the call ids match (the hook sees the inner `exec_command`, the rollout the outer `exec`), so ingesting both would index each output twice. `icx codex-ingest` therefore skips `*_call_output` records and reports them as "left to the Codex hook". It ingests messages, reasoning and turn context, which hooks never see.
+   - **Backfill:** `--include-tool-outputs` ingests tool outputs too, for sessions recorded before the hook was installed. Each bookmark records whether its tool outputs were read, so a backfill re-reads only those rollouts, and their already stored records are skipped as exact repeats.
    - **Safety:** symlinks and special files are refused.
    - **Locking:** rollouts are selected before the workspace lock is taken. Ingestion then runs in batches of about 1.5 s: each batch takes the lock, reloads the store, ingests, saves records and bookmarks, and releases it. Live hooks and the daemon are never locked out for the whole scan.
    - **Not automatic:** run `icx codex-ingest` on demand or on a schedule; hooks do not call it.
@@ -259,3 +264,91 @@ workspace in which a Muse event was recorded, so upgrade every agent's `icx` bef
    - Appends the Ephemeral Tail Slot (HDC/PPR/fractal recall and unseen bus frames) to the final message, replacing any earlier tail slot.
 2. **Inbound Response Pass:**
    - Expands inline dereference directives (`⟪!icx:deref(#icx:<16-hex>)⟫` or `⟪!icx:deref(#icx:<16-hex>,start:end)⟫`) in SSE and JSON responses. Expanded content is escaped before it is returned.
+
+---
+
+**Common to sections 8 to 10:**
+
+- **Stub modes** (`ICX_GEMINI_STUB`, `ICX_CURSOR_STUB`, `ICX_OPENCODE_STUB`) are read from the
+  hook's own environment. A hook that sets one runs in-process; through the daemon these
+  adapters capture only.
+- **Mixed results:** a part or content-block list that is not all text is stored as its full
+  JSON, so image and resource parts are kept.
+
+## 8. Google Gemini CLI Adapter (`GeminiCliAdapter`, v1.4.0)
+
+`icx hook --agent gemini-cli --event <event>`. **Built from the documented contract only:**
+Gemini CLI is not installed on the reference machine, so nothing below has been verified live.
+The source is `google-gemini/gemini-cli` `docs/hooks/reference.md`, read 2026-11-22.
+
+- **Configuration:** `hooks` in `~/.gemini/settings.json` or a project's `.gemini/settings.json`,
+  one `{"matcher", "hooks": [{"type": "command", "command"}]}` group per event. Every hook gets
+  `session_id`, `transcript_path`, `cwd`, `hook_event_name` and `timestamp` on stdin, and exit
+  code 0 means stdout is parsed as JSON.
+- **`SessionStart` and `BeforeAgent`:** return `hookSpecificOutput.additionalContext` with the
+  tail slot. It goes into the user turn: the first turn of history, or appended to the prompt.
+- **`AfterTool`:** ingests `tool_response.llmContent` (a string, or the `text` of each part),
+  plus `error`.
+  - The documented replacement is `decision: "deny"` with a `reason`, which the model then sees
+    in place of the result. icx sends it only in the opt-in stub mode, `ICX_GEMINI_STUB=1`, and
+    never for an error result.
+  - `GeminiCliAdapter::SUPPORTS_TOOL_OUTPUT_REPLACEMENT` is `false` until this is verified live.
+- **`PreCompress`:** advisory only, since it cannot block or modify compression, so it just
+  seals the epoch. **`SessionEnd`** folds open branches and seals. Every other event gets `{}`.
+- **MCP tool names:** Gemini CLI names MCP tools `mcp_<server>_<tool>`. icx's own tool
+  (`mcp_icx_icx`) is never ingested.
+
+## 9. Cursor Adapter (`CursorAdapter`, v1.4.0)
+
+`icx hook --agent cursor --event <event>`, from `~/.cursor/hooks.json` or a project's
+`.cursor/hooks.json` (`{"version": 1, "hooks": {...}}`). Built from the documented contract
+(cursor.com/docs/hooks, read 2026-11-22).
+
+On `cursor-agent` 2026.09.08, project-level hooks load, and the `sessionStart` and `sessionEnd`
+payloads match the documented common fields. The tool-call capture is pending, blocked by the
+account's weekly usage limit, so `postToolUse` and `updated_mcp_tool_output` are unverified.
+
+- **No context injection:**
+  - `sessionStart` `additional_context` is added to the conversation's **system** context.
+  - icx context is untrusted retrieved data and is only ever delivered as user-turn data, so
+    the adapter replies `{}` there.
+  - Cursor has no other way to add context to a turn, so recall goes through the `icx` MCP
+    tool.
+- **`postToolUse` and `postToolUseFailure`:** ingest the result. `tool_output` is a JSON string
+  (`stdout`/`stderr`, `output`, or MCP `content` blocks), and a failure keeps its error.
+  - Cursor documents `updated_mcp_tool_output` as a replacement, for MCP tools only. icx sends
+    one (an MCP `CallToolResult` carrying the stub) only in the opt-in mode `ICX_CURSOR_STUB=1`.
+  - Built-in tool results cannot be replaced.
+- **`preCompact`:** observational only, so it just seals the epoch. **`sessionEnd`** folds and
+  seals.
+- **`beforeSubmitPrompt`:** can only allow or block a prompt, so it is not used.
+
+## 10. OpenCode Plugin (`OpenCodeAdapter`, `integrations/opencode/icx.ts`, v1.4.0)
+
+OpenCode v2.2.7 loads V2 plugins only. Its binary contains none of the V1 hook names, such as
+`tool.execute.after` or `experimental.session.compacting`.
+`integrations/opencode/icx.ts` is a V2 plugin (`{ id, setup(ctx) }`) that runs
+`icx hook --agent opencode --event <event>` and applies the reply.
+
+- **`ctx.session.hook("prompt")`:** appends the legend and the tail slot to the user's message,
+  as user-turn data. Verified live on v2.2.7: the model quotes the appended tail slot.
+- **`ctx.tool.hook("execute.after")`:** ingests `event.result.output` (or `content`) and
+  `event.error.message`. With `ICX_OPENCODE_STUB=1`, a large completed result is replaced in
+  `event.result` by a stub.
+  - **Verified live on v2.2.7 (2026-11-22):** the model sees the stub, not the raw result.
+  - **Still off by default:** it changes what the model sees, so it is opt-in.
+  - **What gets stored:** OpenCode shortens shell output before the hook (the last 2,000 lines,
+    with the full output saved to its own file), so icx stores what the model would otherwise
+    have seen.
+- **`ctx.session.hook("compaction")`:** seals the epoch. The plugin never sets `event.result`,
+  so OpenCode still writes its own summary.
+- **Not used: `ctx.session.hook("context")`.** It adds system text to every request, and icx
+  never writes system text. Per-request system text would also defeat the provider's prompt
+  cache.
+- **Fails open:** a missing `icx`, a non-zero exit, a timeout (`ICX_PLUGIN_TIMEOUT_MS`, default
+  5000) or unparseable output leaves the prompt and the result unchanged. `ICX_BIN` overrides
+  the binary path.
+- **Environment:** the plugin passes its environment explicitly, because Bun hands child
+  processes only its start-up environment.
+- **Tests:** `ICX_BIN=target/debug/icx bun test integrations/opencode` drives the plugin through
+  a fake V2 context.

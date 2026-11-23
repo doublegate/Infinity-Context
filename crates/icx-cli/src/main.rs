@@ -2,8 +2,8 @@
 
 use icx_adapters::workspace::{self, WorkspaceRoots};
 use icx_adapters::{
-    AntigravityAdapter, ClaudeCodeAdapter, CodexAdapter, HermesAdapter, InfinityContextMmu,
-    McpPagerServer, MuseAdapter,
+    AntigravityAdapter, ClaudeCodeAdapter, CodexAdapter, CursorAdapter, GeminiCliAdapter,
+    HermesAdapter, InfinityContextMmu, McpPagerServer, MuseAdapter, OpenCodeAdapter,
 };
 use icx_codec::{AhtlPacket, StructuralSkeletonizer, WirePacket};
 use icx_core::epoch::{CacheEpochController, EpochControllerConfig};
@@ -211,10 +211,11 @@ Subcommands:",
   deref <HANDLE> [--lines <START:END>] [--dir <PATH>] [--raw]
       Dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle; output is framed as
       untrusted data and delimiter-escaped unless --raw (byte-exact) is given
-  codex-ingest [--sessions <DIR>] [--project <DIR> | --all-projects] [--dir <PATH>]
+  codex-ingest [--sessions <DIR>] [--project <DIR> | --all-projects] [--include-tool-outputs] [--dir <PATH>]
       Ingest new records from Codex rollouts (.jsonl and .jsonl.zst) whose session ran in the
-      project (default: the current project; sessions default to $CODEX_HOME/sessions)
-  hook --agent <claude-code|codex|agy|hermes|muse> --event <EVENT> [--dir <PATH>]
+      project (default: the current project; sessions default to $CODEX_HOME/sessions). Tool
+      outputs are left to the Codex hook unless --include-tool-outputs backfills them
+  hook --agent <claude-code|codex|agy|hermes|muse|gemini-cli|cursor|opencode> --event <EVENT> [--dir <PATH>]
       Execute synchronous <500us lifecycle hook (reads JSON from stdin, writes JSON to stdout)
   mcp-serve [--dir <PATH>]
       Run the Single-Tool Polymorphic MCP Virtual Pager (`icx`) over stdio (JSON-RPC 2.0)
@@ -481,8 +482,14 @@ fn run_daemon(args: &[String]) -> Result<(), String> {
     }
     workspace::ensure_runtime_dir(roots()).map_err(|e| format!("icx daemon error: {e}"))?;
     let socket = workspace::daemon_socket_path(&ws_dir, roots());
-    daemon::serve(&ws_dir, &socket, opts, workspace_mmu(), dispatch_agent_hook)
-        .map_err(|e| format!("icx daemon error: {e}"))
+    daemon::serve(
+        &ws_dir,
+        &socket,
+        opts,
+        workspace_mmu(),
+        daemon_dispatch_agent_hook,
+    )
+    .map_err(|e| format!("icx daemon error: {e}"))
 }
 
 /// Starts `icx daemon --dir <ws> --idle-exit 900` detached (`ICX_DAEMON_AUTOSTART=1`). Errors are
@@ -693,11 +700,12 @@ const CODEX_INGEST_BATCH: std::time::Duration = std::time::Duration::from_millis
 /// workspace lock, in short batches, resuming each from its saved bookmark.
 fn run_codex_ingest(args: &[String]) -> Result<(), String> {
     const CMD: &str = "icx codex-ingest";
-    const USAGE: &str = "Usage: icx codex-ingest [--sessions <DIR>] [--project <DIR> | --all-projects] [--dir <PATH>]";
+    const USAGE: &str = "Usage: icx codex-ingest [--sessions <DIR>] [--project <DIR> | --all-projects] [--include-tool-outputs] [--dir <PATH>]";
     let mut dir_str: Option<&str> = None;
     let mut sessions: Option<&str> = None;
     let mut project: Option<&str> = None;
     let mut all_projects = false;
+    let mut include_tool_outputs = false;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -718,6 +726,10 @@ fn run_codex_ingest(args: &[String]) -> Result<(), String> {
             }
             "--all-projects" => {
                 all_projects = true;
+                i += 1;
+            }
+            "--include-tool-outputs" => {
+                include_tool_outputs = true;
                 i += 1;
             }
             other => {
@@ -760,6 +772,13 @@ fn run_codex_ingest(args: &[String]) -> Result<(), String> {
     let selected =
         icx_adapters::codex_ingest::select_rollouts(&sessions_dir, project_dir.as_deref())
             .map_err(|e| format!("{CMD} error: {}: {e}", sessions_dir.display()))?;
+    // Tool outputs are left to the Codex hook unless asked for: its copy never matches the
+    // rollout's, so ingesting both would index every output twice. `--include-tool-outputs`
+    // backfills sessions recorded before the hook was installed.
+    let opts = icx_adapters::codex_ingest::IngestOptions {
+        include_tool_outputs,
+        ..icx_adapters::codex_ingest::IngestOptions::default()
+    };
     let mut summary = icx_adapters::codex_ingest::IngestSummary::default();
     let mut next = 0usize;
     // Ingest in batches of about CODEX_INGEST_BATCH, releasing the workspace lock between them,
@@ -780,6 +799,7 @@ fn run_codex_ingest(args: &[String]) -> Result<(), String> {
                 &mut state,
                 &mut mmu,
                 &mut summary,
+                opts,
             );
             next += 1;
         }
@@ -798,11 +818,12 @@ fn run_codex_ingest(args: &[String]) -> Result<(), String> {
         eprintln!("{CMD} warning: skipped {}: {reason}", path.display());
     }
     println!(
-        "{CMD}: {} rollout(s) matched, {} with new records, {} record(s) ingested, {} already stored, {} skipped",
+        "{CMD}: {} rollout(s) matched, {} with new records, {} record(s) ingested, {} already stored, {} tool output(s) left to the Codex hook, {} skipped",
         summary.matched,
         summary.updated,
         summary.records,
         summary.already_held,
+        summary.tool_outputs_left,
         summary.refused.len()
     );
     Ok(())
@@ -834,7 +855,45 @@ fn dispatch_agent_hook(
         AgentKind::AntigravityCli => AntigravityAdapter::handle_hook(event_str, stdin_buf, mmu),
         AgentKind::Hermes => HermesAdapter::handle_hook(event_str, stdin_buf, mmu),
         AgentKind::Muse => MuseAdapter::handle_hook(event_str, stdin_buf, mmu),
+        AgentKind::GeminiCli => GeminiCliAdapter::handle_hook(event_str, stdin_buf, mmu),
+        AgentKind::Cursor => CursorAdapter::handle_hook(event_str, stdin_buf, mmu),
+        AgentKind::OpenCode => OpenCodeAdapter::handle_hook(event_str, stdin_buf, mmu),
         _ => ClaudeCodeAdapter::handle_hook(event_str, stdin_buf, mmu),
+    }
+}
+
+/// Whether the hook caller asked for stub replacement (`ICX_GEMINI_STUB`, `ICX_CURSOR_STUB`,
+/// `ICX_OPENCODE_STUB`). The setting belongs to the caller, so such a hook runs in-process rather
+/// than through the daemon, whose environment may differ.
+fn caller_stub_mode(agent: AgentKind) -> bool {
+    match agent {
+        AgentKind::GeminiCli => GeminiCliAdapter::stub_mode_enabled(),
+        AgentKind::Cursor => CursorAdapter::stub_mode_enabled(),
+        AgentKind::OpenCode => OpenCodeAdapter::stub_mode_enabled(),
+        _ => false,
+    }
+}
+
+/// The daemon's dispatch. It never reads stub settings from its own environment: a caller that
+/// wants stubs bypasses the daemon ([`caller_stub_mode`]), so through the daemon these adapters
+/// always capture only.
+fn daemon_dispatch_agent_hook(
+    agent: AgentKind,
+    event_str: &str,
+    stdin_buf: &str,
+    mmu: &mut InfinityContextMmu,
+) -> Result<String, serde_json::Error> {
+    match agent {
+        AgentKind::GeminiCli => {
+            GeminiCliAdapter::handle_hook_with_stub_mode(event_str, stdin_buf, mmu, false)
+        }
+        AgentKind::Cursor => {
+            CursorAdapter::handle_hook_with_stub_mode(event_str, stdin_buf, mmu, false)
+        }
+        AgentKind::OpenCode => {
+            OpenCodeAdapter::handle_hook_with_stub_mode(event_str, stdin_buf, mmu, false)
+        }
+        _ => dispatch_agent_hook(agent, event_str, stdin_buf, mmu),
     }
 }
 
@@ -893,7 +952,7 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
         // Lets this agent's MCP server follow the workspace its hooks use (#34).
         workspace::record_agent_workspace(&ws_dir, roots());
         #[cfg(unix)]
-        if env::var_os("ICX_NO_DAEMON").is_none() {
+        if env::var_os("ICX_NO_DAEMON").is_none() && !caller_stub_mode(agent) {
             let socket = workspace::daemon_socket_path(&ws_dir, roots());
             if let Some(out) = daemon::try_hook(&socket, agent_str, event_str, stdin_buf) {
                 return Ok(out);
@@ -1491,6 +1550,108 @@ fn parse_doctor_dir_flag(args: &[String]) -> Result<Option<&str>, String> {
     Ok(dir_str)
 }
 
+/// The first line of `<bin> --version`, or `None` if it fails or takes longer than `timeout`.
+/// Doctor runs agent binaries only this way: no input, stdout only, killed on timeout.
+fn probe_version(bin: &Path, timeout: std::time::Duration) -> Option<String> {
+    use std::process::{Command, Stdio};
+    let mut child = Command::new(bin)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => break,
+            Ok(Some(_)) | Err(_) => return None,
+            Ok(None) if started.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(20)),
+        }
+    }
+    let mut out = String::new();
+    child
+        .stdout
+        .take()?
+        .take(4096)
+        .read_to_string(&mut out)
+        .ok()?;
+    out.lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .map(|l| l.chars().take(80).collect())
+}
+
+/// How doctor recognises icx in an agent's hook config.
+#[derive(Clone, Copy)]
+enum IcxHookMatch<'a> {
+    /// A command whose program is `icx` (any path), followed by `hook --agent <name>`. Other
+    /// tools' hooks for the same agent (ai-memory also passes `--agent cursor`) do not count.
+    Command(&'a str),
+    /// A plugin file containing this text.
+    #[cfg_attr(not(test), allow(dead_code))]
+    Contains(&'a str),
+    /// The icx OpenCode plugin: it runs `icx` with `--agent opencode`. Matched ignoring quote
+    /// style and spacing, so a formatter's rewrite of the file still counts.
+    OpenCodePlugin,
+}
+
+/// Whether a plugin source passes `"--agent", "opencode"` as arguments, in any quote style or
+/// spacing.
+fn is_icx_opencode_plugin(text: &str) -> bool {
+    let normalised: String = text
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .map(|c| if c == '\'' || c == '`' { '"' } else { c })
+        .collect();
+    normalised.contains("\"--agent\",\"opencode\"")
+}
+
+/// Whether `text` holds a hook command running icx for `agent`.
+fn mentions_icx_hook(text: &str, agent: &str) -> bool {
+    let needle = format!(" hook --agent {agent}");
+    text.match_indices(&needle).any(|(at, _)| {
+        let after = &text[at + needle.len()..];
+        if after
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphanumeric() || c == '-')
+        {
+            return false; // `--agent cursor-x` is another agent
+        }
+        let program = text[..at]
+            .rsplit(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == '\\')
+            .find(|t| !t.is_empty())
+            .unwrap_or("");
+        program.rsplit('/').next() == Some("icx")
+    })
+}
+
+/// Whether a hook config or plugin file registers icx: `Some(true)` when the file (read up to
+/// 1 MiB) matches, `Some(false)` when it does not, `None` when it is absent or not a file.
+fn icx_hook_registered(path: &Path, matcher: IcxHookMatch<'_>) -> Option<bool> {
+    let meta = fs::symlink_metadata(path).ok()?;
+    if !meta.is_file() {
+        return None;
+    }
+    let mut text = String::new();
+    fs::File::open(path)
+        .ok()?
+        .take(1 << 20)
+        .read_to_string(&mut text)
+        .ok()?;
+    Some(match matcher {
+        IcxHookMatch::Command(agent) => mentions_icx_hook(&text, agent),
+        IcxHookMatch::Contains(s) => text.contains(s),
+        IcxHookMatch::OpenCodePlugin => is_icx_opencode_plugin(&text),
+    })
+}
+
 fn run_doctor(args: &[String]) -> Result<(), String> {
     let explicit_dir = parse_doctor_dir_flag(args)?;
     println!("=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===");
@@ -1576,6 +1737,75 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         };
         let status = if exists { "DETECTED" } else { "ABSENT" };
         println!("  [{status:8}] {label:32} -> {path}");
+    }
+
+    // v1.4.0 adapters (T-63-004): presence, version and whether icx's hooks are registered.
+    // Gemini CLI shares ~/.gemini/settings.json with agy, and other tools register hooks for
+    // the same agents, so registration means an `icx ... hook --agent <name>` command, not the
+    // file's presence.
+    let config_home = env::var("XDG_CONFIG_HOME")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| format!("{home}/.config"));
+    // The current project's own config is checked too, since each guide offers both.
+    let project = env::current_dir()
+        .map(|cwd| workspace::project_root(&cwd).display().to_string())
+        .ok();
+    let in_project = |rel: &str| project.as_ref().map(|p| format!("{p}/{rel}"));
+    let new_agents = [
+        (
+            "Gemini CLI (gemini)",
+            resolve_bin(".local/bin/gemini", "gemini"),
+            [
+                Some(format!("{home}/.gemini/settings.json")),
+                in_project(".gemini/settings.json"),
+            ],
+            IcxHookMatch::Command("gemini-cli"),
+        ),
+        (
+            "Cursor Agent (cursor-agent)",
+            resolve_bin(".local/bin/cursor-agent", "cursor-agent"),
+            [
+                Some(format!("{home}/.cursor/hooks.json")),
+                in_project(".cursor/hooks.json"),
+            ],
+            IcxHookMatch::Command("cursor"),
+        ),
+        (
+            "OpenCode (opencode)",
+            resolve_bin(".opencode/bin/opencode", "opencode"),
+            [
+                Some(format!("{config_home}/opencode/plugins/icx.ts")),
+                in_project(".opencode/plugins/icx.ts"),
+            ],
+            IcxHookMatch::OpenCodePlugin,
+        ),
+    ];
+    for (label, bin, hook_files, matcher) in new_agents {
+        let bin_path = Path::new(&bin);
+        if !is_executable_file(bin_path) {
+            println!("  [{:8}] {label:32} -> {bin}", "ABSENT");
+            continue;
+        }
+        let version = probe_version(bin_path, std::time::Duration::from_secs(3))
+            .unwrap_or_else(|| "version unknown".into());
+        let files: Vec<String> = hook_files.into_iter().flatten().collect();
+        let found: Vec<(&String, bool)> = files
+            .iter()
+            .filter_map(|f| icx_hook_registered(Path::new(f), matcher).map(|r| (f, r)))
+            .collect();
+        let hooks = if let Some((f, _)) = found.iter().find(|(_, r)| *r) {
+            format!("icx hooks registered in {f}")
+        } else if found.is_empty() {
+            format!("no hook config in {}", files.join(" or "))
+        } else {
+            let names: Vec<&str> = found.iter().map(|(f, _)| f.as_str()).collect();
+            format!("icx hooks not registered in {}", names.join(" or "))
+        };
+        println!(
+            "  [{:8}] {label:32} -> {bin} ({version}; {hooks})",
+            "DETECTED"
+        );
     }
 
     let shm_dir = Path::new("/dev/shm");
@@ -3256,5 +3486,123 @@ mod tests {
         assert!(notif_rpc.is_null());
 
         let _ = fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn doctor_recognises_only_icx_hook_commands() {
+        let icx_hooks = r#"{"hooks":{"postToolUse":[{"command":"/home/u/.local/bin/icx hook --agent cursor --event postToolUse"}]}}"#;
+        assert!(mentions_icx_hook(icx_hooks, "cursor"));
+        assert!(mentions_icx_hook(
+            r#"{"command": "\"/opt/x y/icx\" hook --agent gemini-cli --event AfterTool"}"#,
+            "gemini-cli"
+        ));
+        assert!(mentions_icx_hook("icx hook --agent cursor", "cursor"));
+        // Another tool's hook for the same agent is not icx.
+        let others = r#"{"command":"/x/ai-memory hook --event post-tool-use --agent cursor"},{"command":"gk ai hook run --host cursor"},{"command":"/x/not-icx hook --agent cursor"}"#;
+        assert!(!mentions_icx_hook(others, "cursor"));
+        // An agent whose name merely starts with this one's.
+        assert!(!mentions_icx_hook(
+            "icx hook --agent cursor-next --event x",
+            "cursor"
+        ));
+        assert!(!mentions_icx_hook(icx_hooks, "gemini-cli"));
+    }
+
+    #[test]
+    fn daemon_dispatch_never_stubs_the_new_adapters() {
+        // Stub mode is the hook caller's setting: a caller asking for it bypasses the daemon, so
+        // the daemon itself always captures only, whatever its own environment says.
+        let big = (0..400)
+            .map(|i| format!("row {i}: value={}", i * 3))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for (agent, event, payload) in [
+            (
+                AgentKind::OpenCode,
+                "execute.after",
+                serde_json::json!({"tool": "bash", "status": "completed", "output": big}),
+            ),
+            (
+                AgentKind::GeminiCli,
+                "AfterTool",
+                serde_json::json!({"tool_name": "t", "tool_response": {"llmContent": big}}),
+            ),
+            (
+                AgentKind::Cursor,
+                "postToolUse",
+                serde_json::json!({"tool_name": "mcp_x_y", "tool_output": serde_json::json!({"content": [{"type": "text", "text": big}]}).to_string()}),
+            ),
+        ] {
+            let mut mmu = InfinityContextMmu::default();
+            let out =
+                daemon_dispatch_agent_hook(agent, event, &payload.to_string(), &mut mmu).unwrap();
+            assert_eq!(out, "{}", "{agent:?}");
+            assert!(mmu.cas.artifact_count() > 0, "{agent:?} still ingests");
+        }
+        assert!(!caller_stub_mode(AgentKind::ClaudeCode));
+    }
+
+    #[test]
+    fn doctor_recognises_the_opencode_plugin_in_any_quote_style() {
+        let shipped = include_str!("../../../integrations/opencode/icx.ts");
+        assert!(is_icx_opencode_plugin(shipped));
+        assert!(is_icx_opencode_plugin(
+            "spawn(bin, ['hook', '--agent', 'opencode'])"
+        ));
+        assert!(is_icx_opencode_plugin("[`--agent`,\n  `opencode`]"));
+        assert!(!is_icx_opencode_plugin("export default { id: \"other\" }"));
+    }
+
+    #[test]
+    fn doctor_hook_file_status_and_version_probe() {
+        let dir = std::env::temp_dir().join(format!("icx-doctor-probe-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let cfg = dir.join("hooks.json");
+        assert_eq!(
+            icx_hook_registered(&cfg, IcxHookMatch::Command("cursor")),
+            None
+        );
+        fs::write(&cfg, "icx hook --agent cursor --event sessionEnd").unwrap();
+        assert_eq!(
+            icx_hook_registered(&cfg, IcxHookMatch::Command("cursor")),
+            Some(true)
+        );
+        assert_eq!(
+            icx_hook_registered(&cfg, IcxHookMatch::Contains("opencode")),
+            Some(false)
+        );
+        assert_eq!(
+            icx_hook_registered(&dir, IcxHookMatch::Contains("x")),
+            None,
+            "a directory"
+        );
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let script = dir.join("fake-agent");
+            fs::write(&script, "#!/bin/sh\necho '  '\necho 'fake-agent 9.9.9'\n").unwrap();
+            fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+            assert_eq!(
+                probe_version(&script, std::time::Duration::from_secs(5)).as_deref(),
+                Some("fake-agent 9.9.9")
+            );
+            let slow = dir.join("slow-agent");
+            fs::write(&slow, "#!/bin/sh\nsleep 5\necho late\n").unwrap();
+            fs::set_permissions(&slow, fs::Permissions::from_mode(0o755)).unwrap();
+            assert_eq!(
+                probe_version(&slow, std::time::Duration::from_millis(200)),
+                None
+            );
+            let failing = dir.join("failing-agent");
+            fs::write(&failing, "#!/bin/sh\necho oops\nexit 3\n").unwrap();
+            fs::set_permissions(&failing, fs::Permissions::from_mode(0o755)).unwrap();
+            assert_eq!(
+                probe_version(&failing, std::time::Duration::from_secs(5)),
+                None
+            );
+        }
+        let _ = fs::remove_dir_all(&dir);
     }
 }

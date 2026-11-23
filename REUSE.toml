@@ -45,6 +45,7 @@ SPDX-FileComment = "First-party Infinity-Context (icx) workspace code, scripts, 
 path = [
   "crates/icx-proxy/**",
   "crates/icx-adapters/**",
+  "integrations/**",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 DoubleGate"

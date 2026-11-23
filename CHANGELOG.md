@@ -20,8 +20,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     - Bytes after the frame are refused.
     - A file over 1 GiB decompressed, a file that fails to decode, and a symlink are each skipped
       and named, and nothing from them is ingested.
-  - A record whose output the store already holds, usually the copy icx's Codex hook captured,
-    is skipped and counted as "already stored", so recall does not index it twice.
+  - **Tool outputs are left to the Codex hook by default.** The hook captures each tool output
+    when the tool runs, and its copy never matches the rollout's, by bytes or by call id under
+    Code Mode (measured: about 7 of 1,583 matched on this project). Ingesting both would index
+    every output twice.
+    - The command ingests messages, reasoning and turn context, and reports the tool outputs it
+      left to the hook.
+    - `--include-tool-outputs` backfills them, for sessions recorded before the hook was
+      installed.
+  - A record whose redacted output the store already holds byte for byte is skipped and counted
+    as "already stored", which catches outputs repeated inside the rollouts.
+- **Gemini CLI adapter** (`icx hook --agent gemini-cli`, T-63-001), built from the documented
+  hooks contract and **not verified live**.
+  - `SessionStart` and `BeforeAgent` add the tail slot to the user turn; `AfterTool` stores
+    results; `PreCompress` and `SessionEnd` seal the epoch.
+  - Stub replacement through `decision: "deny"` is opt-in (`ICX_GEMINI_STUB=1`).
+  - icx's own MCP tool is recognised under Gemini CLI's name for it, `mcp_icx_icx`, and never
+    ingested.
+- **Cursor adapter** (`icx hook --agent cursor`, T-63-002).
+  - `postToolUse` and `postToolUseFailure` store results; `preCompact` and `sessionEnd` seal.
+  - Nothing is injected at `sessionStart`, because Cursor puts that text in the system context,
+    and icx context is only ever delivered as user-turn data.
+  - MCP result replacement through `updated_mcp_tool_output` is opt-in (`ICX_CURSOR_STUB=1`) and
+    not yet verified live.
+- **OpenCode plugin** (`integrations/opencode/icx.ts` and `icx hook --agent opencode`, T-63-003)
+  for the V2 plugin API, verified on OpenCode v2.2.7.
+  - It appends the legend and tail slot to the user's message, stores tool results, and seals the
+    epoch at compaction. It adds no system text.
+  - Replacing large results with a stub works on v2.2.7 and is opt-in (`ICX_OPENCODE_STUB=1`).
+  - It fails open when icx is missing, fails or times out.
+- **Stub modes follow the hook caller.** `ICX_GEMINI_STUB`, `ICX_CURSOR_STUB` and
+  `ICX_OPENCODE_STUB` are read from the hook's own environment. A hook that asks for stubs runs
+  in-process, and through the daemon these adapters capture only, so a daemon started with
+  other settings cannot override the caller's.
+- **Mixed results are kept whole.** A Gemini CLI, Cursor or OpenCode result whose parts are not
+  all text (an image, a resource) is stored as its full JSON, so nothing is dropped.
+- **`icx doctor` checks the new agents** (T-63-004): for Gemini CLI, Cursor and OpenCode it
+  reports presence, version and whether an icx hook or plugin is registered, in the user config
+  or the current project's.
+  - Only a command whose program is `icx` counts, so another tool's hooks for the same agent are
+    not mistaken for icx's.
+  - The OpenCode plugin is recognised in any quote style.
 
 ### Changed
 
@@ -65,6 +104,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     hook path is 8,000 characters and 200 lines (T-64-006).
   - **agy:** `user_markdown: ""` does not hide injected steps (T-65-003).
   - **New tickets:** T-62-006, T-65-007, T-65-008 and T-65-009.
+- **Gemini CLI, Cursor and OpenCode setup** (T-63-004): deployment-guide §2.7 to §2.9 cover
+  install, config, verification and limits for each, and the adapters spec gains §8 to §10. The
+  generic MCP section moves to §2.10. OpenCode v2.2.7 nests MCP servers under `mcp.servers`.
 
 ## [1.3.2] - 2026-11-22
 

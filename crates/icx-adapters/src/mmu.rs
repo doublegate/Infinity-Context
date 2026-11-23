@@ -158,6 +158,12 @@ impl InfinityContextMmu {
             || t.starts_with("mcp__icx__")
             || t.starts_with("mcp__infinity_context")
             || t.starts_with("mcp__infinity-context")
+            // Gemini CLI and agy name MCP tools `mcp_<server>_<tool>` (single underscores). A
+            // prefix match would catch other servers whose names start with `icx_`, so only
+            // the icx tool itself, under the server names icx is registered as, matches.
+            || ["mcp_icx_icx", "mcp_infinity_context_icx", "mcp_infinity-context_icx"]
+                .iter()
+                .any(|name| t.eq_ignore_ascii_case(name))
     }
 
     /// Extracts a command-scoped subject (`"<tool_name>:<command>"`) from a hook JSON payload

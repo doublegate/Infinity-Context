@@ -287,6 +287,60 @@ struct RolloutBookmark {
     anchor_digest: icx_core::Blake3Digest,
 }
 
+/// Which rollout records [`CodexRolloutTailer::ingest_jsonl_records`] leaves out. The default
+/// ingests everything (the in-process tailer's behaviour).
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct RecordFilter {
+    /// Skip a record whose redacted output the store already holds byte for byte.
+    pub skip_held: bool,
+    /// Skip tool-output records (`*_call_output`). icx's Codex hook captures tool output when
+    /// the tool runs, and its copy never matches the rollout's (by bytes or, under Code Mode, by
+    /// call id), so ingesting both would index each output twice.
+    pub skip_tool_outputs: bool,
+}
+
+/// What one pass of [`CodexRolloutTailer::ingest_jsonl_records`] did.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct RecordCounts {
+    /// Bytes consumed through the last complete line.
+    pub consumed: u64,
+    pub ingested: usize,
+    /// Records skipped because the store already held them.
+    pub held: usize,
+    /// Tool-output records skipped by `skip_tool_outputs`.
+    pub tool_outputs: usize,
+}
+
+/// Whether a rollout record is a tool result (`function_call_output`, `custom_tool_call_output`
+/// and any other `*_call_output`).
+fn is_tool_output_record(val: &Value) -> bool {
+    ["payload", "item"]
+        .into_iter()
+        .find_map(|k| val.get(k))
+        .unwrap_or(val)
+        .get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|t| t.ends_with("_call_output"))
+}
+
+/// The same test on the first bytes of a record too large to parse. Rollout lines put the
+/// payload's `type` first (`..."payload":{"type":"function_call_output",...`), so only that
+/// field is read; a message that merely quotes `"function_call_output"` in its text does not
+/// match (review of #87).
+fn is_tool_output_prefix(line: &str) -> bool {
+    let end = line.len().min(1024);
+    let mut cut = end;
+    while !line.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    let head = &line[..cut];
+    ["\"payload\":{\"type\":\"", "\"item\":{\"type\":\""]
+        .iter()
+        .filter_map(|marker| head.find(marker).map(|at| &head[at + marker.len()..]))
+        .filter_map(|rest| rest.split('"').next())
+        .any(|ty| ty.ends_with("_call_output"))
+}
+
 /// Maximum per-record buffer allocation (`64 MiB + 64 KiB`) before draining the remainder of an
 /// oversized rollout JSONL record through its terminating newline.
 pub const MAX_ROLLOUT_RECORD_BYTES: usize = icx_core::ICX_MAX_INGEST_BYTES + 65_536;
@@ -486,24 +540,27 @@ impl CodexRolloutTailer {
     ) -> Result<(u64, usize, File), io::Error> {
         file.seek(SeekFrom::Start(start_offset))?;
         let mut reader = BufReader::new(file);
-        let (consumed, ingested, _) = Self::ingest_jsonl_records(&mut reader, mmu, false)?;
-        Ok((start_offset + consumed, ingested, reader.into_inner()))
+        let counts = Self::ingest_jsonl_records(&mut reader, mmu, RecordFilter::default())?;
+        Ok((
+            start_offset + counts.consumed,
+            counts.ingested,
+            reader.into_inner(),
+        ))
     }
 
     /// Ingests complete `\n`-terminated rollout records from `reader` into `mmu`, stopping before
     /// an incomplete trailing line. Shared by the plain-file tailer and the compressed-rollout
-    /// reader. With `skip_held`, a record whose redacted bytes the store already holds (for
-    /// example because a hook ingested the same output) is skipped, so recall does not index it
-    /// twice. Returns `(bytes_consumed_through_last_complete_line, ingested, skipped_as_held)`.
+    /// reader; `filter` says which records to leave out.
     pub(crate) fn ingest_jsonl_records<R: BufRead>(
         reader: &mut R,
         mmu: &mut InfinityContextMmu,
-        skip_held: bool,
-    ) -> Result<(u64, usize, usize), io::Error> {
+        filter: RecordFilter,
+    ) -> Result<RecordCounts, io::Error> {
         let mut committed = 0u64;
         let mut raw_line = Vec::new();
         let mut ingested = 0usize;
         let mut skipped = 0usize;
+        let mut tool_outputs = 0usize;
 
         loop {
             let (bytes_read, ended_with_nl, was_truncated) =
@@ -520,7 +577,12 @@ impl CodexRolloutTailer {
                 continue;
             }
             if was_truncated {
-                if skip_held && mmu.holds_ingested(trimmed) {
+                // An oversized record cannot be parsed; its type is read from its first bytes.
+                if filter.skip_tool_outputs && is_tool_output_prefix(trimmed) {
+                    tool_outputs += 1;
+                    continue;
+                }
+                if filter.skip_held && mmu.holds_ingested(trimmed) {
                     skipped += 1;
                     continue;
                 }
@@ -537,11 +599,15 @@ impl CodexRolloutTailer {
             let Ok(val) = serde_json::from_str::<Value>(trimmed) else {
                 continue;
             };
+            if filter.skip_tool_outputs && is_tool_output_record(&val) {
+                tool_outputs += 1;
+                continue;
+            }
             if let Some((subject, body, exit_code)) = Self::extract_rollout_item(&val) {
                 if InfinityContextMmu::is_icx_pager_tool(&subject) {
                     continue;
                 }
-                if skip_held && mmu.holds_ingested(&body) {
+                if filter.skip_held && mmu.holds_ingested(&body) {
                     skipped += 1;
                     continue;
                 }
@@ -555,7 +621,12 @@ impl CodexRolloutTailer {
                 ingested += 1;
             }
         }
-        Ok((committed, ingested, skipped))
+        Ok(RecordCounts {
+            consumed: committed,
+            ingested,
+            held: skipped,
+            tool_outputs,
+        })
     }
 
     fn non_empty_body_value(v: &Value) -> Option<String> {
@@ -597,5 +668,56 @@ impl CodexRolloutTailer {
         let exit_code = InfinityContextMmu::extract_exit_code(item)
             .or_else(|| InfinityContextMmu::extract_exit_code(val));
         Some((subject, body, exit_code))
+    }
+}
+
+#[cfg(test)]
+mod record_filter_tests {
+    use super::{is_tool_output_prefix, is_tool_output_record};
+    use serde_json::json;
+
+    #[test]
+    fn tool_output_records_are_recognised_by_payload_type() {
+        for ty in [
+            "function_call_output",
+            "custom_tool_call_output",
+            "mcp_tool_call_output",
+        ] {
+            let rec = json!({"type": "response_item", "payload": {"type": ty, "output": "x"}});
+            assert!(is_tool_output_record(&rec), "{ty}");
+            // Codex writes the payload's `type` first; `json!` would sort the keys.
+            let line = format!(
+                r#"{{"timestamp":"2026-11-22T00:00:00Z","type":"response_item","payload":{{"type":"{ty}","call_id":"c1","output":"x"}}}}"#
+            );
+            assert!(is_tool_output_prefix(&line), "{ty}");
+        }
+        let item = json!({"item": {"type": "function_call_output"}});
+        assert!(is_tool_output_record(&item));
+        assert!(is_tool_output_record(
+            &json!({"type": "function_call_output"})
+        ));
+        let message = json!({"type": "response_item", "payload": {"type": "message",
+            "content": "see \"type\":\"function_call_output\" and \"function_call_output\""}});
+        assert!(!is_tool_output_record(&message));
+        assert!(
+            !is_tool_output_prefix(&message.to_string()),
+            "quoted text is not the type"
+        );
+        assert!(!is_tool_output_record(
+            &json!({"payload": {"type": "function_call"}})
+        ));
+    }
+
+    #[test]
+    fn prefix_test_reads_only_the_opening_bytes_on_a_char_boundary() {
+        let late = format!(
+            "{}\"payload\":{{\"type\":\"function_call_output\"",
+            "é".repeat(600)
+        );
+        assert!(
+            !is_tool_output_prefix(&late),
+            "beyond the first 1,024 bytes"
+        );
+        assert!(!is_tool_output_prefix(""));
     }
 }

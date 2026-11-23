@@ -515,7 +515,122 @@ The `muse` command is a launcher that updates the real binary hourly by default
 short `muse exec` after an update and check `icx status` in that project. Upgrade every agent to
 v1.3.0 before wiring Muse: v1.2.x cannot read a workspace that recorded a Muse event.
 
-### 2.7 Generic MCP Harnesses
+### 2.7 Google Gemini CLI Configuration (v1.4.0)
+
+**Status: documented contract, not verified live.** Gemini CLI was not installed when this
+adapter was built, so the events and reply shapes below come from the upstream hooks reference
+(`google-gemini/gemini-cli` `docs/hooks/reference.md`, read 2026-11-22). Run the verification
+steps before relying on it.
+
+- **Install:** Gemini CLI from its upstream instructions, and `icx` on `PATH`.
+- **Config:** add `hooks` to `~/.gemini/settings.json`, or to a project's
+  `.gemini/settings.json`. That file can also hold agy's settings; add the `hooks` key beside
+  them without replacing anything.
+
+  ```json
+  {
+    "hooks": {
+      "SessionStart": [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent gemini-cli --event SessionStart" }] }],
+      "BeforeAgent":  [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent gemini-cli --event BeforeAgent" }] }],
+      "AfterTool":    [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent gemini-cli --event AfterTool" }] }],
+      "PreCompress":  [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent gemini-cli --event PreCompress" }] }],
+      "SessionEnd":   [{ "matcher": "", "hooks": [{ "type": "command", "command": "icx hook --agent gemini-cli --event SessionEnd" }] }]
+    }
+  }
+  ```
+
+- **MCP:** register `icx mcp-serve` as an MCP server named `icx`. Gemini CLI names its tool
+  `mcp_icx_icx`, which icx recognises and never ingests.
+- **What it does:**
+  - `SessionStart` and `BeforeAgent` add the tail slot as `additionalContext`, in the user turn.
+  - `AfterTool` stores every tool result.
+  - `PreCompress` and `SessionEnd` seal the epoch.
+- **Stub replacement (opt-in):** with `ICX_GEMINI_STUB=1` in the hook's environment, a large
+  successful result is answered with `decision: "deny"` and the stub as `reason`, which the docs
+  say replaces the result the model sees. Error results are never replaced.
+- **Verify:**
+  1. `icx doctor` shows Gemini CLI as `DETECTED` with `icx hooks registered`.
+  2. Run a short session that executes one tool, then check that `icx status` shows a new
+     artifact.
+  3. With the stub mode on, ask the model to quote the first line of a large tool result. It
+     should quote `⟪ICX:STUB│…⟫`.
+- **Limitations:** unverified live. If the model treats the denied result as an error, leave
+  the stub mode off.
+
+### 2.8 Cursor Configuration (v1.4.0)
+
+**Status:** hooks load and the session events fire on `cursor-agent` 2026.09.08. Tool-result
+capture is not yet verified live: it was blocked by the account's usage limit.
+
+- **Install:** `cursor-agent` (or the Cursor editor), signed in, with `icx` on `PATH`.
+- **Config:** add the icx commands to `~/.cursor/hooks.json`, or to a project's
+  `.cursor/hooks.json`. Keep any other tools' entries already there; each event takes a list.
+
+  ```json
+  {
+    "version": 1,
+    "hooks": {
+      "postToolUse":        [{ "type": "command", "command": "icx hook --agent cursor --event postToolUse" }],
+      "postToolUseFailure": [{ "type": "command", "command": "icx hook --agent cursor --event postToolUseFailure" }],
+      "preCompact":         [{ "type": "command", "command": "icx hook --agent cursor --event preCompact" }],
+      "sessionEnd":         [{ "type": "command", "command": "icx hook --agent cursor --event sessionEnd" }]
+    }
+  }
+  ```
+
+- **MCP:** add `icx` to `~/.cursor/mcp.json` (`{"mcpServers": {"icx": {"command": "icx",
+  "args": ["mcp-serve"]}}}`). Recall works only through this tool, because Cursor has no way
+  for a hook to add context to a user turn.
+- **What it does:**
+  - `postToolUse` and `postToolUseFailure` store every result. Cursor passes the result as a
+    JSON string; icx stores its text, and the error message for a failure.
+  - `preCompact` and `sessionEnd` seal the epoch.
+  - `sessionStart` is not registered: its `additional_context` goes into the system context,
+    where icx never writes.
+- **Stub replacement (opt-in, MCP tools only):** with `ICX_CURSOR_STUB=1`, a large MCP result is
+  replaced through `updated_mcp_tool_output`. Built-in tool results cannot be replaced.
+- **Verify:**
+  1. `icx doctor` shows Cursor Agent as `DETECTED` with `icx hooks registered`.
+  2. Run `cursor-agent -p "run ls"` in the project, then check that `icx status` shows a new
+     artifact.
+- **Limitations:** the tool-result payload shape and MCP replacement are not verified live.
+
+### 2.9 OpenCode Configuration (v1.4.0)
+
+**Status: verified on OpenCode v2.2.7** (2026-11-22). The prompt append and the stub replacement
+were confirmed with a real model; compaction was not exercised.
+
+- **Install:** OpenCode v2.x, which loads V2 plugins only, and `icx` on `PATH`.
+- **Plugin:** copy `integrations/opencode/icx.ts` to `~/.config/opencode/plugins/icx.ts`, for
+  every project, or to a project's `.opencode/plugins/icx.ts`. No package install is needed:
+  apart from a type-only import, which is erased at load, it uses Node built-ins.
+- **MCP:** add `icx` under `mcp.servers` in `~/.config/opencode/opencode.json`
+  (`"icx": {"type": "local", "command": ["icx", "mcp-serve"]}`); v2.2.7 nests servers under
+  `servers`.
+- **Environment:**
+  - `ICX_BIN`: path to `icx` (default `icx` on `PATH`).
+  - `ICX_PLUGIN_TIMEOUT_MS`: per-call timeout (default 5000).
+  - `ICX_OPENCODE_STUB=1`: turns the stub replacement on.
+  - The other `icx` variables (`ICX_DIR`, ...) are passed through to icx.
+- **What it does:**
+  - `prompt` appends the legend and tail slot to the user's message.
+  - `execute.after` stores each tool result, and with the stub mode on replaces a large completed
+    result with the stub.
+  - `compaction` seals the epoch; OpenCode still writes its own summary.
+  - The plugin never adds system text.
+- **Fails open:** if icx is missing, fails or times out, the prompt and result are unchanged.
+- **Verify:**
+  1. `icx doctor` shows OpenCode as `DETECTED` with `icx hooks registered` (for the global
+     plugin path).
+  2. Run `opencode run "Quote any line in my message that starts with ⟪ICX:TAIL_SLOT"`. The
+     reply should contain the tail-slot line.
+- **Limitations:**
+  - OpenCode shortens shell output before the plugin sees it (the last 2,000 lines, with the full
+    output saved to its own file), so icx stores what the model would otherwise have seen, not
+    the full output.
+  - The plugin targets the V2 API; V1 hook names are not used.
+
+### 2.10 Generic MCP Harnesses
 
 Any MCP client can connect to the single-tool `icx` stdio server (`icx mcp-serve`) and, optionally, the wire proxy through `ANTHROPIC_BASE_URL` or `OPENAI_BASE_URL` (§2.1.1).
 
@@ -786,17 +901,22 @@ For Codex and agy, replace the first bullet with: "Tool output is captured into 
    - To reduce what Codex resends, route it through `icx proxy` (§2.3). The proxy replaces middle-history items outside the last 2 items (`protect_tail = 2`) that are at or above the threshold (`function_call_output` items and `input_text` parts) with their AHTL packets, and leaves `system`/`developer` items unchanged.
 3. **Rollout ingestion (`icx codex-ingest`, v1.4.0):**
    - **What it does:** reads the project's Codex rollouts, both `.jsonl` and the zstd-compressed `.jsonl.zst`, into the workspace. Later runs read only what is new.
+   - **What it skips:** tool outputs are left to icx's Codex hook, which captured them when the tools ran. The rollout copy differs from the hook's, so both would otherwise be indexed. What gets ingested is messages, reasoning and turn context.
 
      ```bash
-     icx codex-ingest                    # rollouts whose session ran in this project
-     icx codex-ingest --all-projects     # every rollout under $CODEX_HOME/sessions
+     icx codex-ingest                          # rollouts whose session ran in this project
+     icx codex-ingest --all-projects           # every rollout under $CODEX_HOME/sessions
+     icx codex-ingest --include-tool-outputs   # also backfill tool outputs (sessions from before the hook)
      icx codex-ingest --sessions <DIR> --project <DIR> --dir <WORKSPACE>
      ```
 
-   - **Output:** it prints how many rollouts matched, how many had new records, how many records were ingested, and how many files were skipped. Skipped files (corrupt, oversized, symlinked) are named on stderr, and the run still succeeds.
+   - **Output:** it prints how many rollouts matched, how many had new records, how many records were ingested, how many were already stored, how many tool outputs were left to the hook, and how many files were skipped. Skipped files (corrupt, oversized, symlinked) are named on stderr, and the run still succeeds.
    - **Cost:** the first run over a long history takes a while. Measured on a desktop with a release build, 2026-11-22:
      - **One project:** 33 rollouts, 2,906 records, about 25 s.
-     - **Every project (`--all-projects`):** 574 rollouts including 518 compressed, 99,283 records, about 7 minutes, with a peak of about 2 GB of memory. The whole workspace store is held in memory for the run.
+     - **Every project (`--all-projects`, tool outputs included):** 574 rollouts including 518 compressed, about 99,000 records, with the whole store held in memory.
+       - Without batching: about 7 minutes and 2 GB.
+       - With the batched lock release (each batch of about 1.5 s reloads and saves the whole store, so live hooks are never locked out for the whole scan): 523 s and 1.8 GB, about 23% slower, ending with an 824 MB store.
+       - The default, which leaves tool outputs to the hook, ingests far fewer records.
      - **A run with nothing new:** about 1.5 s.
 4. **`additionalContext` size:** Codex delivers `additionalContext` inline only up to the handler's `additionalContextLimit`, by default 2,500 tokens (about 10,000 bytes). Beyond that it writes the text to a file and the model sees a preview. icx keeps every Codex reply within the default. Setting `additionalContextLimit` on a handler changes the limit, and `0` removes it.
 
@@ -1209,14 +1329,14 @@ Every command that takes `--dir` resolves the workspace as `--dir` > `ICX_DIR` >
 | `icx trust --dir <PATH>` | Adopts an existing workspace you own, such as a v1.0.x `.icx/`: sets mode `0700`, writes `.gitignore` (`*`), writes the `OWNER` seal, and reseals the store (migrating JSON files if present). Warns if the directory is inside a git work tree. Prints `⟪ICX:TRUST│dir=<PATH>│status=SEALED⟫`. |
 | `icx context-budget [--context-tokens <N>] [--completion-reserve <N>] [--external-reserve <N>] [--dir <PATH>]` | Inspects or persists the initialized/trusted workspace's conservative managed-window policy (§5.1.1). Invalid or overflowing reservations and insufficient pinned-head allowance are refused. |
 | `icx daemon [--dir <PATH>] [--idle-exit <SECS>]` | Keeps the workspace resident and serves hooks over a private Unix socket (§2.1, Step 3). |
-| `icx doctor [--dir <PATH>]` | Probes local agent binaries and configs (Claude Code, Codex, agy, Hermes, Muse, `curl`, `/dev/shm` writability) and verifies the workspace store and Merkle-DAG. |
+| `icx doctor [--dir <PATH>]` | Probes local agent binaries and configs (Claude Code, Codex, agy, Hermes, Muse, `curl`, `/dev/shm` writability). For Gemini CLI, Cursor and OpenCode it also reports the version and whether an icx hook or plugin is registered, and verifies the workspace store and Merkle-DAG. |
 | `icx status [--dir <PATH>]` | Prints `⟪ICX:STATUS│cas_artifacts=<N>│redacted_artifacts=<N>│unique_chunks=<N>│dag_nodes=<N>│sealed_epochs=<N>│hdc_entries=<N>│graph_edges=<N>│shm_seq=<N>⟫`. |
 | `icx benchmark [--json]` | Runs the synthetic in-process benchmark suite with strict SLO exits; JSON includes actual 1k/10k scan measurements and compiled build/fixture provenance. |
 | `icx deref <HANDLE> [--lines <START:END>] [--dir <PATH>] [--raw]` | Returns the stored bytes, or an inclusive 1-based line slice, for a 64-bit (`#icx:<16-hex>`) or 48-bit (`#icx:<12-hex>`) handle. By default the output starts with `⟪ICX:PROVENANCE│id=<HANDLE>│trust=untrusted_data⟫` and the body is delimiter-escaped; `--raw` prints the exact stored bytes. |
 | `icx encode-ahtl <FILE> [--dir <PATH>] [--profile <a\|b>]` | Redacts secrets, ingests `<FILE>` into the workspace, updates the indices, and prints a Profile B packet (default) or a Profile A 6-section packet (`--profile a`). |
 | `icx decode-ahtl '<AHTL_PACKET>'` | Parses a Profile A or Profile B packet and prints its fields and clauses. |
-| `icx hook --agent <claude-code\|codex\|agy\|hermes\|muse> --event <EVENT> [--dir <PATH>]` | Reads the agent's hook JSON from stdin (bounded) and writes the response JSON to stdout. Uses the daemon if one is running. Always exits 0; on malformed input or internal errors it prints `{}` (or a non-replacing response) so the agent keeps its original behaviour. |
-| `icx mcp-serve [--dir <PATH>]` | Runs the single-tool MCP pager (`icx`) over stdio (§2.7), loading and persisting the workspace under the lock for each operation. |
+| `icx hook --agent <claude-code\|codex\|agy\|hermes\|muse\|gemini-cli\|cursor\|opencode> --event <EVENT> [--dir <PATH>]` | Reads the agent's hook JSON from stdin (bounded) and writes the response JSON to stdout. Uses the daemon if one is running. Always exits 0; on malformed input or internal errors it prints `{}` (or a non-replacing response) so the agent keeps its original behaviour. |
+| `icx mcp-serve [--dir <PATH>]` | Runs the single-tool MCP pager (`icx`) over stdio (§2.10), loading and persisting the workspace under the lock for each operation. |
 | `icx proxy-transform [--provider <anthropic\|openai\|gemini>] [--dir <PATH>]` | Reads an outbound Anthropic (`/v1/messages`), OpenAI (`/v1/chat/completions`, `/v1/responses`), or Gemini (`/v1beta/models/*`) JSON request from stdin and writes the transformed body to stdout. |
 | `icx proxy [--listen <HOST:PORT>] [--provider <anthropic\|openai\|gemini>] [--upstream <URL>] [--dir <PATH>] [--max-requests <N>] [--allow-remote] [--insecure-no-auth]` | Runs the HTTP/1.1 & SSE reverse proxy (default `127.0.0.1:49380` or `ICX_PROXY_BIND`), forwarding transformed requests to `--upstream` / `ICX_UPSTREAM_URL` or the provider's default upstream, and expanding inline `⟪!icx:deref(...)⟫` directives in responses. Loopback-only and token-authenticated by default (§2.1.1). |
 
