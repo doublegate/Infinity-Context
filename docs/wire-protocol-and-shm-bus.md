@@ -201,9 +201,9 @@ tools (v1.4.0, ADR-0009), each estimated at under 180 tokens
 **Routing:**
 
 - A read operation sent to `icx_write` is refused with `isError: true`, naming `icx`.
-- A write operation (`fold`, or `xagent` with a non-empty `q`) sent to `icx` still runs in v1.4.x
-  and its reply ends with `⟪ICX:DEPRECATED│...⟫` naming `icx_write`. `icx` stops accepting them in
-  v1.5.0.
+- A write operation (`fold`, or `xagent` with a non-empty `q`) sent to `icx` is refused the same
+  way, naming `icx_write`: `icx` carries `readOnlyHint`, so it never changes state. A refused call
+  takes no workspace lock and changes nothing.
 - Hook adapters treat both tools as icx's own, in every agent's naming form, and never ingest
   their output.
 

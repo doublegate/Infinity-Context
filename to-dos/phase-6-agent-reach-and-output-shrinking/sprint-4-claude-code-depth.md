@@ -398,9 +398,10 @@ expand, status, xagent poll) carries `readOnlyHint`; `icx_write` (fold, xagent b
 tokens each.
 
 - [x] Decision recorded as an ADR (`docs/adr/0009-read-only-icx-tool.md`).
-- [x] Split: the read-only tool carries `readOnlyHint`; the state-changing tool does not; `fold`
-  and broadcasts sent to `icx` keep working through v1.4.x with a `⟪ICX:DEPRECATED│...⟫` note
-  (`tests/mcp_two_tools.rs`).
+- [x] Split: the read-only tool carries `readOnlyHint`; the state-changing tool does not.
+- [ ] ~~Old `op` values keep working for one release with a deprecation note.~~ Superseded: the
+  security review found that this made the hint false for that release, and the owner chose to
+  refuse writes on `icx` at once (`tests/mcp_two_tools.rs`).
 - [x] ~~If not split~~: not applicable.
 - [x] Phase 7 Sprint 3 (typed eviction through `fold`, T-73-004) updated to target `icx_write`.
 

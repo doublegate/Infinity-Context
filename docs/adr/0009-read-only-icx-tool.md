@@ -26,8 +26,10 @@ Split the tool in two:
   and `xagent` as a poll. `recall` stays here, since its only effect is internal cursor
   bookkeeping.
 - **`icx_write`**, without the hint: `fold`, and `xagent` with a message.
-- **Deprecation:** for one release, `fold` and an `xagent` broadcast sent to `icx` still work and
-  return a deprecation note naming `icx_write`. They are removed in the release after.
+- **No deprecation period:** each tool refuses the other's operations from v1.4.0. A write sent
+  to `icx` is an error naming `icx_write`, so the hint is never false. (The first draft kept
+  writes working on `icx` for one release; review found that this made `readOnlyHint` false
+  during that release, and the owner chose to refuse them at once.)
 - Both names are treated as icx's own tools by every hook adapter (never ingested), in every
   agent's naming form.
 
@@ -41,6 +43,8 @@ Split the tool in two:
   schema (under 180 tokens by `schema_token_estimate`), so roughly double.
 - Every adapter's pager-name list and the docs gain the second name; Phase 7 Sprint 3 (typed
   eviction through `fold`, T-73-004) targets `icx_write`.
+- Agents whose instructions fold with the `icx` tool get one error naming `icx_write`, then
+  use it. Instruction files that say so should be updated.
 - Rejected:
   - **The hint on the single tool:** false for `fold` and broadcasts, and it would let a client
     skip confirmation for state changes.

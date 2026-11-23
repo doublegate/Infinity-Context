@@ -2263,11 +2263,16 @@ unprefixed_secret = {unpref_sec}
         assert!(!McpPagerServer::is_mutating_request(
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}"#
         ));
-        assert!(McpPagerServer::is_mutating_request(
+        // Writes belong to `icx_write` (ADR-0009); the read-only `icx` refuses them, so a write
+        // addressed to it is not a mutation.
+        assert!(!McpPagerServer::is_mutating_request(
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"icx","arguments":{"op":"fold","q":"s"}}}"#
         ));
         assert!(McpPagerServer::is_mutating_request(
-            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"icx","arguments":{"op":"xagent","q":"msg"}}}"#
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"icx_write","arguments":{"op":"fold","q":"s"}}}"#
+        ));
+        assert!(McpPagerServer::is_mutating_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"icx_write","arguments":{"op":"xagent","q":"msg"}}}"#
         ));
         assert!(!McpPagerServer::is_mutating_request(
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{"op":"xagent"}}}"#

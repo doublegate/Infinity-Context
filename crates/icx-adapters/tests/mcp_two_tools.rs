@@ -1,5 +1,5 @@
-//! ADR-0009 (T-64-008): the read-only `icx` tool carries `readOnlyHint`; `fold` and `xagent`
-//! broadcasts move to `icx_write`, and `icx` still runs them for one release with a note.
+//! ADR-0009 (T-64-008): the read-only `icx` tool carries `readOnlyHint` and refuses `fold` and
+//! `xagent` broadcasts, which belong to `icx_write`; `icx_write` refuses reads.
 
 use icx_adapters::mcp::{McpPagerServer, READ_TOOL, WRITE_TOOL};
 use icx_adapters::mmu::InfinityContextMmu;
@@ -63,7 +63,6 @@ fn writes_go_through_icx_write_and_reads_through_icx() {
         &mut mmu,
     );
     assert!(!err && out.contains("BRANCH_OPENED"), "{out}");
-    assert!(!out.contains("DEPRECATED"));
     let (out, err) = call(WRITE_TOOL, &json!({"op": "fold", "q": "done"}), &mut mmu);
     assert!(!err, "{out}");
     let (out, err) = call(READ_TOOL, &json!({"op": "status"}), &mut mmu);
@@ -89,21 +88,20 @@ fn a_read_sent_to_icx_write_is_refused() {
 }
 
 #[test]
-fn a_write_sent_to_icx_still_runs_with_a_deprecation_note() {
+fn a_write_sent_to_icx_is_refused_and_changes_nothing() {
+    // `icx` carries readOnlyHint, so it must never change state (review of ADR-0009).
     let mut mmu = InfinityContextMmu::default();
     let (out, err) = call(
         READ_TOOL,
         &json!({"op": "fold", "q": "begin:legacy"}),
         &mut mmu,
     );
-    assert!(!err && out.contains("BRANCH_OPENED"), "{out}");
-    assert!(
-        out.contains("ICX:DEPRECATED") && out.contains(WRITE_TOOL),
-        "{out}"
-    );
-    assert_eq!(mmu.dag.active_branch_depth(), 1, "the fold really happened");
-    let (out, _) = call(READ_TOOL, &json!({"op": "xagent", "q": "hello"}), &mut mmu);
-    assert!(out.contains("ICX:DEPRECATED"), "{out}");
+    assert!(err && out.contains(WRITE_TOOL), "{out}");
+    assert_eq!(mmu.dag.active_branch_depth(), 0, "no branch was opened");
+    let seq = mmu.bus.write_sequence();
+    let (out, err) = call(READ_TOOL, &json!({"op": "xagent", "q": "hello"}), &mut mmu);
+    assert!(err && out.contains(WRITE_TOOL), "{out}");
+    assert_eq!(mmu.bus.write_sequence(), seq, "nothing was broadcast");
 }
 
 #[test]
@@ -123,7 +121,10 @@ fn both_tools_are_mutation_aware_and_never_ingested() {
         .to_string()
     };
     assert!(McpPagerServer::is_mutating_request(&fold(WRITE_TOOL)));
-    assert!(McpPagerServer::is_mutating_request(&fold(READ_TOOL)));
+    assert!(
+        !McpPagerServer::is_mutating_request(&fold(READ_TOOL)),
+        "a refused write is not treated as a mutation"
+    );
     for name in [
         "icx_write",
         "mcp__icx__icx_write",

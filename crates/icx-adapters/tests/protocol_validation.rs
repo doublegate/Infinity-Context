@@ -96,9 +96,10 @@ fn pager_like_hook_aliases_are_not_advertised_mcp_tool_names() {
 
 #[test]
 fn workspace_access_and_mutation_require_a_valid_named_tool_call() {
-    for (op, mutating) in [("status", false), ("fold", true)] {
+    // Each op on its own tool (ADR-0009).
+    for (tool, op, mutating) in [("icx", "status", false), ("icx_write", "fold", true)] {
         let valid = json!({"jsonrpc":"2.0","id":1,"method":"tools/call",
-                           "params":{"name":"icx","arguments":{"op":op}}});
+                           "params":{"name":tool,"arguments":{"op":op}}});
         assert!(McpPagerServer::requires_workspace_state(&valid.to_string()));
         assert_eq!(
             McpPagerServer::is_mutating_request(&valid.to_string()),

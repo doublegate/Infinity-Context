@@ -19,8 +19,6 @@ pub const LEGACY_PROTOCOL_VERSIONS: &[&str] =
 pub const READ_TOOL: &str = "icx";
 /// The state-changing tool (ADR-0009): `fold`, and `xagent` broadcasts.
 pub const WRITE_TOOL: &str = "icx_write";
-/// Appended when a write op arrives on the read-only tool, which still runs it for one release.
-const DEPRECATED_WRITE_ON_READ: &str = "\n⟪ICX:DEPRECATED│fold and xagent broadcasts moved to the `icx_write` tool; `icx` accepts them until v1.5.0⟫";
 
 /// Maximum number of simultaneously open `fold begin:` branches (ICX-AUD-014).
 pub const MAX_FOLD_DEPTH: usize = 64;
@@ -182,15 +180,17 @@ impl McpPagerServer {
         }
     }
 
-    /// Checks that `op` belongs to `tool`. A read op sent to `icx_write` is refused; a write op
-    /// sent to `icx` still runs for one release, with a deprecation note (ADR-0009).
-    fn route(tool: &str, args: &Value) -> Result<Option<&'static str>, String> {
+    /// Checks that `op` belongs to `tool` (ADR-0009). Each tool refuses the other's operations:
+    /// `icx` carries `readOnlyHint`, so it must never change state, or a client could skip
+    /// confirmation for a write.
+    fn route(tool: &str, args: &Value) -> Result<(), String> {
         let write = Self::is_write_op(args);
-        match tool {
-            READ_TOOL if write => Ok(Some(DEPRECATED_WRITE_ON_READ)),
-            READ_TOOL => Ok(None),
-            WRITE_TOOL if write => Ok(None),
-            WRITE_TOOL => Err(format!(
+        match (tool, write) {
+            (READ_TOOL, false) | (WRITE_TOOL, true) => Ok(()),
+            (READ_TOOL, true) => Err(format!(
+                "ERR: `{READ_TOOL}` is read-only; fold and xagent broadcasts (`xagent` with `q`) use the `{WRITE_TOOL}` tool"
+            )),
+            (WRITE_TOOL, false) => Err(format!(
                 "ERR: `{WRITE_TOOL}` only folds or broadcasts (`fold`, or `xagent` with `q`); use `{READ_TOOL}` for reads"
             )),
             _ => Err(format!("Unknown tool: {tool}")),
@@ -412,13 +412,7 @@ impl McpPagerServer {
                         Self::execute_icx_op_checked(args, mmu)
                     }
                     Err(message) => (message, true),
-                    Ok(note) => {
-                        let (mut text, is_err) = Self::execute_icx_op_checked(args, mmu);
-                        if let Some(note) = note {
-                            text.push_str(note);
-                        }
-                        (text, is_err)
-                    }
+                    Ok(()) => Self::execute_icx_op_checked(args, mmu),
                 };
                 json!({
                     "jsonrpc": "2.0",
