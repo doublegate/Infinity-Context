@@ -371,9 +371,10 @@ decision table)
 
 ## Sprint exit
 
-- [ ] Gates green: `cargo fmt --all -- --check`,
-  `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and
-  coverage `>= 95%`.
-- [ ] Docs and CHANGELOG updated for any user-visible change; v1.4.0 release notes drafted.
+- [x] Gates green: `cargo fmt --all -- --check`,
+  `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (481 passed),
+  and coverage `>= 95%` (95.04% lines, 2026-11-23).
+- [x] Docs and CHANGELOG updated for any user-visible change; v1.4.0 release notes drafted
+  (`docs/releases/v1.4.0/README.md`).
 - [ ] Upstream re-scan done for Phase 7 Sprint 1 (ranking crates and comparable tools), and its
   tickets adjusted.
