@@ -16,8 +16,8 @@
 //! - `execute.after`, from `ctx.tool.hook("execute.after")`: the tool result
 //!   (`{tool, call_id, input, status, output, error}`) is ingested. In the opt-in stub mode
 //!   (`ICX_OPENCODE_STUB=1`), a completed result over the stub threshold gets
-//!   `{"replace": stub}`, which the plugin writes into `event.result`. Off by default until the
-//!   replacement is verified live.
+//!   `{"replace": stub}`, which the plugin writes into `event.result`. Verified live on v2.2.7;
+//!   off by default because it changes what the model sees.
 //! - `compaction`, from `ctx.session.hook("compaction")`: seals the epoch. icx never supplies the
 //!   summary, so OpenCode still writes its own.
 //! - `session.end`: folds open subagent branches and seals.
@@ -68,8 +68,9 @@ fn opencode_result_text(output: Option<&Value>) -> String {
 }
 
 impl OpenCodeAdapter {
-    /// `event.result` replacement is documented for V2 `execute.after` but not yet verified on
-    /// the installed OpenCode, so it is off unless [`Self::stub_mode_enabled`].
+    /// `event.result` replacement works on OpenCode v2.2.7 (verified live, 2026-11-22), but it
+    /// changes what the model sees, so it is not on by default: only with
+    /// [`Self::stub_mode_enabled`].
     pub const SUPPORTS_TOOL_OUTPUT_REPLACEMENT: bool = false;
 
     /// Whether the opt-in stub mode is on (`ICX_OPENCODE_STUB=1`).

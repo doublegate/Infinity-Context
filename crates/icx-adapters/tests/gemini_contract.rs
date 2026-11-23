@@ -203,3 +203,79 @@ fn compression_end_and_unknown_events_reply_with_no_change() {
 
 // Replacement is unverified live, so the adapter must not advertise it.
 const _: () = assert!(!GeminiCliAdapter::SUPPORTS_TOOL_OUTPUT_REPLACEMENT);
+
+fn held(mmu: &InfinityContextMmu, text: &str) -> bool {
+    mmu.cas
+        .get_meta(ArtifactId::hash_bytes(text.as_bytes()).0)
+        .is_some()
+}
+
+#[test]
+fn trait_dispatch_empty_stdin_and_the_env_entry_point() {
+    use icx_adapters::AgentHookAdapter;
+    let mut mmu = InfinityContextMmu::default();
+    let adapter = GeminiCliAdapter;
+    assert_eq!(adapter.agent_kind(), AgentKind::GeminiCli);
+    assert_eq!(
+        adapter
+            .handle_hook_event("PreCompress", "", &mut mmu)
+            .unwrap(),
+        "{}"
+    );
+    assert!(
+        adapter
+            .handle_hook_event("AfterTool", "[", &mut mmu)
+            .is_err()
+    );
+    GeminiCliAdapter::handle_hook(
+        "AfterTool",
+        &payload(
+            "AfterTool",
+            &json!({"tool_name": "run_shell_command", "tool_response": {"llmContent": "via env entry"}}),
+        ),
+        &mut mmu,
+    )
+    .unwrap();
+    assert!(held(&mmu, "via env entry"));
+}
+
+#[test]
+fn tool_response_shapes_are_read_in_documented_order() {
+    let mut mmu = InfinityContextMmu::default();
+    let cases = [
+        (
+            json!({"llmContent": {"text": "object part"}}),
+            "object part".to_owned(),
+        ),
+        (
+            json!({"llmContent": 7, "returnDisplay": "display text"}),
+            "display text".to_owned(),
+        ),
+        (json!({"other": 1}), json!({"other": 1}).to_string()),
+        (
+            json!({"llmContent": "partial", "error": {"message": "boom"}}),
+            "partial\nboom".to_owned(),
+        ),
+        (
+            json!({"llmContent": "partial2", "error": {"code": 5}}),
+            format!("partial2\n{}", json!({"code": 5})),
+        ),
+    ];
+    for (response, expected) in cases {
+        let r = reply(
+            "AfterTool",
+            json!({"tool_name": "t", "tool_response": response}),
+            &mut mmu,
+            true,
+        );
+        assert_eq!(r, json!({}), "short or failed results are never replaced");
+        assert!(held(&mmu, &expected), "{expected}");
+    }
+    // A missing response and a non-object response are handled without a reply.
+    for extra in [
+        json!({"tool_name": "t"}),
+        json!({"tool_name": "t", "tool_response": "plain string response"}),
+    ] {
+        assert_eq!(reply("AfterTool", extra, &mut mmu, true), json!({}));
+    }
+}

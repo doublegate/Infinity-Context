@@ -1,8 +1,9 @@
 //! Cursor (`cursor-agent` and the editor) lifecycle hook adapter (`CursorAdapter`, v1.4.0,
 //! T-63-002).
 //!
-//! Built from the documented contract (cursor.com/docs/hooks, read 2026-11-22). The live
-//! capture is pending (see the Sprint 3 research notes), so the MCP replacement path is
+//! Built from the documented contract (cursor.com/docs/hooks, read 2026-11-22). Live on
+//! `cursor-agent` 2026.09.08, project hooks load and the session-event payloads match it. The
+//! tool-call capture is pending (see the Sprint 3 research notes), so the MCP replacement path is
 //! opt-in until it is verified.
 //!
 //! - Every hook receives `conversation_id`, `generation_id`, `hook_event_name`,

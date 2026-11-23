@@ -1509,6 +1509,92 @@ fn parse_doctor_dir_flag(args: &[String]) -> Result<Option<&str>, String> {
     Ok(dir_str)
 }
 
+/// The first line of `<bin> --version`, or `None` if it fails or takes longer than `timeout`.
+/// Doctor runs agent binaries only this way: no input, stdout only, killed on timeout.
+fn probe_version(bin: &Path, timeout: std::time::Duration) -> Option<String> {
+    use std::process::{Command, Stdio};
+    let mut child = Command::new(bin)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => break,
+            Ok(Some(_)) | Err(_) => return None,
+            Ok(None) if started.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(20)),
+        }
+    }
+    let mut out = String::new();
+    child
+        .stdout
+        .take()?
+        .take(4096)
+        .read_to_string(&mut out)
+        .ok()?;
+    out.lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .map(|l| l.chars().take(80).collect())
+}
+
+/// How doctor recognises icx in an agent's hook config.
+#[derive(Clone, Copy)]
+enum IcxHookMatch<'a> {
+    /// A command whose program is `icx` (any path), followed by `hook --agent <name>`. Other
+    /// tools' hooks for the same agent (ai-memory also passes `--agent cursor`) do not count.
+    Command(&'a str),
+    /// A plugin file containing this text.
+    Contains(&'a str),
+}
+
+/// Whether `text` holds a hook command running icx for `agent`.
+fn mentions_icx_hook(text: &str, agent: &str) -> bool {
+    let needle = format!(" hook --agent {agent}");
+    text.match_indices(&needle).any(|(at, _)| {
+        let after = &text[at + needle.len()..];
+        if after
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphanumeric() || c == '-')
+        {
+            return false; // `--agent cursor-x` is another agent
+        }
+        let program = text[..at]
+            .rsplit(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == '\\')
+            .find(|t| !t.is_empty())
+            .unwrap_or("");
+        program.rsplit('/').next() == Some("icx")
+    })
+}
+
+/// Whether a hook config or plugin file registers icx: `Some(true)` when the file (read up to
+/// 1 MiB) matches, `Some(false)` when it does not, `None` when it is absent or not a file.
+fn icx_hook_registered(path: &Path, matcher: IcxHookMatch<'_>) -> Option<bool> {
+    let meta = fs::symlink_metadata(path).ok()?;
+    if !meta.is_file() {
+        return None;
+    }
+    let mut text = String::new();
+    fs::File::open(path)
+        .ok()?
+        .take(1 << 20)
+        .read_to_string(&mut text)
+        .ok()?;
+    Some(match matcher {
+        IcxHookMatch::Command(agent) => mentions_icx_hook(&text, agent),
+        IcxHookMatch::Contains(s) => text.contains(s),
+    })
+}
+
 fn run_doctor(args: &[String]) -> Result<(), String> {
     let explicit_dir = parse_doctor_dir_flag(args)?;
     println!("=== Infinity-Context (icx) Cross-Agent Workstation Doctor ===");
@@ -1594,6 +1680,53 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         };
         let status = if exists { "DETECTED" } else { "ABSENT" };
         println!("  [{status:8}] {label:32} -> {path}");
+    }
+
+    // v1.4.0 adapters (T-63-004): presence, version and whether icx's hooks are registered.
+    // Gemini CLI shares ~/.gemini/settings.json with agy, and other tools register hooks for
+    // the same agents, so registration means an `icx ... hook --agent <name>` command, not the
+    // file's presence.
+    let config_home = env::var("XDG_CONFIG_HOME")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| format!("{home}/.config"));
+    let new_agents = [
+        (
+            "Gemini CLI (gemini)",
+            resolve_bin(".local/bin/gemini", "gemini"),
+            format!("{home}/.gemini/settings.json"),
+            IcxHookMatch::Command("gemini-cli"),
+        ),
+        (
+            "Cursor Agent (cursor-agent)",
+            resolve_bin(".local/bin/cursor-agent", "cursor-agent"),
+            format!("{home}/.cursor/hooks.json"),
+            IcxHookMatch::Command("cursor"),
+        ),
+        (
+            "OpenCode (opencode)",
+            resolve_bin(".opencode/bin/opencode", "opencode"),
+            format!("{config_home}/opencode/plugins/icx.ts"),
+            IcxHookMatch::Contains("--agent\", \"opencode\""),
+        ),
+    ];
+    for (label, bin, hook_file, needle) in new_agents {
+        let bin_path = Path::new(&bin);
+        if !is_executable_file(bin_path) {
+            println!("  [{:8}] {label:32} -> {bin}", "ABSENT");
+            continue;
+        }
+        let version = probe_version(bin_path, std::time::Duration::from_secs(3))
+            .unwrap_or_else(|| "version unknown".into());
+        let hooks = match icx_hook_registered(Path::new(&hook_file), needle) {
+            Some(true) => "icx hooks registered",
+            Some(false) => "icx hooks not registered",
+            None => "no hook config",
+        };
+        println!(
+            "  [{:8}] {label:32} -> {bin} ({version}; {hooks} in {hook_file})",
+            "DETECTED"
+        );
     }
 
     let shm_dir = Path::new("/dev/shm");
@@ -3274,5 +3407,78 @@ mod tests {
         assert!(notif_rpc.is_null());
 
         let _ = fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn doctor_recognises_only_icx_hook_commands() {
+        let icx_hooks = r#"{"hooks":{"postToolUse":[{"command":"/home/u/.local/bin/icx hook --agent cursor --event postToolUse"}]}}"#;
+        assert!(mentions_icx_hook(icx_hooks, "cursor"));
+        assert!(mentions_icx_hook(
+            r#"{"command": "\"/opt/x y/icx\" hook --agent gemini-cli --event AfterTool"}"#,
+            "gemini-cli"
+        ));
+        assert!(mentions_icx_hook("icx hook --agent cursor", "cursor"));
+        // Another tool's hook for the same agent is not icx.
+        let others = r#"{"command":"/x/ai-memory hook --event post-tool-use --agent cursor"},{"command":"gk ai hook run --host cursor"},{"command":"/x/not-icx hook --agent cursor"}"#;
+        assert!(!mentions_icx_hook(others, "cursor"));
+        // An agent whose name merely starts with this one's.
+        assert!(!mentions_icx_hook(
+            "icx hook --agent cursor-next --event x",
+            "cursor"
+        ));
+        assert!(!mentions_icx_hook(icx_hooks, "gemini-cli"));
+    }
+
+    #[test]
+    fn doctor_hook_file_status_and_version_probe() {
+        let dir = std::env::temp_dir().join(format!("icx-doctor-probe-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let cfg = dir.join("hooks.json");
+        assert_eq!(
+            icx_hook_registered(&cfg, IcxHookMatch::Command("cursor")),
+            None
+        );
+        fs::write(&cfg, "icx hook --agent cursor --event sessionEnd").unwrap();
+        assert_eq!(
+            icx_hook_registered(&cfg, IcxHookMatch::Command("cursor")),
+            Some(true)
+        );
+        assert_eq!(
+            icx_hook_registered(&cfg, IcxHookMatch::Contains("opencode")),
+            Some(false)
+        );
+        assert_eq!(
+            icx_hook_registered(&dir, IcxHookMatch::Contains("x")),
+            None,
+            "a directory"
+        );
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let script = dir.join("fake-agent");
+            fs::write(&script, "#!/bin/sh\necho '  '\necho 'fake-agent 9.9.9'\n").unwrap();
+            fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+            assert_eq!(
+                probe_version(&script, std::time::Duration::from_secs(5)).as_deref(),
+                Some("fake-agent 9.9.9")
+            );
+            let slow = dir.join("slow-agent");
+            fs::write(&slow, "#!/bin/sh\nsleep 5\necho late\n").unwrap();
+            fs::set_permissions(&slow, fs::Permissions::from_mode(0o755)).unwrap();
+            assert_eq!(
+                probe_version(&slow, std::time::Duration::from_millis(200)),
+                None
+            );
+            let failing = dir.join("failing-agent");
+            fs::write(&failing, "#!/bin/sh\necho oops\nexit 3\n").unwrap();
+            fs::set_permissions(&failing, fs::Permissions::from_mode(0o755)).unwrap();
+            assert_eq!(
+                probe_version(&failing, std::time::Duration::from_secs(5)),
+                None
+            );
+        }
+        let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -13,7 +13,8 @@
 //                  icx never writes system text).
 //   execute.after  ingests each tool result. With ICX_OPENCODE_STUB=1 in icx's environment, a
 //                  large completed result is replaced by a stub whose #icx: handle dereferences
-//                  through the icx MCP tool (opt-in until verified on your OpenCode version).
+//                  through the icx MCP tool. Verified on v2.2.7; opt-in, because it changes
+//                  what the model sees.
 //   compaction     seals icx's cache epoch; OpenCode still writes its own summary.
 //
 // Environment: ICX_BIN (path to the icx binary, default "icx"), ICX_PLUGIN_TIMEOUT_MS (default

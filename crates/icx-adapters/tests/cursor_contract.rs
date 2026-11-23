@@ -1,7 +1,8 @@
 //! T-63-002: Cursor adapter contract tests.
 //!
-//! Fixtures follow the documented payloads (cursor.com/docs/hooks, read 2026-11-22). The live
-//! capture on `cursor-agent` 2026.09.08 is pending re-login, so the MCP replacement stays opt-in.
+//! Fixtures follow the documented payloads (cursor.com/docs/hooks, read 2026-11-22). On
+//! `cursor-agent` 2026.09.08 the session-event payloads matched them live; the tool-call capture
+//! was blocked by the account's usage limit, so the MCP replacement stays opt-in.
 
 use icx_adapters::{CursorAdapter, ICX_AHTL_LEGEND, InfinityContextMmu, fail_open_reply};
 use icx_core::{AgentKind, ArtifactId};
@@ -179,3 +180,78 @@ fn icx_tool_compaction_end_and_unknown_events_change_nothing() {
 
 // The MCP replacement is unverified live, so the adapter must not advertise it.
 const _: () = assert!(!CursorAdapter::SUPPORTS_TOOL_OUTPUT_REPLACEMENT);
+
+fn held(mmu: &InfinityContextMmu, text: &str) -> bool {
+    mmu.cas
+        .get_meta(ArtifactId::hash_bytes(text.as_bytes()).0)
+        .is_some()
+}
+
+#[test]
+fn trait_dispatch_empty_stdin_and_the_env_entry_point() {
+    use icx_adapters::AgentHookAdapter;
+    let mut mmu = InfinityContextMmu::default();
+    let adapter = CursorAdapter;
+    assert_eq!(adapter.agent_kind(), AgentKind::Cursor);
+    assert_eq!(
+        adapter
+            .handle_hook_event("sessionEnd", "", &mut mmu)
+            .unwrap(),
+        "{}"
+    );
+    assert!(
+        adapter
+            .handle_hook_event("postToolUse", "{", &mut mmu)
+            .is_err()
+    );
+    CursorAdapter::handle_hook(
+        "postToolUse",
+        &payload(
+            "postToolUse",
+            &json!({"tool_name": "Shell", "tool_output": json!({"stdout": "via env entry"}).to_string()}),
+        ),
+        &mut mmu,
+    )
+    .unwrap();
+    assert!(held(&mmu, "via env entry"));
+}
+
+#[test]
+fn tool_output_shapes_are_unwrapped_or_kept_verbatim() {
+    let mut mmu = InfinityContextMmu::default();
+    let cases = [
+        (
+            json!({"output": "an object, not a string"}),
+            "an object, not a string".to_owned(),
+        ),
+        (json!("not json at all"), "not json at all".to_owned()),
+        (
+            json!(json!({"text": "text field"}).to_string()),
+            "text field".to_owned(),
+        ),
+        (
+            json!(json!({"weird": true}).to_string()),
+            json!({"weird": true}).to_string(),
+        ),
+        (
+            json!(json!({"content": [{"type": "image"}]}).to_string()),
+            json!({"content": [{"type": "image"}]}).to_string(),
+        ),
+    ];
+    for (tool_output, expected) in cases {
+        let r = reply(
+            "postToolUse",
+            json!({"tool_name": "Shell", "tool_output": tool_output}),
+            &mut mmu,
+            true,
+        );
+        assert_eq!(r, json!({}));
+        assert!(held(&mmu, &expected), "{expected}");
+    }
+    for extra in [
+        json!({"tool_name": "Shell"}),
+        json!({"tool_name": "Shell", "tool_output": 42}),
+    ] {
+        assert_eq!(reply("postToolUse", extra, &mut mmu, true), json!({}));
+    }
+}

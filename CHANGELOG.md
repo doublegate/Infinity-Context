@@ -30,6 +30,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
       installed.
   - A record whose redacted output the store already holds byte for byte is skipped and counted
     as "already stored", which catches outputs repeated inside the rollouts.
+- **Gemini CLI adapter** (`icx hook --agent gemini-cli`, T-63-001), built from the documented
+  hooks contract and **not verified live**.
+  - `SessionStart` and `BeforeAgent` add the tail slot to the user turn; `AfterTool` stores
+    results; `PreCompress` and `SessionEnd` seal the epoch.
+  - Stub replacement through `decision: "deny"` is opt-in (`ICX_GEMINI_STUB=1`).
+  - icx's own MCP tool is recognised under Gemini CLI's name for it, `mcp_icx_icx`, and never
+    ingested.
+- **Cursor adapter** (`icx hook --agent cursor`, T-63-002).
+  - `postToolUse` and `postToolUseFailure` store results; `preCompact` and `sessionEnd` seal.
+  - Nothing is injected at `sessionStart`, because Cursor puts that text in the system context,
+    and icx context is only ever delivered as user-turn data.
+  - MCP result replacement through `updated_mcp_tool_output` is opt-in (`ICX_CURSOR_STUB=1`) and
+    not yet verified live.
+- **OpenCode plugin** (`integrations/opencode/icx.ts` and `icx hook --agent opencode`, T-63-003)
+  for the V2 plugin API, verified on OpenCode v2.2.7.
+  - It appends the legend and tail slot to the user's message, stores tool results, and seals the
+    epoch at compaction. It adds no system text.
+  - Replacing large results with a stub works on v2.2.7 and is opt-in (`ICX_OPENCODE_STUB=1`).
+  - It fails open when icx is missing, fails or times out.
+- **`icx doctor` checks the new agents** (T-63-004): for Gemini CLI, Cursor and OpenCode it
+  reports presence, version and whether an icx hook or plugin is registered. Only a command whose
+  program is `icx` counts, so another tool's hooks for the same agent are not mistaken for it.
 
 ### Changed
 
@@ -73,6 +95,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     hook path is 8,000 characters and 200 lines (T-64-006).
   - **agy:** `user_markdown: ""` does not hide injected steps (T-65-003).
   - **New tickets:** T-62-006, T-65-007, T-65-008 and T-65-009.
+- **Gemini CLI, Cursor and OpenCode setup** (T-63-004): deployment-guide §2.7 to §2.9 cover
+  install, config, verification and limits for each, and the adapters spec gains §8 to §10. The
+  generic MCP section moves to §2.10. OpenCode v2.2.7 nests MCP servers under `mcp.servers`.
 
 ## [1.3.2] - 2026-11-22
 

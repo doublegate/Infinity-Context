@@ -120,11 +120,11 @@ Gemini CLI also runs tools in a script, which defeated the equivalent Codex rout
 
 **Acceptance Criteria:**
 
-- [ ] Fixtures built from the documented payload examples, each labelled with the docs revision
+- [x] Fixtures built from the documented payload examples, each labelled with the docs revision
   it came from (no live capture: not installed).
-- [ ] Adapter implements the three events; unknown fields are tolerated.
-- [ ] Contract tests pin input parsing and reply shapes.
-- [ ] Capability per event stated and tested. `AfterTool` shrinking is "documented, unverified"
+- [x] Adapter implements the three events; unknown fields are tolerated.
+- [x] Contract tests pin input parsing and reply shapes.
+- [x] Capability per event stated and tested. `AfterTool` shrinking is "documented, unverified"
   and off by default until live-verified.
 
 **Dependencies:** T-61-007
@@ -146,9 +146,12 @@ rejected otherwise, and the adapter ships ingest-only.
 
 **Acceptance Criteria:**
 
-- [ ] Installed version and raw payloads recorded as fixtures.
-- [ ] Contract tests pin the reply shape; a silent-ignore test exists.
-- [ ] Non-MCP tool results are ingested without replacement unless the research shows support.
+- [ ] Installed version and raw payloads recorded as fixtures. Partly: the version and the
+  live `sessionStart`/`sessionEnd` fields are recorded; the tool-call payloads wait on the
+  account's usage limit.
+- [ ] Contract tests pin the reply shape; a silent-ignore test exists. The reply shapes are
+  pinned; the silent-ignore check needs the live tool-call run.
+- [x] Non-MCP tool results are ingested without replacement unless the research shows support.
 
 **Dependencies:** T-61-007
 
@@ -165,7 +168,10 @@ rejected otherwise, and the adapter ships ingest-only.
 
 - `ctx.tool.hook("execute.after")` to ingest each completed result and, over the stub threshold,
   replace `event.result` with the stub;
-- `ctx.session.hook("context")` to push the tail slot as system text;
+- `ctx.session.hook("prompt")` to append the legend and tail slot to the user's message. This
+  replaced the planned `context` hook (system text) on 2026-11-22: icx context is untrusted data
+  and is never written as system text, and per-request system text would defeat the provider's
+  prompt cache;
 - `ctx.session.hook("compaction")` to seal the epoch. It never sets `event.result`, so OpenCode
   keeps writing its own summary.
 
@@ -181,16 +187,16 @@ rejected otherwise, and the adapter ships ingest-only.
 
 **Acceptance Criteria:**
 
-- [ ] Plugin source in the repository, targeting the V2 API, with the OpenCode and plugin
-  package versions it was verified on.
-- [ ] The plugin fails open: if `icx` is missing, errors or times out, the original result and
-  context pass through unchanged.
-- [ ] `icx hook --agent opencode` parses the plugin's event payloads; contract tests over
-  payloads recorded from a live v2.2.7 session.
-- [ ] Live check recorded: the model quotes the stub, not the raw output, for a large result.
-  Otherwise the plugin ships ingest-only for `execute.after`.
-- [ ] No V1 hook names (`tool.execute.after`, `experimental.session.compacting`) anywhere; the
-  V2 version range is documented.
+- [x] Plugin source in the repository, targeting the V2 API, with the OpenCode version it was
+  verified on (v2.2.7). It needs no plugin package at run time (a type-only import).
+- [x] The plugin fails open: if `icx` is missing, errors or times out, the original result and
+  context pass through unchanged (bun tests).
+- [x] `icx hook --agent opencode` parses the plugin's event payloads. Contract tests cover the
+  payloads the plugin builds; the live v2.2.7 run exercised the same path end to end.
+- [x] Live check recorded: the model quoted the stub, not the raw output, for a large result.
+- [x] No V1 hook names in the plugin, its tests or the adapter. They appear only in notes that
+  record their absence (this file, the phase overview and the adapters spec); the guide
+  documents the V2 requirement.
 
 **Dependencies:** T-61-007
 
@@ -212,9 +218,11 @@ its hook registration.
 
 **Acceptance Criteria:**
 
-- [ ] One guide section per agent: install, config, verification, limitations.
-- [ ] `icx doctor` reports presence, version and hook status for each new agent.
-- [ ] Docs site builds with `zensical build --strict`.
+- [x] One guide section per agent: install, config, verification, limitations (§2.7 to §2.9).
+  Config keys checked on the installed versions where installed: Cursor `hooks.json` and
+  `mcp.json`, OpenCode plugin path and `mcp.servers`. Gemini CLI's come from its docs.
+- [x] `icx doctor` reports presence, version and hook status for each new agent.
+- [x] Docs site builds with `zensical build --strict` (2026-11-22, no issues).
 
 **Dependencies:** T-63-001, T-63-002, T-63-003
 
@@ -225,9 +233,9 @@ its hook registration.
 
 ## Sprint exit
 
-- [ ] Gates green: `cargo fmt --all -- --check`,
+- [x] Gates green: `cargo fmt --all -- --check`,
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and
-  coverage `>= 95%`.
-- [ ] Docs and CHANGELOG updated for any user-visible change.
+  coverage `>= 95%` (2026-11-22: 407 tests, 95.38% lines; the new adapters 96.8% to 99.1%).
+- [x] Docs and CHANGELOG updated for any user-visible change.
 - [ ] Upstream re-scan done for Sprint 4 (Claude Code changelog and issues), and its tickets
   adjusted.

@@ -21,8 +21,8 @@ function fakeContext() {
   return {
     hooks,
     ctx: {
-      session: { hook: async (name: string, fn: Handler) => registration(`session.${name}`, fn) },
-      tool: { hook: async (name: string, fn: Handler) => registration(`tool.${name}`, fn) },
+      session: { hook: async (name: string, fn: Handler) => registration(`session:${name}`, fn) },
+      tool: { hook: async (name: string, fn: Handler) => registration(`tool:${name}`, fn) },
     },
   };
 }
@@ -63,7 +63,7 @@ test("prompt gets the legend and tail slot appended as user text", async () => {
   if (!process.env.ICX_BIN) return; // needs a built icx
   const { hooks, dispose } = await load({ ICX_OPENCODE_STUB: "" });
   const event = { sessionID: "s1", prompt: { text: "why does the build fail" } };
-  await hooks["session.prompt"](event);
+  await hooks["session:prompt"](event);
   expect(event.prompt.text.startsWith("why does the build fail\n\n⟪ICX:LEGEND")).toBe(true);
   expect(event.prompt.text).toContain("⟪ICX:TAIL_SLOT│agent=open-code");
   await dispose();
@@ -73,13 +73,13 @@ test("execute.after replaces a large result only in stub mode", async () => {
   if (!process.env.ICX_BIN) return;
   let { hooks, dispose } = await load({ ICX_OPENCODE_STUB: "" });
   const plain = { sessionID: "s1", tool: "bash", id: "c1", input: {}, status: "completed", result: { output: big } };
-  await hooks["tool.execute.after"](plain);
+  await hooks["tool:execute.after"](plain);
   expect(plain.result.output).toBe(big);
   await dispose();
 
   ({ hooks, dispose } = await load({ ICX_OPENCODE_STUB: "1" }));
   const stubbed = { sessionID: "s1", tool: "bash", id: "c2", input: {}, status: "completed", result: { output: big, metadata: { m: 1 } } };
-  await hooks["tool.execute.after"](stubbed);
+  await hooks["tool:execute.after"](stubbed);
   expect(stubbed.result.output.startsWith("⟪ICX:STUB│#icx:")).toBe(true);
   expect(stubbed.result.metadata).toEqual({ m: 1 });
   await dispose();
@@ -89,12 +89,12 @@ test("a missing icx binary fails open", async () => {
   const saved = process.env.ICX_BIN;
   const { hooks, dispose } = await load({ ICX_BIN: join(root, "no-such-icx") });
   const prompt = { sessionID: "s1", prompt: { text: "hello" } };
-  await hooks["session.prompt"](prompt);
+  await hooks["session:prompt"](prompt);
   expect(prompt.prompt.text).toBe("hello");
   const tool = { sessionID: "s1", tool: "bash", status: "completed", result: { output: big } };
-  await hooks["tool.execute.after"](tool);
+  await hooks["tool:execute.after"](tool);
   expect(tool.result.output).toBe(big);
-  await hooks["session.compaction"]({ sessionID: "s1", messages: [] });
+  await hooks["session:compaction"]({ sessionID: "s1", messages: [] });
   await dispose();
   if (saved) process.env.ICX_BIN = saved;
 });

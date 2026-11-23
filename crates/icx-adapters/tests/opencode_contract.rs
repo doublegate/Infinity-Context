@@ -140,5 +140,70 @@ fn compaction_session_end_and_unknown_events_change_nothing() {
     assert_eq!(fail_open_reply(AgentKind::OpenCode, "execute.after"), "{}");
 }
 
-// Replacement is unverified live, so the adapter must not advertise it.
+// Replacement is verified on v2.2.7 but opt-in, so it is not advertised as a default.
 const _: () = assert!(!OpenCodeAdapter::SUPPORTS_TOOL_OUTPUT_REPLACEMENT);
+
+fn held(mmu: &InfinityContextMmu, text: &str) -> bool {
+    mmu.cas
+        .get_meta(ArtifactId::hash_bytes(text.as_bytes()).0)
+        .is_some()
+}
+
+#[test]
+fn trait_dispatch_empty_stdin_and_the_env_entry_point() {
+    use icx_adapters::AgentHookAdapter;
+    let mut mmu = InfinityContextMmu::default();
+    let adapter = OpenCodeAdapter;
+    assert_eq!(adapter.agent_kind(), AgentKind::OpenCode);
+    assert_eq!(
+        adapter
+            .handle_hook_event("compaction", "  ", &mut mmu)
+            .unwrap(),
+        "{}"
+    );
+    assert!(
+        adapter
+            .handle_hook_event("execute.after", "{not json", &mut mmu)
+            .is_err()
+    );
+    // The environment-driven entry point ingests whatever the stub setting is.
+    let out = big_output();
+    OpenCodeAdapter::handle_hook(
+        "execute.after",
+        &json!({"tool": "bash", "status": "completed", "output": out}).to_string(),
+        &mut mmu,
+    )
+    .unwrap();
+    assert!(held(&mmu, &out));
+}
+
+#[test]
+fn unusual_result_shapes_are_stored_as_text_or_json() {
+    let mut mmu = InfinityContextMmu::default();
+    let cases = [
+        (json!({"tool": "t", "status": "completed"}), None),
+        (
+            json!({"tool": "t", "status": "error", "error": "boom only"}),
+            Some("boom only".to_owned()),
+        ),
+        (
+            json!({"tool": "t", "status": "completed", "output": [{"type": "image"}]}),
+            Some(json!([{"type": "image"}]).to_string()),
+        ),
+    ];
+    for (event, expected) in cases {
+        assert_eq!(reply("execute.after", event, &mut mmu, true), json!({}));
+        if let Some(text) = expected {
+            assert!(held(&mmu, &text), "{text}");
+        }
+    }
+    // An object result goes through the shared tool-output formatter and is stored.
+    let before = mmu.cas.artifact_count();
+    reply(
+        "execute.after",
+        json!({"tool": "t", "status": "completed", "output": {"stdout": "from an object"}}),
+        &mut mmu,
+        false,
+    );
+    assert!(mmu.cas.artifact_count() > before);
+}

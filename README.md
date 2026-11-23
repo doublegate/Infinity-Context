@@ -157,7 +157,10 @@ configuration for each one:
 | Google Antigravity CLI (`agy`) | [§2.4](docs/deployment-and-agent-integration-guide.md#24-google-antigravity-cli-agy-configuration) |
 | Hermes Agent | [§2.5](docs/deployment-and-agent-integration-guide.md#25-hermes-agent-configuration-contextengine-plugin) |
 | Meta Muse Code | [§2.6](docs/deployment-and-agent-integration-guide.md#26-meta-muse-code-configuration-v130) |
-| Other MCP clients | [§2.7](docs/deployment-and-agent-integration-guide.md#27-generic-mcp-harnesses) |
+| Google Gemini CLI | [§2.7](docs/deployment-and-agent-integration-guide.md#27-google-gemini-cli-configuration-v140) |
+| Cursor (`cursor-agent`) | [§2.8](docs/deployment-and-agent-integration-guide.md#28-cursor-configuration-v140) |
+| OpenCode | [§2.9](docs/deployment-and-agent-integration-guide.md#29-opencode-configuration-v140) |
+| Other MCP clients | [§2.10](docs/deployment-and-agent-integration-guide.md#210-generic-mcp-harnesses) |
 
 `icx` can run alone or beside the [`ai-memory`](docs/deployment-and-agent-integration-guide.md#1-executive-architectural-overview--memory-tier-matrix)
 long-term memory server; the guide covers both setups.
