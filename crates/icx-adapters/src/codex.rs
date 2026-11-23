@@ -341,11 +341,43 @@ fn is_tool_output_prefix(line: &str) -> bool {
     while !line.is_char_boundary(cut) {
         cut -= 1;
     }
-    // The record's own `"type"` values in order, at any spacing. A `"type"` quoted inside a
-    // string value is escaped (`\"type\"`), so it is never one of these.
     let head = &line[..cut];
+    // As in the parsed test, the `payload` or `item` object's type decides when there is one, so
+    // an outer event type (`item.completed`, `response.output_item.done`) never hides it (review
+    // of #88).
+    let inner = ["\"payload\"", "\"item\""]
+        .iter()
+        .filter_map(|key| unescaped_key_value(head, key))
+        .min();
+    let types = json_type_values(inner.map_or(head, |at| &head[at..]));
+    let decisive = if inner.is_some() {
+        types.first().copied()
+    } else {
+        types.into_iter().find(|t| !WRAPPERS.contains(t))
+    };
+    decisive.is_some_and(|t| t.ends_with("_call_output"))
+}
+
+/// Where the value of the first unescaped `key` (quoted, followed by `:` at any spacing) starts.
+fn unescaped_key_value(text: &str, key: &str) -> Option<usize> {
+    let mut from = 0;
+    while let Some(rel) = text[from..].find(key) {
+        let at = from + rel;
+        from = at + key.len();
+        let escaped = at > 0 && text.as_bytes()[at - 1] == b'\\';
+        let after = &text[from..];
+        if !escaped && after.trim_start().starts_with(':') {
+            return Some(from);
+        }
+    }
+    None
+}
+
+/// The `"type"` string values in `text`, in order, at any spacing. A `"type"` quoted inside a
+/// string value is escaped (`\"type\"`), so it is never one of these.
+fn json_type_values(text: &str) -> Vec<&str> {
     let mut types = Vec::new();
-    let mut rest = head;
+    let mut rest = text;
     while let Some(at) = rest.find("\"type\"") {
         let escaped = at > 0 && rest.as_bytes()[at - 1] == b'\\';
         let after = rest[at + 6..].trim_start();
@@ -364,9 +396,6 @@ fn is_tool_output_prefix(line: &str) -> bool {
         }
     }
     types
-        .into_iter()
-        .find(|t| !WRAPPERS.contains(t))
-        .is_some_and(|t| t.ends_with("_call_output"))
 }
 
 /// Maximum per-record buffer allocation (`64 MiB + 64 KiB`) before draining the remainder of an
@@ -752,6 +781,20 @@ mod record_filter_tests {
         ));
         assert!(!is_tool_output_prefix(
             r#"{"type":"event_msg","payload":{"type":"token_count"}}"#
+        ));
+        // An outer event type does not hide the item's type (review of #88).
+        for line in [
+            r#"{"type":"item.completed","item":{"type":"function_call_output","output":"x"#,
+            r#"{"type": "response.output_item.done", "item": {"type": "custom_tool_call_output""#,
+        ] {
+            assert!(is_tool_output_prefix(line), "{line}");
+        }
+        assert!(!is_tool_output_prefix(
+            r#"{"type":"item.completed","item":{"type":"agent_message","text":"x"#
+        ));
+        // A quoted `item` key inside text is not the record's item.
+        assert!(!is_tool_output_prefix(
+            r#"{"type":"response_item","payload":{"type":"message","content":"\"item\": {\"type\": \"function_call_output\""#
         ));
     }
 
