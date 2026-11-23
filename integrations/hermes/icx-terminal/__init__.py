@@ -64,13 +64,45 @@ def _env_number(name: str, default: float, floor: float) -> float:
     return max(floor, value) if math.isfinite(value) else default
 
 
-def _is_own_command(command: str) -> bool:
-    """icx's own commands (`icx deref ...`), whose output must never be stubbed again: the first
-    word past `KEY=value` assignments and an `env` wrapper with its options, quotes honoured."""
+def _segments(command: str) -> list[list[str]]:
+    """The simple commands of `command`, split at `&&`, `||`, `;`, `|` and `&` outside quotes;
+    a shell's `-c` script is read as commands too."""
     try:
-        words = shlex.split(command)
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        words = list(lexer)
     except ValueError:
         words = command.split()
+    out: list[list[str]] = [[]]
+    for w in words:
+        if w and set(w) <= set(";|&"):
+            out.append([])
+        else:
+            out[-1].append(w)
+    expanded: list[list[str]] = []
+    for seg in filter(None, out):
+        i = _program_index(seg)
+        prog = seg[i].rsplit("/", 1)[-1] if i is not None else ""
+        if prog in ("sh", "bash", "zsh", "dash", "fish"):
+            flag = next(
+                (
+                    k
+                    for k in range(i + 1, len(seg))
+                    if seg[k].startswith("-")
+                    and "c" in seg[k][1:]
+                    and not seg[k].startswith("--")
+                ),
+                None,
+            )
+            if flag is not None and flag + 1 < len(seg):
+                expanded.extend(_segments(seg[flag + 1]))
+                continue
+        expanded.append(seg)
+    return expanded
+
+
+def _program_index(words: list[str]) -> int | None:
+    """The program word: past `KEY=value` assignments and `env` with its options."""
     i = 0
     while i < len(words):
         w = words[i]
@@ -82,7 +114,17 @@ def _is_own_command(command: str) -> bool:
             while i < len(words) and words[i].startswith("-"):
                 i += 2 if words[i] in ("-u", "--unset", "-C", "--chdir", "-S") else 1
         else:
-            return w.rsplit("/", 1)[-1] in ("icx", "icx-hook")
+            return i
+    return None
+
+
+def _is_own_command(command: str) -> bool:
+    """icx's own commands (`icx deref ...`, also inside `cd x && ...`, a pipe or `sh -c`), whose
+    output must never be stubbed again (review of #91)."""
+    for seg in _segments(command):
+        i = _program_index(seg)
+        if i is not None and seg[i].rsplit("/", 1)[-1] in ("icx", "icx-hook"):
+            return True
     return False
 
 

@@ -525,7 +525,7 @@ in `plugins.enabled`):
 
 **Both fail open:** if icx is missing, errors, or takes longer than `ICX_HERMES_TIMEOUT` seconds
 (default 10), Hermes behaves as without them. `ICX_HERMES_DISABLE=1` turns every icx call off;
-`ICX_BIN` names the binary (default: `icx` on `PATH`, then `~/.local/bin/icx`).
+`ICX_BIN` names the binary (default: `icx` on `PATH`, then `~/.local/bin/icx`). `ICX_HERMES_TAIL_WAIT` (seconds, default 2) is how long a session's first request waits for the tail slot; a tail that arrives later is used from the next session or compaction on.
 
 **The `icx hook --agent hermes` events**, for anyone writing their own integration:
 

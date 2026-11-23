@@ -84,13 +84,83 @@ pub fn program_index(words: &[String]) -> Option<usize> {
     None
 }
 
-/// Whether `command` runs icx itself (`icx` or the `icx-hook` wrapper, at any path).
+/// The simple commands of a command line, split at `&&`, `||`, `;` and `|` (spaced or not, outside
+/// quotes), each as its words. A shell wrapper's `-c` script (`sh -c "..."`) is read as commands
+/// too.
+#[must_use]
+pub fn command_segments(command: &str) -> Vec<Vec<String>> {
+    // Separators outside quotes are spaced first, so they become words of their own.
+    let mut spaced = String::with_capacity(command.len() + 8);
+    let mut quote: Option<char> = None;
+    let mut chars = command.chars().peekable();
+    while let Some(c) = chars.next() {
+        match quote {
+            Some(q) if c == q => quote = None,
+            None if c == '\'' || c == '"' => quote = Some(c),
+            None if c == '\\' => {
+                spaced.push(c);
+                if let Some(n) = chars.next() {
+                    spaced.push(n);
+                }
+                continue;
+            }
+            None if matches!(c, ';' | '|' | '&') => {
+                spaced.push(' ');
+                spaced.push(c);
+                if matches!(chars.peek(), Some(&n) if n == c && c != ';') {
+                    spaced.push(c);
+                    chars.next();
+                }
+                spaced.push(' ');
+                continue;
+            }
+            // Inside quotes, and ordinary characters outside them.
+            _ => {}
+        }
+        spaced.push(c);
+    }
+    let mut out = Vec::new();
+    let mut cur = Vec::new();
+    for w in shell_words(&spaced) {
+        if matches!(w.as_str(), "&&" | "||" | ";" | "|" | "&") {
+            out.push(std::mem::take(&mut cur));
+        } else {
+            cur.push(w);
+        }
+    }
+    out.push(cur);
+    let mut expanded = Vec::new();
+    for seg in out.into_iter().filter(|s| !s.is_empty()) {
+        let shell = program_index(&seg).filter(|&i| {
+            seg[i]
+                .rsplit('/')
+                .next()
+                .is_some_and(|p| matches!(p, "sh" | "bash" | "zsh" | "dash" | "fish"))
+        });
+        let script = shell.and_then(|i| {
+            seg[i + 1..]
+                .iter()
+                .position(|w| w.starts_with('-') && !w.starts_with("--") && w.contains('c'))
+                .and_then(|j| seg.get(i + 2 + j))
+                .cloned()
+        });
+        match script {
+            Some(inner) => expanded.extend(command_segments(&inner)),
+            None => expanded.push(seg),
+        }
+    }
+    expanded
+}
+
+/// Whether `command` runs icx itself (`icx` or the `icx-hook` wrapper, at any path) in any of
+/// its simple commands (`cd /repo && icx deref ...`, `icx deref x | head`).
 #[must_use]
 pub fn runs_icx(command: &str) -> bool {
-    let words = shell_words(command);
-    program_index(&words)
-        .and_then(|i| words[i].rsplit('/').next().map(str::to_owned))
-        .is_some_and(|p| p == "icx" || p == "icx-hook")
+    command_segments(command).iter().any(|seg| {
+        program_index(seg)
+            .and_then(|i| seg[i].rsplit('/').next())
+            .is_some_and(|p| p == "icx" || p == "icx-hook")
+    })
 }
 
 #[cfg(test)]
@@ -109,7 +179,16 @@ mod tests {
         ] {
             assert!(runs_icx(c), "{c}");
         }
-        for c in ["cat icx", "env -u icx true", "", "X=1"] {
+        for c in [
+            "cd /repo && icx deref --raw '#icx:1'",
+            "icx deref x|head -n 5",
+            "sh -c 'cd /p; icx hook --agent agy'",
+            "bash -lc \"icx slice x\"",
+        ] {
+            assert!(runs_icx(c), "{c}");
+        }
+        assert_eq!(command_segments("a 'b && c' && d").len(), 2);
+        for c in ["cat icx", "env -u icx true", "", "X=1", "echo 'icx deref'"] {
             assert!(!runs_icx(c), "{c}");
         }
     }

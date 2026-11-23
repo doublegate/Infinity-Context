@@ -26,7 +26,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     same name). A failed command, or one with an unknown exit status, keeps its output, and icx's
     own commands (`icx deref` through the shell) and output already in an icx frame are never
     stubbed again. The engine escapes `</icx-context` inside the tail slot, so untrusted text
-    cannot close its frame.
+    cannot open or close its frame. A session's first request waits up to
+    `ICX_HERMES_TAIL_WAIT` seconds (default 2) for the tail slot, which is then fixed for the
+    session so the prompt-cache prefix stays stable; session start itself never waits.
   - Verified by stand-in tests with the real icx binary, run in CI with the OpenCode plugin
     tests. They have not run in a live Hermes session; that check is deferred to v1.5.0 (#89).
 - **`icx install --agent <name|all>`** (T-65-004, T-65-005) registers icx's hooks and MCP server

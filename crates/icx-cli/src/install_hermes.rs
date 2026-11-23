@@ -46,7 +46,7 @@ pub(crate) fn plan(p: &mut Plan, o: &Opts) {
         p.notes.push(format!(
             "Hermes: the plugins run `icx` from PATH or ~/.local/bin; set ICX_BIN={} in Hermes's \
              environment if neither has it.",
-            o.icx
+            crate::install::shell_quote(&o.icx)
         ));
     }
 }

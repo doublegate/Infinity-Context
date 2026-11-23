@@ -396,11 +396,19 @@ fn edit_json(
 /// Whether `command` runs icx (`icx`, or the `icx-hook` wrapper, at any path) for `agent` and
 /// `event`, in any flag order.
 pub fn is_icx_hook_command(command: &str, agent: &str, event: &str) -> bool {
-    // Leading `KEY=value` assignments and an `env` wrapper with its options
-    // (`ICX_CURSOR_STUB=1 icx hook ...`, `env -u VAR icx hook ...`) are not the program.
-    let owned = icx_adapters::shell::shell_words(command);
-    let start = icx_adapters::shell::program_index(&owned).unwrap_or(owned.len());
-    let words: Vec<&str> = owned[start..].iter().map(String::as_str).collect();
+    // Every simple command, so wrapped hooks (`sh -c "..."`, `cd x && icx hook ...`) count, and
+    // the agent compared by kind, so an alias (`--agent claude`) counts too (review of #91).
+    let wanted = icx_core::AgentKind::parse_agent(agent);
+    icx_adapters::shell::command_segments(command)
+        .iter()
+        .any(|seg| segment_is_icx_hook(seg, wanted, event))
+}
+
+fn segment_is_icx_hook(seg: &[String], agent: icx_core::AgentKind, event: &str) -> bool {
+    let Some(start) = icx_adapters::shell::program_index(seg) else {
+        return false;
+    };
+    let words: Vec<&str> = seg[start..].iter().map(String::as_str).collect();
     let program = words.first().and_then(|w| w.rsplit('/').next());
     if !matches!(program, Some("icx" | "icx-hook")) {
         return false;
@@ -416,7 +424,7 @@ pub fn is_icx_hook_command(command: &str, agent: &str, event: &str) -> bool {
                     .find_map(|w| w.strip_prefix(&format!("{flag}=")))
             })
     };
-    value_of("--agent") == Some(agent)
+    value_of("--agent").is_some_and(|a| icx_core::AgentKind::parse_agent(a) == agent)
         && value_of("--event").is_some_and(|e| e.eq_ignore_ascii_case(event))
 }
 
@@ -569,7 +577,7 @@ fn claude(p: &mut Plan, o: &Opts) {
     );
     p.note(format!(
         "Claude Code keeps MCP servers in ~/.claude.json, which icx does not edit. Register icx with: claude mcp add --scope user icx -- {} mcp-serve",
-        o.icx
+        shell_quote(&o.icx)
     ));
 }
 
@@ -680,8 +688,8 @@ fn codex(p: &mut Plan, o: &Opts) {
             ));
         }
     }
-    let disk = read_existing(&config).ok().flatten();
-    p.set(&config, disk, doc.to_string());
+    // The content read above, not a second read whose error could pass for "missing".
+    p.set(&config, before, doc.to_string());
 }
 
 fn agy(p: &mut Plan, o: &Opts) {
@@ -918,7 +926,7 @@ fn opencode(p: &mut Plan, o: &Opts) {
     if o.icx != "icx" {
         p.note(format!(
             "The OpenCode plugin runs `icx` from PATH; set ICX_BIN={} in OpenCode's environment if it is not on PATH.",
-            o.icx
+            shell_quote(&o.icx)
         ));
     }
     if o.approve {
@@ -969,68 +977,85 @@ pub fn render(plan: &Plan) -> String {
 pub fn apply(plan: &Plan, stamp: u64) -> Result<Vec<PathBuf>, String> {
     let mut backups = Vec::new();
     for e in &plan.edits {
-        let target = write_target(&e.path)?;
-        let parent = target
-            .parent()
-            .ok_or_else(|| format!("{} has no parent directory", target.display()))?;
-        fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
-        let name = target
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let mode = file_mode(&target);
-        if target.exists() {
-            let contents =
-                fs::read(&target).map_err(|err| format!("reading {}: {err}", target.display()))?;
-            // A unique name: two installs in one second, or one file in two plans, never collide.
-            // A unique name, claimed by the create itself (`O_EXCL`), so concurrent installs and
-            // installs in the same second never collide (review of #91).
-            let mut n = 0;
-            let backup = loop {
-                let candidate = if n == 0 {
-                    target.with_file_name(format!("{name}.icx-backup-{stamp}"))
-                } else {
-                    target.with_file_name(format!("{name}.icx-backup-{stamp}-{n}"))
-                };
-                match write_new(&candidate, &contents, mode) {
-                    Ok(()) => break candidate,
-                    Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists && n < 1000 => {
-                        n += 1;
-                    }
-                    Err(err) => {
-                        return Err(format!(
-                            "backing up {} to {}: {err}",
-                            target.display(),
-                            candidate.display()
-                        ));
-                    }
-                }
-            };
-            backups.push(backup);
-        }
-        let tmp = target.with_file_name(format!(".{name}.icx-tmp-{}", std::process::id()));
-        match write_new(&tmp, e.after.as_bytes(), mode) {
-            // An existing path at the temporary name is not ours: refuse, and leave it alone.
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
-                return Err(format!(
-                    "writing {}: {} already exists",
-                    target.display(),
-                    tmp.display()
-                ));
+        if let Err(err) = apply_one(e, stamp, &mut backups) {
+            // The backups already made are named, so a partial failure hides nothing (review of
+            // #91).
+            if backups.is_empty() {
+                return Err(err);
             }
-            Err(err) => {
-                let _ = fs::remove_file(&tmp);
-                return Err(format!("writing {}: {err}", target.display()));
-            }
-            Ok(()) => {
-                if let Err(err) = fs::rename(&tmp, &target) {
-                    let _ = fs::remove_file(&tmp);
-                    return Err(format!("writing {}: {err}", target.display()));
-                }
-            }
+            let made: Vec<String> = backups.iter().map(|b| b.display().to_string()).collect();
+            return Err(format!("{err}; backups already made: {}", made.join(", ")));
         }
     }
     Ok(backups)
+}
+
+/// Writes one edit: the new content into a claimed temporary file first, then the backup, then
+/// the rename, so a failure before the rename leaves no orphan backup.
+fn apply_one(e: &FileEdit, stamp: u64, backups: &mut Vec<PathBuf>) -> Result<(), String> {
+    let target = write_target(&e.path)?;
+    let parent = target
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", target.display()))?;
+    fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
+    let name = target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mode = file_mode(&target);
+    // A temporary name of our own, claimed by `O_EXCL`; a path already there is someone else's
+    // (or a leftover after a crash and PID reuse) and is left alone.
+    let mut tmp = None;
+    for n in 0..1000u32 {
+        let candidate = target.with_file_name(format!(
+            ".{name}.icx-tmp-{stamp}-{}-{n}",
+            std::process::id()
+        ));
+        match write_new(&candidate, e.after.as_bytes(), mode) {
+            Ok(()) => {
+                tmp = Some(candidate);
+                break;
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(err) => {
+                // A partly written file of ours is removed; nothing else is touched.
+                let _ = fs::remove_file(&candidate);
+                return Err(format!("writing {}: {err}", target.display()));
+            }
+        }
+    }
+    let tmp = tmp.ok_or_else(|| format!("writing {}: no free temporary name", target.display()))?;
+    let discard = |msg: String| {
+        let _ = fs::remove_file(&tmp);
+        msg
+    };
+    if target.exists() {
+        let contents = fs::read(&target)
+            .map_err(|err| discard(format!("reading {}: {err}", target.display())))?;
+        // A unique name, claimed by the create itself, so concurrent installs and installs in
+        // the same second never collide.
+        let mut n = 0;
+        let backup = loop {
+            let candidate = if n == 0 {
+                target.with_file_name(format!("{name}.icx-backup-{stamp}"))
+            } else {
+                target.with_file_name(format!("{name}.icx-backup-{stamp}-{n}"))
+            };
+            match write_new(&candidate, &contents, mode) {
+                Ok(()) => break candidate,
+                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists && n < 1000 => n += 1,
+                Err(err) => {
+                    return Err(discard(format!(
+                        "backing up {} to {}: {err}",
+                        target.display(),
+                        candidate.display()
+                    )));
+                }
+            }
+        };
+        backups.push(backup);
+    }
+    fs::rename(&tmp, &target).map_err(|err| discard(format!("writing {}: {err}", target.display())))
 }
 
 /// The file an edit of `path` writes: the final target of a symlinked config, even one whose
@@ -1310,11 +1335,11 @@ mod tests {
     }
 
     #[test]
-    fn an_existing_temporary_path_is_refused_and_kept() {
+    fn a_path_at_a_temporary_name_is_left_alone() {
         let h = scratch("tmpexists");
         let target = h.join("cfg.json");
-        let tmp = h.join(format!(".cfg.json.icx-tmp-{}", std::process::id()));
-        fs::write(&tmp, "someone else's").unwrap();
+        let planted = h.join(format!(".cfg.json.icx-tmp-7-{}-0", std::process::id()));
+        fs::write(&planted, "someone else's").unwrap();
         let plan = Plan {
             edits: vec![FileEdit {
                 path: target.clone(),
@@ -1323,10 +1348,45 @@ mod tests {
             }],
             notes: Vec::new(),
         };
-        let err = apply(&plan, 7).unwrap_err();
-        assert!(err.contains("already exists"), "{err}");
-        assert_eq!(fs::read_to_string(&tmp).unwrap(), "someone else's");
-        assert!(!target.exists());
+        apply(&plan, 7).unwrap();
+        assert_eq!(fs::read_to_string(&planted).unwrap(), "someone else's");
+        assert_eq!(fs::read_to_string(&target).unwrap(), "{}");
+        let _ = fs::remove_dir_all(&h);
+    }
+
+    #[test]
+    fn a_partial_failure_names_the_backups_already_made() {
+        let h = scratch("partial");
+        let first = h.join("one.json");
+        fs::write(&first, "old").unwrap();
+        let blocked = h.join("dir.json");
+        fs::create_dir_all(blocked.join("inner")).unwrap();
+        let plan = Plan {
+            edits: vec![
+                FileEdit {
+                    path: first.clone(),
+                    before: None,
+                    after: "new".into(),
+                },
+                FileEdit {
+                    path: blocked,
+                    before: None,
+                    after: "{}".into(),
+                },
+            ],
+            notes: Vec::new(),
+        };
+        let err = apply(&plan, 5).unwrap_err();
+        assert!(
+            err.contains("backups already made") && err.contains("one.json.icx-backup-5"),
+            "{err}"
+        );
+        let leftovers = fs::read_dir(&h)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().contains("icx-tmp"))
+            .count();
+        assert_eq!(leftovers, 0, "no temporary file is left behind");
         let _ = fs::remove_dir_all(&h);
     }
 

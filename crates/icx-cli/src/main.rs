@@ -918,6 +918,9 @@ fn run_install(args: &[String]) -> Result<(), String> {
         .ok_or_else(|| format!("{CMD} error: HOME is not set"))?;
     let non_empty = |k: &str| env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
     let icx = match icx {
+        Some(p) if p.trim().is_empty() => {
+            return Err(format!("{CMD} error: --icx needs a path\n{USAGE}"));
+        }
         Some(p) => p.to_owned(),
         // The running binary, so hooks keep working whatever PATH the agent has.
         None => env::current_exe()

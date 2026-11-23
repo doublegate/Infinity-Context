@@ -371,6 +371,25 @@ class ReviewFixTests(ScratchIcx):
         engine._icx_tail = "next"
         self.assertIsNotNone(engine.select_context(msgs), "a new session decides again")
 
+    def test_the_first_request_waits_briefly_for_the_tail(self) -> None:
+        # The case from the review of #91: the first request right after session start.
+        original = engine_mod.call_icx
+
+        def slow(event, payload):
+            time.sleep(0.4)
+            return {"systemMessage": "TAIL-AFTER-WAIT"}
+
+        engine_mod.call_icx = slow
+        try:
+            engine = engine_mod.IcxContextEngine({})
+            engine.on_session_start("s9")
+            out = engine.select_context([{"role": "user", "content": "hi"}])
+        finally:
+            engine_mod.WORKER.join()
+            engine_mod.call_icx = original
+        self.assertIsNotNone(out)
+        self.assertIn("TAIL-AFTER-WAIT", out[0]["content"])
+
     def test_compress_exposes_the_compressor_signature(self) -> None:
         import inspect
 
@@ -387,6 +406,10 @@ class ReviewFixTests(ScratchIcx):
         own = terminal_mod._is_own_command
         self.assertTrue(own("'/opt/my tools/icx' deref --raw x"))
         self.assertTrue(own("env -u ICX_NO_DAEMON icx slice x"))
+        self.assertTrue(own("cd /repo && icx deref --raw '#icx:1'"))
+        self.assertTrue(own("icx deref x|head -n 5"))
+        self.assertTrue(own("sh -c 'cd /p; icx slice x'"))
+        self.assertFalse(own("echo 'icx deref'"))
         self.assertFalse(own("cat icx"))
 
     def test_non_finite_settings_fall_back(self) -> None:

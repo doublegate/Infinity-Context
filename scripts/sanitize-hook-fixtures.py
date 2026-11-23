@@ -73,6 +73,13 @@ class Sanitizer:
         return v
 
 
+def capture_order(path: Path) -> tuple[int, str]:
+    """Captures sort by their numeric suffix (`<Event>-<n>.in.json`); a name without one sorts
+    last, by name, instead of failing."""
+    suffix = path.name.removesuffix(".in.json").rsplit("-", 1)[-1]
+    return (int(suffix), path.name) if suffix.isdigit() else (1 << 62, path.name)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").strip().splitlines()[0])
     ap.add_argument("--agent", required=True)
@@ -91,12 +98,14 @@ def main() -> int:
 
     captures = sorted(
         args.logs.glob("*.in.json"),
-        key=lambda p: int(p.stem.split("-")[-1].split(".")[0]),
+        key=capture_order,
     )
     counts: dict[str, int] = {}
     outputs: list[tuple[Path, str]] = []
     for path in captures:
-        event = path.name.rsplit("-", 1)[0]
+        stem = path.name.removesuffix(".in.json")
+        base, _, suffix = stem.rpartition("-")
+        event = base if base and suffix.isdigit() else stem
         try:
             payload = json.loads(path.read_text())
         except json.JSONDecodeError as e:
@@ -108,11 +117,24 @@ def main() -> int:
         outputs.append((dest / f"{name}.json", text))
 
     # Checked before anything is written, so a failed run leaves no leaking file behind.
-    real = {home, os.path.realpath(home), args.project, os.path.realpath(args.project)}
+    # The stand-ins themselves contain `/home/user`, so a real home or project equal to (or
+    # inside) a stand-in is not a leak; the account name is checked only when it differs.
+    stand_ins = ("/home/user/project", "/home/user")
+    real = {
+        p.rstrip("/")
+        for p in (
+            home,
+            os.path.realpath(home),
+            args.project,
+            os.path.realpath(args.project),
+        )
+        if p.rstrip("/") and p.rstrip("/") not in stand_ins
+    }
+    account = f"/{user}/" if user != "user" else None
     leaks = [
         str(path)
         for path, text in outputs
-        if any(s in text for s in (*real, f"/{user}/"))
+        if any(s in text for s in real) or (account and account in text)
     ]
     if leaks:
         print("real paths survived sanitizing in: " + ", ".join(leaks), file=sys.stderr)

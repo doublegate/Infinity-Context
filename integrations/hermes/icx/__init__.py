@@ -90,6 +90,16 @@ def _icx_bin() -> str | None:
     return fallback if _is_program(fallback) else None
 
 
+def _tail_wait() -> float:
+    """Seconds a session's first request waits for its tail slot (`ICX_HERMES_TAIL_WAIT`,
+    default 2, at most 10)."""
+    try:
+        value = float(os.environ.get("ICX_HERMES_TAIL_WAIT", "2"))
+    except ValueError:
+        return 2.0
+    return min(10.0, max(0.0, value)) if math.isfinite(value) else 2.0
+
+
 def _timeout() -> float:
     # A non-finite value (`inf` would disable the timeout) falls back to the default.
     try:
@@ -196,6 +206,9 @@ WORKER = _Worker()
 # Guards each engine's tail slot against a fetch racing a newer session start or a reset.
 # Module-level, so `clone_for_agent()`'s deep copy of the engine never meets a lock.
 _TAIL_LOCK = threading.Lock()
+# Set when a session's tail-slot fetch has finished, keyed by (engine id, generation), so the
+# session's first request can wait briefly for it (review of #91).
+_TAIL_READY: dict[tuple[int, int], threading.Event] = {}
 # Opening and closing `icx-context` tags in any case or spacing, which untrusted text must not
 # be able to write (review of #91).
 _FRAME_TAG = re.compile(r"<(\s*/?\s*icx-context)", re.IGNORECASE)
@@ -311,22 +324,28 @@ class IcxContextEngine(ContextCompressor):
                 self._icx_tail = None
                 self._icx_tail_generation += 1
                 generation = self._icx_tail_generation
+                ready = threading.Event()
+                _TAIL_READY[(id(self), generation)] = ready
 
             def fetch() -> None:
-                reply = call_icx("SessionStart", {"session_id": session_id})
-                tail = reply.get("systemMessage") if reply else None
-                if not (
-                    isinstance(tail, str)
-                    and tail.strip()
-                    and len(tail) <= _MAX_TAIL_CHARS
-                ):
-                    return
-                # A newer session start or a reset supersedes this fetch.
-                with _TAIL_LOCK:
-                    if generation == self._icx_tail_generation:
-                        self._icx_tail = tail.strip()
+                try:
+                    reply = call_icx("SessionStart", {"session_id": session_id})
+                    tail = reply.get("systemMessage") if reply else None
+                    if not (
+                        isinstance(tail, str)
+                        and tail.strip()
+                        and len(tail) <= _MAX_TAIL_CHARS
+                    ):
+                        return
+                    # A newer session start or a reset supersedes this fetch.
+                    with _TAIL_LOCK:
+                        if generation == self._icx_tail_generation:
+                            self._icx_tail = tail.strip()
+                finally:
+                    ready.set()
 
-            WORKER.submit(fetch)
+            if not WORKER.submit(fetch):
+                ready.set()
 
     def on_session_reset(self) -> None:
         try:
@@ -336,6 +355,8 @@ class IcxContextEngine(ContextCompressor):
                 self._icx_tail = None
                 self._icx_ingested = 0
                 self._icx_tail_generation += 1
+                for key in [k for k in _TAIL_READY if k[0] == id(self)]:
+                    del _TAIL_READY[key]
 
     def select_context(
         self,
@@ -348,15 +369,23 @@ class IcxContextEngine(ContextCompressor):
         """Prepends the session's icx tail slot, labelled as untrusted data, to the first user
         message of the request (request-only, fail open). Returns None to leave the request
         unchanged."""
+        generation = getattr(self, "_icx_tail_generation", 0)
+        if getattr(self, "_icx_tail_decided", None) != generation:
+            # The session's first request: wait briefly for the background fetch, outside the
+            # lock (session start itself never waits).
+            with _TAIL_LOCK:
+                ready = _TAIL_READY.get((id(self), generation))
+            if ready is not None:
+                ready.wait(_tail_wait())
         with _TAIL_LOCK:
             tail = getattr(self, "_icx_tail", None)
-            generation = getattr(self, "_icx_tail_generation", 0)
             # Decided once per session, at its first request: a tail that arrives later is not
             # added to a first message already sent, which would change the cached prompt
             # prefix (review of #91).
             if getattr(self, "_icx_tail_decided", None) != generation:
                 self._icx_tail_decided = generation
                 self._icx_tail_inject = bool(tail)
+                _TAIL_READY.pop((id(self), generation), None)
             inject = getattr(self, "_icx_tail_inject", False)
         if not inject or not tail or not request_messages:
             return None
