@@ -481,3 +481,94 @@ fn argument_errors_are_reported() {
     );
     assert!(snapshot(&h).is_empty(), "dry runs write nothing");
 }
+
+fn run_with_icx(home: &Path, icx: &str, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_icx"))
+        .arg("install")
+        .args(args)
+        .args(["--icx", icx])
+        .env("HOME", home)
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("CODEX_HOME")
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("HERMES_HOME")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn a_file_icx_cannot_read_as_text_is_never_replaced() {
+    let h = home("binary");
+    fs::create_dir_all(h.join(".codex")).unwrap();
+    let bytes = b"# caf\xe9 (latin-1 comment)\nmodel = \"x\"\n".to_vec();
+    fs::write(h.join(".codex/config.toml"), &bytes).unwrap();
+    let o = run(&h, &["--agent", "codex", "--yes"]);
+    assert!(o.status.success(), "{}", out(&o));
+    assert_eq!(fs::read(h.join(".codex/config.toml")).unwrap(), bytes);
+    assert!(out(&o).contains("not UTF-8"), "{}", out(&o));
+}
+
+#[test]
+fn an_icx_path_with_spaces_is_quoted_and_recognised_on_the_next_run() {
+    let h = home("spaces");
+    let icx = "/opt/my tools/icx";
+    let o = run_with_icx(&h, icx, &["--agent", "codex", "--yes"]);
+    assert!(o.status.success(), "{}", out(&o));
+    let hooks = fs::read_to_string(h.join(".codex/hooks.json")).unwrap();
+    assert!(
+        hooks.contains("'/opt/my tools/icx' hook --agent codex"),
+        "{hooks}"
+    );
+    let again = run_with_icx(&h, icx, &["--agent", "codex", "--yes"]);
+    assert!(out(&again).contains("no file changes"), "{}", out(&again));
+}
+
+#[test]
+fn env_prefixed_hooks_are_not_duplicated() {
+    let h = home("envprefix");
+    fs::create_dir_all(h.join(".cursor")).unwrap();
+    fs::write(
+        h.join(".cursor/hooks.json"),
+        r#"{"version": 1, "hooks": {"postToolUse": [{"command": "ICX_CURSOR_STUB=1 icx hook --agent cursor --event postToolUse"}]}}"#,
+    )
+    .unwrap();
+    let o = run(&h, &["--agent", "cursor", "--yes"]);
+    assert!(o.status.success(), "{}", out(&o));
+    let v: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(h.join(".cursor/hooks.json")).unwrap()).unwrap();
+    assert_eq!(v["hooks"]["postToolUse"].as_array().unwrap().len(), 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_dangling_dotfiles_link_stays_a_link() {
+    let h = home("dangling");
+    fs::create_dir_all(h.join(".cursor")).unwrap();
+    fs::create_dir_all(h.join("dotfiles")).unwrap();
+    std::os::unix::fs::symlink(h.join("dotfiles/mcp.json"), h.join(".cursor/mcp.json")).unwrap();
+    let o = run(&h, &["--agent", "cursor", "--yes"]);
+    assert!(o.status.success(), "{}", out(&o));
+    let link = h.join(".cursor/mcp.json");
+    assert!(
+        fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(
+        fs::read_to_string(h.join("dotfiles/mcp.json"))
+            .unwrap()
+            .contains("mcp-serve")
+    );
+}
+
+#[test]
+fn a_repeated_agent_is_planned_once() {
+    let h = home("repeat");
+    fs::create_dir_all(h.join(".codex")).unwrap();
+    fs::write(h.join(".codex/config.toml"), "model = \"x\"\n").unwrap();
+    let o = run(&h, &["--agent", "codex", "--agent", "codex", "--yes"]);
+    assert!(o.status.success(), "{}", out(&o));
+    assert_eq!(out(&o).matches("=== codex").count(), 1, "{}", out(&o));
+}

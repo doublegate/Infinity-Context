@@ -7,7 +7,6 @@
 //! printed instead.
 
 use crate::install::{Opts, Plan};
-use std::fs;
 use std::path::PathBuf;
 
 const ENGINE_INIT: &str = include_str!("../../../integrations/hermes/icx/__init__.py");
@@ -32,8 +31,12 @@ pub(crate) fn plan(p: &mut Plan, o: &Opts) {
         ("icx-terminal", "plugin.yaml", TERMINAL_MANIFEST),
     ] {
         let path = plugins.join(dir).join(name);
-        let before = fs::read_to_string(&path).ok();
-        p.set_file(&path, before, text.to_owned());
+        match crate::install::read_existing(&path) {
+            Ok(before) => p.set_file(&path, before, text.to_owned()),
+            Err(e) => p.notes.push(format!(
+                "not edited: {e}. Copy integrations/hermes/{dir} by hand."
+            )),
+        }
     }
     p.notes.push(
         "Hermes: select the engine in config.yaml with `context:` / `engine: icx`; the optional \

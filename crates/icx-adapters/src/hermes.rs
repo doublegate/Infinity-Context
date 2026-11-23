@@ -1023,7 +1023,16 @@ impl HermesAdapter {
                     .get("returncode")
                     .and_then(Value::as_i64)
                     .and_then(|c| i32::try_from(c).ok());
-                if output.is_empty() {
+                // icx's own commands (`icx deref ...` run through the shell) and output that is
+                // already an icx frame are never stored again: a dereferenced artifact would
+                // otherwise come back as another stub (review of #91).
+                let program = command
+                    .split_whitespace()
+                    .find(|w| *w != "env" && (!w.contains('=') || w.starts_with('-')))
+                    .and_then(|w| w.trim_matches(|c| c == '\'' || c == '"').rsplit('/').next());
+                let own = matches!(program, Some("icx" | "icx-hook"))
+                    || output.trim_start().starts_with("⟪ICX:");
+                if output.is_empty() || own {
                     json!({})
                 } else {
                     let subject =

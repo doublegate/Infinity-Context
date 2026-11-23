@@ -653,13 +653,16 @@ fn is_binary_entry(m: &serde_json::Map<String, Value>, key: &str) -> bool {
     if !m.get(key).is_some_and(Value::is_string) {
         return false;
     }
+    // MIME types are case-insensitive. A resource `blob` is base64 whatever its MIME type, so
+    // only `data` can be marked text by one (review of #91).
     let text_mime = ["mimeType", "media_type", "mime_type"].iter().any(|k| {
         m.get(*k)
             .and_then(Value::as_str)
-            .is_some_and(|t| t.starts_with("text/"))
+            .is_some_and(|t| t.to_ascii_lowercase().starts_with("text/"))
     });
     key == "base64"
-        || (matches!(key, "data" | "blob")
+        || key == "blob"
+        || (key == "data"
             && !text_mime
             && (is_binary_block(m)
                 || ["mimeType", "media_type", "mime_type", "uri"]

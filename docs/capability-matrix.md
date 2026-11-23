@@ -9,10 +9,10 @@ What icx does with each agent, computed by running each adapter: a large tool re
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | Claude Code | yes | yes | yes, `additionalContext` | yes (`PreCompact`) | yes (`SessionEnd`) | live, 2.1.330 (`claude_builtin_shapes.rs`, `scripts/live-claude-replacement-check.sh`) | `mcp__icx__icx` in `permissions.allow` |
 | Codex CLI | yes | no | yes, `additionalContext` | yes (`PreCompact`) | yes (`SessionEnd`) | live fixtures, 0.171.0 | `tools.icx.approval_mode = "approve"` |
-| agy | yes | no | yes, `injectSteps` (visible to the user) | no event | yes (`SessionEnd`) | live fixtures, 1.5.14 (PostToolUse carries no result; `overwriteResult` ignored) | `mcp(icx/icx)` in `permissions.allow` |
+| agy | yes | no | yes, `injectSteps` (visible to the user) | no event | no (`Stop`) | live fixtures, 1.5.14 (PostToolUse carries no result; `overwriteResult` ignored; `Stop` seals only on `max_steps_exceeded` or an error) | `mcp(icx/icx)` in `permissions.allow` |
 | Muse Code | yes | no | yes, `additionalContext` | yes (`PreCompact`) | yes (`SessionEnd`) | live fixtures, 1.4.25 | none needed: `readOnlyHint` runs without a prompt |
 | OpenCode | yes | opt-in (`ICX_OPENCODE_STUB=1`) | yes, appended to the user turn | yes (`compaction`) | yes (`session.end`) | live, v2.2.7 (Sprint 3) | not written (format unverified on the installed version) |
-| Hermes | yes | yes, via the opt-in plugin `icx-terminal`; live check deferred (#89) | yes, user turn, via `select_context` (plugin `icx`) | yes (`compress`) | no event | documented contract, stand-in tests; live deferred (#89) | MCP is optional; no rule written |
+| Hermes | yes | yes, via the opt-in plugin `icx-terminal`; live check deferred (#89) | yes, user turn, via `select_context` (plugin `icx`) | yes (`on_pre_compress`) | no event | documented contract, stand-in tests; live deferred (#89) | MCP is optional; no rule written |
 | Gemini CLI | yes | opt-in (`ICX_GEMINI_STUB=1`) | yes, `additionalContext` | yes (`PreCompress`) | yes (`SessionEnd`) | documented contract; live deferred (#89) | none: approval is per server and would include `icx_write` |
 | Cursor | yes | opt-in (`ICX_CURSOR_STUB=1`) | no | yes (`preCompact`) | yes (`sessionEnd`) | session events live (2026.09.08); tool calls documented contract, live deferred (#89) | `Mcp(icx:icx)` in `permissions.allow` |
 

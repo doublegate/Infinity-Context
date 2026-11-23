@@ -248,7 +248,7 @@ Register only the events icx handles. `PreToolUse` and `Stop` are omitted: icx m
     ],
     "PostToolUse": [
       {
-        "matcher": "^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!icx__).+)$",
+        "matcher": "^(Bash|BashOutput|Read|Grep|Glob|WebFetch|WebSearch|Agent|Task|REPL|mcp__(?!icx__).+)$",
         "hooks": [
           { "type": "command", "command": "icx hook --agent claude-code --event PostToolUse" }
         ]
@@ -801,7 +801,7 @@ Where an agent does run hooks sequentially, order them within each event as foll
 3. **`PostToolUse` (`icx` first for virtualization, `ai-memory` second for observation):**
    - `icx` virtualizes bulky outputs (`>= 512` bytes by default), redacts secrets, commits the bytes to the workspace store, and emits the stub (`⟪ICX:STUB│#icx:<16-hex>│...⟫`).
    - **MCP Tool Exemption Rule:** `InfinityContextMmu::is_icx_pager_tool` always exempts the `icx` tool (`mcp__icx__icx`) so dereferenced pages reach the model verbatim.
-   - **Recommended Claude Code matcher:** set `icx`'s `PostToolUse` matcher to `^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!ai[-_]memory__|icx__).+)$`. Bulk comes from shell, web, and MCP output; `Read`, `Grep`, `Glob`, `Edit`, and `Agent` results are never stubbed, so file editing and subagent reports stay intact, and `ai-memory` wiki reads are exempt too. The broader alternative `^(?!mcp__ai[-_]memory__).+` also stubs `Read`/`Grep`/`Glob`/`Edit`/`Agent` results, which saves more context but means the model must page file contents and subagent reports back through `icx` before acting on them.
+   - **Recommended Claude Code matcher:** set `icx`'s `PostToolUse` matcher to `^(Bash|BashOutput|Read|Grep|Glob|WebFetch|WebSearch|Agent|Task|REPL|mcp__(?!ai[-_]memory__|icx__).+)$`. Bulk comes from shell, web, and MCP output; `Read`, `Grep`, `Glob`, `Edit`, and `Agent` results are never stubbed, so file editing and subagent reports stay intact, and `ai-memory` wiki reads are exempt too. The broader alternative `^(?!mcp__ai[-_]memory__).+` also stubs `Read`/`Grep`/`Glob`/`Edit`/`Agent` results, which saves more context but means the model must page file contents and subagent reports back through `icx` before acting on them.
 4. **`PreCompact`, `PostCompact` & `SessionEnd` (`icx` first, `ai-memory` second):**
    - `icx` folds open subagent branches and seals an `L3` `CacheEpochNode` first, then `ai-memory` records the session boundary.
 
@@ -888,7 +888,7 @@ Hooks go in `~/.claude/settings.json`:
     ],
     "PostToolUse": [
       {
-        "matcher": "^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!ai[-_]memory__|icx__).+)$",
+        "matcher": "^(Bash|BashOutput|Read|Grep|Glob|WebFetch|WebSearch|Agent|Task|REPL|mcp__(?!ai[-_]memory__|icx__).+)$",
         "hooks": [
           { "type": "command", "command": "icx hook --agent claude-code --event PostToolUse" }
         ]

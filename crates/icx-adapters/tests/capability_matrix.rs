@@ -32,7 +32,7 @@ struct Agent {
     /// Where the context goes.
     context_field: &'static str,
     compaction: Option<(&'static str, Value)>,
-    session_end: Option<&'static str>,
+    session_end: Option<(&'static str, Value)>,
     /// How the adapter is verified, and the fixture directory a live claim rests on.
     verified: &'static str,
     fixtures: Option<&'static str>,
@@ -70,7 +70,7 @@ fn agents() -> Vec<Agent> {
             context: ("SessionStart", json!({"session_id": "s"})),
             context_field: "`additionalContext`",
             compaction: Some(("PreCompact", json!({}))),
-            session_end: Some("SessionEnd"),
+            session_end: Some(("SessionEnd", json!({}))),
             verified: "live, 2.1.330 (`claude_builtin_shapes.rs`, `scripts/live-claude-replacement-check.sh`)",
             fixtures: None,
             shrink_route: None,
@@ -85,7 +85,7 @@ fn agents() -> Vec<Agent> {
             context: ("SessionStart", fixture("codex/0.171.0/SessionStart.json")),
             context_field: "`additionalContext`",
             compaction: Some(("PreCompact", json!({}))),
-            session_end: Some("SessionEnd"),
+            session_end: Some(("SessionEnd", json!({}))),
             verified: "live fixtures, 0.171.0",
             fixtures: Some("codex/0.171.0"),
             shrink_route: None,
@@ -100,8 +100,9 @@ fn agents() -> Vec<Agent> {
             context: ("PreInvocation", fixture("agy/1.5.14/PreInvocation.json")),
             context_field: "`injectSteps` (visible to the user)",
             compaction: None,
-            session_end: Some("SessionEnd"),
-            verified: "live fixtures, 1.5.14 (PostToolUse carries no result; `overwriteResult` ignored)",
+            // agy fires `Stop`, not `SessionEnd`; an ordinary stop does not seal (review of #91).
+            session_end: Some(("Stop", fixture("agy/1.5.14/Stop.json"))),
+            verified: "live fixtures, 1.5.14 (PostToolUse carries no result; `overwriteResult` ignored; `Stop` seals only on `max_steps_exceeded` or an error)",
             fixtures: Some("agy/1.5.14"),
             shrink_route: None,
             approval: "`mcp(icx/icx)` in `permissions.allow`",
@@ -115,7 +116,7 @@ fn agents() -> Vec<Agent> {
             context: ("SessionStart", fixture("muse/1.4.25/SessionStart.json")),
             context_field: "`additionalContext`",
             compaction: Some(("PreCompact", json!({}))),
-            session_end: Some("SessionEnd"),
+            session_end: Some(("SessionEnd", json!({}))),
             verified: "live fixtures, 1.4.25",
             fixtures: Some("muse/1.4.25"),
             shrink_route: None,
@@ -139,7 +140,7 @@ fn agents() -> Vec<Agent> {
             ),
             context_field: "appended to the user turn",
             compaction: Some(("compaction", json!({"sessionID": "s"}))),
-            session_end: Some("session.end"),
+            session_end: Some(("session.end", json!({"sessionID": "s"}))),
             verified: "live, v2.2.7 (Sprint 3)",
             fixtures: None,
             shrink_route: None,
@@ -156,7 +157,11 @@ fn agents() -> Vec<Agent> {
             ),
             context: ("SessionStart", json!({})),
             context_field: "user turn, via `select_context` (plugin `icx`)",
-            compaction: Some(("compress", json!({"messages": []}))),
+            // The shipped `icx` engine checkpoints through `on_pre_compress` (review of #91).
+            compaction: Some((
+                "on_pre_compress",
+                json!({"messages": [{"role": "user", "content": "hi"}]}),
+            )),
             session_end: None,
             verified: "documented contract, stand-in tests; live deferred (#89)",
             fixtures: None,
@@ -178,7 +183,7 @@ fn agents() -> Vec<Agent> {
             context: ("SessionStart", json!({})),
             context_field: "`additionalContext`",
             compaction: Some(("PreCompress", json!({}))),
-            session_end: Some("SessionEnd"),
+            session_end: Some(("SessionEnd", json!({}))),
             verified: "documented contract; live deferred (#89)",
             fixtures: None,
             shrink_route: None,
@@ -197,7 +202,7 @@ fn agents() -> Vec<Agent> {
             context: ("sessionStart", json!({})),
             context_field: "`additional_context`",
             compaction: Some(("preCompact", json!({}))),
-            session_end: Some("sessionEnd"),
+            session_end: Some(("sessionEnd", json!({}))),
             verified: "session events live (2026.09.08); tool calls documented contract, live deferred (#89)",
             fixtures: None,
             shrink_route: None,
@@ -256,9 +261,12 @@ fn row(a: &Agent) -> String {
         .map_or("no event".to_owned(), |(e, p)| {
             format!("{} (`{e}`)", yes_no(seals(a, e, p)))
         });
-    let end = a.session_end.map_or("no event".to_owned(), |e| {
-        format!("{} (`{e}`)", yes_no(seals(a, e, &json!({}))))
-    });
+    let end = a
+        .session_end
+        .as_ref()
+        .map_or("no event".to_owned(), |(e, p)| {
+            format!("{} (`{e}`)", yes_no(seals(a, e, p)))
+        });
     format!(
         "| {} | {} | {} | {} | {} | {} | {} | {} |",
         a.name,

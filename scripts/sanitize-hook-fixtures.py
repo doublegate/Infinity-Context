@@ -35,8 +35,20 @@ EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 class Sanitizer:
     def __init__(self, project: str, home: str):
-        self.project = project.rstrip("/")
-        self.home = home.rstrip("/")
+        # Both the given and the resolved form of each path, longest first, so a symlinked
+        # home or project is replaced however a payload spells it.
+        self.paths: list[tuple[str, str]] = sorted(
+            {
+                (p.rstrip("/"), stand_in)
+                for given, stand_in in (
+                    (project, "/home/user/project"),
+                    (home, "/home/user"),
+                )
+                for p in (given, os.path.realpath(given))
+                if p.rstrip("/")
+            },
+            key=lambda t: -len(t[0]),
+        )
         self.uuids: dict[str, str] = {}
 
     def _uuid(self, m: re.Match) -> str:
@@ -46,9 +58,8 @@ class Sanitizer:
         return self.uuids[key]
 
     def text(self, s: str) -> str:
-        s = s.replace(self.project, "/home/user/project").replace(
-            self.home, "/home/user"
-        )
+        for real, stand_in in self.paths:
+            s = s.replace(real, stand_in)
         s = UUID.sub(self._uuid, s)
         return EMAIL.sub("user@example.invalid", s)
 
@@ -75,16 +86,15 @@ def main() -> int:
 
     home = os.path.expanduser("~")
     user = os.path.basename(home)
-    sanitizer = Sanitizer(os.path.realpath(args.project), home)
+    sanitizer = Sanitizer(args.project, home)
     dest = args.out / args.agent / args.version
-    dest.mkdir(parents=True, exist_ok=True)
 
     captures = sorted(
         args.logs.glob("*.in.json"),
         key=lambda p: int(p.stem.split("-")[-1].split(".")[0]),
     )
     counts: dict[str, int] = {}
-    written = []
+    outputs: list[tuple[Path, str]] = []
     for path in captures:
         event = path.name.rsplit("-", 1)[0]
         try:
@@ -94,25 +104,23 @@ def main() -> int:
             continue
         counts[event] = counts.get(event, 0) + 1
         name = event if counts[event] == 1 else f"{event}-{counts[event]}"
-        out = dest / f"{name}.json"
-        out.write_text(
-            json.dumps(sanitizer.value(payload), indent=2, sort_keys=True) + "\n"
-        )
-        written.append(out)
+        text = json.dumps(sanitizer.value(payload), indent=2, sort_keys=True) + "\n"
+        outputs.append((dest / f"{name}.json", text))
 
+    # Checked before anything is written, so a failed run leaves no leaking file behind.
+    real = {home, os.path.realpath(home), args.project, os.path.realpath(args.project)}
     leaks = [
-        str(p)
-        for p in written
-        if any(
-            s in p.read_text()
-            for s in (home, f"/{user}/", os.path.realpath(args.project))
-        )
+        str(path)
+        for path, text in outputs
+        if any(s in text for s in (*real, f"/{user}/"))
     ]
     if leaks:
         print("real paths survived sanitizing in: " + ", ".join(leaks), file=sys.stderr)
         return 1
-    for p in written:
-        print(p)
+    dest.mkdir(parents=True, exist_ok=True)
+    for path, text in outputs:
+        path.write_text(text)
+        print(path)
     return 0
 
 

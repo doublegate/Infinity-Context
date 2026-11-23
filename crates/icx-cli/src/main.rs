@@ -456,13 +456,17 @@ fn cwd_changed_target(event: &str, stdin: &str) -> Option<PathBuf> {
 /// directly, without a wrapper that changes directory first (T-65-004).
 fn agy_project_dir(stdin: &str) -> Option<PathBuf> {
     let payload: serde_json::Value = serde_json::from_str(stdin).ok()?;
-    let dir = payload
+    // The first usable workspace path, then `cwd` (review of #91).
+    let usable = |v: &serde_json::Value| {
+        v.as_str()
+            .map(PathBuf::from)
+            .filter(|d| d.is_absolute() && d.is_dir())
+    };
+    payload
         .get("workspacePaths")
-        .and_then(|w| w.get(0))
-        .or_else(|| payload.get("cwd"))?
-        .as_str()
-        .map(PathBuf::from)?;
-    (dir.is_absolute() && dir.is_dir()).then_some(dir)
+        .and_then(serde_json::Value::as_array)
+        .and_then(|paths| paths.iter().find_map(usable))
+        .or_else(|| payload.get("cwd").and_then(usable))
 }
 
 /// [`resolve_workspace_dir`] for an explicit working directory.
@@ -906,6 +910,9 @@ fn run_install(args: &[String]) -> Result<(), String> {
         return Err(format!("{CMD} error: --agent is required\n{USAGE}"));
     }
     let all = agents.iter().any(|a| a == "all");
+    // `all` merges with named agents (a named one is installed even when not detected); each
+    // agent is planned once (review of #91).
+    agents.retain(|a| a != "all");
     let home = env::var_os("HOME")
         .map(PathBuf::from)
         .ok_or_else(|| format!("{CMD} error: HOME is not set"))?;
@@ -934,8 +941,10 @@ fn run_install(args: &[String]) -> Result<(), String> {
         if !missing.is_empty() {
             println!("skipped (not installed): {}", missing.join(", "));
         }
-        agents = found.iter().map(|a| (*a).to_owned()).collect();
+        agents.extend(found.iter().map(|a| (*a).to_owned()));
     }
+    let mut seen = std::collections::HashSet::new();
+    agents.retain(|a| seen.insert(a.clone()));
     let mut plans = Vec::new();
     for agent in &agents {
         let plan = install::plan(agent, &opts).map_err(|e| format!("{CMD} error: {e}"))?;

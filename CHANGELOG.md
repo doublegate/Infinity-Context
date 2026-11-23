@@ -23,7 +23,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     settings.
   - `icx-terminal`, off until listed in `plugins.enabled`: stubs large successful shell results
     through Hermes's `transform_terminal_output` hook (new `icx hook --agent hermes` event of the
-    same name). A failed command keeps its output.
+    same name). A failed command, or one with an unknown exit status, keeps its output, and icx's
+    own commands (`icx deref` through the shell) and output already in an icx frame are never
+    stubbed again. The engine escapes `</icx-context` inside the tail slot, so untrusted text
+    cannot close its frame.
   - Verified by stand-in tests with the real icx binary, run in CI with the OpenCode plugin
     tests. They have not run in a live Hermes session; that check is deferred to v1.5.0 (#89).
 - **`icx install --agent <name|all>`** (T-65-004, T-65-005) registers icx's hooks and MCP server
@@ -33,6 +36,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Each edited file is backed up to `<file>.icx-backup-<unix time>` and replaced atomically.
     Backups and temporary files are created new with the original's mode (`0600` for new files),
     and a symlinked config is written at its target.
+    A file icx cannot read as text (not UTF-8, unreadable) is left alone with a note, never
+    taken for a missing one. The hook command quotes the icx path when it needs quoting, and an
+    existing hook with an `env` or `KEY=value` prefix is recognised. A dangling dotfiles link is
+    written at its target; backups never collide; a path already at the temporary name is
+    refused and left alone.
   - Edits are additive and idempotent: an existing icx hook (`icx` or the `icx-hook` wrapper) is
     never duplicated, a second run changes nothing, and a file with nothing to add is left byte
     for byte. JSON key order and unknown keys are kept; Codex's `config.toml` keeps its comments.
@@ -151,8 +159,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `scripts/live-claude-replacement-check.sh` repeats the check after a Claude Code update
     (billed, run by hand). It exits 1 if the model saw raw output, and 2 if `claude` itself
     failed (its stderr is shown).
-- **Compaction and session end always seal the cache epoch**, in every adapter (Claude Code,
-  Codex, agy, Muse, Gemini CLI, Cursor and OpenCode).
+- **Compaction and session end always seal the cache epoch** in Claude Code, Codex, Muse,
+  Gemini CLI, Cursor and OpenCode, and Hermes's `on_pre_compress` seals too. agy fires neither
+  event: its `Stop` seals only on `max_steps_exceeded` or an error (the adapter's `SessionEnd`
+  handler is there for callers that send one).
   - Before, these events sealed only an epoch that had reached its token threshold, although the
     docs said they always sealed it. Compaction rewrites the conversation, so the old cached
     prefix is gone whatever the epoch's size.

@@ -35,6 +35,10 @@ fn small_failed_and_empty_results_pass_through() {
         json!({"command": "make", "output": big(), "returncode": 2}),
         json!({"command": "true", "output": "", "returncode": 0}),
         json!({}),
+        // icx's own commands and already-framed output are never stubbed again.
+        json!({"command": "icx deref '#icx:0123456789abcdef'", "output": big(), "returncode": 0}),
+        json!({"command": "ICX_DIR=/w /home/u/.local/bin/icx deref x", "output": big(), "returncode": 0}),
+        json!({"command": "cat log", "output": format!("⟪ICX:PROVENANCE│id=x⟫\n{}", big()), "returncode": 0}),
     ] {
         assert_eq!(reply(&payload, &mut mmu), json!({}), "{payload}");
     }

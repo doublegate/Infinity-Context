@@ -111,13 +111,26 @@ impl Plan {
         self.set(path, before, after);
     }
 
-    /// The current content of `path` as this plan would leave it so far.
-    fn current(&self, path: &Path) -> Option<String> {
-        self.edits
-            .iter()
-            .find(|e| e.path == path)
-            .map(|e| e.after.clone())
-            .or_else(|| fs::read_to_string(path).ok())
+    /// The current content of `path` as this plan would leave it so far: `Ok(None)` only when
+    /// the file does not exist.
+    fn current(&self, path: &Path) -> Result<Option<String>, String> {
+        match self.edits.iter().find(|e| e.path == path) {
+            Some(e) => Ok(Some(e.after.clone())),
+            None => read_existing(path),
+        }
+    }
+}
+
+/// Reads `path` as text: `Ok(None)` when it does not exist, and an error for anything else (not
+/// UTF-8, unreadable, a directory), so a file icx cannot read is never taken for a missing one
+/// and replaced (review of #91).
+pub(crate) fn read_existing(path: &Path) -> Result<Option<String>, String> {
+    match fs::read(path) {
+        Ok(bytes) => String::from_utf8(bytes)
+            .map(Some)
+            .map_err(|_| format!("{} is not UTF-8 text", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("{} cannot be read ({e})", path.display())),
     }
 }
 
@@ -317,15 +330,14 @@ impl Serialize for J {
 /// Reads a JSON object file for editing: `Ok(None)` when it does not exist, an error when it
 /// cannot be read or parsed (the installer then leaves it alone).
 fn read_json(plan: &Plan, path: &Path) -> Result<(Option<String>, J), String> {
-    match plan.current(path) {
+    match plan.current(path)? {
         None => Ok((None, J::obj())),
         Some(text) if text.trim().is_empty() => Ok((Some(text), J::obj())),
         Some(text) => {
             let v: J = serde_json::from_str(&text)
                 .map_err(|e| format!("{} is not plain JSON ({e})", path.display()))?;
             if matches!(v, J::Obj(_)) {
-                let before = fs::read_to_string(path).ok();
-                Ok((before, v))
+                Ok((read_existing(path)?, v))
             } else {
                 Err(format!("{} does not hold a JSON object", path.display()))
             }
@@ -359,7 +371,6 @@ fn edit_json(
         plan.note(format!("not edited: {}: {e}. {manual}", path.display()));
         return;
     }
-    let before = before.or_else(|| fs::read_to_string(path).ok());
     // Nothing to add: leave the file exactly as it is, formatting included.
     if v == unchanged && before.is_some() {
         return;
@@ -383,7 +394,13 @@ fn edit_json(
 /// `event`, in any flag order.
 pub fn is_icx_hook_command(command: &str, agent: &str, event: &str) -> bool {
     let owned = shell_words(command);
-    let words: Vec<&str> = owned.iter().map(String::as_str).collect();
+    // Leading `env` and `KEY=value` assignments (`ICX_CURSOR_STUB=1 icx hook ...`) are not the
+    // program (review of #91).
+    let words: Vec<&str> = owned
+        .iter()
+        .map(String::as_str)
+        .skip_while(|w| *w == "env" || (w.contains('=') && !w.starts_with('-')))
+        .collect();
     let program = words.first().and_then(|w| w.rsplit('/').next());
     if !matches!(program, Some("icx" | "icx-hook")) {
         return false;
@@ -444,7 +461,23 @@ fn has_icx_hook(v: &J, agent: &str, event: &str) -> bool {
 }
 
 fn hook_cmd(o: &Opts, agent: &str, event: &str) -> String {
-    format!("{} hook --agent {agent} --event {event}", o.icx)
+    format!(
+        "{} hook --agent {agent} --event {event}",
+        shell_quote(&o.icx)
+    )
+}
+
+/// `word` as one shell word: unchanged when it is plain, else in single quotes (review of #91).
+pub(crate) fn shell_quote(word: &str) -> String {
+    let plain = !word.is_empty()
+        && word.chars().all(|c| {
+            c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '_' | '-' | '+' | ':' | ',')
+        });
+    if plain {
+        word.to_owned()
+    } else {
+        format!("'{}'", word.replace('\'', "'\\''"))
+    }
 }
 
 /// Adds Claude-Code-style hook groups (`hooks.<Event>: [{matcher?, hooks: [{type, command,
@@ -533,10 +566,13 @@ fn claude(p: &mut Plan, o: &Opts) {
     let events: &[(&str, Option<&str>)] = &[
         ("SessionStart", Some("")),
         ("UserPromptSubmit", Some("")),
-        // Bulk comes from shell, web and MCP output; icx's own tools are left alone.
+        // Bulk comes from shell, file, search, web, subagent, Code Mode and MCP output, the tools
+        // icx shrinks (review of #91); icx's own tools are left alone.
         (
             "PostToolUse",
-            Some("^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!icx__).+)$"),
+            Some(
+                "^(Bash|BashOutput|Read|Grep|Glob|WebFetch|WebSearch|Agent|Task|REPL|mcp__(?!icx__).+)$",
+            ),
         ),
         ("SubagentStart", Some("")),
         ("SubagentStop", Some("")),
@@ -593,7 +629,13 @@ fn codex(p: &mut Plan, o: &Opts) {
     );
 
     let config = o.codex_home.join("config.toml");
-    let before = p.current(&config);
+    let before = match p.current(&config) {
+        Ok(b) => b,
+        Err(e) => {
+            p.note(format!("not edited: {e}. Add [mcp_servers.icx] by hand."));
+            return;
+        }
+    };
     let mut doc: toml_edit::DocumentMut = match before.as_deref().unwrap_or("").parse() {
         Ok(d) => d,
         Err(e) => {
@@ -653,9 +695,16 @@ fn codex(p: &mut Plan, o: &Opts) {
                     tool["approval_mode"] = toml_edit::value("approve");
                 }
             }
+        } else if servers.contains_key("icx") {
+            // An inline table (`icx = { ... }`) or another form icx does not rewrite.
+            p.notes.push(format!(
+                "Codex: [mcp_servers.icx] in {} is not a standard table; add \
+                 [mcp_servers.icx.tools.icx] approval_mode = \"approve\" by hand.",
+                config.display()
+            ));
         }
     }
-    let disk = fs::read_to_string(&config).ok();
+    let disk = read_existing(&config).ok().flatten();
     p.set(&config, disk, doc.to_string());
 }
 
@@ -699,8 +748,10 @@ fn agy(p: &mut Plan, o: &Opts) {
             if !group.is_empty() {
                 let g = v.obj_mut("infinity-context")?;
                 for (event, entry) in group {
-                    if g.get(event).is_none() {
-                        g.insert(event, entry);
+                    // Another entry for the event in this group: append, never skip.
+                    match (g.get(event).is_some(), entry) {
+                        (true, J::Arr(items)) => g.arr_mut(event)?.extend(items),
+                        (_, entry) => g.insert(event, entry),
                     }
                 }
             }
@@ -866,8 +917,12 @@ const OPENCODE_PLUGIN: &str = include_str!("../../../integrations/opencode/icx.t
 fn opencode(p: &mut Plan, o: &Opts) {
     let dir = o.config_home.join("opencode");
     let plugin = dir.join("plugins/icx.ts");
-    let before = fs::read_to_string(&plugin).ok();
-    p.set(&plugin, before, OPENCODE_PLUGIN.to_owned());
+    match read_existing(&plugin) {
+        Ok(before) => p.set(&plugin, before, OPENCODE_PLUGIN.to_owned()),
+        Err(e) => p.note(format!(
+            "not edited: {e}. Copy integrations/opencode/icx.ts by hand."
+        )),
+    }
     edit_json(
         p,
         &dir.join("opencode.json"),
@@ -938,8 +993,7 @@ pub fn render(plan: &Plan) -> String {
 pub fn apply(plan: &Plan, stamp: u64) -> Result<Vec<PathBuf>, String> {
     let mut backups = Vec::new();
     for e in &plan.edits {
-        // The file to write: the target of a symlinked config, or the path itself.
-        let target = fs::canonicalize(&e.path).unwrap_or_else(|_| e.path.clone());
+        let target = write_target(&e.path);
         let parent = target
             .parent()
             .ok_or_else(|| format!("{} has no parent directory", target.display()))?;
@@ -950,9 +1004,15 @@ pub fn apply(plan: &Plan, stamp: u64) -> Result<Vec<PathBuf>, String> {
             .unwrap_or_default();
         let mode = file_mode(&target);
         if target.exists() {
-            let backup = target.with_file_name(format!("{name}.icx-backup-{stamp}"));
             let contents =
                 fs::read(&target).map_err(|err| format!("reading {}: {err}", target.display()))?;
+            // A unique name: two installs in one second, or one file in two plans, never collide.
+            let mut backup = target.with_file_name(format!("{name}.icx-backup-{stamp}"));
+            let mut n = 1;
+            while fs::symlink_metadata(&backup).is_ok() {
+                backup = target.with_file_name(format!("{name}.icx-backup-{stamp}-{n}"));
+                n += 1;
+            }
             write_new(&backup, &contents, mode).map_err(|err| {
                 format!(
                     "backing up {} to {}: {err}",
@@ -963,22 +1023,55 @@ pub fn apply(plan: &Plan, stamp: u64) -> Result<Vec<PathBuf>, String> {
             backups.push(backup);
         }
         let tmp = target.with_file_name(format!(".{name}.icx-tmp-{}", std::process::id()));
-        let written =
-            write_new(&tmp, e.after.as_bytes(), mode).and_then(|()| fs::rename(&tmp, &target));
-        if let Err(err) = written {
-            let _ = fs::remove_file(&tmp);
-            return Err(format!("writing {}: {err}", target.display()));
+        match write_new(&tmp, e.after.as_bytes(), mode) {
+            // An existing path at the temporary name is not ours: refuse, and leave it alone.
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                return Err(format!(
+                    "writing {}: {} already exists",
+                    target.display(),
+                    tmp.display()
+                ));
+            }
+            Err(err) => {
+                let _ = fs::remove_file(&tmp);
+                return Err(format!("writing {}: {err}", target.display()));
+            }
+            Ok(()) => {
+                if let Err(err) = fs::rename(&tmp, &target) {
+                    let _ = fs::remove_file(&tmp);
+                    return Err(format!("writing {}: {err}", target.display()));
+                }
+            }
         }
     }
     Ok(backups)
 }
 
-/// The permission bits of `path`, or `0o600` when it does not exist yet.
+/// The file an edit of `path` writes: the final target of a symlinked config, even one whose
+/// target does not exist yet (a dangling dotfiles link), so the link itself is never replaced.
+fn write_target(path: &Path) -> PathBuf {
+    let mut current = path.to_path_buf();
+    for _ in 0..40 {
+        match fs::read_link(&current) {
+            Ok(link) => {
+                current = if link.is_absolute() {
+                    link
+                } else {
+                    current.parent().map_or(link.clone(), |d| d.join(&link))
+                };
+            }
+            Err(_) => break,
+        }
+    }
+    fs::canonicalize(&current).unwrap_or(current)
+}
+
+/// The permission bits of `path` (special bits dropped), or `0o600` when it does not exist yet.
 fn file_mode(path: &Path) -> u32 {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::metadata(path).map_or(0o600, |m| m.permissions().mode() & 0o7777)
+        fs::metadata(path).map_or(0o600, |m| m.permissions().mode() & 0o777)
     }
     #[cfg(not(unix))]
     {
@@ -1000,15 +1093,15 @@ fn write_new(path: &Path, contents: &[u8], mode: u32) -> std::io::Result<()> {
     #[cfg(not(unix))]
     let _ = mode;
     let mut f = opts.open(path)?;
-    f.write_all(contents)?;
-    f.sync_all()?;
-    // The umask may have cleared bits the original had; set the mode exactly.
+    // The umask may have cleared bits the original had; set the mode exactly, on the open file
+    // rather than by path.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
+        f.set_permissions(fs::Permissions::from_mode(mode))?;
     }
-    Ok(())
+    f.write_all(contents)?;
+    f.sync_all()
 }
 
 #[cfg(test)]
@@ -1191,7 +1284,7 @@ mod tests {
         plan.set(&f, None, "a".into());
         plan.set(&f, None, "b".into());
         assert_eq!(plan.edits.len(), 1);
-        assert_eq!(plan.current(&f).as_deref(), Some("b"));
+        assert_eq!(plan.current(&f).unwrap().as_deref(), Some("b"));
         let _ = fs::remove_dir_all(&h);
     }
 
@@ -1222,6 +1315,88 @@ mod tests {
             .filter(|e| e.file_name().to_string_lossy().contains("icx-tmp"))
             .collect();
         assert!(leftovers.is_empty());
+        let _ = fs::remove_dir_all(&h);
+    }
+
+    #[test]
+    fn an_existing_temporary_path_is_refused_and_kept() {
+        let h = scratch("tmpexists");
+        let target = h.join("cfg.json");
+        let tmp = h.join(format!(".cfg.json.icx-tmp-{}", std::process::id()));
+        fs::write(&tmp, "someone else's").unwrap();
+        let plan = Plan {
+            edits: vec![FileEdit {
+                path: target.clone(),
+                before: None,
+                after: "{}".into(),
+            }],
+            notes: Vec::new(),
+        };
+        let err = apply(&plan, 7).unwrap_err();
+        assert!(err.contains("already exists"), "{err}");
+        assert_eq!(fs::read_to_string(&tmp).unwrap(), "someone else's");
+        assert!(!target.exists());
+        let _ = fs::remove_dir_all(&h);
+    }
+
+    #[test]
+    fn backups_in_the_same_second_get_distinct_names() {
+        let h = scratch("stamp");
+        let target = h.join("cfg.json");
+        fs::write(&target, "one").unwrap();
+        let edit = |after: &str| Plan {
+            edits: vec![FileEdit {
+                path: target.clone(),
+                before: None,
+                after: after.into(),
+            }],
+            notes: Vec::new(),
+        };
+        let first = apply(&edit("two"), 9).unwrap();
+        let second = apply(&edit("three"), 9).unwrap();
+        assert_ne!(first, second);
+        assert_eq!(fs::read_to_string(&second[0]).unwrap(), "two");
+        let _ = fs::remove_dir_all(&h);
+    }
+
+    #[test]
+    fn quoting_and_env_prefixes() {
+        assert_eq!(shell_quote("/usr/bin/icx"), "/usr/bin/icx");
+        assert_eq!(shell_quote("/a b/icx"), "'/a b/icx'");
+        assert_eq!(shell_quote("/it's/icx"), "'/it'\\''s/icx'");
+        assert!(is_icx_hook_command(
+            "env ICX_GEMINI_STUB=1 icx hook --agent gemini-cli --event AfterTool",
+            "gemini-cli",
+            "AfterTool"
+        ));
+        assert!(is_icx_hook_command(
+            "'/a b/icx' hook --agent codex --event Stop",
+            "codex",
+            "Stop"
+        ));
+    }
+
+    #[test]
+    fn an_agy_group_with_the_event_gets_the_hook_appended() {
+        let h = scratch("agyappend");
+        let o = opts(&h);
+        fs::create_dir_all(h.join(".gemini/config")).unwrap();
+        fs::write(
+            h.join(".gemini/config/hooks.json"),
+            r#"{"infinity-context": {"Stop": [{"type": "command", "command": "other-tool"}]}}"#,
+        )
+        .unwrap();
+        let p = plan("agy", &o).unwrap();
+        let after = &p
+            .edits
+            .iter()
+            .find(|e| e.path.ends_with("hooks.json"))
+            .unwrap()
+            .after;
+        let v: serde_json::Value = serde_json::from_str(after).unwrap();
+        let stop = v["infinity-context"]["Stop"].as_array().unwrap();
+        assert_eq!(stop.len(), 2, "{stop:?}");
+        assert_eq!(stop[0]["command"], "other-tool");
         let _ = fs::remove_dir_all(&h);
     }
 }

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import shutil
 import subprocess
@@ -47,10 +48,21 @@ def _icx_bin() -> str | None:
 
 
 def _env_number(name: str, default: float, floor: float) -> float:
+    # A non-finite value (`inf`, `nan`) falls back to the default.
     try:
-        return max(floor, float(os.environ.get(name, default)))
+        value = float(os.environ.get(name, default))
     except ValueError:
         return default
+    return max(floor, value) if math.isfinite(value) else default
+
+
+def _is_own_command(command: str) -> bool:
+    """icx's own commands (`icx deref ...`), whose output must never be stubbed again."""
+    for word in command.split():
+        if word == "env" or ("=" in word and not word.startswith("-")):
+            continue
+        return word.strip("'\"").rsplit("/", 1)[-1] in ("icx", "icx-hook")
+    return False
 
 
 def transform_terminal_output(
@@ -65,13 +77,13 @@ def transform_terminal_output(
     try:
         if os.environ.get("ICX_HERMES_DISABLE") == "1" or not isinstance(output, str):
             return None
-        if isinstance(returncode, int) and returncode != 0:
+        # Only a known success is stubbed: a failure or an unknown status keeps its output.
+        if isinstance(returncode, bool) or returncode != 0:
+            return None
+        if _is_own_command(str(command)) or output.lstrip().startswith("⟪ICX:"):
             return None
         size = len(output.encode("utf-8", errors="replace"))
-        if (
-            size < _env_number("ICX_HERMES_STUB_MIN_BYTES", 2048, 0)
-            or size > _MAX_PAYLOAD_BYTES
-        ):
+        if size < _env_number("ICX_HERMES_STUB_MIN_BYTES", 2048, 0):
             return None
         binary = _icx_bin()
         if binary is None:
@@ -86,6 +98,8 @@ def transform_terminal_output(
             },
             ensure_ascii=False,
         ).encode("utf-8")
+        if len(payload) > _MAX_PAYLOAD_BYTES:
+            return None
         env = dict(os.environ)
         env.setdefault("ICX_DAEMON_AUTOSTART", "1")
         proc = subprocess.run(
