@@ -74,9 +74,11 @@ fn codex_ingest_reads_plain_and_compressed_rollouts_once() {
         &["codex-ingest", "--project", "/icx-fixture/project"],
     );
     assert!(first.status.success(), "stderr: {}", stderr(&first));
+    // Every fixture record is a tool output, which is left to the Codex hook by default.
     assert!(
-        stdout(&first)
-            .contains("2 rollout(s) matched, 2 with new records, 41 record(s) ingested, 0 already stored, 0 skipped"),
+        stdout(&first).contains(
+            "2 rollout(s) matched, 0 with new records, 0 record(s) ingested, 0 already stored, 41 tool output(s) left to the Codex hook, 0 skipped"
+        ),
         "stdout: {}",
         stdout(&first)
     );
@@ -85,9 +87,33 @@ fn codex_ingest_reads_plain_and_compressed_rollouts_once() {
         "bookmarks are saved"
     );
 
+    // A backfill reads both rollouts again and ingests their tool outputs.
+    let backfill = run(
+        &root,
+        &[
+            "codex-ingest",
+            "--project",
+            "/icx-fixture/project",
+            "--include-tool-outputs",
+        ],
+    );
+    assert!(backfill.status.success(), "stderr: {}", stderr(&backfill));
+    assert!(
+        stdout(&backfill).contains(
+            "2 rollout(s) matched, 2 with new records, 41 record(s) ingested, 0 already stored, 0 tool output(s) left to the Codex hook, 0 skipped"
+        ),
+        "stdout: {}",
+        stdout(&backfill)
+    );
+
     let second = run(
         &root,
-        &["codex-ingest", "--project", "/icx-fixture/project"],
+        &[
+            "codex-ingest",
+            "--project",
+            "/icx-fixture/project",
+            "--include-tool-outputs",
+        ],
     );
     assert!(second.status.success(), "stderr: {}", stderr(&second));
     assert!(
@@ -102,11 +128,15 @@ fn codex_ingest_reads_plain_and_compressed_rollouts_once() {
         b"\x28\xb5\x2f\xfdjunk",
     )
     .unwrap();
-    let all = run(&root, &["codex-ingest", "--all-projects"]);
+    let all = run(
+        &root,
+        &["codex-ingest", "--all-projects", "--include-tool-outputs"],
+    );
     assert!(all.status.success(), "stderr: {}", stderr(&all));
     assert!(
-        stdout(&all)
-            .contains("4 rollout(s) matched, 1 with new records, 1 record(s) ingested, 0 already stored, 1 skipped"),
+        stdout(&all).contains(
+            "4 rollout(s) matched, 1 with new records, 1 record(s) ingested, 0 already stored, 0 tool output(s) left to the Codex hook, 1 skipped"
+        ),
         "--all-projects adds only the other project's record and skips the corrupt file: {}",
         stdout(&all)
     );

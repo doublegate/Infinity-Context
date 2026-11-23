@@ -20,8 +20,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     - Bytes after the frame are refused.
     - A file over 1 GiB decompressed, a file that fails to decode, and a symlink are each skipped
       and named, and nothing from them is ingested.
-  - A record whose output the store already holds, usually the copy icx's Codex hook captured,
-    is skipped and counted as "already stored", so recall does not index it twice.
+  - **Tool outputs are left to the Codex hook by default.** The hook captures each tool output
+    when the tool runs, and its copy never matches the rollout's, by bytes or by call id under
+    Code Mode (measured: about 7 of 1,583 matched on this project). Ingesting both would index
+    every output twice.
+    - The command ingests messages, reasoning and turn context, and reports the tool outputs it
+      left to the hook.
+    - `--include-tool-outputs` backfills them, for sessions recorded before the hook was
+      installed.
+  - A record whose redacted output the store already holds byte for byte is skipped and counted
+    as "already stored", which catches outputs repeated inside the rollouts.
 
 ### Changed
 

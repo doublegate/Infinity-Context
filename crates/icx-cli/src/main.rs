@@ -211,9 +211,10 @@ Subcommands:",
   deref <HANDLE> [--lines <START:END>] [--dir <PATH>] [--raw]
       Dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle; output is framed as
       untrusted data and delimiter-escaped unless --raw (byte-exact) is given
-  codex-ingest [--sessions <DIR>] [--project <DIR> | --all-projects] [--dir <PATH>]
+  codex-ingest [--sessions <DIR>] [--project <DIR> | --all-projects] [--include-tool-outputs] [--dir <PATH>]
       Ingest new records from Codex rollouts (.jsonl and .jsonl.zst) whose session ran in the
-      project (default: the current project; sessions default to $CODEX_HOME/sessions)
+      project (default: the current project; sessions default to $CODEX_HOME/sessions). Tool
+      outputs are left to the Codex hook unless --include-tool-outputs backfills them
   hook --agent <claude-code|codex|agy|hermes|muse|gemini-cli|cursor|opencode> --event <EVENT> [--dir <PATH>]
       Execute synchronous <500us lifecycle hook (reads JSON from stdin, writes JSON to stdout)
   mcp-serve [--dir <PATH>]
@@ -693,11 +694,12 @@ const CODEX_INGEST_BATCH: std::time::Duration = std::time::Duration::from_millis
 /// workspace lock, in short batches, resuming each from its saved bookmark.
 fn run_codex_ingest(args: &[String]) -> Result<(), String> {
     const CMD: &str = "icx codex-ingest";
-    const USAGE: &str = "Usage: icx codex-ingest [--sessions <DIR>] [--project <DIR> | --all-projects] [--dir <PATH>]";
+    const USAGE: &str = "Usage: icx codex-ingest [--sessions <DIR>] [--project <DIR> | --all-projects] [--include-tool-outputs] [--dir <PATH>]";
     let mut dir_str: Option<&str> = None;
     let mut sessions: Option<&str> = None;
     let mut project: Option<&str> = None;
     let mut all_projects = false;
+    let mut include_tool_outputs = false;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -718,6 +720,10 @@ fn run_codex_ingest(args: &[String]) -> Result<(), String> {
             }
             "--all-projects" => {
                 all_projects = true;
+                i += 1;
+            }
+            "--include-tool-outputs" => {
+                include_tool_outputs = true;
                 i += 1;
             }
             other => {
@@ -760,6 +766,13 @@ fn run_codex_ingest(args: &[String]) -> Result<(), String> {
     let selected =
         icx_adapters::codex_ingest::select_rollouts(&sessions_dir, project_dir.as_deref())
             .map_err(|e| format!("{CMD} error: {}: {e}", sessions_dir.display()))?;
+    // Tool outputs are left to the Codex hook unless asked for: its copy never matches the
+    // rollout's, so ingesting both would index every output twice. `--include-tool-outputs`
+    // backfills sessions recorded before the hook was installed.
+    let opts = icx_adapters::codex_ingest::IngestOptions {
+        include_tool_outputs,
+        ..icx_adapters::codex_ingest::IngestOptions::default()
+    };
     let mut summary = icx_adapters::codex_ingest::IngestSummary::default();
     let mut next = 0usize;
     // Ingest in batches of about CODEX_INGEST_BATCH, releasing the workspace lock between them,
@@ -780,6 +793,7 @@ fn run_codex_ingest(args: &[String]) -> Result<(), String> {
                 &mut state,
                 &mut mmu,
                 &mut summary,
+                opts,
             );
             next += 1;
         }
@@ -798,11 +812,12 @@ fn run_codex_ingest(args: &[String]) -> Result<(), String> {
         eprintln!("{CMD} warning: skipped {}: {reason}", path.display());
     }
     println!(
-        "{CMD}: {} rollout(s) matched, {} with new records, {} record(s) ingested, {} already stored, {} skipped",
+        "{CMD}: {} rollout(s) matched, {} with new records, {} record(s) ingested, {} already stored, {} tool output(s) left to the Codex hook, {} skipped",
         summary.matched,
         summary.updated,
         summary.records,
         summary.already_held,
+        summary.tool_outputs_left,
         summary.refused.len()
     );
     Ok(())

@@ -287,6 +287,53 @@ struct RolloutBookmark {
     anchor_digest: icx_core::Blake3Digest,
 }
 
+/// Which rollout records [`CodexRolloutTailer::ingest_jsonl_records`] leaves out. The default
+/// ingests everything (the in-process tailer's behaviour).
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct RecordFilter {
+    /// Skip a record whose redacted output the store already holds byte for byte.
+    pub skip_held: bool,
+    /// Skip tool-output records (`*_call_output`). icx's Codex hook captures tool output when
+    /// the tool runs, and its copy never matches the rollout's (by bytes or, under Code Mode, by
+    /// call id), so ingesting both would index each output twice.
+    pub skip_tool_outputs: bool,
+}
+
+/// What one pass of [`CodexRolloutTailer::ingest_jsonl_records`] did.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct RecordCounts {
+    /// Bytes consumed through the last complete line.
+    pub consumed: u64,
+    pub ingested: usize,
+    /// Records skipped because the store already held them.
+    pub held: usize,
+    /// Tool-output records skipped by `skip_tool_outputs`.
+    pub tool_outputs: usize,
+}
+
+/// Whether a rollout record is a tool result (`function_call_output`, `custom_tool_call_output`
+/// and any other `*_call_output`).
+fn is_tool_output_record(val: &Value) -> bool {
+    ["payload", "item"]
+        .into_iter()
+        .find_map(|k| val.get(k))
+        .unwrap_or(val)
+        .get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|t| t.ends_with("_call_output"))
+}
+
+/// The same test on the first bytes of a record too large to parse: rollout lines put `type`
+/// fields first, so a tool output names itself within its opening bytes.
+fn is_tool_output_prefix(line: &str) -> bool {
+    let end = line.len().min(1024);
+    let mut cut = end;
+    while !line.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    line[..cut].contains("_call_output\"")
+}
+
 /// Maximum per-record buffer allocation (`64 MiB + 64 KiB`) before draining the remainder of an
 /// oversized rollout JSONL record through its terminating newline.
 pub const MAX_ROLLOUT_RECORD_BYTES: usize = icx_core::ICX_MAX_INGEST_BYTES + 65_536;
@@ -486,24 +533,27 @@ impl CodexRolloutTailer {
     ) -> Result<(u64, usize, File), io::Error> {
         file.seek(SeekFrom::Start(start_offset))?;
         let mut reader = BufReader::new(file);
-        let (consumed, ingested, _) = Self::ingest_jsonl_records(&mut reader, mmu, false)?;
-        Ok((start_offset + consumed, ingested, reader.into_inner()))
+        let counts = Self::ingest_jsonl_records(&mut reader, mmu, RecordFilter::default())?;
+        Ok((
+            start_offset + counts.consumed,
+            counts.ingested,
+            reader.into_inner(),
+        ))
     }
 
     /// Ingests complete `\n`-terminated rollout records from `reader` into `mmu`, stopping before
     /// an incomplete trailing line. Shared by the plain-file tailer and the compressed-rollout
-    /// reader. With `skip_held`, a record whose redacted bytes the store already holds (for
-    /// example because a hook ingested the same output) is skipped, so recall does not index it
-    /// twice. Returns `(bytes_consumed_through_last_complete_line, ingested, skipped_as_held)`.
+    /// reader; `filter` says which records to leave out.
     pub(crate) fn ingest_jsonl_records<R: BufRead>(
         reader: &mut R,
         mmu: &mut InfinityContextMmu,
-        skip_held: bool,
-    ) -> Result<(u64, usize, usize), io::Error> {
+        filter: RecordFilter,
+    ) -> Result<RecordCounts, io::Error> {
         let mut committed = 0u64;
         let mut raw_line = Vec::new();
         let mut ingested = 0usize;
         let mut skipped = 0usize;
+        let mut tool_outputs = 0usize;
 
         loop {
             let (bytes_read, ended_with_nl, was_truncated) =
@@ -520,7 +570,12 @@ impl CodexRolloutTailer {
                 continue;
             }
             if was_truncated {
-                if skip_held && mmu.holds_ingested(trimmed) {
+                // An oversized record cannot be parsed; its type is read from its first bytes.
+                if filter.skip_tool_outputs && is_tool_output_prefix(trimmed) {
+                    tool_outputs += 1;
+                    continue;
+                }
+                if filter.skip_held && mmu.holds_ingested(trimmed) {
                     skipped += 1;
                     continue;
                 }
@@ -537,11 +592,15 @@ impl CodexRolloutTailer {
             let Ok(val) = serde_json::from_str::<Value>(trimmed) else {
                 continue;
             };
+            if filter.skip_tool_outputs && is_tool_output_record(&val) {
+                tool_outputs += 1;
+                continue;
+            }
             if let Some((subject, body, exit_code)) = Self::extract_rollout_item(&val) {
                 if InfinityContextMmu::is_icx_pager_tool(&subject) {
                     continue;
                 }
-                if skip_held && mmu.holds_ingested(&body) {
+                if filter.skip_held && mmu.holds_ingested(&body) {
                     skipped += 1;
                     continue;
                 }
@@ -555,7 +614,12 @@ impl CodexRolloutTailer {
                 ingested += 1;
             }
         }
-        Ok((committed, ingested, skipped))
+        Ok(RecordCounts {
+            consumed: committed,
+            ingested,
+            held: skipped,
+            tool_outputs,
+        })
     }
 
     fn non_empty_body_value(v: &Value) -> Option<String> {

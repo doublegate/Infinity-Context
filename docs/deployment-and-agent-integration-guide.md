@@ -786,14 +786,16 @@ For Codex and agy, replace the first bullet with: "Tool output is captured into 
    - To reduce what Codex resends, route it through `icx proxy` (§2.3). The proxy replaces middle-history items outside the last 2 items (`protect_tail = 2`) that are at or above the threshold (`function_call_output` items and `input_text` parts) with their AHTL packets, and leaves `system`/`developer` items unchanged.
 3. **Rollout ingestion (`icx codex-ingest`, v1.4.0):**
    - **What it does:** reads the project's Codex rollouts, both `.jsonl` and the zstd-compressed `.jsonl.zst`, into the workspace. Later runs read only what is new.
+   - **What it skips:** tool outputs are left to icx's Codex hook, which captured them when the tools ran. The rollout copy differs from the hook's, so both would otherwise be indexed. What gets ingested is messages, reasoning and turn context.
 
      ```bash
-     icx codex-ingest                    # rollouts whose session ran in this project
-     icx codex-ingest --all-projects     # every rollout under $CODEX_HOME/sessions
+     icx codex-ingest                          # rollouts whose session ran in this project
+     icx codex-ingest --all-projects           # every rollout under $CODEX_HOME/sessions
+     icx codex-ingest --include-tool-outputs   # also backfill tool outputs (sessions from before the hook)
      icx codex-ingest --sessions <DIR> --project <DIR> --dir <WORKSPACE>
      ```
 
-   - **Output:** it prints how many rollouts matched, how many had new records, how many records were ingested, and how many files were skipped. Skipped files (corrupt, oversized, symlinked) are named on stderr, and the run still succeeds.
+   - **Output:** it prints how many rollouts matched, how many had new records, how many records were ingested, how many were already stored, how many tool outputs were left to the hook, and how many files were skipped. Skipped files (corrupt, oversized, symlinked) are named on stderr, and the run still succeeds.
    - **Cost:** the first run over a long history takes a while. Measured on a desktop with a release build, 2026-11-22:
      - **One project:** 33 rollouts, 2,906 records, about 25 s.
      - **Every project (`--all-projects`):** 574 rollouts including 518 compressed, 99,283 records, about 7 minutes, with a peak of about 2 GB of memory. The whole workspace store is held in memory for the run.

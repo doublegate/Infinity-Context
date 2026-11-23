@@ -64,6 +64,15 @@ pub struct RolloutMark {
     pub source_mtime_nanos: Option<u64>,
     /// Whether the source file was `.jsonl.zst`.
     pub compressed: bool,
+    /// Whether tool-output records up to `offset` were ingested. A later run that asks for tool
+    /// outputs reads a rollout again from the start when this is `false`. Marks written before
+    /// this field existed always included tool outputs, so a missing field reads as `true`.
+    #[serde(default = "tool_outputs_included_default")]
+    pub tool_outputs_included: bool,
+}
+
+const fn tool_outputs_included_default() -> bool {
+    true
 }
 
 /// Bookmarks for every rollout ingested into one workspace.
@@ -315,8 +324,10 @@ pub fn select_rollouts(sessions_dir: &Path, project: Option<&Path>) -> io::Resul
 /// - A `prior` mark resumes only if its prefix hash still matches the logical stream; otherwise
 ///   the rollout is ingested from the start.
 /// - Ingestion stops before an incomplete trailing line, which a later call picks up.
-/// - A record whose redacted output the store already holds (typically because icx's Codex
-///   hook ingested it when the tool ran) is skipped, so recall does not index it twice.
+/// - A record whose redacted output the store already holds byte for byte is skipped, so recall
+///   does not index it twice. This catches repeats within rollouts. A hook's copy of the same
+///   tool output usually differs in bytes (the rollout keeps what the model was shown), so it is
+///   rarely matched.
 pub fn ingest_rollout(
     path: &Path,
     prior: Option<&RolloutMark>,
@@ -332,29 +343,69 @@ pub fn ingest_rollout_with_limit(
     mmu: &mut InfinityContextMmu,
     decompressed_limit: u64,
 ) -> Result<(RolloutMark, usize), RolloutIngestError> {
-    ingest_rollout_counted(path, prior, mmu, decompressed_limit)
-        .map(|(mark, ingested, _)| (mark, ingested))
+    let opts = IngestOptions {
+        decompressed_limit,
+        ..IngestOptions::default()
+    };
+    ingest_rollout_counted(path, prior, mmu, opts).map(|(mark, counts)| (mark, counts.ingested))
 }
 
-/// [`ingest_rollout_with_limit`], also returning how many records were skipped because the store
-/// already held them: `(mark, ingested, skipped_as_held)`.
+/// How [`ingest_rollout_counted`] reads a rollout.
+#[derive(Clone, Copy, Debug)]
+pub struct IngestOptions {
+    /// Largest decompressed size accepted for a `.jsonl.zst` rollout.
+    pub decompressed_limit: u64,
+    /// Ingest tool-output records (`*_call_output`). `icx codex-ingest` turns this off by
+    /// default: icx's Codex hook captures each tool output when the tool runs, and its copy never
+    /// matches the rollout's, so both would be indexed.
+    pub include_tool_outputs: bool,
+}
+
+impl Default for IngestOptions {
+    fn default() -> Self {
+        Self {
+            decompressed_limit: MAX_DECOMPRESSED_ROLLOUT_BYTES,
+            include_tool_outputs: true,
+        }
+    }
+}
+
+/// What [`ingest_rollout_counted`] did with one rollout.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RolloutCounts {
+    pub ingested: usize,
+    /// Records skipped because the store already held them byte for byte.
+    pub held: usize,
+    /// Tool-output records left out (`include_tool_outputs: false`).
+    pub tool_outputs: usize,
+}
+
+/// [`ingest_rollout_with_limit`] with explicit options, also returning what was skipped.
+///
+/// A rollout first read without tool outputs is read again from the start when tool outputs are
+/// later requested (a backfill). Records already stored are then skipped as held, so only the
+/// tool outputs are new.
 pub fn ingest_rollout_counted(
     path: &Path,
     prior: Option<&RolloutMark>,
     mmu: &mut InfinityContextMmu,
-    decompressed_limit: u64,
-) -> Result<(RolloutMark, usize, usize), RolloutIngestError> {
+    opts: IngestOptions,
+) -> Result<(RolloutMark, RolloutCounts), RolloutIngestError> {
+    let decompressed_limit = opts.decompressed_limit;
     let meta = regular_file_meta(path)?;
     let compressed = is_compressed(path);
     let source_len = meta.len();
     let source_mtime_nanos = mtime_nanos(&meta);
+    let backfill = opts.include_tool_outputs && prior.is_some_and(|p| !p.tool_outputs_included);
     if let Some(p) = prior
+        && !backfill
         && p.compressed == compressed
         && p.source_len == source_len
         && p.source_mtime_nanos == source_mtime_nanos
     {
-        return Ok((p.clone(), 0, 0));
+        return Ok((p.clone(), RolloutCounts::default()));
     }
+    let prior = if backfill { None } else { prior };
 
     let logical_len = if compressed {
         measure_decompressed(path, decompressed_limit)?
@@ -386,12 +437,19 @@ pub fn ingest_rollout_counted(
         file.seek(SeekFrom::Start(resume))?;
         reader = BufReader::new(Box::new(file) as Box<dyn Read>);
     }
-    let (consumed, ingested, skipped) =
-        CodexRolloutTailer::ingest_jsonl_records(&mut reader, mmu, true).map_err(map_decode)?;
-    let offset = resume + consumed;
+    let filter = crate::codex::RecordFilter {
+        skip_held: true,
+        skip_tool_outputs: !opts.include_tool_outputs,
+    };
+    let counts =
+        CodexRolloutTailer::ingest_jsonl_records(&mut reader, mmu, filter).map_err(map_decode)?;
+    let offset = resume + counts.consumed;
 
     let mut prefix_reader = open_logical(path)?;
     let (prefix_hash, _) = hash_prefix(&mut prefix_reader, offset).map_err(map_decode)?;
+    // Tool outputs are covered only if this pass read them and everything before it did too.
+    let tool_outputs_included = opts.include_tool_outputs
+        && (resume == 0 || prior.is_some_and(|p| p.tool_outputs_included));
     Ok((
         RolloutMark {
             offset,
@@ -399,9 +457,13 @@ pub fn ingest_rollout_counted(
             source_len,
             source_mtime_nanos,
             compressed,
+            tool_outputs_included,
         },
-        ingested,
-        skipped,
+        RolloutCounts {
+            ingested: counts.ingested,
+            held: counts.held,
+            tool_outputs: counts.tool_outputs,
+        },
     ))
 }
 
@@ -429,8 +491,10 @@ pub struct IngestSummary {
     pub updated: usize,
     /// Records ingested.
     pub records: usize,
-    /// Records skipped because the store already held the same output (usually from a hook).
+    /// Records skipped because the store already held the same output byte for byte.
     pub already_held: usize,
+    /// Tool-output records left to the Codex hook (`include_tool_outputs: false`).
+    pub tool_outputs_left: usize,
     /// Rollouts refused, with the reason.
     pub refused: Vec<(PathBuf, String)>,
 }
@@ -442,10 +506,11 @@ pub fn ingest_sessions_dir(
     project: Option<&Path>,
     state: &mut RolloutIngestState,
     mmu: &mut InfinityContextMmu,
+    opts: IngestOptions,
 ) -> io::Result<IngestSummary> {
     let mut summary = IngestSummary::default();
     for path in select_rollouts(sessions_dir, project)? {
-        ingest_selected(&path, state, mmu, &mut summary);
+        ingest_selected(&path, state, mmu, &mut summary, opts);
     }
     Ok(summary)
 }
@@ -458,21 +523,18 @@ pub fn ingest_selected(
     state: &mut RolloutIngestState,
     mmu: &mut InfinityContextMmu,
     summary: &mut IngestSummary,
+    opts: IngestOptions,
 ) {
     summary.matched += 1;
     let key = logical_key(path);
-    match ingest_rollout_counted(
-        path,
-        state.rollouts.get(&key),
-        mmu,
-        MAX_DECOMPRESSED_ROLLOUT_BYTES,
-    ) {
-        Ok((mark, n, held)) => {
-            if n > 0 {
+    match ingest_rollout_counted(path, state.rollouts.get(&key), mmu, opts) {
+        Ok((mark, counts)) => {
+            if counts.ingested > 0 {
                 summary.updated += 1;
-                summary.records += n;
+                summary.records += counts.ingested;
             }
-            summary.already_held += held;
+            summary.already_held += counts.held;
+            summary.tool_outputs_left += counts.tool_outputs;
             state.rollouts.insert(key, mark);
         }
         Err(e) => summary.refused.push((path.to_path_buf(), e.to_string())),
@@ -786,12 +848,12 @@ mod tests {
             &p,
             rollout_text("/proj", &[("c1", output), ("c2", "only in the rollout")]).as_bytes(),
         );
-        let (_, ingested, held) =
-            ingest_rollout_counted(&p, None, &mut m, MAX_DECOMPRESSED_ROLLOUT_BYTES).unwrap();
+        let (_, counts) =
+            ingest_rollout_counted(&p, None, &mut m, IngestOptions::default()).unwrap();
         assert_eq!(
-            (ingested, held),
+            (counts.ingested, counts.held),
             (1, 1),
-            "the hook's copy is skipped, the new one ingested"
+            "an exact copy is skipped, the new one ingested"
         );
         assert_eq!(
             m.hdc_index.len(),
@@ -799,6 +861,59 @@ mod tests {
             "recall gains one entry, not two"
         );
         std::fs::remove_dir_all(d).unwrap();
+    }
+
+    fn message_line(text: &str) -> String {
+        serde_json::json!({
+            "timestamp": "2026-11-22T00:00:02Z",
+            "type": "response_item",
+            "payload": {"type": "message", "role": "assistant", "content": text}
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn tool_outputs_can_be_left_to_the_hook_and_backfilled_later() {
+        let d = tmpdir("tool-skip");
+        let p = d.join("rollout-k.jsonl");
+        let mut text = rollout_text(
+            "/proj",
+            &[("c1", "tool output one"), ("c2", "tool output two")],
+        );
+        text.push_str(&message_line("the assistant's reply"));
+        text.push('\n');
+        write(&p, text.as_bytes());
+        let mut m = mmu();
+        let skip = IngestOptions {
+            include_tool_outputs: false,
+            ..IngestOptions::default()
+        };
+        let (mark, counts) = ingest_rollout_counted(&p, None, &mut m, skip).unwrap();
+        assert_eq!(
+            (counts.ingested, counts.tool_outputs),
+            (1, 2),
+            "only the message"
+        );
+        assert!(!mark.tool_outputs_included);
+        assert_eq!(mark.offset, text.len() as u64, "the whole file is consumed");
+
+        // Unchanged file, same options: nothing to do.
+        let (same, again) = ingest_rollout_counted(&p, Some(&mark), &mut m, skip).unwrap();
+        assert_eq!(again, RolloutCounts::default());
+
+        // A backfill reads the file again; the message is already held, the tool outputs are new.
+        let (full, back) =
+            ingest_rollout_counted(&p, Some(&same), &mut m, IngestOptions::default()).unwrap();
+        assert_eq!((back.ingested, back.held, back.tool_outputs), (2, 1, 0));
+        assert!(full.tool_outputs_included);
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn marks_written_before_the_tool_output_field_count_as_complete() {
+        let old = r#"{"offset":10,"prefix_hash":"ab","source_len":10,"source_mtime_nanos":null,"compressed":false}"#;
+        let mark: RolloutMark = serde_json::from_str(old).unwrap();
+        assert!(mark.tool_outputs_included);
     }
 
     #[test]
@@ -858,6 +973,7 @@ mod tests {
             Some(Path::new("/proj")),
             &mut state,
             &mut m,
+            IngestOptions::default(),
         )
         .unwrap();
         assert_eq!((s.matched, s.updated, s.records), (1, 1, 1));
@@ -871,11 +987,19 @@ mod tests {
             Some(Path::new("/proj")),
             &mut reloaded,
             &mut m,
+            IngestOptions::default(),
         )
         .unwrap();
         assert_eq!(again.records, 0, "a second pass ingests nothing new");
 
-        let all = ingest_sessions_dir(&d.join("sessions"), None, &mut reloaded, &mut m).unwrap();
+        let all = ingest_sessions_dir(
+            &d.join("sessions"),
+            None,
+            &mut reloaded,
+            &mut m,
+            IngestOptions::default(),
+        )
+        .unwrap();
         assert_eq!(
             (all.matched, all.records),
             (2, 1),
