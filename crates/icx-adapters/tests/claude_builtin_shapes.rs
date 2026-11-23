@@ -401,3 +401,50 @@ fn repl_results_that_are_not_strings_and_undefined_returns() {
     assert!(stub["stdout"].as_str().unwrap().starts_with("⟪ICX:STUB"));
     assert_eq!(stub["code"], "console.log(x)");
 }
+
+#[test]
+fn binary_blocks_without_a_mime_type_are_kept() {
+    // MCP makes `mimeType` optional; the block's type, or a `blob` beside a `uri`, decides
+    // (review of #88).
+    let data = "iVBORw0KGgo".repeat(5000);
+    for binary in [
+        json!({"type": "image", "data": data}),
+        json!({"type": "audio", "data": data}),
+        json!({"type": "resource", "resource": {"uri": "file:///x.bin", "blob": data}}),
+    ] {
+        let response = json!({"content": [{"type": "text", "text": lines(800, "caption")},
+            binary.clone()]});
+        let mut mmu = InfinityContextMmu::default();
+        let out = ClaudeCodeAdapter::handle_hook(
+            "PostToolUse",
+            &post_tool_use("mcp__svc__get", &response).to_string(),
+            &mut mmu,
+        )
+        .unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        let replaced = &v["hookSpecificOutput"]["updatedToolOutput"];
+        assert!(
+            replaced["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .starts_with("⟪ICX:STUB"),
+            "{binary}"
+        );
+        assert_eq!(replaced["content"][1], binary, "the binary block is kept");
+        assert!(
+            v["hookSpecificOutput"]
+                .get("updatedMCPToolOutput")
+                .is_none()
+        );
+        // Alone, with no text to replace, it is not replaced at all.
+        let alone = json!({"content": [binary.clone()]});
+        let mut mmu = InfinityContextMmu::default();
+        let out = ClaudeCodeAdapter::handle_hook(
+            "PostToolUse",
+            &post_tool_use("mcp__svc__get", &alone).to_string(),
+            &mut mmu,
+        )
+        .unwrap();
+        assert!(!out.contains("updatedToolOutput"), "{binary}: {out}");
+    }
+}

@@ -635,26 +635,33 @@ pub(crate) fn shape_preserving_replacement(original: Option<&Value>, stub: &str)
     }
 }
 
-/// Whether `key` of object `m` holds binary data (an image, audio, a blob), which a stub must
-/// never replace: `base64` anywhere, and `data` or `blob` beside a MIME type (MCP image and
-/// audio content, Anthropic `source` blocks).
+/// Whether object `m` is a binary content block, which a stub never enters: an `image` or `audio`
+/// block (MCP makes `mimeType` optional, so the type alone decides), an Anthropic `base64` source,
+/// or a resource holding a `blob`.
+fn is_binary_block(m: &serde_json::Map<String, Value>) -> bool {
+    m.get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|t| matches!(t, "image" | "audio" | "base64"))
+        || m.get("blob").is_some_and(Value::is_string)
+}
+
+/// Whether `key` of object `m` holds binary data, which a stub must never replace: `base64`
+/// anywhere, and `data` or `blob` beside a MIME type, a `uri`, or in a binary block.
 fn is_binary_entry(m: &serde_json::Map<String, Value>, key: &str) -> bool {
     key == "base64"
         || (matches!(key, "data" | "blob")
-            && ["mimeType", "media_type", "mime_type"]
-                .iter()
-                .any(|k| m.get(*k).is_some_and(Value::is_string)))
+            && (is_binary_block(m)
+                || ["mimeType", "media_type", "mime_type", "uri"]
+                    .iter()
+                    .any(|k| m.get(*k).is_some_and(Value::is_string))))
 }
 
-/// Whether `v` holds binary data anywhere: a [`is_binary_entry`] value, or a content block of type
-/// `image`, `audio` or `resource`.
+/// Whether `v` holds binary data anywhere (the same rule as the replacement uses).
 fn contains_binary(v: &Value) -> bool {
     match v {
         Value::Array(a) => a.iter().any(contains_binary),
         Value::Object(m) => {
-            m.get("type")
-                .and_then(Value::as_str)
-                .is_some_and(|t| matches!(t, "image" | "audio" | "resource"))
+            is_binary_block(m)
                 || m.keys().any(|k| is_binary_entry(m, k))
                 || m.values().any(contains_binary)
         }
@@ -666,6 +673,7 @@ fn largest_string_leaf(v: &Value) -> usize {
     match v {
         Value::String(s) => s.len(),
         Value::Array(a) => a.iter().map(largest_string_leaf).max().unwrap_or(0),
+        Value::Object(m) if is_binary_block(m) => 0,
         Value::Object(m) => m
             .iter()
             .filter(|(k, _)| !is_binary_entry(m, k))
@@ -685,6 +693,7 @@ fn replace_string_leaf_of_len(v: &mut Value, target: usize, stub: &str) -> bool 
         Value::Array(a) => a
             .iter_mut()
             .any(|c| replace_string_leaf_of_len(c, target, stub)),
+        Value::Object(m) if is_binary_block(m) => false,
         Value::Object(m) => {
             let binary: Vec<String> = m
                 .keys()
