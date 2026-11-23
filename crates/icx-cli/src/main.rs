@@ -877,6 +877,46 @@ fn run_codex_ingest(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// The path hooks should run: the path this `icx` was started by, when it names the running
+/// binary, so a versioned symlink (Homebrew, Nix, a `~/.local/bin` link) keeps pointing at the
+/// current version after an upgrade. On Linux `current_exe()` is already resolved
+/// (`/proc/self/exe`), so `argv[0]` is used: made absolute, or looked up on `PATH` (review of
+/// #92). Falls back to `current_exe()`, then to `icx`.
+fn installing_binary() -> String {
+    let exe = env::current_exe().ok();
+    let same = |p: &Path| {
+        exe.as_ref().is_some_and(
+            |e| matches!((fs::canonicalize(p), fs::canonicalize(e)), (Ok(a), Ok(b)) if a == b),
+        )
+    };
+    let argv0 = env::args_os().next().map(PathBuf::from);
+    let candidate = argv0.and_then(|a| {
+        if a.components().count() > 1 {
+            let abs = if a.is_absolute() {
+                a
+            } else {
+                env::current_dir().ok()?.join(a)
+            };
+            // Without `.` components, so the hook command reads cleanly.
+            Some(
+                abs.components()
+                    .filter(|c| !matches!(c, std::path::Component::CurDir))
+                    .collect::<PathBuf>(),
+            )
+        } else {
+            env::var_os("PATH").and_then(|path| {
+                env::split_paths(&path)
+                    .map(|d| d.join(&a))
+                    .find(|p| p.is_file())
+            })
+        }
+    });
+    match candidate.filter(|c| same(c)) {
+        Some(p) => p.display().to_string(),
+        None => exe.map_or_else(|| "icx".to_owned(), |p| p.display().to_string()),
+    }
+}
+
 /// `icx install` (T-65-004, T-65-005): plans the edits for each agent, prints them as diffs, and
 /// writes them only after confirmation.
 fn run_install(args: &[String]) -> Result<(), String> {
@@ -922,12 +962,8 @@ fn run_install(args: &[String]) -> Result<(), String> {
             return Err(format!("{CMD} error: --icx needs a path\n{USAGE}"));
         }
         Some(p) => p.to_owned(),
-        // The running binary, so hooks keep working whatever PATH the agent has. Its path is not
-        // resolved: a versioned symlink (Homebrew, Nix) must keep pointing at the current
-        // version after an upgrade (review of #91).
-        None => env::current_exe()
-            .ok()
-            .map_or_else(|| "icx".to_owned(), |p| p.display().to_string()),
+        // The running binary, so hooks keep working whatever PATH the agent has.
+        None => installing_binary(),
     };
     let opts = install::Opts {
         config_home: non_empty("XDG_CONFIG_HOME").unwrap_or_else(|| home.join(".config")),

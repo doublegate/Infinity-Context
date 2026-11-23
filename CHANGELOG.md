@@ -14,13 +14,17 @@ capability matrix. Release notes: [`docs/releases/v1.4.0/README.md`](docs/releas
 ### Fixed (release review)
 
 - `icx install` refuses to overwrite a file that changed after it was read (a running agent's
-  edit), removes a partly written backup, keeps the unresolved path of the installing binary (a
-  versioned symlink survives upgrades), and no longer lists a named agent as skipped.
-- Command reading (own-command and existing-hook detection): `\"` inside double quotes, and a
-  quoted separator (`grep "|" x`) is an argument; `sh -c` nesting is capped at 8.
+  edit), removes a partly written backup, writes hooks that run the path `icx` was started by (a
+  versioned symlink such as a Homebrew or Nix link survives upgrades; `argv[0]`, checked against
+  the running binary), and no longer lists a named agent as skipped.
+- Command reading (own-command and existing-hook detection), one scanner in Rust and Python:
+  backslash escapes inside double quotes, separators and `#` inside quotes or words are
+  arguments (`grep "|" x`, `FOO="a; b"`, `#icx:...`), separators are found by the scanner rather
+  than marked in the text, and wrapper scripts (`-c`) are read at most 8 levels deep.
 - Hermes engine: hook side effects never raise into Hermes; tail-slot wait events are held
-  weakly, so finished subagent engines leave nothing behind. `icx-terminal`: output with lone
-  surrogates is still stubbed.
+  weakly and the worker drops finished jobs, so finished subagent engines leave nothing behind;
+  a failed fetch start never makes a request wait. `icx-terminal`: output that cannot be stored
+  byte for byte (a lone surrogate) is not stubbed and stays raw.
 - `sanitize-hook-fixtures.py` fails when no captures are found, and handles a `HOME` of `/`.
 
 ### Added

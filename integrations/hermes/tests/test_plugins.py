@@ -413,14 +413,56 @@ class ReviewFixTests(ScratchIcx):
         self.assertFalse(own('grep "|" icx'))
         self.assertFalse(own("echo ';' icx deref"))
         self.assertTrue(own('echo "a\\"b" && icx deref x'))
+        self.assertFalse(own('echo "a\\" | icx deref x"'))
+        self.assertFalse(own('FOO="a; icx deref x" ls'))
+        self.assertFalse(own('grep --regexp="a|icx" file'))
+        self.assertTrue(own('sh -c "echo \\"hi\\"; icx deref x"'))
+        self.assertTrue(own("echo #icx:deadbeef && icx deref #icx:deadbeef"))
+        nested = "icx deref x"
+        for _ in range(12):
+            nested = "sh -c " + "'" + nested.replace("'", "'\\''") + "'"
+        self.assertFalse(own(nested), "deeper than 8 levels is not unwrapped")
         self.assertFalse(own("cat icx"))
 
-    def test_a_lone_surrogate_does_not_stop_stubbing(self) -> None:
+    def test_output_that_cannot_be_stored_exactly_keeps_its_raw_form(self) -> None:
+        # A lone surrogate cannot be stored byte for byte, so nothing lossy is stored (#92).
         out = "\ud800 " + TerminalTests.BIG
         stub = terminal_mod.transform_terminal_output(
             command="seq", output=out, returncode=0
         )
-        self.assertIsNotNone(stub)
+        self.assertIsNone(stub)
+
+    def test_a_dropped_engine_leaves_no_wait_entry(self) -> None:
+        import gc
+
+        original = engine_mod.call_icx
+        engine_mod.call_icx = lambda event, payload: {}
+        try:
+            engine = engine_mod.IcxContextEngine({})
+            engine.on_session_start("gone")
+            engine_mod.WORKER.join()
+            self.assertIn(engine, engine_mod._TAIL_READY)
+            del engine
+            gc.collect()
+            self.assertEqual(len(engine_mod._TAIL_READY), 0)
+        finally:
+            engine_mod.call_icx = original
+
+    def test_a_failed_submit_never_makes_a_request_wait(self) -> None:
+        original = engine_mod.WORKER.submit
+
+        def broken(job):
+            raise RuntimeError("cannot start a thread")
+
+        engine_mod.WORKER.submit = broken
+        try:
+            engine = engine_mod.IcxContextEngine({})
+            engine.on_session_start("s")
+            started = time.monotonic()
+            engine.select_context([{"role": "user", "content": "hi"}])
+            self.assertLess(time.monotonic() - started, 0.5)
+        finally:
+            engine_mod.WORKER.submit = original
 
     def test_engine_hooks_never_raise_into_hermes(self) -> None:
         engine = engine_mod.IcxContextEngine({})

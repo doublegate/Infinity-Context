@@ -92,60 +92,68 @@ pub fn command_segments(command: &str) -> Vec<Vec<String>> {
     segments_at(command, 0)
 }
 
-/// Marks a separator found outside quotes; a word made of it and an operator is a separator.
-const SEP: char = '\u{1}';
-
-fn segments_at(command: &str, depth: usize) -> Vec<Vec<String>> {
-    let mut spaced = String::with_capacity(command.len() + 8);
+/// One pass over `command`: words as [`shell_words`] reads them, with each separator outside
+/// quotes ending the current simple command. Separators are recognised by the scanner itself,
+/// never marked in the text, so no input character can fake one (review of #92).
+fn split_simple_commands(command: &str) -> Vec<Vec<String>> {
+    let mut segments = vec![Vec::new()];
+    let mut cur = String::new();
+    let mut in_word = false;
     let mut quote: Option<char> = None;
     let mut chars = command.chars().peekable();
+    let end_word = |cur: &mut String, in_word: &mut bool, segments: &mut Vec<Vec<String>>| {
+        if *in_word {
+            if let Some(seg) = segments.last_mut() {
+                seg.push(std::mem::take(cur));
+            }
+            *in_word = false;
+        }
+    };
     while let Some(c) = chars.next() {
         match quote {
-            // A backslash escape inside double quotes never ends them (`"a\"b"`).
-            Some('"') if c == '\\' => {
-                spaced.push(c);
-                if let Some(n) = chars.next() {
-                    spaced.push(n);
-                }
-                continue;
-            }
-            Some(q) if c == q => quote = None,
-            None if c == '\'' || c == '"' => quote = Some(c),
-            None if c == '\\' => {
-                spaced.push(c);
-                if let Some(n) = chars.next() {
-                    spaced.push(n);
-                }
-                continue;
-            }
-            None if matches!(c, ';' | '|' | '&') => {
-                spaced.push(' ');
-                spaced.push(SEP);
-                spaced.push(c);
-                if matches!(chars.peek(), Some(&n) if n == c && c != ';') {
-                    spaced.push(c);
+            Some('\'') if c == '\'' => quote = None,
+            Some('\'') => cur.push(c),
+            Some(_) if c == '"' => quote = None,
+            Some(_) if c == '\\' => match chars.peek() {
+                Some(&n) if matches!(n, '"' | '\\' | '$' | '`') => {
+                    cur.push(n);
                     chars.next();
                 }
-                spaced.push(' ');
-                continue;
+                _ => cur.push(c),
+            },
+            Some(_) => cur.push(c),
+            None if c == '\\' => {
+                if let Some(n) = chars.next() {
+                    cur.push(n);
+                }
+                in_word = true;
             }
-            // Inside quotes, and ordinary characters outside them.
-            _ => {}
+            None if c == '"' || c == '\'' => {
+                quote = Some(c);
+                in_word = true;
+            }
+            None if matches!(c, ';' | '|' | '&') => {
+                end_word(&mut cur, &mut in_word, &mut segments);
+                if matches!(chars.peek(), Some(&n) if n == c && c != ';') {
+                    chars.next();
+                }
+                segments.push(Vec::new());
+            }
+            None if c.is_whitespace() => end_word(&mut cur, &mut in_word, &mut segments),
+            None => {
+                cur.push(c);
+                in_word = true;
+            }
         }
-        spaced.push(c);
     }
-    let mut out = Vec::new();
-    let mut cur = Vec::new();
-    for w in shell_words(&spaced) {
-        if w.starts_with(SEP) {
-            out.push(std::mem::take(&mut cur));
-        } else {
-            cur.push(w);
-        }
-    }
-    out.push(cur);
+    end_word(&mut cur, &mut in_word, &mut segments);
+    segments.retain(|s| !s.is_empty());
+    segments
+}
+
+fn segments_at(command: &str, depth: usize) -> Vec<Vec<String>> {
     let mut expanded = Vec::new();
-    for seg in out.into_iter().filter(|s| !s.is_empty()) {
+    for seg in split_simple_commands(command) {
         let shell = program_index(&seg).filter(|&i| {
             seg[i]
                 .rsplit('/')
@@ -182,6 +190,11 @@ pub fn runs_icx(command: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// Single-quotes `s` for the shell (test helper).
+    fn crate_quote(s: &str) -> String {
+        format!("'{}'", s.replace('\'', "'\\''"))
+    }
+
     #[test]
     fn quoting_escapes_and_wrappers() {
         assert_eq!(shell_words(r"'/it'\''s/icx' hook"), ["/it's/icx", "hook"]);
@@ -203,6 +216,17 @@ mod tests {
             assert!(runs_icx(c), "{c}");
         }
         assert_eq!(command_segments("a 'b && c' && d").len(), 2);
+        // Nested wrapper scripts are read at most 8 levels deep.
+        let mut nested = "icx deref x".to_owned();
+        for _ in 0..12 {
+            nested = format!("sh -c {}", crate_quote(&nested));
+        }
+        assert!(!runs_icx(&nested), "deeper than 8 levels is not unwrapped");
+        let mut shallow = "icx deref x".to_owned();
+        for _ in 0..3 {
+            shallow = format!("sh -c {}", crate_quote(&shallow));
+        }
+        assert!(runs_icx(&shallow));
         assert!(runs_icx(r#"echo "a\"b\"c"&&icx deref x"#), "escaped quote");
         for c in [
             "cat icx",
@@ -212,6 +236,9 @@ mod tests {
             "echo 'icx deref'",
             r#"grep "|" icx"#,
             "echo ';' icx deref",
+            "echo \"\u{1}x\" icx deref",
+            r#"FOO="a; icx deref x" ls"#,
+            r#"grep --regexp="a|icx" file"#,
         ] {
             assert!(!runs_icx(c), "{c}");
         }
