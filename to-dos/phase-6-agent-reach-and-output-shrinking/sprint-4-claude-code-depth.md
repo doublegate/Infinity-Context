@@ -235,9 +235,23 @@ context.
 
 **Acceptance Criteria:**
 
-- [ ] Batch payload parsed; per-tool ingestion is not duplicated when both events fire.
-- [ ] Contract test over a recorded batch.
-- [ ] Effect on lock contention measured and published in `docs/numbers.md`.
+**Outcome (2026-11-22): batch ingestion rejected; contention measured.**
+
+- **Live payload:** the common fields plus `tool_calls[]` of `{tool_name, tool_input,
+  tool_use_id, tool_response}`. `tool_response` arrives as a string holding the output after
+  `PostToolUse` replaced it, that is the icx stub, not the raw result.
+- **Why no batch ingestion:** only `PostToolUse` can replace a result, so ingestion must stay
+  per tool. A batch hook would see only stubs, and registering it would add one more locked hook
+  per batch, so icx does not register it.
+- **Measured:** six parallel `PostToolUse` hooks on a small store all finished 0.023 to 0.087 s
+  after they started, serialised by the workspace lock; the batch hook took 0.014 s. The cost is
+  N times one hook and grows with store size (about 2 s per hook at 825 MB), which explains the
+  field scan's 8 s outliers. The remedy is incremental saves (Phase 9), not this event.
+
+- [x] Batch payload recorded; per-tool ingestion is never duplicated, because the batch is not
+  ingested.
+- [ ] ~~Contract test over a recorded batch.~~ Not needed: no batch handling ships.
+- [x] Effect on lock contention measured and published in `docs/numbers.md`.
 
 **Dependencies:** None
 
