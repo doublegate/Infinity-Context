@@ -25,6 +25,10 @@ fn a_large_successful_result_becomes_a_stub_whose_handle_holds_the_output() {
     assert!(stub.starts_with("⟪ICX:STUB│#icx:"), "{stub}");
     assert!(stub.len() < big().len() / 4);
     assert_eq!(mmu.cas.artifact_count(), 1);
+    // The handle in the stub dereferences to the whole output (review of #91).
+    let handle = stub.split('│').nth(1).unwrap();
+    let id = mmu.resolve_handle(handle).unwrap();
+    assert_eq!(mmu.deref_text(id).unwrap(), big());
 }
 
 #[test]

@@ -1,6 +1,6 @@
 # icx v1.4.0
 
-**Draft** (2026-11-23; finalised at release). Phase 6, "agent reach and output shrinking":
+Released 2026-11-23. Phase 6, "agent reach and output shrinking":
 three new agents, a one-command installer, a read-only MCP tool, and every claim about what icx
 does per agent checked against a live run or marked as following the agent's documented contract.
 Closes #40 to #44.
@@ -66,9 +66,12 @@ gateway stays stopped, Gemini CLI is not installed, and Cursor's usage limit blo
 
 ## Verification
 
-- 481 workspace tests (0 failed), line coverage 95.04%; OpenCode plugin tests (Bun) and Hermes
-  stand-in tests, now run in CI.
+- 507 workspace tests (0 failed, 3 ignored by design), line coverage 95.15% (measured with an
+  empty `HOME`, as in CI); 6 OpenCode plugin tests (Bun) and 24 Hermes stand-in tests, now run in
+  CI with ruff.
 - Live contract fixtures for Codex 0.171.0, agy 1.5.14 and Muse 1.4.25; the Claude Code live
   replacement check (`scripts/live-claude-replacement-check.sh`) passes 3/3 on 2.1.330.
 - `cargo clippy -D warnings`, `cargo fmt --check`, rustdoc with `-D warnings`, the benchmark SLO
   gates, `cargo deny`, REUSE and gitleaks.
+- Reviewed in four rounds on #88 and four on #91; every blocking finding was fixed with a
+  regression test. Remaining suggestions are tracked for v1.5.0.

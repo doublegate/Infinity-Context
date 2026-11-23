@@ -26,7 +26,6 @@ import json
 import logging
 import math
 import os
-import shlex
 import shutil
 import subprocess
 from typing import Any
@@ -64,26 +63,71 @@ def _env_number(name: str, default: float, floor: float) -> float:
     return max(floor, value) if math.isfinite(value) else default
 
 
-def _segments(command: str) -> list[list[str]]:
-    """The simple commands of `command`, split at `&&`, `||`, `;`, `|` and `&` outside quotes;
-    a shell's `-c` script is read as commands too."""
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-        lexer.whitespace_split = True
-        words = list(lexer)
-    except ValueError:
-        words = command.split()
-    out: list[list[str]] = [[]]
-    for w in words:
-        if w and set(w) <= set(";|&"):
-            out.append([])
+def _split_simple_commands(command: str) -> list[list[str]]:
+    """One pass over `command`, as `crates/icx-adapters/src/shell.rs` reads it: single quotes are
+    literal; double quotes allow backslash escapes of `"`, `\\`, `$` and `` ` ``; a backslash
+    outside quotes escapes the next character; `&&`, `||`, `;`, `|` and `&` outside quotes end a
+    simple command. `#` is an ordinary character (handles are `#icx:...`)."""
+    segments: list[list[str]] = [[]]
+    cur: list[str] = []
+    in_word = False
+    quote: str | None = None
+    i = 0
+    n = len(command)
+
+    def end_word() -> None:
+        nonlocal in_word
+        if in_word:
+            segments[-1].append("".join(cur))
+            cur.clear()
+            in_word = False
+
+    while i < n:
+        c = command[i]
+        i += 1
+        if quote == "'":
+            if c == "'":
+                quote = None
+            else:
+                cur.append(c)
+        elif quote == '"':
+            if c == '"':
+                quote = None
+            elif c == "\\" and i < n and command[i] in '"\\$`':
+                cur.append(command[i])
+                i += 1
+            else:
+                cur.append(c)
+        elif c == "\\":
+            if i < n:
+                cur.append(command[i])
+                i += 1
+            in_word = True
+        elif c in "\"'":
+            quote = c
+            in_word = True
+        elif c in ";|&":
+            end_word()
+            if c != ";" and i < n and command[i] == c:
+                i += 1
+            segments.append([])
+        elif c.isspace():
+            end_word()
         else:
-            out[-1].append(w)
+            cur.append(c)
+            in_word = True
+    end_word()
+    return [seg for seg in segments if seg]
+
+
+def _segments(command: str, depth: int = 0) -> list[list[str]]:
+    """The simple commands of `command` (see `_split_simple_commands`); a shell wrapper's `-c`
+    script is read as commands too, at most 8 levels deep."""
     expanded: list[list[str]] = []
-    for seg in filter(None, out):
+    for seg in _split_simple_commands(command):
         i = _program_index(seg)
         prog = seg[i].rsplit("/", 1)[-1] if i is not None else ""
-        if prog in ("sh", "bash", "zsh", "dash", "fish"):
+        if depth < 8 and prog in ("sh", "bash", "zsh", "dash", "fish"):
             flag = next(
                 (
                     k
@@ -95,7 +139,7 @@ def _segments(command: str) -> list[list[str]]:
                 None,
             )
             if flag is not None and flag + 1 < len(seg):
-                expanded.extend(_segments(seg[flag + 1]))
+                expanded.extend(_segments(seg[flag + 1], depth + 1))
                 continue
         expanded.append(seg)
     return expanded
@@ -160,6 +204,8 @@ def transform_terminal_output(
                 "env_type": str(env_type),
             },
             ensure_ascii=False,
+            # Strict: output icx cannot store byte for byte (a lone surrogate) is not stubbed,
+            # so the raw output stays and nothing lossy is stored (review of #92).
         ).encode("utf-8")
         if len(payload) > _MAX_PAYLOAD_BYTES:
             return None

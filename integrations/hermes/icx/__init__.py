@@ -38,6 +38,7 @@ import re
 import shutil
 import subprocess
 import threading
+import weakref
 from collections.abc import Callable
 from typing import Any
 
@@ -88,6 +89,32 @@ def _icx_bin() -> str | None:
         return found
     fallback = os.path.expanduser("~/.local/bin/icx")
     return fallback if _is_program(fallback) else None
+
+
+def _ready_put(engine: Any, generation: int, ready: threading.Event) -> None:
+    try:
+        _TAIL_READY[engine] = (generation, ready)
+    except (
+        TypeError
+    ):  # an engine that cannot be weakly referenced: its requests do not wait
+        ready.set()
+
+
+def _ready_get(engine: Any, generation: int) -> threading.Event | None:
+    try:
+        pending = _TAIL_READY.get(engine)
+    except TypeError:
+        return None
+    return pending[1] if pending and pending[0] == generation else None
+
+
+def _ready_drop(engine: Any, generation: int | None = None) -> None:
+    try:
+        pending = _TAIL_READY.get(engine)
+        if pending and (generation is None or pending[0] == generation):
+            del _TAIL_READY[engine]
+    except (TypeError, KeyError):
+        pass
 
 
 def _tail_wait() -> float:
@@ -195,6 +222,9 @@ class _Worker:
             except Exception as exc:  # noqa: BLE001 - a failed icx call never stops the worker
                 logger.debug("icx background call failed: %s", exc)
             finally:
+                # Drop the finished job before waiting for the next: its closure would keep its
+                # engine alive while the worker idles (review of #92).
+                job = None
                 self._queue.task_done()
 
     def join(self) -> None:
@@ -208,7 +238,11 @@ WORKER = _Worker()
 _TAIL_LOCK = threading.Lock()
 # Set when a session's tail-slot fetch has finished, keyed by (engine id, generation), so the
 # session's first request can wait briefly for it (review of #91).
-_TAIL_READY: dict[tuple[int, int], threading.Event] = {}
+# Weakly keyed by engine, so a dropped engine (a finished subagent's clone) leaves nothing behind
+# and a reused `id()` can never pick up another engine's event (review of #91).
+_TAIL_READY: weakref.WeakKeyDictionary[Any, tuple[int, threading.Event]] = (
+    weakref.WeakKeyDictionary()
+)
 # Opening and closing `icx-context` tags in any case or spacing, which untrusted text must not
 # be able to write (review of #91).
 _FRAME_TAG = re.compile(r"<(\s*/?\s*icx-context)", re.IGNORECASE)
@@ -292,11 +326,14 @@ class IcxContextEngine(ContextCompressor):
         try:
             super().on_turn_complete(messages, usage=usage, **kwargs)
         finally:
-            new = self._delta(messages or [])
-            # Encoded now, once: Hermes may change its message dicts before the worker runs.
-            data = encode({"messages": new}) if new else None
-            if data is not None:
-                WORKER.submit(lambda: call_icx("on_turn_complete", data))
+            try:
+                new = self._delta(messages or [])
+                # Encoded now, once: Hermes may change its message dicts before the worker runs.
+                data = encode({"messages": new}) if new else None
+                if data is not None:
+                    WORKER.submit(lambda: call_icx("on_turn_complete", data))
+            except Exception as exc:  # noqa: BLE001 - icx never breaks Hermes (review of #91)
+                logger.debug("icx on_turn_complete skipped: %s", exc)
 
     @functools.wraps(ContextCompressor.compress)
     def compress(
@@ -318,45 +355,59 @@ class IcxContextEngine(ContextCompressor):
         try:
             super().on_session_start(session_id, **kwargs)
         finally:
-            if kwargs.get("boundary_reason") != "compression":
-                self._icx_ingested = 0
-            with _TAIL_LOCK:
-                self._icx_tail = None
-                self._icx_tail_generation += 1
-                generation = self._icx_tail_generation
-                ready = threading.Event()
-                _TAIL_READY[(id(self), generation)] = ready
+            ready = None
+            generation = None
+            try:
+                if kwargs.get("boundary_reason") != "compression":
+                    self._icx_ingested = 0
+                with _TAIL_LOCK:
+                    self._icx_tail = None
+                    self._icx_tail_generation += 1
+                    generation = self._icx_tail_generation
+                    ready = threading.Event()
+                    _ready_put(self, generation, ready)
 
-            def fetch() -> None:
-                try:
-                    reply = call_icx("SessionStart", {"session_id": session_id})
-                    tail = reply.get("systemMessage") if reply else None
-                    if not (
-                        isinstance(tail, str)
-                        and tail.strip()
-                        and len(tail) <= _MAX_TAIL_CHARS
-                    ):
-                        return
-                    # A newer session start or a reset supersedes this fetch.
-                    with _TAIL_LOCK:
-                        if generation == self._icx_tail_generation:
-                            self._icx_tail = tail.strip()
-                finally:
+                def fetch() -> None:
+                    try:
+                        reply = call_icx("SessionStart", {"session_id": session_id})
+                        tail = reply.get("systemMessage") if reply else None
+                        if not (
+                            isinstance(tail, str)
+                            and tail.strip()
+                            and len(tail) <= _MAX_TAIL_CHARS
+                        ):
+                            return
+                        # A newer session start or a reset supersedes this fetch.
+                        with _TAIL_LOCK:
+                            if generation == self._icx_tail_generation:
+                                self._icx_tail = tail.strip()
+                    finally:
+                        ready.set()
+
+                if not WORKER.submit(fetch):
                     ready.set()
-
-            if not WORKER.submit(fetch):
-                ready.set()
+            except Exception as exc:  # noqa: BLE001 - icx never breaks Hermes (review of #91)
+                logger.debug("icx on_session_start skipped: %s", exc)
+                # A request must not wait for a fetch that never started. Only this call's own
+                # entry is dropped, under the lock, never a newer session's (review of #92).
+                if ready is not None:
+                    ready.set()
+                if generation is not None:
+                    with _TAIL_LOCK:
+                        _ready_drop(self, generation)
 
     def on_session_reset(self) -> None:
         try:
             super().on_session_reset()
         finally:
-            with _TAIL_LOCK:
-                self._icx_tail = None
-                self._icx_ingested = 0
-                self._icx_tail_generation += 1
-                for key in [k for k in _TAIL_READY if k[0] == id(self)]:
-                    del _TAIL_READY[key]
+            try:
+                with _TAIL_LOCK:
+                    self._icx_tail = None
+                    self._icx_ingested = 0
+                    self._icx_tail_generation += 1
+                    _ready_drop(self)
+            except Exception as exc:  # noqa: BLE001 - icx never breaks Hermes (review of #91)
+                logger.debug("icx on_session_reset skipped: %s", exc)
 
     def select_context(
         self,
@@ -374,7 +425,7 @@ class IcxContextEngine(ContextCompressor):
             # The session's first request: wait briefly for the background fetch, outside the
             # lock (session start itself never waits).
             with _TAIL_LOCK:
-                ready = _TAIL_READY.get((id(self), generation))
+                ready = _ready_get(self, generation)
             if ready is not None:
                 ready.wait(_tail_wait())
         with _TAIL_LOCK:
@@ -385,7 +436,7 @@ class IcxContextEngine(ContextCompressor):
             if getattr(self, "_icx_tail_decided", None) != generation:
                 self._icx_tail_decided = generation
                 self._icx_tail_inject = bool(tail)
-                _TAIL_READY.pop((id(self), generation), None)
+                _ready_drop(self, generation)
             inject = getattr(self, "_icx_tail_inject", False)
         if not inject or not tail or not request_messages:
             return None

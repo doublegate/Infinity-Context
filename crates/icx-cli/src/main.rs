@@ -877,6 +877,51 @@ fn run_codex_ingest(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// The path hooks should run: the path this `icx` was started by, when it names the running
+/// binary, so a versioned symlink (Homebrew, Nix, a `~/.local/bin` link) keeps pointing at the
+/// current version after an upgrade. On Linux `current_exe()` is already resolved
+/// (`/proc/self/exe`), so `argv[0]` is used: made absolute, or looked up on `PATH` (review of
+/// #92). Falls back to `current_exe()`, then to `icx`.
+fn installing_binary() -> String {
+    let exe = env::current_exe().ok();
+    let same = |p: &Path| {
+        exe.as_ref().is_some_and(
+            |e| matches!((fs::canonicalize(p), fs::canonicalize(e)), (Ok(a), Ok(b)) if a == b),
+        )
+    };
+    let argv0 = env::args_os().next().map(PathBuf::from);
+    let candidate = argv0.and_then(|a| {
+        if a.components().count() > 1 {
+            let abs = if a.is_absolute() {
+                a
+            } else {
+                env::current_dir().ok()?.join(a)
+            };
+            // Without `.` components, so the hook command reads cleanly.
+            Some(
+                abs.components()
+                    .filter(|c| !matches!(c, std::path::Component::CurDir))
+                    .collect::<PathBuf>(),
+            )
+        } else {
+            // Absolute PATH entries only (`.`, an empty entry or a relative directory would
+            // write a hook that runs whatever `icx` the agent's working directory holds), and
+            // the first one that really is this binary (review of #92).
+            env::var_os("PATH").and_then(|path| {
+                env::split_paths(&path)
+                    .filter(|d| d.is_absolute())
+                    .map(|d| d.join(&a))
+                    .find(|p| p.is_file() && same(p))
+            })
+        }
+    });
+    // A hook path is always absolute and always this binary.
+    match candidate.filter(|c| c.is_absolute() && same(c)) {
+        Some(p) => p.display().to_string(),
+        None => exe.map_or_else(|| "icx".to_owned(), |p| p.display().to_string()),
+    }
+}
+
 /// `icx install` (T-65-004, T-65-005): plans the edits for each agent, prints them as diffs, and
 /// writes them only after confirmation.
 fn run_install(args: &[String]) -> Result<(), String> {
@@ -923,10 +968,7 @@ fn run_install(args: &[String]) -> Result<(), String> {
         }
         Some(p) => p.to_owned(),
         // The running binary, so hooks keep working whatever PATH the agent has.
-        None => env::current_exe()
-            .ok()
-            .and_then(|p| fs::canonicalize(p).ok())
-            .map_or_else(|| "icx".to_owned(), |p| p.display().to_string()),
+        None => installing_binary(),
     };
     let opts = install::Opts {
         config_home: non_empty("XDG_CONFIG_HOME").unwrap_or_else(|| home.join(".config")),
@@ -939,8 +981,10 @@ fn run_install(args: &[String]) -> Result<(), String> {
     };
     if all {
         // `all` means the agents installed here; a named agent is installed regardless.
+        // A named agent is installed regardless, so it is never reported as skipped.
         let (found, missing): (Vec<&str>, Vec<&str>) = install::AGENTS
             .iter()
+            .filter(|a| !agents.iter().any(|named| named == *a))
             .partition(|a| install::is_installed(a, &opts));
         if !missing.is_empty() {
             println!("skipped (not installed): {}", missing.join(", "));

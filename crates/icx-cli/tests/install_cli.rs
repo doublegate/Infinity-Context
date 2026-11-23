@@ -473,7 +473,7 @@ fn argument_errors_are_reported() {
     // Without --icx the hooks run the binary that did the install, by absolute path.
     let o = run_raw(&["--agent", "codex", "--dry-run"], true);
     assert!(o.status.success(), "{}", out(&o));
-    let exe = std::fs::canonicalize(bin).unwrap();
+    let exe = std::path::PathBuf::from(bin);
     assert!(
         out(&o).contains(&format!("{} hook --agent codex", exe.display())),
         "{}",
@@ -571,4 +571,92 @@ fn a_repeated_agent_is_planned_once() {
     let o = run(&h, &["--agent", "codex", "--agent", "codex", "--yes"]);
     assert!(o.status.success(), "{}", out(&o));
     assert_eq!(out(&o).matches("=== codex").count(), 1, "{}", out(&o));
+}
+
+#[cfg(unix)]
+#[test]
+fn hooks_run_the_symlink_icx_was_started_by() {
+    // A versioned install behind a stable link (Homebrew, Nix): the link is what the hooks run,
+    // so an upgrade that moves the link target keeps them working (review of #92).
+    let h = home("symlinked");
+    let link = h.join("bin/icx");
+    fs::create_dir_all(link.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_icx"), &link).unwrap();
+    let o = Command::new(&link)
+        .args(["install", "--agent", "codex", "--dry-run"])
+        .env("HOME", &h)
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("CODEX_HOME")
+        .env_remove("HERMES_HOME")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", out(&o));
+    assert!(
+        out(&o).contains(&format!("{} hook --agent codex", link.display())),
+        "{}",
+        out(&o)
+    );
+}
+
+#[test]
+fn a_named_agent_is_never_listed_as_skipped() {
+    let h = home("namedall");
+    let empty = h.join("empty-path");
+    fs::create_dir_all(&empty).unwrap();
+    let o = Command::new(env!("CARGO_BIN_EXE_icx"))
+        .args([
+            "install",
+            "--agent",
+            "all",
+            "--agent",
+            "codex",
+            "--dry-run",
+            "--icx",
+            ICX,
+        ])
+        .env("HOME", &h)
+        .env("PATH", &empty)
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("HERMES_HOME")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", out(&o));
+    let skipped = out(&o)
+        .lines()
+        .find(|l| l.starts_with("skipped"))
+        .unwrap_or("")
+        .to_owned();
+    assert!(!skipped.contains("codex"), "{skipped}");
+    assert!(out(&o).contains("=== codex"), "{}", out(&o));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_relative_path_entry_never_becomes_a_hook_command() {
+    // icx found through `PATH=.` (review of #92): the hook must still be an absolute path.
+    let h = home("relpath");
+    let dir = h.join("cwd");
+    fs::create_dir_all(&dir).unwrap();
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_icx"), dir.join("icx")).unwrap();
+    let o = Command::new("icx")
+        .args(["install", "--agent", "codex", "--dry-run"])
+        .current_dir(&dir)
+        .env("PATH", ".")
+        .env("HOME", &h)
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("CODEX_HOME")
+        .env_remove("HERMES_HOME")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", out(&o));
+    let line = out(&o)
+        .lines()
+        .find(|l| l.contains("hook --agent codex --event"))
+        .unwrap()
+        .to_owned();
+    let cmd = line.split('"').nth(3).unwrap_or("");
+    assert!(cmd.starts_with('/'), "{line}");
 }

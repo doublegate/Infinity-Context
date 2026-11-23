@@ -5,6 +5,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-23
+
+Phase 6, agent reach and output shrinking: Gemini CLI, Cursor and OpenCode adapters, the Hermes
+plugins, `icx install`, the read-only `icx` MCP tool, live contract fixtures and a generated
+capability matrix. Release notes: [`docs/releases/v1.4.0/README.md`](docs/releases/v1.4.0/README.md).
+
+### Fixed (release review)
+
+- `icx install` refuses to overwrite a file that changed after it was read (a running agent's
+  edit), removes a partly written backup, writes hooks that run the path `icx` was started by (a
+  versioned symlink such as a Homebrew or Nix link survives upgrades; `argv[0]`, checked against
+  the running binary), and no longer lists a named agent as skipped.
+- Command reading (own-command and existing-hook detection), one scanner in Rust and Python:
+  backslash escapes inside double quotes, separators and `#` inside quotes or words are
+  arguments (`grep "|" x`, `FOO="a; b"`, `#icx:...`), separators are found by the scanner rather
+  than marked in the text, and wrapper scripts (`-c`) are read at most 8 levels deep.
+- Hermes engine: hook side effects never raise into Hermes; tail-slot wait events are held
+  weakly and the worker drops finished jobs, so finished subagent engines leave nothing behind;
+  a failed fetch start never makes a request wait. `icx-terminal`: output that cannot be stored
+  byte for byte (a lone surrogate) is not stubbed and stays raw.
+- `sanitize-hook-fixtures.py` fails when no captures are found, and handles a `HOME` of `/`.
+
 ### Added
 
 - **Generated agent capability matrix** (`docs/capability-matrix.md`, T-65-006): per agent,
