@@ -798,7 +798,10 @@ For Codex and agy, replace the first bullet with: "Tool output is captured into 
    - **Output:** it prints how many rollouts matched, how many had new records, how many records were ingested, how many were already stored, how many tool outputs were left to the hook, and how many files were skipped. Skipped files (corrupt, oversized, symlinked) are named on stderr, and the run still succeeds.
    - **Cost:** the first run over a long history takes a while. Measured on a desktop with a release build, 2026-11-22:
      - **One project:** 33 rollouts, 2,906 records, about 25 s.
-     - **Every project (`--all-projects`):** 574 rollouts including 518 compressed, 99,283 records, about 7 minutes, with a peak of about 2 GB of memory. The whole workspace store is held in memory for the run.
+     - **Every project (`--all-projects`, tool outputs included):** 574 rollouts including 518 compressed, about 99,000 records, with the whole store held in memory.
+       - Without batching: about 7 minutes and 2 GB.
+       - With the batched lock release (each batch of about 1.5 s reloads and saves the whole store, so live hooks are never locked out for the whole scan): 523 s and 1.8 GB, about 23% slower, ending with an 824 MB store.
+       - The default, which leaves tool outputs to the hook, ingests far fewer records.
      - **A run with nothing new:** about 1.5 s.
 4. **`additionalContext` size:** Codex delivers `additionalContext` inline only up to the handler's `additionalContextLimit`, by default 2,500 tokens (about 10,000 bytes). Beyond that it writes the text to a file and the model sees a preview. icx keeps every Codex reply within the default. Setting `additionalContextLimit` on a handler changes the limit, and `0` removes it.
 

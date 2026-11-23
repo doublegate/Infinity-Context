@@ -294,8 +294,11 @@ The source is `google-gemini/gemini-cli` `docs/hooks/reference.md`, read 2026-11
 
 `icx hook --agent cursor --event <event>`, from `~/.cursor/hooks.json` or a project's
 `.cursor/hooks.json` (`{"version": 1, "hooks": {...}}`). Built from the documented contract
-(cursor.com/docs/hooks, read 2026-11-22). The live capture on `cursor-agent` 2026.09.08 is
-pending.
+(cursor.com/docs/hooks, read 2026-11-22).
+
+On `cursor-agent` 2026.09.08, project-level hooks load, and the `sessionStart` and `sessionEnd`
+payloads match the documented common fields. The tool-call capture is pending, blocked by the
+account's weekly usage limit, so `postToolUse` and `updated_mcp_tool_output` are unverified.
 
 - **No context injection:**
   - `sessionStart` `additional_context` is added to the conversation's **system** context.
@@ -320,10 +323,15 @@ OpenCode v2.2.7 loads V2 plugins only. Its binary contains none of the V1 hook n
 `icx hook --agent opencode --event <event>` and applies the reply.
 
 - **`ctx.session.hook("prompt")`:** appends the legend and the tail slot to the user's message,
-  as user-turn data.
+  as user-turn data. Verified live on v2.2.7: the model quotes the appended tail slot.
 - **`ctx.tool.hook("execute.after")`:** ingests `event.result.output` (or `content`) and
   `event.error.message`. With `ICX_OPENCODE_STUB=1`, a large completed result is replaced in
-  `event.result` by a stub; this is off by default until verified live.
+  `event.result` by a stub.
+  - **Verified live on v2.2.7 (2026-11-22):** the model sees the stub, not the raw result.
+  - **Still off by default:** it changes what the model sees, so it is opt-in.
+  - **What gets stored:** OpenCode shortens shell output before the hook (the last 2,000 lines,
+    with the full output saved to its own file), so icx stores what the model would otherwise
+    have seen.
 - **`ctx.session.hook("compaction")`:** seals the epoch. The plugin never sets `event.result`,
   so OpenCode still writes its own summary.
 - **Not used: `ctx.session.hook("context")`.** It adds system text to every request, and icx

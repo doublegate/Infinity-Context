@@ -66,6 +66,32 @@ Re-check before the sprint starts:
   - **Compaction:** `ctx.session.hook("compaction", event)` receives `event.messages`, the
     transcript being summarized. Setting `event.result` supplies the summary and skips the model
     call. Live confirmation is part of T-63-003.
+  - **Live results, 2026-11-22.** OpenCode v2.2.7, model `claude-agent/haiku`, isolated
+    scratch project and icx workspace, plugin loaded from the project's `.opencode/plugins/`,
+    `opencode run --standalone --archived`:
+    - **Prompt append: verified.** The plugin loaded and `prompt` fired. The model quoted the
+      `⟪ICX:TAIL_SLOT│agent=open-code…⟫` line back from its own message, so the append reaches
+      it as user text.
+    - **Tool-result stub: verified.** With `ICX_OPENCODE_STUB=1` and `seq 1 3000`, the model's
+      tool result began with the icx stub, and it reported that 2999 was not in what it
+      received, so assigning `event.result` replaces what the model sees. The handle
+      dereferenced to OpenCode's own shortened output: the last 2,000 lines plus its notice
+      that the full output was saved to a file. OpenCode shortens shell output before
+      `execute.after`, so icx stores what the model would otherwise have seen.
+    - **`compaction`: not exercised.** A one-shot run never compacts. The hook only seals the
+      epoch.
+    - **Model access:** the Antigravity (Google) models returned "Forbidden", both in
+      `--standalone` mode and through the background service; GitHub Copilot's monthly quota was
+      exhausted; and the OpenAI models tried returned errors. All of these are provider-side,
+      since a control run with the plugin failing open failed the same way.
+  - **Cursor live capture, 2026-11-22** (`cursor-agent` 2026.09.08-6caf4ff, after re-login):
+    - Project-level `.cursor/hooks.json` loads, and `sessionStart` and `sessionEnd` fired. Their
+      payloads match the documented common fields: `conversation_id`, `generation_id`, `model`,
+      `hook_event_name`, `cursor_version`, `workspace_roots`, `user_email` and
+      `transcript_path` (null), plus `session_id` and `is_background_agent` (and on
+      `sessionEnd`, `reason`, `final_status` and `duration_ms`).
+    - The tool-call capture could not run: "Weekly usage limit reached. It resets in 2 days."
+      `postToolUse`, the MCP name form and `updated_mcp_tool_output` stay unverified.
   - **V1 to V2 mapping** (from the docs): `tool.execute.after` → `ctx.tool.hook("execute.after")`,
     `experimental.session.compacting` → `ctx.session.hook("compaction")`,
     `experimental.chat.system.transform` → `ctx.session.hook("context")`.
