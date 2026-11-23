@@ -12,6 +12,7 @@ pub mod hermes;
 pub mod mcp;
 pub mod mmu;
 pub mod muse;
+pub mod opencode;
 pub mod store;
 pub mod workspace;
 
@@ -26,6 +27,7 @@ pub use mmu::{
     DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES, ICX_AHTL_LEGEND, InfinityContextMmu, IngestResult,
 };
 pub use muse::MuseAdapter;
+pub use opencode::OpenCodeAdapter;
 
 /// The reply an agent's hook gets when icx fails open (a bad flag, unreadable stdin, a workspace
 /// error): the same shape the agent's adapter returns as its no-op for that event, so the agent
@@ -48,9 +50,12 @@ pub fn fail_open_reply(agent: icx_core::AgentKind, event: &str) -> String {
         }
         // Hermes's plugin treats an empty object as "nothing to do"; Muse validates hook replies
         // strictly and always accepts one; Gemini CLI and Cursor document `{}` as "no change".
-        AgentKind::Hermes | AgentKind::Muse | AgentKind::GeminiCli | AgentKind::Cursor => {
-            "{}".to_owned()
-        }
+        // The OpenCode plugin treats `{}` as "apply nothing".
+        AgentKind::Hermes
+        | AgentKind::Muse
+        | AgentKind::GeminiCli
+        | AgentKind::Cursor
+        | AgentKind::OpenCode => "{}".to_owned(),
         _ => r#"{"continue":true}"#.to_owned(),
     }
 }

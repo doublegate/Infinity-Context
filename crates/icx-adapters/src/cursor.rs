@@ -8,8 +8,11 @@
 //! - Every hook receives `conversation_id`, `generation_id`, `hook_event_name`,
 //!   `workspace_roots`, `transcript_path` and model fields. Hooks are configured in
 //!   `~/.cursor/hooks.json` or a project's `.cursor/hooks.json` (`{"version": 1, "hooks": ...}`).
-//! - `sessionStart` accepts `additional_context`, added to the conversation's initial system
-//!   context. It runs fire-and-forget, so the context may arrive after the first request.
+//! - `sessionStart` accepts `additional_context`, but Cursor adds it to the conversation's
+//!   initial *system* context. icx context is untrusted, retrieved data and must reach the model
+//!   only as user-turn data, never as system instructions, so icx injects nothing there and
+//!   replies `{}`. Cursor has no user-prompt context channel, so the adapter is capture-only for
+//!   context; recall stays available through the `icx` MCP tool.
 //! - `postToolUse` receives `tool_name`, `tool_input` and `tool_output`, a JSON-stringified
 //!   result payload, not raw terminal text. It can return `updated_mcp_tool_output` (MCP tools
 //!   only), which replaces the output the model sees, and `additional_context`. icx ingests every
@@ -19,7 +22,7 @@
 //!   the epoch. `sessionEnd` folds open subagent branches and seals.
 //! - `beforeSubmitPrompt` can only allow or block a prompt, so icx does not register it.
 
-use crate::mmu::{ICX_AHTL_LEGEND, InfinityContextMmu};
+use crate::mmu::InfinityContextMmu;
 use crate::{AdapterError, AgentHookAdapter};
 use icx_core::AgentKind;
 use serde_json::{Value, json};
@@ -131,10 +134,6 @@ impl CursorAdapter {
             serde_json::from_str(stdin_json)?
         };
         let response = match event_name {
-            "sessionStart" | "SessionStart" | "session-start" => {
-                let tail = mmu.build_ephemeral_tail_slot(AgentKind::Cursor, "session_start", 3);
-                json!({ "additional_context": format!("{ICX_AHTL_LEGEND}\n{tail}") })
-            }
             "postToolUse"
             | "PostToolUse"
             | "post-tool-use"
@@ -209,6 +208,8 @@ impl CursorAdapter {
                 let _ = mmu.rollover_and_sync_dag_root();
                 json!({})
             }
+            // Includes `sessionStart`: its `additional_context` lands in system context, which icx
+            // never writes.
             _ => json!({}),
         };
         serde_json::to_string(&response)

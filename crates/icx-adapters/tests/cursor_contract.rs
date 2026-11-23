@@ -42,18 +42,30 @@ fn big_output() -> String {
 }
 
 #[test]
-fn session_start_adds_the_tail_slot_as_additional_context() {
+fn session_start_injects_nothing_because_it_lands_in_system_context() {
+    // icx context is untrusted retrieved data and must never reach the model as system
+    // instructions; Cursor adds sessionStart `additional_context` to the system context.
     let mut mmu = InfinityContextMmu::default();
+    mmu.ingest_payload(
+        AgentKind::Cursor,
+        "prior",
+        "earlier output to recall\n",
+        false,
+    );
     let r = reply(
         "sessionStart",
         json!({"session_id": "conv-1", "is_background_agent": false, "composer_mode": "agent"}),
         &mut mmu,
         false,
     );
-    let ctx = r["additional_context"].as_str().unwrap();
-    assert!(ctx.starts_with(ICX_AHTL_LEGEND));
-    assert!(ctx.contains("⟪ICX:TAIL_SLOT│agent=cursor"));
-    assert!(r.get("continue").is_none() && r.get("env").is_none());
+    assert_eq!(r, json!({}));
+    let out = CursorAdapter::handle_hook(
+        "sessionStart",
+        &payload("sessionStart", &json!({})),
+        &mut mmu,
+    )
+    .unwrap();
+    assert!(!out.contains(ICX_AHTL_LEGEND) && !out.contains("TAIL_SLOT"));
 }
 
 #[test]
