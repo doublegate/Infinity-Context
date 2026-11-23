@@ -88,11 +88,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     and the script itself is left as is.
   - Live, the model saw the stub for Bash, Read, Grep, Glob, WebSearch, an Agent report, a Bash
     call inside a Code Mode script, and the script result.
-  - An Agent report's content blocks are all replaced by one stub block; before, only the
-    largest block was, and the rest of the report still reached the model. WebFetch and Agent
-    results are stored as their text.
+  - An Agent report's text blocks are replaced by one stub block; before, only the largest
+    block was, and the rest of the report still reached the model. Image and resource blocks
+    are kept and not stored. WebFetch and Agent results are stored as their text.
+  - These shapes apply only when the call names that built-in tool (`Read`, `Grep`, `Glob`,
+    `WebFetch`, `Agent` or `Task`, `REPL`), and the stub replaces exactly the field that was
+    stored. An MCP result with the same keys is stored whole, as any other JSON result.
   - `scripts/live-claude-replacement-check.sh` repeats the check after a Claude Code update
-    (billed, run by hand) and exits 1 if the model saw raw output.
+    (billed, run by hand). It exits 1 if the model saw raw output, and 2 if `claude` itself
+    failed (its stderr is shown).
 - **Compaction and session end always seal the cache epoch**, in every adapter (Claude Code,
   Codex, agy, Muse, Gemini CLI, Cursor and OpenCode).
   - Before, these events sealed only an epoch that had reached its token threshold, although the

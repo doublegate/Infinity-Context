@@ -136,7 +136,8 @@ impl ClaudeCodeAdapter {
                 } else {
                     let subject = InfinityContextMmu::extract_hook_subject(&payload, "Tool");
                     let tool_response = payload.get("tool_response").filter(|v| !v.is_null());
-                    let raw_output = tool_output_text(tool_response);
+                    let builtin = ClaudeBuiltin::from_tool_name(tool_name);
+                    let raw_output = claude_tool_output_text(builtin, tool_response);
 
                     let exit_code = InfinityContextMmu::extract_exit_code(&payload);
                     let explicit_sub_id = ["subagent_id", "agent_id"]
@@ -166,7 +167,7 @@ impl ClaudeCodeAdapter {
                         mmu.record_emitted(&stub);
                         let mut hso = json!({
                             "hookEventName": "PostToolUse",
-                            "updatedToolOutput": shape_preserving_replacement(tool_response, &stub)
+                            "updatedToolOutput": claude_shape_preserving_replacement(builtin, tool_response, &stub)
                         });
                         if tool_name.starts_with("mcp__") {
                             hso["updatedMCPToolOutput"] = Value::String(stub);
@@ -294,16 +295,58 @@ fn mcp_text_content(response: &Value) -> Option<String> {
     Some(texts.join("\n\n"))
 }
 
+/// A Claude Code built-in tool whose result has a known shape (recorded live on 2.1.330). Its
+/// shape is used only when the call names that tool, so an MCP or third-party result that happens
+/// to carry the same keys is never read as one (review of #88).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ClaudeBuiltin {
+    Read,
+    Grep,
+    Glob,
+    WebFetch,
+    Agent,
+    Repl,
+}
+
+impl ClaudeBuiltin {
+    pub(crate) fn from_tool_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "Read" => Self::Read,
+            "Grep" => Self::Grep,
+            "Glob" => Self::Glob,
+            "WebFetch" => Self::WebFetch,
+            // `Task` is the tool's earlier name.
+            "Agent" | "Task" => Self::Agent,
+            "REPL" => Self::Repl,
+            _ => return None,
+        })
+    }
+}
+
 /// Text to store for a tool response: Bash-like `{stdout, stderr}` objects become their readable
-/// text, MCP text content becomes its text, and other shapes are stored as JSON.
+/// text, MCP text content becomes its text, and other shapes are stored as JSON. No built-in
+/// tool shape is assumed; Claude Code calls [`claude_tool_output_text`].
 pub(crate) fn tool_output_text(response: Option<&Value>) -> String {
+    claude_tool_output_text(None, response)
+}
+
+/// [`tool_output_text`] for a Claude Code call: a built-in tool's result is stored as the text of
+/// its known field.
+pub(crate) fn claude_tool_output_text(
+    builtin: Option<ClaudeBuiltin>,
+    response: Option<&Value>,
+) -> String {
     if let Some(text) = response.and_then(mcp_text_content) {
+        return text;
+    }
+    if let (Some(b), Some(Value::Object(map))) = (builtin, response)
+        && let Some(text) = builtin_result_text(b, map)
+    {
         return text;
     }
     match response {
         None => String::new(),
         Some(Value::String(s)) => s.clone(),
-        Some(Value::Object(map)) if is_repl_result(map) => repl_result_text(map),
         Some(Value::Object(map)) if map.get("stdout").is_some_and(Value::is_string) => {
             let stdout = map.get("stdout").and_then(Value::as_str).unwrap_or("");
             match map
@@ -315,7 +358,7 @@ pub(crate) fn tool_output_text(response: Option<&Value>) -> String {
                 None => stdout.to_owned(),
             }
         }
-        Some(Value::Object(map)) => builtin_result_text(map).unwrap_or_else(|| map_json(map)),
+        Some(Value::Object(map)) => map_json(map),
         Some(other) => other.to_string(),
     }
 }
@@ -367,63 +410,156 @@ fn map_json(map: &serde_json::Map<String, Value>) -> String {
 /// - `Read` of a text file: `{"type": "text", "file": {"content", ...}}` gives `file.content`;
 /// - `Grep`: `{"mode", "content", "filenames", ...}` gives `content`, or the file names, one per
 ///   line, in the file-list modes;
-/// - `Glob`: `{"filenames", "numFiles", ...}` gives the file names, one per line.
+/// - `Glob`: `{"filenames", "numFiles", ...}` gives the file names, one per line;
+/// - `WebFetch`: `{url, code, codeText, result, ...}` gives `result`;
+/// - `Agent`: `{agentId, content: [blocks], ...}` gives its text blocks; image and resource
+///   blocks are not stored and stay in the reply;
+/// - `REPL`: `{code, result, stdout, stderr}` gives the result and streams.
 ///
-/// Any other shape (an image or notebook `Read`, an unknown tool) returns `None` and is kept as
-/// JSON.
-fn builtin_result_text(map: &serde_json::Map<String, Value>) -> Option<String> {
-    let filenames = || {
-        map.get("filenames")?
+/// Any other shape (an image or notebook `Read`, a report with no text) returns `None` and is
+/// kept as JSON. [`builtin_field`] names the same field, so the replacement swaps out exactly what was
+/// stored.
+fn builtin_result_text(b: ClaudeBuiltin, map: &serde_json::Map<String, Value>) -> Option<String> {
+    match builtin_field(b, map)? {
+        BuiltinField::Text(path) => path_get(map, path)
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        BuiltinField::Names => map
+            .get("filenames")?
             .as_array()?
             .iter()
             .map(Value::as_str)
             .collect::<Option<Vec<&str>>>()
-            .filter(|names| !names.is_empty())
-            .map(|names| names.join("\n"))
-    };
-    if map.get("type").and_then(Value::as_str) == Some("text")
-        && let Some(content) = map
-            .get("file")
-            .and_then(|f| f.get("content"))
-            .and_then(Value::as_str)
-    {
-        return Some(content.to_owned());
-    }
-    if map.contains_key("mode") {
-        if let Some(content) = map
-            .get("content")
-            .and_then(Value::as_str)
-            .filter(|c| !c.is_empty())
-        {
-            return Some(content.to_owned());
+            .map(|names| names.join("\n")),
+        BuiltinField::AgentText => {
+            let blocks = map.get("content").and_then(Value::as_array)?;
+            let texts: Vec<String> = blocks
+                .iter()
+                .filter_map(|b| crate::text_only_parts(std::slice::from_ref(b)))
+                .collect();
+            (!texts.is_empty()).then(|| texts.join("\n"))
         }
-        return filenames();
+        BuiltinField::Repl => Some(repl_result_text(map)),
     }
-    if map.contains_key("numFiles") && !map.contains_key("content") {
-        return filenames();
+}
+
+/// Which part of a built-in result holds its text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BuiltinField {
+    /// A string at this key path.
+    Text(&'static [&'static str]),
+    /// The `filenames` list.
+    Names,
+    /// The text blocks of an `Agent` report.
+    AgentText,
+    /// A `REPL` result and its streams.
+    Repl,
+}
+
+fn path_get<'a>(map: &'a serde_json::Map<String, Value>, path: &[&str]) -> Option<&'a Value> {
+    let (first, rest) = path.split_first()?;
+    rest.iter().try_fold(map.get(*first)?, |v, k| v.get(*k))
+}
+
+fn builtin_field(b: ClaudeBuiltin, map: &serde_json::Map<String, Value>) -> Option<BuiltinField> {
+    let names = map
+        .get("filenames")
+        .and_then(Value::as_array)
+        .is_some_and(|a| !a.is_empty() && a.iter().all(Value::is_string));
+    match b {
+        ClaudeBuiltin::Read => (map.get("type").and_then(Value::as_str) == Some("text")
+            && path_get(map, &["file", "content"]).is_some_and(Value::is_string))
+        .then_some(BuiltinField::Text(&["file", "content"])),
+        ClaudeBuiltin::Grep => {
+            if map
+                .get("content")
+                .and_then(Value::as_str)
+                .is_some_and(|c| !c.is_empty())
+            {
+                Some(BuiltinField::Text(&["content"]))
+            } else {
+                names.then_some(BuiltinField::Names)
+            }
+        }
+        ClaudeBuiltin::Glob => names.then_some(BuiltinField::Names),
+        ClaudeBuiltin::WebFetch => map
+            .get("result")
+            .is_some_and(Value::is_string)
+            .then_some(BuiltinField::Text(&["result"])),
+        ClaudeBuiltin::Agent => (is_agent_result(map)
+            && map
+                .get("content")
+                .and_then(Value::as_array)
+                .is_some_and(|blocks| {
+                    blocks
+                        .iter()
+                        .any(|b| crate::text_only_parts(std::slice::from_ref(b)).is_some())
+                }))
+        .then_some(BuiltinField::AgentText),
+        ClaudeBuiltin::Repl => is_repl_result(map).then_some(BuiltinField::Repl),
     }
-    // WebFetch: `{url, code, codeText, result, bytes, durationMs}`.
-    if map.contains_key("url")
-        && map.contains_key("code")
-        && let Some(result) = map.get("result").and_then(Value::as_str)
-    {
-        return Some(result.to_owned());
-    }
-    // Agent (subagent report): `{agentId, content: [text blocks], ...}`; text only when every
-    // block is text.
-    if is_agent_result(map) {
-        return map
-            .get("content")
-            .and_then(Value::as_array)
-            .and_then(|blocks| crate::text_only_parts(blocks));
-    }
-    None
 }
 
 /// A Claude Code `Agent` (subagent) result, recorded live on 2.1.330: `{agentId, agentType,
 /// status, prompt, content: [...], usage, ...}`.
 fn is_agent_result(map: &serde_json::Map<String, Value>) -> bool {
     map.contains_key("agentId") && map.get("content").is_some_and(Value::is_array)
+}
+
+/// [`shape_preserving_replacement`] for a Claude Code call: for a built-in tool, the stub replaces
+/// exactly the field its text was stored from, and every other field is kept.
+pub(crate) fn claude_shape_preserving_replacement(
+    builtin: Option<ClaudeBuiltin>,
+    original: Option<&Value>,
+    stub: &str,
+) -> Value {
+    if let (Some(b), Some(Value::Object(map))) = (builtin, original)
+        && let Some(field) = builtin_field(b, map)
+    {
+        let mut out = map.clone();
+        match field {
+            BuiltinField::Text(path) => {
+                let (last, parents) = path.split_last().unwrap_or((&"", &[]));
+                let mut cur = &mut out;
+                for k in parents {
+                    match cur.get_mut(*k).and_then(Value::as_object_mut) {
+                        Some(next) => cur = next,
+                        None => return Value::Object(map.clone()),
+                    }
+                }
+                cur.insert((*last).to_owned(), Value::String(stub.to_owned()));
+            }
+            // One stub entry stands for the whole list, which stays a list.
+            BuiltinField::Names => {
+                out.insert("filenames".to_owned(), serde_json::json!([stub]));
+            }
+            // The text blocks, which are what was stored, become one stub block (T-64-001);
+            // image and resource blocks are kept as they are (review of #88).
+            BuiltinField::AgentText => {
+                let mut content = vec![serde_json::json!({"type": "text", "text": stub})];
+                if let Some(blocks) = map.get("content").and_then(Value::as_array) {
+                    content.extend(
+                        blocks
+                            .iter()
+                            .filter(|b| crate::text_only_parts(std::slice::from_ref(b)).is_none())
+                            .cloned(),
+                    );
+                }
+                out.insert("content".to_owned(), Value::Array(content));
+            }
+            // The stub replaces the result and its streams, never the echoed `code`.
+            BuiltinField::Repl => {
+                out.insert("result".to_owned(), Value::String(stub.to_owned()));
+                for stream in ["stdout", "stderr"] {
+                    if out.get(stream).is_some_and(Value::is_string) {
+                        out.insert(stream.to_owned(), Value::String(String::new()));
+                    }
+                }
+            }
+        }
+        return Value::Object(out);
+    }
+    shape_preserving_replacement(original, stub)
 }
 
 /// Builds `updatedToolOutput` in the original response's shape (ICX-AUD-004): string responses
@@ -444,38 +580,6 @@ pub(crate) fn shape_preserving_replacement(original: Option<&Value>, stub: &str)
         };
     }
     match original {
-        // A subagent report: its text blocks become one stub block, as for MCP results, so no
-        // text of the report still reaches the model (T-64-001). Image and resource blocks are
-        // kept as they are, so a mixed report loses nothing the stub does not stand for (review
-        // of #88).
-        Some(Value::Object(map)) if is_agent_result(map) => {
-            let blocks = map
-                .get("content")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            let mut content = vec![serde_json::json!({"type": "text", "text": stub})];
-            content.extend(
-                blocks
-                    .into_iter()
-                    .filter(|b| crate::text_only_parts(std::slice::from_ref(b)).is_none()),
-            );
-            let mut out = map.clone();
-            out.insert("content".to_owned(), Value::Array(content));
-            Value::Object(out)
-        }
-        // A Code Mode script: the stub replaces its result and its streams, never the echoed
-        // `code` (which can be the largest string).
-        Some(Value::Object(map)) if is_repl_result(map) => {
-            let mut out = map.clone();
-            out.insert("result".to_owned(), Value::String(stub.to_owned()));
-            for stream in ["stdout", "stderr"] {
-                if out.contains_key(stream) {
-                    out.insert(stream.to_owned(), Value::String(String::new()));
-                }
-            }
-            Value::Object(out)
-        }
         Some(Value::Object(map)) if map.get("stdout").is_some_and(Value::is_string) => {
             let mut out = map.clone();
             out.insert("stdout".to_owned(), Value::String(stub.to_owned()));

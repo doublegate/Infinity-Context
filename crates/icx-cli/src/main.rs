@@ -426,11 +426,15 @@ fn resolve_workspace_dir(cli_dir: Option<&str>) -> PathBuf {
     resolve_workspace_dir_from(cli_dir, &cwd)
 }
 
+fn is_cwd_changed_event(event: &str) -> bool {
+    event.eq_ignore_ascii_case("CwdChanged") || event.eq_ignore_ascii_case("cwd-changed")
+}
+
 /// The directory a Claude Code `CwdChanged` hook moved to (`new_cwd`), when it is an absolute,
 /// existing directory (T-64-003). The workspace is resolved from it rather than from wherever
 /// the hook process happens to run.
 fn cwd_changed_target(event: &str, stdin: &str) -> Option<PathBuf> {
-    if !event.eq_ignore_ascii_case("CwdChanged") && !event.eq_ignore_ascii_case("cwd-changed") {
+    if !is_cwd_changed_event(event) {
         return None;
     }
     let payload: serde_json::Value = serde_json::from_str(stdin).ok()?;
@@ -978,8 +982,9 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
         // Lets this agent's MCP server follow the workspace its hooks use (#34).
         workspace::record_agent_workspace(&ws_dir, roots());
         // Recording the workspace is all `CwdChanged` does, so it neither loads nor locks the
-        // store (review of #88: on a large store that costs seconds per `cd`).
-        if cwd_changed.is_some() {
+        // store, even when `new_cwd` is missing or relative (review of #88: on a large store that
+        // costs seconds per `cd`).
+        if agent == AgentKind::ClaudeCode && is_cwd_changed_event(event_str) {
             return Ok("{}".to_owned());
         }
         #[cfg(unix)]
@@ -1668,15 +1673,27 @@ fn is_icx_opencode_plugin(text: &str) -> bool {
 fn mentions_icx_hook(text: &str, agent: &str) -> bool {
     // Tokens of the config text: JSON quoting and escapes are separators, so a command reads as
     // its words whatever its quoting.
-    let tokens: Vec<&str> = text
+    // `;` ends a word and is kept as its own token, so `--agent x;` still names agent `x`.
+    let spaced = text.replace(';', " ; ");
+    let tokens: Vec<&str> = spaced
         .split(|c: char| {
             c.is_whitespace() || matches!(c, '"' | '\'' | '\\' | ',' | '[' | ']' | '{' | '}')
         })
         .filter(|t| !t.is_empty())
         .collect();
     let is_icx = |t: &str| t.rsplit('/').next() == Some("icx");
+    // `icx` must be the program, never an argument such as `--dir /x/icx` (review of #88): no
+    // word between the last JSON key or shell separator and it is a flag or `hook`. A quoted
+    // program path with a space (`"/opt/x y/icx"`) splits into words that are neither.
+    let is_program_position = |i: usize| {
+        tokens[..i]
+            .iter()
+            .rev()
+            .take_while(|p| !p.ends_with(':') && !matches!(**p, "&&" | "||" | ";" | "|"))
+            .all(|p| !p.starts_with('-') && *p != "hook")
+    };
     tokens.iter().enumerate().any(|(i, t)| {
-        if !is_icx(t) {
+        if !is_icx(t) || !is_program_position(i) {
             return false;
         }
         // This command's words, in any flag order: up to a shell separator or the next JSON key.
@@ -1684,9 +1701,7 @@ fn mentions_icx_hook(text: &str, agent: &str) -> bool {
         // command (review of #88).
         let words: Vec<&str> = tokens[i + 1..]
             .iter()
-            .take_while(|w| {
-                !w.ends_with(':') && !matches!(**w, "&&" | "||" | ";" | "|") && !w.ends_with(';')
-            })
+            .take_while(|w| !w.ends_with(':') && !matches!(**w, "&&" | "||" | ";" | "|"))
             .take(32)
             .copied()
             .collect();
@@ -3599,6 +3614,14 @@ mod tests {
         ));
         assert!(!mentions_icx_hook(
             "icx status; other hook --agent cursor",
+            "cursor"
+        ));
+        assert!(mentions_icx_hook(
+            "icx hook --event PostToolUse --agent claude-code; true",
+            "claude-code"
+        ));
+        assert!(!mentions_icx_hook(
+            "other --dir /x/icx hook --agent cursor",
             "cursor"
         ));
         // A later JSON key does not lend its words to an earlier command.

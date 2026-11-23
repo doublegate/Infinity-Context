@@ -25,7 +25,7 @@
 // variables (ICX_DIR, ...), which the icx process inherits.
 
 import type { Plugin } from "@opencode/plugin";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 // Bounds on what is sent to icx and read back, in UTF-8 bytes; icx bounds its own input as well.
 const MAX_SEND_BYTES = 64 * 1024 * 1024;
@@ -57,6 +57,36 @@ function icxHook(event: string, payload: Record<string, unknown>): Reply {
   } catch {
     return {};
   }
+}
+
+/**
+ * Runs one icx hook without blocking the event loop, for events whose reply is not used. Resolves
+ * once icx exits or the timeout kills it; never rejects.
+ */
+function icxHookAsync(event: string, payload: Record<string, unknown>): Promise<void> {
+  return new Promise((resolve) => {
+    try {
+      const input = JSON.stringify(payload);
+      if (Buffer.byteLength(input, "utf8") > MAX_SEND_BYTES) return resolve();
+      const timeout = Number(process.env.ICX_PLUGIN_TIMEOUT_MS) || 10000;
+      const child = spawn(
+        process.env.ICX_BIN || "icx",
+        ["hook", "--agent", "opencode", "--event", event],
+        { env: process.env, stdio: ["pipe", "ignore", "ignore"] },
+      );
+      const timer = setTimeout(() => child.kill(), timeout);
+      const done = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      child.once("error", done);
+      child.once("close", done);
+      child.stdin?.on("error", () => {});
+      child.stdin?.end(input);
+    } catch {
+      resolve();
+    }
+  });
 }
 
 const IcxPlugin: Plugin.Plugin = {
@@ -91,7 +121,8 @@ const IcxPlugin: Plugin.Plugin = {
           if (unload.signal.aborted) break;
           if (event?.type === "session.deleted") {
             const id = event.data?.sessionID;
-            icxHook("session.end", { sessionID: id });
+            // Asynchronous: a large store can take seconds, and nothing waits on the reply.
+            await icxHookAsync("session.end", { sessionID: id });
             legendSent.delete(typeof id === "string" ? id : "");
           }
         }

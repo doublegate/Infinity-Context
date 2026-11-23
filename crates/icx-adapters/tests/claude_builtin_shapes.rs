@@ -97,7 +97,11 @@ fn glob_stores_one_file_name_per_line() {
     let response = json!({"filenames": names, "durationMs": 5, "numFiles": 600,
         "truncated": false, "totalMatches": 600, "countIsComplete": true});
     let stub = check("Glob", &response, &names.join("\n"));
-    assert!(stub["filenames"].is_array(), "filenames stays a list");
+    let list = stub["filenames"]
+        .as_array()
+        .expect("filenames stays a list");
+    assert_eq!(list.len(), 1, "one stub entry stands for every name");
+    assert!(list[0].as_str().unwrap().starts_with("⟪ICX:STUB"));
 }
 
 #[test]
@@ -251,4 +255,69 @@ fn a_mixed_agent_report_keeps_its_image_blocks() {
     );
     assert_eq!(content[1], image, "the image block is kept");
     assert_eq!(content.len(), 2);
+    let text = lines(900, "report");
+    let id = ArtifactId::hash_bytes(text.as_bytes()).0;
+    assert!(
+        mmu.cas.get_meta(id).is_some(),
+        "the stored artifact is the text blocks' text"
+    );
+}
+
+#[test]
+fn builtin_shapes_are_used_only_for_their_own_tool() {
+    // An MCP tool's result with WebFetch-like or Grep-like keys (review of #88): the whole result
+    // is stored, and the stub replaces its largest field, which is also stored.
+    for response in [
+        json!({"url": "https://x.invalid", "code": 200, "result": "ok", "body": lines(600, "body")}),
+        json!({"mode": "full", "content": "x", "items": lines(600, "item")}),
+    ] {
+        let mut mmu = InfinityContextMmu::default();
+        let out = ClaudeCodeAdapter::handle_hook(
+            "PostToolUse",
+            &post_tool_use("mcp__svc__fetch", &response).to_string(),
+            &mut mmu,
+        )
+        .unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        let id = ArtifactId::hash_bytes(response.to_string().as_bytes()).0;
+        assert!(mmu.cas.get_meta(id).is_some(), "stored whole: {response}");
+        let replaced = &v["hookSpecificOutput"]["updatedToolOutput"];
+        let big = ["body", "items"]
+            .into_iter()
+            .find(|k| response.get(*k).is_some())
+            .unwrap();
+        assert!(replaced[big].as_str().unwrap().starts_with("⟪ICX:STUB"));
+        for small in ["result", "content"] {
+            if let Some(orig) = response.get(small) {
+                assert_eq!(&replaced[small], orig, "{small} is kept");
+            }
+        }
+    }
+}
+
+#[test]
+fn webfetch_replaces_exactly_the_stored_result() {
+    let response = json!({"url": "https://x.invalid", "code": 200, "codeText": "OK",
+        "result": lines(600, "page"), "bytes": 1, "durationMs": 1});
+    let stub = check("WebFetch", &response, response["result"].as_str().unwrap());
+    assert!(stub["result"].as_str().unwrap().starts_with("⟪ICX:STUB"));
+    assert_eq!(stub["url"], "https://x.invalid");
+    assert_eq!(stub["code"], 200);
+}
+
+#[test]
+fn a_small_report_beside_a_large_image_is_left_alone() {
+    // Only the text is stored, so a short report is not stubbed, however large its image.
+    let image = json!({"type": "image", "source": {"type": "base64", "media_type": "image/png",
+        "data": "iVBORw0KGgo".repeat(5000)}});
+    let response = json!({"status": "completed", "agentId": "a1", "content": [
+        {"type": "text", "text": "done"}, image]});
+    let mut mmu = InfinityContextMmu::default();
+    let out = ClaudeCodeAdapter::handle_hook(
+        "PostToolUse",
+        &post_tool_use("Agent", &response).to_string(),
+        &mut mmu,
+    )
+    .unwrap();
+    assert!(!out.contains("updatedToolOutput"), "{out}");
 }
