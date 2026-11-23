@@ -464,6 +464,23 @@ class ReviewFixTests(ScratchIcx):
         finally:
             engine_mod.WORKER.submit = original
 
+    def test_a_failed_start_never_drops_a_newer_sessions_entry(self) -> None:
+        engine = engine_mod.IcxContextEngine({})
+        newer = threading.Event()
+        original = engine_mod.WORKER.submit
+
+        def broken(job):
+            # A newer session registers its entry before this call's failure is handled.
+            engine_mod._TAIL_READY[engine] = (99, newer)
+            raise RuntimeError("cannot start a thread")
+
+        engine_mod.WORKER.submit = broken
+        try:
+            engine.on_session_start("s")
+        finally:
+            engine_mod.WORKER.submit = original
+        self.assertIs(engine_mod._TAIL_READY.get(engine, (None, None))[1], newer)
+
     def test_engine_hooks_never_raise_into_hermes(self) -> None:
         engine = engine_mod.IcxContextEngine({})
         engine.on_turn_complete(iter([{"role": "user"}]))  # not sliceable

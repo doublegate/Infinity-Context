@@ -631,3 +631,32 @@ fn a_named_agent_is_never_listed_as_skipped() {
     assert!(!skipped.contains("codex"), "{skipped}");
     assert!(out(&o).contains("=== codex"), "{}", out(&o));
 }
+
+#[cfg(unix)]
+#[test]
+fn a_relative_path_entry_never_becomes_a_hook_command() {
+    // icx found through `PATH=.` (review of #92): the hook must still be an absolute path.
+    let h = home("relpath");
+    let dir = h.join("cwd");
+    fs::create_dir_all(&dir).unwrap();
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_icx"), dir.join("icx")).unwrap();
+    let o = Command::new("icx")
+        .args(["install", "--agent", "codex", "--dry-run"])
+        .current_dir(&dir)
+        .env("PATH", ".")
+        .env("HOME", &h)
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("CODEX_HOME")
+        .env_remove("HERMES_HOME")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", out(&o));
+    let line = out(&o)
+        .lines()
+        .find(|l| l.contains("hook --agent codex --event"))
+        .unwrap()
+        .to_owned();
+    let cmd = line.split('"').nth(3).unwrap_or("");
+    assert!(cmd.starts_with('/'), "{line}");
+}

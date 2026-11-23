@@ -356,6 +356,7 @@ class IcxContextEngine(ContextCompressor):
             super().on_session_start(session_id, **kwargs)
         finally:
             ready = None
+            generation = None
             try:
                 if kwargs.get("boundary_reason") != "compression":
                     self._icx_ingested = 0
@@ -387,10 +388,13 @@ class IcxContextEngine(ContextCompressor):
                     ready.set()
             except Exception as exc:  # noqa: BLE001 - icx never breaks Hermes (review of #91)
                 logger.debug("icx on_session_start skipped: %s", exc)
-                # A request must not wait for a fetch that never started.
+                # A request must not wait for a fetch that never started. Only this call's own
+                # entry is dropped, under the lock, never a newer session's (review of #92).
                 if ready is not None:
                     ready.set()
-                _ready_drop(self)
+                if generation is not None:
+                    with _TAIL_LOCK:
+                        _ready_drop(self, generation)
 
     def on_session_reset(self) -> None:
         try:

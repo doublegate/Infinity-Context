@@ -904,14 +904,19 @@ fn installing_binary() -> String {
                     .collect::<PathBuf>(),
             )
         } else {
+            // Absolute PATH entries only (`.`, an empty entry or a relative directory would
+            // write a hook that runs whatever `icx` the agent's working directory holds), and
+            // the first one that really is this binary (review of #92).
             env::var_os("PATH").and_then(|path| {
                 env::split_paths(&path)
+                    .filter(|d| d.is_absolute())
                     .map(|d| d.join(&a))
-                    .find(|p| p.is_file())
+                    .find(|p| p.is_file() && same(p))
             })
         }
     });
-    match candidate.filter(|c| same(c)) {
+    // A hook path is always absolute and always this binary.
+    match candidate.filter(|c| c.is_absolute() && same(c)) {
         Some(p) => p.display().to_string(),
         None => exe.map_or_else(|| "icx".to_owned(), |p| p.display().to_string()),
     }
