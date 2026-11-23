@@ -109,7 +109,7 @@ fn unknown_and_image_shapes_are_kept_as_json() {
     let mut mmu = InfinityContextMmu::default();
     let image = json!({"type": "image", "file": {"base64": "iVBORw0KGgo".repeat(800),
         "type": "image/png"}});
-    ClaudeCodeAdapter::handle_hook(
+    let out = ClaudeCodeAdapter::handle_hook(
         "PostToolUse",
         &post_tool_use("Read", &image).to_string(),
         &mut mmu,
@@ -119,6 +119,67 @@ fn unknown_and_image_shapes_are_kept_as_json() {
     assert!(
         mmu.cas.get_meta(id).is_some(),
         "an image Read is stored whole"
+    );
+    // The image reaches the model unchanged: no replacement of its base64 data (review of #88).
+    assert!(!out.contains("updatedToolOutput"), "{out}");
+}
+
+/// The reply for a large result that holds only binary data: no replacement of any kind.
+fn assert_not_replaced(tool: &str, response: &Value) {
+    let mut mmu = InfinityContextMmu::default();
+    let out = ClaudeCodeAdapter::handle_hook(
+        "PostToolUse",
+        &post_tool_use(tool, response).to_string(),
+        &mut mmu,
+    )
+    .unwrap();
+    assert!(!out.contains("updatedToolOutput"), "{tool}: {out}");
+    assert!(!out.contains("updatedMCPToolOutput"), "{tool}: {out}");
+    assert!(mmu.cas.artifact_count() > 0, "{tool}: still stored");
+}
+
+#[test]
+fn binary_data_is_never_replaced() {
+    let data = "iVBORw0KGgo".repeat(5000);
+    // An Agent report with only an image block.
+    assert_not_replaced(
+        "Agent",
+        &json!({"agentId": "a1", "status": "completed", "content": [{"type": "image",
+            "source": {"type": "base64", "media_type": "image/png", "data": data}}]}),
+    );
+    // An MCP tool returning an image beside a short caption.
+    assert_not_replaced(
+        "mcp__shots__take",
+        &json!({"content": [{"type": "text", "text": "screenshot"},
+            {"type": "image", "data": data, "mimeType": "image/png"}]}),
+    );
+    // A large text value beside an image is replaced; the image is kept.
+    let response = json!({"content": [{"type": "text", "text": lines(800, "caption")},
+        {"type": "image", "data": data.clone(), "mimeType": "image/png"}], "isError": false});
+    let mut mmu = InfinityContextMmu::default();
+    let out = ClaudeCodeAdapter::handle_hook(
+        "PostToolUse",
+        &post_tool_use("mcp__other__get", &response).to_string(),
+        &mut mmu,
+    )
+    .unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let replaced = &v["hookSpecificOutput"]["updatedToolOutput"];
+    assert!(
+        replaced["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("⟪ICX:STUB")
+    );
+    assert_eq!(
+        replaced["content"][1]["data"], data,
+        "the image data is kept"
+    );
+    assert!(
+        v["hookSpecificOutput"]
+            .get("updatedMCPToolOutput")
+            .is_none(),
+        "a string would replace the image too"
     );
 }
 

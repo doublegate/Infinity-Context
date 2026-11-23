@@ -164,17 +164,29 @@ impl ClaudeCodeAdapter {
                             res.compressed_ahtl.len(),
                             res.compressed_ahtl
                         );
-                        mmu.record_emitted(&stub);
-                        let mut hso = json!({
-                            "hookEventName": "PostToolUse",
-                            "updatedToolOutput": claude_shape_preserving_replacement(builtin, tool_response, &stub)
-                        });
-                        if tool_name.starts_with("mcp__") {
-                            hso["updatedMCPToolOutput"] = Value::String(stub);
+                        // `None`: nothing in the result can take the stub without losing data (an
+                        // image, or only small text beside binary data), so the result is stored
+                        // and reaches the model unchanged (review of #88).
+                        match claude_shape_preserving_replacement(builtin, tool_response, &stub) {
+                            Some(replacement) => {
+                                mmu.record_emitted(&stub);
+                                let mut hso = json!({
+                                    "hookEventName": "PostToolUse",
+                                    "updatedToolOutput": replacement
+                                });
+                                // A string replaces the whole MCP result, so it is not sent for a
+                                // result holding images or other binary blocks, which would be lost.
+                                if tool_name.starts_with("mcp__")
+                                    && !tool_response.is_some_and(contains_binary)
+                                {
+                                    hso["updatedMCPToolOutput"] = Value::String(stub);
+                                }
+                                json!({ "hookSpecificOutput": hso })
+                            }
+                            None => json!({
+                                "hookSpecificOutput": { "hookEventName": "PostToolUse" }
+                            }),
                         }
-                        json!({
-                            "hookSpecificOutput": hso
-                        })
                     } else {
                         json!({})
                     }
@@ -507,12 +519,14 @@ fn is_agent_result(map: &serde_json::Map<String, Value>) -> bool {
 }
 
 /// [`shape_preserving_replacement`] for a Claude Code call: for a built-in tool, the stub replaces
-/// exactly the field its text was stored from, and every other field is kept.
+/// exactly the field its text was stored from, and every other field is kept. `None` when nothing
+/// can be replaced without losing data: a `Read` or `Agent` result with no text field (an image),
+/// or a result whose only large values are binary.
 pub(crate) fn claude_shape_preserving_replacement(
     builtin: Option<ClaudeBuiltin>,
     original: Option<&Value>,
     stub: &str,
-) -> Value {
+) -> Option<Value> {
     if let (Some(b), Some(Value::Object(map))) = (builtin, original)
         && let Some(field) = builtin_field(b, map)
     {
@@ -522,10 +536,7 @@ pub(crate) fn claude_shape_preserving_replacement(
                 let (last, parents) = path.split_last().unwrap_or((&"", &[]));
                 let mut cur = &mut out;
                 for k in parents {
-                    match cur.get_mut(*k).and_then(Value::as_object_mut) {
-                        Some(next) => cur = next,
-                        None => return Value::Object(map.clone()),
-                    }
+                    cur = cur.get_mut(*k).and_then(Value::as_object_mut)?;
                 }
                 cur.insert((*last).to_owned(), Value::String(stub.to_owned()));
             }
@@ -557,14 +568,39 @@ pub(crate) fn claude_shape_preserving_replacement(
                 }
             }
         }
-        return Value::Object(out);
+        return Some(Value::Object(out));
     }
-    shape_preserving_replacement(original, stub)
+    if matches!(builtin, Some(ClaudeBuiltin::Read | ClaudeBuiltin::Agent)) {
+        return None;
+    }
+    shape_preserving_replacement_checked(original, stub)
+}
+
+/// [`shape_preserving_replacement`], or `None` when an object or array has no text value larger
+/// than the stub outside binary payloads: replacing a small value would keep the bulk and add the
+/// stub, and replacing the whole result would drop images.
+pub(crate) fn shape_preserving_replacement_checked(
+    original: Option<&Value>,
+    stub: &str,
+) -> Option<Value> {
+    match original {
+        Some(v @ (Value::Object(_) | Value::Array(_)))
+            if mcp_text_content(v).is_none()
+                && !v
+                    .as_object()
+                    .is_some_and(|m| m.get("stdout").is_some_and(Value::is_string))
+                && largest_string_leaf(v) <= stub.len() =>
+        {
+            None
+        }
+        _ => Some(shape_preserving_replacement(original, stub)),
+    }
 }
 
 /// Builds `updatedToolOutput` in the original response's shape (ICX-AUD-004): string responses
 /// become the stub; Bash-like objects get `stdout` = stub and an emptied `stderr`; any other
-/// object or array has its largest string leaf replaced, keeping every other field.
+/// object or array has its largest text leaf replaced, keeping every other field. Binary values
+/// (see [`is_binary_entry`]) are never replaced.
 pub(crate) fn shape_preserving_replacement(original: Option<&Value>, stub: &str) -> Value {
     // A text-only MCP result was stored as all of its blocks joined, so every block is replaced
     // by one stub block, matching `updatedMCPToolOutput` and the stored artifact (review of #38).
@@ -599,11 +635,43 @@ pub(crate) fn shape_preserving_replacement(original: Option<&Value>, stub: &str)
     }
 }
 
+/// Whether `key` of object `m` holds binary data (an image, audio, a blob), which a stub must
+/// never replace: `base64` anywhere, and `data` or `blob` beside a MIME type (MCP image and
+/// audio content, Anthropic `source` blocks).
+fn is_binary_entry(m: &serde_json::Map<String, Value>, key: &str) -> bool {
+    key == "base64"
+        || (matches!(key, "data" | "blob")
+            && ["mimeType", "media_type", "mime_type"]
+                .iter()
+                .any(|k| m.get(*k).is_some_and(Value::is_string)))
+}
+
+/// Whether `v` holds binary data anywhere: a [`is_binary_entry`] value, or a content block of type
+/// `image`, `audio` or `resource`.
+fn contains_binary(v: &Value) -> bool {
+    match v {
+        Value::Array(a) => a.iter().any(contains_binary),
+        Value::Object(m) => {
+            m.get("type")
+                .and_then(Value::as_str)
+                .is_some_and(|t| matches!(t, "image" | "audio" | "resource"))
+                || m.keys().any(|k| is_binary_entry(m, k))
+                || m.values().any(contains_binary)
+        }
+        _ => false,
+    }
+}
+
 fn largest_string_leaf(v: &Value) -> usize {
     match v {
         Value::String(s) => s.len(),
         Value::Array(a) => a.iter().map(largest_string_leaf).max().unwrap_or(0),
-        Value::Object(m) => m.values().map(largest_string_leaf).max().unwrap_or(0),
+        Value::Object(m) => m
+            .iter()
+            .filter(|(k, _)| !is_binary_entry(m, k))
+            .map(|(_, c)| largest_string_leaf(c))
+            .max()
+            .unwrap_or(0),
         _ => 0,
     }
 }
@@ -617,9 +685,16 @@ fn replace_string_leaf_of_len(v: &mut Value, target: usize, stub: &str) -> bool 
         Value::Array(a) => a
             .iter_mut()
             .any(|c| replace_string_leaf_of_len(c, target, stub)),
-        Value::Object(m) => m
-            .values_mut()
-            .any(|c| replace_string_leaf_of_len(c, target, stub)),
+        Value::Object(m) => {
+            let binary: Vec<String> = m
+                .keys()
+                .filter(|k| is_binary_entry(m, k))
+                .cloned()
+                .collect();
+            m.iter_mut()
+                .filter(|(k, _)| !binary.contains(k))
+                .any(|(_, c)| replace_string_leaf_of_len(c, target, stub))
+        }
         _ => false,
     }
 }
