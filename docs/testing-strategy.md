@@ -90,7 +90,28 @@
 All CI jobs use the pinned `1.100.0` toolchain and SHA-pinned actions
 ([docs/build-and-tooling.md](build-and-tooling.md) §3).
 
-## 2. v1.2.0 qualification additions
+## 2. v1.4.0 additions: live fixtures and plugin tests
+
+- **Contract fixtures from live runs** under `crates/icx-adapters/tests/fixtures/<agent>/<version>/`:
+  Codex CLI 0.171.0, agy 1.5.14 and Muse Code 1.4.25, replayed by `codex_fixtures.rs`,
+  `agy_fixtures.rs` and `muse_fixtures.rs`. Payloads are captured in a scratch project by a
+  capture hook and sanitized by `scripts/sanitize-hook-fixtures.py` (home and project paths,
+  UUIDs and e-mail addresses replaced; it fails if a real path survives). Claude Code's live
+  shapes are pinned in `claude_builtin_shapes.rs`; `scripts/live-claude-replacement-check.sh`
+  repeats the billed live check by hand (exit 1 when the model saw raw output, 2 when `claude`
+  itself failed).
+- **Agent plugin tests**, run in CI's check job with the debug `icx` binary:
+  - `bun test integrations/opencode` drives the OpenCode plugin;
+  - `python3 -I -m unittest discover -s integrations/hermes/tests` drives both Hermes plugins
+    through stand-ins for the Hermes v0.23.3 interfaces they use, with the real icx binary.
+- **Installer tests** (`crates/icx-cli/tests/install_cli.rs`) run `icx install` in a throwaway
+  `HOME`: dry runs write nothing, nothing is written without confirmation, a second run changes
+  nothing, existing hooks are not duplicated, unknown keys, key order, TOML comments, file modes
+  and symlinks are kept, and an unparsable file is left alone.
+- **Not covered by live runs in v1.4.0:** Hermes, Gemini CLI and Cursor tool calls (deferred to
+  v1.5.0, #89); their tests follow the documented contracts.
+
+## 3. v1.2.0 qualification additions
 
 New integration fixtures cover YAML scalar and redaction counterexamples, Profile A framing,
 independent numerical vectors, snapshot corruption and 03→04 upgrades, exact lexical candidates,

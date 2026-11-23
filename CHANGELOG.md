@@ -195,6 +195,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Build
 
+- **CI runs the agent plugin tests:** the OpenCode plugin (`bun test`, Bun from the SHA-pinned
+  `oven-sh/setup-bun` v2.2.0) and the Hermes stand-in tests (`python3 -m unittest`), both against
+  the debug `icx` binary. Changes under `integrations/` now trigger the Rust jobs, because
+  `icx-cli` embeds those files.
+- **New dependencies** for `icx install`: `toml_edit` 0.25.20 and `similar` 3.2.1 (`cargo deny`
+  clean).
+- **`.gitignore`** covers `icx install` backups and temporary files (`*.icx-backup-*`,
+  `.*.icx-tmp-*`) and local Bun artifacts (`node_modules/`, `bun.lock`, `bun.lockb`).
 - **CI runs only what a pull request needs.** Documentation-only pull requests skip the Rust
   build, tests, benchmark, coverage and `cargo deny`, while the secret scan and REUSE still run.
   - Pushes to `main` and manual runs keep the full suite, which the release gate requires.
@@ -203,6 +211,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Documentation
 
+- **README:** Getting Started and CLI Usage show `icx install`; the interception matrix has rows
+  for Gemini CLI, Cursor and OpenCode, the shipped Hermes plugins, and the two MCP tools; the
+  repository map lists `integrations/`.
+- **Specifications:** `docs/interfaces.md` (the `install` command and the new environment
+  variables), `docs/testing-strategy.md` (live fixtures, plugin and installer tests),
+  `docs/security-and-threat-model.md` (§4.6, agent configuration written by `icx install`), the
+  adapters doc (which agents are pinned by live fixtures; the Hermes plugins), and the
+  deployment guide (§2.5 Hermes rewritten, §2.11 automated install).
+- **Deferred to v1.5.0 (#89):** live runs for Hermes (the gateway stays stopped), Gemini CLI (not
+  installed) and Cursor tool calls (blocked by its usage limit). Their v1.4.0 support follows the
+  documented contracts, and the Phase 6 exit criteria say so.
+- **Known issue (#90):** the redactor blanks non-secret values after key names containing
+  `token`, `key` or `session` (for example `current_tokens: int = None`), to the end of the line.
+  It over-redacts and never leaks; the Phase 7 structural redactor fixes it.
 - **Roadmap for v1.4.0 through v2.0.0.** `to-dos/ROADMAP.md` is rewritten from v1.3.2. Phases 6 to
   12 are new: 56 files, 223 tickets, one minor release per phase and v2.0.0 last.
   - Each sprint opens with a research gate, and each ticket carries a source and a Research line,

@@ -42,6 +42,16 @@ icx.sqlite3-wal
 icx.sqlite3-shm
 install.key
 
+# `icx install` leaves backups beside each edited agent config, and a temporary file if a
+# write is interrupted; neither belongs in a repository that holds project-level configs.
+*.icx-backup-*
+.*.icx-tmp-*
+
+# Plugin test tooling (integrations/opencode runs with Bun; no package manifest is committed)
+node_modules/
+bun.lock
+bun.lockb
+
 # Antigravity PR reviewer: large-diff on-disk handoff (transient, removed by the script).
 /.agy-review-work/
 

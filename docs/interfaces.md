@@ -150,6 +150,11 @@ icx <SUBCOMMAND> [OPTIONS]
 
   init [--dir <PATH>]                 Create and seal a workspace (default: per-project under
                                       $XDG_STATE_HOME/icx/workspaces)
+  install --agent <name|all> [--dry-run] [--yes] [--approve-tools] [--icx <PATH>]
+                                      Register icx's hooks and MCP server with an agent; prints each
+                                      change as a diff, asks before writing (--yes skips), backs up
+                                      every edited file; --approve-tools pre-approves the read-only
+                                      icx tool where supported (deployment guide §2.11)
   daemon [--dir <PATH>] [--idle-exit <SECS>]
                                       Keep the workspace resident; serve hooks over a private Unix socket
   trust --dir <PATH>                  Adopt an existing workspace you own (e.g. a v1.0.x `.icx/`)
@@ -177,7 +182,10 @@ icx <SUBCOMMAND> [OPTIONS]
 
 Environment: `ICX_DIR`, `ICX_STATE_HOME`, `ICX_CONFIG_HOME`, `ICX_SHM_PATH`, `ICX_NO_DAEMON`,
 `ICX_DAEMON_AUTOSTART`, `ICX_PROXY_BIND`, `ICX_UPSTREAM_URL`, plus `XDG_STATE_HOME`,
-`XDG_CONFIG_HOME` and `XDG_RUNTIME_DIR`.
+`XDG_CONFIG_HOME` and `XDG_RUNTIME_DIR`. Opt-in output replacement per agent:
+`ICX_GEMINI_STUB`, `ICX_CURSOR_STUB`, `ICX_OPENCODE_STUB`. `icx install` also reads `CODEX_HOME`,
+`CLAUDE_CONFIG_DIR` and `HERMES_HOME`; the Hermes plugins read `ICX_BIN`, `ICX_HERMES_DISABLE`,
+`ICX_HERMES_TIMEOUT` and `ICX_HERMES_STUB_MIN_BYTES`.
 
 ## 8. Managed Context and MCP Contracts
 
