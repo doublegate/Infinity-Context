@@ -24,6 +24,7 @@ fn run(home: &Path, args: &[&str]) -> Output {
         .env_remove("XDG_CONFIG_HOME")
         .env_remove("CODEX_HOME")
         .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("HERMES_HOME")
         .stdin(Stdio::null())
         .output()
         .unwrap()
@@ -310,6 +311,7 @@ fn all_installs_only_the_agents_that_are_installed() {
         .env("HOME", &h)
         .env("PATH", &empty)
         .env_remove("XDG_CONFIG_HOME")
+        .env_remove("HERMES_HOME")
         .stdin(Stdio::null())
         .output()
         .unwrap();
@@ -409,4 +411,26 @@ fn modes_are_kept_new_files_are_private_and_symlinks_stay_links() {
     let o = run(&h2, &["--agent", "cursor", "--yes"]);
     assert!(o.status.success(), "{}", out(&o));
     assert_eq!(mode(&h2.join(".cursor/mcp.json")), 0o600);
+}
+
+#[test]
+fn hermes_gets_both_plugins_and_its_yaml_is_left_alone() {
+    let h = home("hermes");
+    fs::create_dir_all(h.join(".hermes")).unwrap();
+    let yaml = "# mine\ncontext:\n  engine: compressor\n";
+    fs::write(h.join(".hermes/config.yaml"), yaml).unwrap();
+    let o = run(&h, &["--agent", "hermes", "--yes"]);
+    assert!(o.status.success(), "{}", out(&o));
+    let engine = fs::read_to_string(h.join(".hermes/plugins/icx/__init__.py")).unwrap();
+    assert!(engine.contains("class IcxContextEngine"));
+    let manifest = fs::read_to_string(h.join(".hermes/plugins/icx/plugin.yaml")).unwrap();
+    assert!(!manifest.contains("kind:"), "no invalid manifest kind");
+    assert!(h.join(".hermes/plugins/icx-terminal/__init__.py").exists());
+    assert_eq!(
+        fs::read_to_string(h.join(".hermes/config.yaml")).unwrap(),
+        yaml
+    );
+    assert!(out(&o).contains("engine: icx") && out(&o).contains("icx-terminal"));
+    let again = run(&h, &["--agent", "hermes", "--yes"]);
+    assert!(out(&again).contains("no file changes"), "{}", out(&again));
 }

@@ -7,6 +7,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Hermes plugins ship** in `integrations/hermes/` (T-65-002, T-65-009; ICX-AUD-006 fixed),
+  written against Hermes v0.23.3 and pinned to `>=0.23.3,<0.24`. `icx install --agent hermes`
+  copies them; Hermes's `config.yaml` is not edited.
+  - `icx`, the context engine: Hermes's built-in compressor built with your `compression:`
+    settings, which Hermes does not pass to a plugin engine. It ingests only the messages added
+    since the last turn on one bounded background worker, checkpoints history before each
+    compaction, and fetches the tail slot in the background, so Hermes never waits for icx.
+    Fixed from the hand-installed plugin: the invalid `kind: context_engine`, whole-transcript
+    re-sends with one thread per turn, a blocking session start, and ignored `compression:`
+    settings.
+  - `icx-terminal`, off until listed in `plugins.enabled`: stubs large successful shell results
+    through Hermes's `transform_terminal_output` hook (new `icx hook --agent hermes` event of the
+    same name). A failed command keeps its output.
+  - Verified by stand-in tests with the real icx binary, run in CI with the OpenCode plugin
+    tests. They have not run in a live Hermes session; that check is deferred to v1.5.0 (#89).
 - **`icx install --agent <name|all>`** (T-65-004, T-65-005) registers icx's hooks and MCP server
   with Claude Code, Codex, agy, Muse, Gemini CLI, Cursor, OpenCode and Hermes.
   - Every change is printed as a unified diff first. `--dry-run` stops there; otherwise it asks

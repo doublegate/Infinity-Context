@@ -477,15 +477,57 @@ agy launches MCP servers from the project directory (verified: the `icx` MCP `st
 
 ### 2.5 Hermes Agent Configuration (`ContextEngine` Plugin)
 
-The Rust `HermesAdapter` implements the context-engine logic, but **this repository does not ship a Hermes plugin or Python shim.** To use icx with Hermes you must write a small `ContextEngine` plugin that calls `icx hook --agent hermes --event <EVENT>` with a JSON payload on stdin and parses the JSON reply.
+icx ships two Hermes plugins in `integrations/hermes/`, written against Hermes v0.23.3 (commit
+`caafe5389ae`). Their manifests require `>=0.23.3,<0.24`, so another Hermes release refuses
+them until they are re-checked and Hermes uses its built-in compressor.
 
-Requirements on the Hermes side (from `agent/context_engine.py` in the Hermes source):
+**Verification status (v1.4.0):** both plugins are tested against stand-ins for the Hermes
+interfaces they use (`integrations/hermes/tests/`, run in CI with the real `icx` binary). They
+have not run inside a live Hermes session: the Hermes gateway stays stopped for this release, and
+the live check is deferred to v1.5.0 (#89).
 
-- The abstract members `name` (property), `update_from_response`, `should_compress`, and `compress` must be implemented, or the class cannot be instantiated. `select_context`, `on_turn_complete`, and `prune_tool_results_only` are optional.
-- Context-engine plugins are loaded from the bundled `plugins/context_engine/<name>/` or from `$HERMES_HOME/plugins/<name>/`, and selected with `context.engine` in `~/.hermes/config.yaml`.
-- Hermes has no `~/.hermes/hooks.yaml`. Its shell hooks live under `hooks:` in `config.yaml` and use snake_case event names (for example `pre_tool_call` and `on_session_start`; unknown names are refused). Gateway hooks use `~/.hermes/hooks/<name>/HOOK.yaml`. icx does not handle either kind of hook event.
+**Install** with `icx install --agent hermes` (it copies both plugins into
+`$HERMES_HOME/plugins/`, default `~/.hermes/plugins/`, with backups), or copy the two directories
+by hand. Then edit `~/.hermes/config.yaml` yourself; icx does not rewrite YAML:
 
-Events `icx hook --agent hermes` handles, and their JSON contract:
+```yaml
+context:
+  engine: icx            # the icx context engine
+plugins:
+  enabled: [icx-terminal] # optional: shell-output stubbing
+```
+
+**`icx`, the context engine** (`integrations/hermes/icx/`):
+
+- It is Hermes's built-in `ContextCompressor`, built with your `compression:` settings (threshold,
+  protected messages, target ratio, prune and tail settings). Hermes passes those settings only to
+  its own compressor, so the engine reads them from Hermes's config itself.
+- `on_turn_complete`: the messages added since the last ingested turn go to icx on one
+  background worker with a bounded queue. A full queue drops the batch rather than blocking.
+- `compress`: before Hermes summarizes, icx checkpoints the full history, so what the summary
+  drops stays retrievable with the `icx` MCP tool.
+- `on_session_start`: the icx tail slot is fetched in the background, at start and after each
+  compaction, so Hermes never waits for icx.
+- `select_context`: once fetched, the tail slot is prepended to the first user message of each
+  request in `<icx-context trust="untrusted-data">`. It quotes tool output and other agents'
+  commands, so it never goes into the system prompt, and it is never written to the session
+  database.
+
+**`icx-terminal`, shell-output stubbing** (`integrations/hermes/icx-terminal/`, off until listed
+in `plugins.enabled`):
+
+- It registers `transform_terminal_output`, the only Hermes seam that replaces shell output. A
+  context engine cannot register it, hence the separate plugin.
+- A successful result of at least `ICX_HERMES_STUB_MIN_BYTES` (default 2048) bytes is stored in
+  icx and replaced by its stub; the `#icx:` handle dereferences to the full output. A failed
+  command keeps its output, so the model sees the error. Hermes applies its output limit after
+  the replacement.
+
+**Both fail open:** if icx is missing, errors, or takes longer than `ICX_HERMES_TIMEOUT` seconds
+(default 10), Hermes behaves as without them. `ICX_HERMES_DISABLE=1` turns every icx call off;
+`ICX_BIN` names the binary (default: `icx` on `PATH`, then `~/.local/bin/icx`).
+
+**The `icx hook --agent hermes` events**, for anyone writing their own integration:
 
 | `--event` | stdin fields | stdout |
 | :--- | :--- | :--- |
@@ -495,8 +537,12 @@ Events `icx hook --agent hermes` handles, and their JSON contract:
 | `on_turn_complete` | `messages` | `{"ingested_count": N}` |
 | `on_pre_compress` | `messages` | `{"checkpoint_version": 2, "checkpoint": "..."}` |
 | `SessionStart` | — | `{"systemMessage": "<tail slot>"}` |
+| `transform_terminal_output` | `command`, `output`, `returncode` | `{"output": "<stub>"}`, or `{}` to keep the output |
 
-A shim should fail open: if `icx` exits non-zero or prints nothing, return the messages unchanged. The MCP pager can be registered under `mcp_servers` in `~/.hermes/config.yaml` (`command: icx`, `args: ["mcp-serve"]`).
+Hermes has no `~/.hermes/hooks.yaml`. Its shell hooks live under `hooks:` in `config.yaml` with
+snake_case event names, and gateway hooks use `~/.hermes/hooks/<name>/HOOK.yaml`; icx handles
+neither. The MCP pager can be registered under `mcp_servers` in `~/.hermes/config.yaml`
+(`command: icx`, `args: ["mcp-serve"]`).
 
 ---
 

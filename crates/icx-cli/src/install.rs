@@ -44,7 +44,7 @@ pub fn is_installed(agent: &str, o: &Opts) -> bool {
         "gemini-cli" => "gemini",
         "cursor" => "cursor-agent",
         "opencode" => "opencode",
-        "hermes" => return o.home.join(".hermes").is_dir(),
+        "hermes" => return crate::install_hermes::hermes_home(o).is_dir(),
         _ => return false,
     };
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
@@ -104,6 +104,11 @@ impl Plan {
         }
         self.edits
             .retain(|e| e.before.as_deref() != Some(e.after.as_str()));
+    }
+
+    /// [`Plan::set`] for another module of the installer.
+    pub(crate) fn set_file(&mut self, path: &Path, before: Option<String>, after: String) {
+        self.set(path, before, after);
     }
 
     /// The current content of `path` as this plan would leave it so far.

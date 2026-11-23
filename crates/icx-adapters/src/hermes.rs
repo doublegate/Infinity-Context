@@ -1012,6 +1012,50 @@ impl HermesAdapter {
                     "checkpoint": checkpoint
                 })
             }
+            // The general plugin's `transform_terminal_output` hook (T-65-009): Hermes replaces a
+            // shell result with the first string a plugin returns, then applies its output limit.
+            // A large successful result is stored and its stub returned; a failed command keeps its
+            // raw output, so the model sees the error.
+            "transform_terminal_output" | "transform-terminal-output" => {
+                let output = payload.get("output").and_then(Value::as_str).unwrap_or("");
+                let command = payload.get("command").and_then(Value::as_str).unwrap_or("");
+                let exit_code = payload
+                    .get("returncode")
+                    .and_then(Value::as_i64)
+                    .and_then(|c| i32::try_from(c).ok());
+                if output.is_empty() {
+                    json!({})
+                } else {
+                    let subject =
+                        format!("terminal:{}", command.chars().take(120).collect::<String>());
+                    let failed = exit_code.is_some_and(|c| c != 0);
+                    let res = mmu.ingest_payload_for_subagent(
+                        AgentKind::Hermes,
+                        &subject,
+                        output,
+                        exit_code,
+                        failed,
+                        None,
+                    );
+                    if !failed && res.was_virtualized {
+                        let total_lines = mmu
+                            .cas
+                            .get_meta(res.artifact_id)
+                            .map_or(1, |m| m.total_lines.max(1));
+                        let stub = format!(
+                            "⟪ICX:STUB│{}│raw={}B→{}B│lines=1..{total_lines}⟫\n{}",
+                            res.artifact_id,
+                            res.raw_bytes,
+                            res.compressed_ahtl.len(),
+                            res.compressed_ahtl
+                        );
+                        mmu.record_emitted(&stub);
+                        json!({ "output": stub })
+                    } else {
+                        json!({})
+                    }
+                }
+            }
             "SessionStart" | "session-start" => {
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::Hermes, "session_init", 3);
                 json!({

@@ -98,19 +98,27 @@ against the documented `ContextEngine` interface.
 
 **Acceptance Criteria:**
 
-- [ ] Shim source in the repository, pinned to a Hermes commit range.
-- [ ] Fails open: if icx is unavailable, Hermes runs unchanged.
-- [ ] The four defects found in the hand-installed plugin (Sprint 1) are fixed:
+**Outcome (2026-11-23):** shipped as `integrations/hermes/icx/`. Interfaces were re-read from the
+installed Hermes v0.23.3 source (static only; Hermes stays stopped). Two facts beyond Sprint 1:
+Hermes passes `compression:` settings only to its built-in compressor (`agent/agent_init.py`,
+`_build_context_engine`), and a manifest without `kind` is `standalone`, while `exclusive` would
+hand activation to category discovery.
+
+- [x] Shim source in the repository, pinned to a Hermes version range (`requires_hermes:
+  ">=0.23.3,<0.24"`, which Hermes enforces at load).
+- [x] Fails open: if icx is unavailable, Hermes runs unchanged (tested).
+- [x] The four defects found in the hand-installed plugin (Sprint 1) are fixed (each tested):
   - the manifest uses a valid kind (`exclusive`, or no kind field) instead of
     `context_engine`;
   - `on_turn_complete` sends only the delta since the last ingested turn, on one bounded
     worker instead of one thread per turn;
   - `on_session_start` does not block Hermes for up to 10 s at init and after each compaction;
   - the user's `compression:` settings are read rather than silently ignored.
-- [ ] Verified by stand-in tests that drive the shim through the documented `ContextEngine`
-  interface. Live verification and a live fixture are deferred to v1.5.0 (#89): the Hermes
-  gateway stays stopped (owner decision, 2026-11-23).
-- [ ] Deployment guide Hermes section rewritten; ICX-AUD-006 moved to fixed.
+- [x] Verified by stand-in tests that drive the shim through the documented `ContextEngine`
+  interface (`integrations/hermes/tests/`, with the real icx binary; in CI). Live verification
+  and a live fixture are deferred to v1.5.0 (#89): the Hermes gateway stays stopped (owner
+  decision, 2026-11-23).
+- [x] Deployment guide Hermes section rewritten; ICX-AUD-006 moved to fixed.
 
 **Dependencies:** T-61-005
 
@@ -333,10 +341,17 @@ handle dereferences losslessly. Confirmed by a live Hermes session. Check the pl
 
 **Acceptance Criteria:**
 
-- [ ] Separate general plugin, off by default, pinned to a Hermes commit range.
-- [ ] Fails open: on error or timeout the raw output passes through unchanged.
-- [ ] Verified by stand-in tests; live verification deferred to v1.5.0 (#89).
-- [ ] Deployment guide Hermes section documents enabling it.
+**Outcome (2026-11-23):** shipped as `integrations/hermes/icx-terminal/` plus the
+`transform_terminal_output` event of `icx hook --agent hermes`. The hook also receives
+`tool_call_id` on v0.23.3; the plugin accepts extra keywords. The icx timeout (10 s default) is
+below Hermes's plugin timeout.
+
+- [x] Separate general plugin, off by default (`plugins.enabled`), pinned to `>=0.23.3,<0.24`.
+- [x] Fails open: on error or timeout the raw output passes through unchanged; a failed command
+  keeps its output.
+- [x] Verified by stand-in tests, including a lossless `icx deref` of the stub; live
+  verification deferred to v1.5.0 (#89).
+- [x] Deployment guide Hermes section documents enabling it.
 
 **Dependencies:** T-65-002
 
