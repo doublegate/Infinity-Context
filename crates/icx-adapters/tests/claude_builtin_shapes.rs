@@ -448,3 +448,44 @@ fn binary_blocks_without_a_mime_type_are_kept() {
         assert!(!out.contains("updatedToolOutput"), "{binary}: {out}");
     }
 }
+
+#[test]
+fn resources_and_links_keep_the_mcp_result_whole() {
+    // `updatedMCPToolOutput` would replace the whole result with one string, dropping these
+    // blocks; only the shape-preserving replacement is sent (review of #88).
+    for block in [
+        json!({"type": "resource", "resource": {"uri": "file:///a.txt", "text": "short"}}),
+        json!({"type": "resource_link", "uri": "file:///b.txt", "name": "b"}),
+    ] {
+        let response = json!({"content": [{"type": "text", "text": lines(800, "body")},
+            block.clone()]});
+        let mut mmu = InfinityContextMmu::default();
+        let out = ClaudeCodeAdapter::handle_hook(
+            "PostToolUse",
+            &post_tool_use("mcp__svc__get", &response).to_string(),
+            &mut mmu,
+        )
+        .unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert!(
+            v["hookSpecificOutput"]
+                .get("updatedMCPToolOutput")
+                .is_none(),
+            "{block}"
+        );
+        assert_eq!(
+            v["hookSpecificOutput"]["updatedToolOutput"]["content"][1],
+            block
+        );
+    }
+    // An all-text result still gets it.
+    let text = json!({"content": [{"type": "text", "text": lines(800, "body")}]});
+    let mut mmu = InfinityContextMmu::default();
+    let out = ClaudeCodeAdapter::handle_hook(
+        "PostToolUse",
+        &post_tool_use("mcp__svc__get", &text).to_string(),
+        &mut mmu,
+    )
+    .unwrap();
+    assert!(out.contains("updatedMCPToolOutput"));
+}

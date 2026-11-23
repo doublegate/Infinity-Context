@@ -95,8 +95,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     resources are not entered (MCP's `mimeType` is optional, so the block type decides), and a
     `base64` value, or `data`/`blob` beside a MIME type or `uri`, is skipped, and a result with no text value larger than the stub (an image `Read`, an
     image-only report, a screenshot with a caption) reaches the model unchanged, though it is
-    still stored. `updatedMCPToolOutput`, a string that replaces the whole MCP result, is not sent
-    for a result holding image, audio or resource blocks.
+    still stored. `updatedMCPToolOutput`, a string that replaces the whole MCP result, is sent
+    only when every content block is text, so images, audio, resources and resource links are
+    never dropped.
   - These shapes apply only when the call names that built-in tool (`Read`, `Grep`, `Glob`,
     `WebFetch`, `Agent` or `Task`, `REPL`), and the stub replaces exactly the field that was
     stored. An MCP result with the same keys is stored whole, as any other JSON result.

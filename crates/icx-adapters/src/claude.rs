@@ -174,10 +174,11 @@ impl ClaudeCodeAdapter {
                                     "hookEventName": "PostToolUse",
                                     "updatedToolOutput": replacement
                                 });
-                                // A string replaces the whole MCP result, so it is not sent for a
-                                // result holding images or other binary blocks, which would be lost.
+                                // A string replaces the whole MCP result, so it is sent only when
+                                // every content block is text: images, audio, resources and resource
+                                // links would otherwise be lost (review of #88).
                                 if tool_name.starts_with("mcp__")
-                                    && !tool_response.is_some_and(contains_binary)
+                                    && !tool_response.is_some_and(has_non_text_block)
                                 {
                                     hso["updatedMCPToolOutput"] = Value::String(stub);
                                 }
@@ -656,14 +657,18 @@ fn is_binary_entry(m: &serde_json::Map<String, Value>, key: &str) -> bool {
                     .any(|k| m.get(*k).is_some_and(Value::is_string))))
 }
 
-/// Whether `v` holds binary data anywhere (the same rule as the replacement uses).
-fn contains_binary(v: &Value) -> bool {
+/// Whether `v` holds anything a single text stub cannot stand in for: binary data (the rule the
+/// replacement uses), or a typed block other than `text` (`resource`, `resource_link`, ...).
+fn has_non_text_block(v: &Value) -> bool {
     match v {
-        Value::Array(a) => a.iter().any(contains_binary),
+        Value::Array(a) => a.iter().any(has_non_text_block),
         Value::Object(m) => {
             is_binary_block(m)
                 || m.keys().any(|k| is_binary_entry(m, k))
-                || m.values().any(contains_binary)
+                || m.get("type")
+                    .and_then(Value::as_str)
+                    .is_some_and(|t| t != "text")
+                || m.values().any(has_non_text_block)
         }
         _ => false,
     }
