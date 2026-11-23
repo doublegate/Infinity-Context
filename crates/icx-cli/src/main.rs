@@ -21,6 +21,8 @@ use std::time::Instant;
 
 #[cfg(unix)]
 mod daemon;
+mod install;
+mod install_hermes;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -81,6 +83,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
         "daemon" => run_daemon(tail),
         "deref" => run_deref(tail),
         "codex-ingest" => run_codex_ingest(tail),
+        "install" => run_install(tail),
         "hook" => {
             let stdin_buf = match read_bounded(&mut reader, MAX_STDIN_BYTES) {
                 Ok(buf) => buf,
@@ -211,6 +214,11 @@ Subcommands:",
   deref <HANDLE> [--lines <START:END>] [--dir <PATH>] [--raw]
       Dereference a 64-bit (#icx:<16-hex>) or 48-bit (#icx:<12-hex>) handle; output is framed as
       untrusted data and delimiter-escaped unless --raw (byte-exact) is given
+  install --agent <name|all> [--dry-run] [--yes] [--approve-tools] [--icx <PATH>]
+      Register icx's hooks and MCP server with an agent (claude-code, codex, agy, muse,
+      gemini-cli, cursor, opencode, hermes). Prints each change as a diff; --dry-run stops there,
+      otherwise it asks before writing (--yes skips the question) and backs up every edited file.
+      --approve-tools also pre-approves the read-only icx tool where the agent supports it
   codex-ingest [--sessions <DIR>] [--project <DIR> | --all-projects] [--include-tool-outputs] [--dir <PATH>]
       Ingest new records from Codex rollouts (.jsonl and .jsonl.zst) whose session ran in the
       project (default: the current project; sessions default to $CODEX_HOME/sessions). Tool
@@ -439,6 +447,21 @@ fn cwd_changed_target(event: &str, stdin: &str) -> Option<PathBuf> {
     }
     let payload: serde_json::Value = serde_json::from_str(stdin).ok()?;
     let dir = PathBuf::from(payload.get("new_cwd")?.as_str()?);
+    (dir.is_absolute() && dir.is_dir()).then_some(dir)
+}
+
+/// The project an agy hook is about: agy runs hook commands from `~/.gemini/config`, so the
+/// workspace comes from the payload's `workspacePaths[0]` (its `cwd` can name a parent), falling
+/// back to `cwd`, when that is an absolute, existing directory. Lets `icx hook --agent agy` run
+/// directly, without a wrapper that changes directory first (T-65-004).
+fn agy_project_dir(stdin: &str) -> Option<PathBuf> {
+    let payload: serde_json::Value = serde_json::from_str(stdin).ok()?;
+    let dir = payload
+        .get("workspacePaths")
+        .and_then(|w| w.get(0))
+        .or_else(|| payload.get("cwd"))?
+        .as_str()
+        .map(PathBuf::from)?;
     (dir.is_absolute() && dir.is_dir()).then_some(dir)
 }
 
@@ -850,6 +873,117 @@ fn run_codex_ingest(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// `icx install` (T-65-004, T-65-005): plans the edits for each agent, prints them as diffs, and
+/// writes them only after confirmation.
+fn run_install(args: &[String]) -> Result<(), String> {
+    const CMD: &str = "icx install";
+    const USAGE: &str = "Usage: icx install --agent <name|all> [--dry-run] [--yes] [--approve-tools] [--icx <PATH>]";
+    let mut agents: Vec<String> = Vec::new();
+    let (mut dry_run, mut yes, mut approve) = (false, false, false);
+    let mut icx: Option<&str> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--agent" => {
+                agents.push(flag_value_at(args, i, CMD)?.to_owned());
+                i += 2;
+            }
+            "--icx" => {
+                set_option_once(&mut icx, CMD, "--icx", flag_value_at(args, i, CMD)?)?;
+                i += 2;
+            }
+            "--dry-run" => (dry_run, i) = (true, i + 1),
+            "--yes" => (yes, i) = (true, i + 1),
+            "--approve-tools" => (approve, i) = (true, i + 1),
+            other => {
+                return Err(format!(
+                    "{CMD} error: unexpected argument `{other}`\n{USAGE}"
+                ));
+            }
+        }
+    }
+    if agents.is_empty() {
+        return Err(format!("{CMD} error: --agent is required\n{USAGE}"));
+    }
+    let all = agents.iter().any(|a| a == "all");
+    let home = env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| format!("{CMD} error: HOME is not set"))?;
+    let non_empty = |k: &str| env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let icx = match icx {
+        Some(p) => p.to_owned(),
+        // The running binary, so hooks keep working whatever PATH the agent has.
+        None => env::current_exe()
+            .ok()
+            .and_then(|p| fs::canonicalize(p).ok())
+            .map_or_else(|| "icx".to_owned(), |p| p.display().to_string()),
+    };
+    let opts = install::Opts {
+        config_home: non_empty("XDG_CONFIG_HOME").unwrap_or_else(|| home.join(".config")),
+        codex_home: non_empty("CODEX_HOME").unwrap_or_else(|| home.join(".codex")),
+        claude_home: non_empty("CLAUDE_CONFIG_DIR").unwrap_or_else(|| home.join(".claude")),
+        home,
+        icx,
+        approve,
+    };
+    if all {
+        // `all` means the agents installed here; a named agent is installed regardless.
+        let (found, missing): (Vec<&str>, Vec<&str>) = install::AGENTS
+            .iter()
+            .partition(|a| install::is_installed(a, &opts));
+        if !missing.is_empty() {
+            println!("skipped (not installed): {}", missing.join(", "));
+        }
+        agents = found.iter().map(|a| (*a).to_owned()).collect();
+    }
+    let mut plans = Vec::new();
+    for agent in &agents {
+        let plan = install::plan(agent, &opts).map_err(|e| format!("{CMD} error: {e}"))?;
+        println!("=== {agent}");
+        let text = install::render(&plan);
+        if plan.edits.is_empty() {
+            println!("no file changes");
+        }
+        print!("{text}");
+        plans.push(plan);
+    }
+    let changes: usize = plans.iter().map(|p| p.edits.len()).sum();
+    if dry_run || changes == 0 {
+        if dry_run {
+            println!("dry run: nothing was written");
+        }
+        return Ok(());
+    }
+    if !yes {
+        use std::io::IsTerminal;
+        if !io::stdin().is_terminal() {
+            return Err(format!(
+                "{CMD}: {changes} file(s) would change; re-run with --yes to write them, or --dry-run to only show them"
+            ));
+        }
+        print!("Write these {changes} file change(s)? [y/N] ");
+        let _ = io::Write::flush(&mut io::stdout());
+        let mut answer = String::new();
+        io::stdin()
+            .read_line(&mut answer)
+            .map_err(|e| format!("{CMD} error: {e}"))?;
+        if !matches!(answer.trim(), "y" | "Y" | "yes") {
+            println!("nothing was written");
+            return Ok(());
+        }
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    for plan in &plans {
+        for backup in install::apply(plan, stamp).map_err(|e| format!("{CMD} error: {e}"))? {
+            println!("backup: {}", backup.display());
+        }
+    }
+    println!("{CMD}: wrote {changes} file(s)");
+    Ok(())
+}
+
 /// `icx deref` is often run by agents through a shell tool, so by default its output is framed
 /// like MCP deref: an untrusted-data provenance header plus the Tier-0-escaped body
 /// (ICX-AUD-011). `--raw` prints the exact stored bytes for humans and scripts.
@@ -974,8 +1108,11 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
     let cwd_changed = (agent == AgentKind::ClaudeCode)
         .then(|| cwd_changed_target(event_str, stdin_buf))
         .flatten();
-    let ws_dir = match &cwd_changed {
-        Some(new_cwd) => resolve_workspace_dir_from(dir_str, new_cwd),
+    let agy_dir = (agent == AgentKind::AntigravityCli)
+        .then(|| agy_project_dir(stdin_buf))
+        .flatten();
+    let ws_dir = match cwd_changed.as_ref().or(agy_dir.as_ref()) {
+        Some(dir) => resolve_workspace_dir_from(dir_str, dir),
         None => resolve_workspace_dir(dir_str),
     };
     if matches!(workspace_state(&ws_dir, true), WsState::Ready) {

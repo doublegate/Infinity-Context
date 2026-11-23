@@ -7,6 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **`icx install --agent <name|all>`** (T-65-004, T-65-005) registers icx's hooks and MCP server
+  with Claude Code, Codex, agy, Muse, Gemini CLI, Cursor, OpenCode and Hermes.
+  - Every change is printed as a unified diff first. `--dry-run` stops there; otherwise it asks
+    on a terminal, `--yes` skips the question, and with no terminal it refuses to write.
+  - Each edited file is backed up to `<file>.icx-backup-<unix time>` and replaced atomically.
+  - Edits are additive and idempotent: an existing icx hook (`icx` or the `icx-hook` wrapper) is
+    never duplicated, a second run changes nothing, and a file with nothing to add is left byte
+    for byte. JSON key order and unknown keys are kept; Codex's `config.toml` keeps its comments.
+    A file that does not parse is never rewritten.
+  - `--agent all` covers only the agents installed here.
+  - `--approve-tools` pre-approves only the read-only `icx` tool, where the agent supports it
+    (deployment guide section 2.11 lists each rule and how to remove it).
+- **`icx hook --agent agy` finds the project itself** from the payload's `workspacePaths[0]`, so
+  agy needs no wrapper script that changes directory first.
 - **`icx codex-ingest`** (T-62-003, T-62-004) reads Codex rollouts into the workspace.
   - It reads both plain `rollout-*.jsonl` files and the zstd-compressed `.jsonl.zst` files Codex
     writes for rollouts older than 7 days.

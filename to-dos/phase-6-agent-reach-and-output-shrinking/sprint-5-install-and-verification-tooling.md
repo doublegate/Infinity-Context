@@ -164,10 +164,19 @@ backs up every file before editing it.
 
 **Acceptance Criteria:**
 
-- [ ] Supported agents: Claude Code, Codex, agy, Muse, Hermes, Gemini CLI, Cursor, OpenCode.
-- [ ] `--dry-run` output is a diff per file; no file is written in dry-run mode (tested).
-- [ ] A real install backs up each edited file and is idempotent (second run makes no change).
-- [ ] Unknown keys and comments in agent configs are preserved.
+**Outcome (2026-11-23):** shipped (`crates/icx-cli/src/install.rs`, `tests/install_cli.rs`).
+Config paths and formats were checked on the installed versions (Claude Code, Codex, agy, Muse,
+Cursor and OpenCode configs on this machine); Gemini CLI's follow its docs. `icx init` is
+unchanged: it creates the workspace, and `icx install` registers the agents. A dry run against
+the owner's real configs recognised every existing `icx-hook` registration and planned only the
+missing pieces.
+
+- [x] Supported agents: Claude Code, Codex, agy, Muse, Hermes, Gemini CLI, Cursor, OpenCode.
+  Hermes installs its plugins once T-65-002 ships them, and prints its one YAML change.
+- [x] `--dry-run` output is a diff per file; no file is written in dry-run mode (tested).
+- [x] A real install backs up each edited file and is idempotent (second run makes no change).
+- [x] Unknown keys and comments in agent configs are preserved (JSON keys and order; TOML
+  comments). A file that does not parse, such as JSON with comments, is left alone with a note.
 
 **Dependencies:** T-63-004
 
@@ -198,12 +207,20 @@ whether a pre-approval key has been documented since 1.4.25. If none has, the st
 
 **Acceptance Criteria:**
 
-- [ ] The step prints the exact edit per agent and writes only after an explicit confirmation
-  (interactive prompt or a dedicated flag); a test proves that nothing is written otherwise.
-- [ ] The approval covers only the icx server, never a wildcard over all servers or tools.
-- [ ] Each edited file is backed up; the edit is idempotent.
-- [ ] Each key is verified on a live run and recorded with the agent version.
-- [ ] Deployment guide documents the approvals and how to remove them.
+**Live checks (2026-11-23):** `codex exec` (0.171.0) ran `icx_write` with
+`default_tools_approval_mode` set to `writes` and to `prompt` alike, so a non-interactive run
+cannot tell approval modes apart. Muse 1.4.25's default LLM approval judge also let `icx_write`
+run. Since the ADR-0009 split, the per-tool keys approve only the read-only tool.
+
+- [x] The step prints the exact edit per agent and writes only after an explicit confirmation
+  (interactive prompt or `--yes`); a test proves that nothing is written otherwise.
+- [x] The approval covers only icx's read-only tool (`mcp__icx__icx`, Codex
+  `tools.icx.approval_mode`, `mcp(icx/icx)`, `Mcp(icx:icx)`), never a wildcard.
+- [x] Each edited file is backed up; the edit is idempotent.
+- [ ] Each key is verified on a live run and recorded with the agent version. Partly: agy's form
+  live (Sprint 1); Claude Code's by its documented syntax; Codex's cannot be shown by `codex
+  exec`; Cursor's deferred with #89.
+- [x] Deployment guide documents the approvals and how to remove them (section 2.11).
 
 **Dependencies:** T-65-004, T-61-004, T-64-007
 
