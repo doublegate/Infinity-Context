@@ -172,7 +172,7 @@ impl J {
     }
 
     /// The object at `key`, created when missing. Errors when `key` holds a non-object.
-    fn obj_mut(&mut self, key: &str) -> Result<&mut J, String> {
+    pub(crate) fn obj_mut(&mut self, key: &str) -> Result<&mut J, String> {
         let J::Obj(m) = self else {
             return Err(format!("expected an object around `{key}`"));
         };
@@ -192,7 +192,7 @@ impl J {
     }
 
     /// The array at `key`, created when missing. Errors when `key` holds a non-array.
-    fn arr_mut(&mut self, key: &str) -> Result<&mut Vec<J>, String> {
+    pub(crate) fn arr_mut(&mut self, key: &str) -> Result<&mut Vec<J>, String> {
         let J::Obj(m) = self else {
             return Err(format!("expected an object around `{key}`"));
         };
@@ -205,7 +205,7 @@ impl J {
         }
     }
 
-    fn insert(&mut self, key: &str, value: J) {
+    pub(crate) fn insert(&mut self, key: &str, value: J) {
         if let J::Obj(m) = self {
             if let Some(slot) = m.iter_mut().find(|(k, _)| k == key) {
                 slot.1 = value;
@@ -380,14 +380,19 @@ fn edit_json(
     if v == unchanged && before.is_some() {
         return;
     }
-    let mut text = json_text(&v);
-    // Keep the file's own end: no trailing newline if it had none.
-    if before
-        .as_deref()
-        .is_some_and(|b| !b.is_empty() && !b.ends_with('\n'))
-    {
-        text.pop();
-    }
+    // Only the new members and elements are written into the file's own text, indented like
+    // their siblings; every existing byte, formatting included, is kept (v1.4.1). A change that
+    // is not a pure addition falls back to re-serialising with the file's indent unit.
+    let current = plan
+        .current(path)
+        .ok()
+        .flatten()
+        .filter(|t| !t.trim().is_empty());
+    let text = match &current {
+        Some(t) => crate::json_edit::merge(t, &unchanged, &v)
+            .unwrap_or_else(|| crate::json_edit::reserialize(t, &v)),
+        None => json_text(&v),
+    };
     plan.set(path, before, text);
 }
 
@@ -577,10 +582,60 @@ fn claude(p: &mut Plan, o: &Opts) {
             Ok(())
         },
     );
+    for note in stale_claude_matchers(p, &path) {
+        p.note(note);
+    }
     p.note(format!(
         "Claude Code keeps MCP servers in ~/.claude.json, which icx does not edit. Register icx with: claude mcp add --scope user icx -- {} mcp-serve",
         shell_quote(&o.icx)
     ));
+}
+
+/// The tools whose results icx shrinks in Claude Code; a PostToolUse matcher that names none of
+/// them leaves file reads and subagent reports at full size.
+const CLAUDE_SHRUNK_BUILTINS: &[&str] = &["Read", "Grep", "Glob", "Agent"];
+
+/// Notes for an existing icx PostToolUse hook whose matcher predates v1.4.0 and names none of the
+/// built-in tools icx now shrinks (review of the v1.4.0 install). icx never edits an existing
+/// hook, which may be customised, so it prints the matcher to use instead.
+fn stale_claude_matchers(p: &Plan, path: &Path) -> Vec<String> {
+    let Ok(Some(text)) = p.current(path) else {
+        return Vec::new();
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    let groups = v
+        .pointer("/hooks/PostToolUse")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    groups
+        .iter()
+        .filter(|g| {
+            g.get("hooks")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|hs| {
+                    hs.iter().any(|h| {
+                        h.get("command")
+                            .and_then(serde_json::Value::as_str)
+                            .is_some_and(|c| is_icx_hook_command(c, "claude-code", "PostToolUse"))
+                    })
+                })
+        })
+        .filter_map(|g| g.get("matcher").and_then(serde_json::Value::as_str))
+        // An empty or match-all matcher already covers every tool.
+        .filter(|m| !m.is_empty() && *m != ".*" && *m != "*")
+        .filter(|m| !CLAUDE_SHRUNK_BUILTINS.iter().any(|t| m.contains(t)))
+        .map(|m| {
+            format!(
+                "Claude Code: the existing icx PostToolUse matcher `{m}` names none of Read, Grep, \
+                 Glob or Agent, whose results icx shrinks since v1.4.0; icx does not edit an \
+                 existing hook. To include them, add `Read|Grep|Glob|Agent|Task|REPL|` after `^(`, \
+                 as in `^(Bash|BashOutput|Read|Grep|Glob|WebFetch|WebSearch|Agent|Task|REPL|mcp__(?!icx__).+)$`."
+            )
+        })
+        .collect()
 }
 
 fn codex(p: &mut Plan, o: &Opts) {
@@ -1019,11 +1074,8 @@ fn apply_one(e: &FileEdit, stamp: u64, backups: &mut Vec<PathBuf>) -> Result<(),
                 break;
             }
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(err) => {
-                // A partly written file of ours is removed; nothing else is touched.
-                let _ = fs::remove_file(&candidate);
-                return Err(format!("writing {}: {err}", target.display()));
-            }
+            // `write_new` has already removed a partly written file of ours.
+            Err(err) => return Err(format!("writing {}: {err}", target.display())),
         }
     }
     let tmp = tmp.ok_or_else(|| format!("writing {}: no free temporary name", target.display()))?;
@@ -1059,10 +1111,7 @@ fn apply_one(e: &FileEdit, stamp: u64, backups: &mut Vec<PathBuf>) -> Result<(),
                 Ok(()) => break candidate,
                 Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists && n < 1000 => n += 1,
                 Err(err) => {
-                    // A partly written backup of ours is removed.
-                    if err.kind() != std::io::ErrorKind::AlreadyExists {
-                        let _ = fs::remove_file(&candidate);
-                    }
+                    // `write_new` has already removed a partly written backup of ours.
                     return Err(discard(format!(
                         "backing up {} to {}: {err}",
                         target.display(),
@@ -1126,15 +1175,24 @@ fn write_new(path: &Path, contents: &[u8], mode: u32) -> std::io::Result<()> {
     #[cfg(not(unix))]
     let _ = mode;
     let mut f = opts.open(path)?;
-    // The umask may have cleared bits the original had; set the mode exactly, on the open file
-    // rather than by path.
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        f.set_permissions(fs::Permissions::from_mode(mode))?;
+    // From here the file is ours: a failure removes it, and only then. A failed create (the path
+    // exists, or the directory refuses it) never removes anything (review of #92).
+    let filled = (|| {
+        // The umask may have cleared bits the original had; set the mode exactly, on the open
+        // file rather than by path.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            f.set_permissions(fs::Permissions::from_mode(mode))?;
+        }
+        f.write_all(contents)?;
+        f.sync_all()
+    })();
+    if filled.is_err() {
+        drop(f);
+        let _ = fs::remove_file(path);
     }
-    f.write_all(contents)?;
-    f.sync_all()
+    filled
 }
 
 #[cfg(test)]

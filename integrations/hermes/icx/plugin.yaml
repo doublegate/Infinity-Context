@@ -1,5 +1,5 @@
 name: icx
-version: 1.4.0
+version: 1.4.1
 description: "Infinity-Context (icx) context engine: Hermes's built-in compressor with your compression settings, plus icx ingestion of each finished turn (recall, cross-agent bus), an icx checkpoint before each compaction, and the icx tail slot as untrusted user-turn data. Fails open."
 author: "DoubleGate"
 license: "GPL-3.0-or-later AND AGPL-3.0-or-later"

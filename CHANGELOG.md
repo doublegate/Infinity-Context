@@ -5,6 +5,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-11-24
+
+Fixes found while installing v1.4.0 on a real machine, and the remaining suggestions from the
+v1.4.0 release review. Release notes: [`docs/releases/v1.4.1/README.md`](docs/releases/v1.4.1/README.md).
+
+### Fixed
+
+- `icx install` keeps each JSON file's own formatting. It used to re-serialise a whole file with
+  two-space indentation, so a tab-indented or hand-aligned config such as OpenCode's
+  `opencode.json` changed on every line for a one-entry addition. Now every existing byte is kept
+  and only the new members and elements are inserted, indented like their siblings; a compact
+  file stays compact. A change that is not a pure addition falls back to re-serialising with the
+  file's own indent unit.
+- `icx install` warns when an existing icx `PostToolUse` hook for Claude Code has a matcher from
+  before v1.4.0 that names none of Read, Grep, Glob or Agent, so file reads and subagent reports
+  were never shrunk; it prints the matcher to use. It still never edits an existing hook.
+- Command reading (own-command and existing-hook detection, Rust and Python): an unquoted newline
+  ends a command, so `cd /repo` followed by `icx deref ...` on the next line is recognised as
+  icx's own command; a backslash before a newline joins the lines. `shell_words` and the command
+  splitter now share one lexer.
+- `icx install` never writes a hook path containing `..` (from `../bin/icx install` or a `PATH`
+  entry with `..`); it uses the binary's canonical path, so removing the directory the install
+  ran from cannot break the hooks.
+- A temporary or backup file is removed after a failure only when icx created it; a failed create
+  never removes anything.
+
+### Documentation
+
+- The v1.4.0 Hermes plugin test count was stale: 27 tests, not 24.
+
 ## [1.4.0] - 2026-11-23
 
 Phase 6, agent reach and output shrinking: Gemini CLI, Cursor and OpenCode adapters, the Hermes

@@ -750,8 +750,13 @@ icx install --agent all --yes --approve-tools      # write without asking; also 
   - a hook is added only when no hook running `icx` or the `icx-hook` wrapper for that agent and
     event is registered; an MCP server or permission entry only when it is missing; so a second
     run changes nothing;
-  - JSON files keep their keys and key order, and a file with nothing to add is left byte for
-    byte; Codex's `config.toml` is edited with comments and layout kept;
+  - JSON files keep their formatting (v1.4.1): every existing byte stays, and only the new
+    entries are inserted, indented like their neighbours (tabs, hand-aligned values and compact
+    one-line files included). A file with nothing to add is left byte for byte. Codex's
+    `config.toml` is edited with comments and layout kept;
+  - an existing icx hook is never edited, even when it is out of date. For Claude Code, a
+    `PostToolUse` matcher from before v1.4.0 that leaves out Read, Grep, Glob and Agent gets a
+    note with the matcher to use;
   - a file that does not parse, such as JSON with comments, is never rewritten: the output names
     the step to do by hand.
 - **Not edited:** Claude Code's `~/.claude.json` (the output prints the `claude mcp add` command),

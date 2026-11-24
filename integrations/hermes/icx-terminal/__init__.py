@@ -66,8 +66,9 @@ def _env_number(name: str, default: float, floor: float) -> float:
 def _split_simple_commands(command: str) -> list[list[str]]:
     """One pass over `command`, as `crates/icx-adapters/src/shell.rs` reads it: single quotes are
     literal; double quotes allow backslash escapes of `"`, `\\`, `$` and `` ` ``; a backslash
-    outside quotes escapes the next character; `&&`, `||`, `;`, `|` and `&` outside quotes end a
-    simple command. `#` is an ordinary character (handles are `#icx:...`)."""
+    outside quotes escapes the next character, and before a newline joins the lines; `&&`, `||`,
+    `;`, `|`, `&` and a newline outside quotes end a simple command. `#` is an ordinary character
+    (handles are `#icx:...`)."""
     segments: list[list[str]] = [[]]
     cur: list[str] = []
     in_word = False
@@ -96,9 +97,14 @@ def _split_simple_commands(command: str) -> list[list[str]]:
             elif c == "\\" and i < n and command[i] in '"\\$`':
                 cur.append(command[i])
                 i += 1
+            elif c == "\\" and i < n and command[i] == "\n":
+                i += 1
             else:
                 cur.append(c)
         elif c == "\\":
+            if i < n and command[i] == "\n":
+                i += 1
+                continue
             if i < n:
                 cur.append(command[i])
                 i += 1
@@ -106,9 +112,9 @@ def _split_simple_commands(command: str) -> list[list[str]]:
         elif c in "\"'":
             quote = c
             in_word = True
-        elif c in ";|&":
+        elif c in ";|&\n":
             end_word()
-            if c != ";" and i < n and command[i] == c:
+            if c in "|&" and i < n and command[i] == c:
                 i += 1
             segments.append([])
         elif c.isspace():

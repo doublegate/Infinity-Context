@@ -4,53 +4,12 @@
 
 /// Splits `command` into words: single quotes are literal, double quotes allow `\"`, `\\`, `\$`
 /// and `` \` `` escapes, and a backslash outside quotes escapes the next character. So
-/// `'/it'\''s/icx'` is the one word `/it's/icx`.
+/// `'/it'\''s/icx'` is the one word `/it's/icx`. Separators (`;`, `|`, `&`) are ordinary
+/// characters here; [`command_segments`] splits at them. Both use one lexer, so they cannot
+/// disagree on quoting (review of #92).
 #[must_use]
 pub fn shell_words(command: &str) -> Vec<String> {
-    let mut words = Vec::new();
-    let mut cur = String::new();
-    let mut in_word = false;
-    let mut quote: Option<char> = None;
-    let mut chars = command.chars().peekable();
-    while let Some(c) = chars.next() {
-        match quote {
-            Some('\'') if c == '\'' => quote = None,
-            Some('\'') => cur.push(c),
-            Some(_) if c == '"' => quote = None,
-            Some(_) if c == '\\' => match chars.peek() {
-                Some(&n) if matches!(n, '"' | '\\' | '$' | '`') => {
-                    cur.push(n);
-                    chars.next();
-                }
-                _ => cur.push(c),
-            },
-            Some(_) => cur.push(c),
-            None if c == '\\' => {
-                if let Some(n) = chars.next() {
-                    cur.push(n);
-                }
-                in_word = true;
-            }
-            None if c == '"' || c == '\'' => {
-                quote = Some(c);
-                in_word = true;
-            }
-            None if c.is_whitespace() => {
-                if in_word {
-                    words.push(std::mem::take(&mut cur));
-                    in_word = false;
-                }
-            }
-            None => {
-                cur.push(c);
-                in_word = true;
-            }
-        }
-    }
-    if in_word {
-        words.push(cur);
-    }
-    words
+    lex(command, false).into_iter().flatten().collect()
 }
 
 /// The index of the program word in `words`: past leading `KEY=value` assignments and an `env`
@@ -96,6 +55,14 @@ pub fn command_segments(command: &str) -> Vec<Vec<String>> {
 /// quotes ending the current simple command. Separators are recognised by the scanner itself,
 /// never marked in the text, so no input character can fake one (review of #92).
 fn split_simple_commands(command: &str) -> Vec<Vec<String>> {
+    lex(command, true)
+}
+
+/// The shared lexer. With `split`, `&&`, `||`, `;`, `|`, `&` and an unquoted newline end a
+/// simple command (a multi-line script is several commands, review of #92); without it they are
+/// word characters, and a newline is whitespace. A backslash before a newline outside quotes is a
+/// line continuation and joins the lines.
+fn lex(command: &str, split: bool) -> Vec<Vec<String>> {
     let mut segments = vec![Vec::new()];
     let mut cur = String::new();
     let mut in_word = false;
@@ -119,22 +86,27 @@ fn split_simple_commands(command: &str) -> Vec<Vec<String>> {
                     cur.push(n);
                     chars.next();
                 }
+                Some('\n') => {
+                    chars.next();
+                }
                 _ => cur.push(c),
             },
             Some(_) => cur.push(c),
-            None if c == '\\' => {
-                if let Some(n) = chars.next() {
+            None if c == '\\' => match chars.next() {
+                Some('\n') => {}
+                Some(n) => {
                     cur.push(n);
+                    in_word = true;
                 }
-                in_word = true;
-            }
+                None => in_word = true,
+            },
             None if c == '"' || c == '\'' => {
                 quote = Some(c);
                 in_word = true;
             }
-            None if matches!(c, ';' | '|' | '&') => {
+            None if split && matches!(c, ';' | '|' | '&' | '\n') => {
                 end_word(&mut cur, &mut in_word, &mut segments);
-                if matches!(chars.peek(), Some(&n) if n == c && c != ';') {
+                if matches!(c, '|' | '&') && chars.peek() == Some(&c) {
                     chars.next();
                 }
                 segments.push(Vec::new());
@@ -242,5 +214,21 @@ mod tests {
         ] {
             assert!(!runs_icx(c), "{c}");
         }
+    }
+
+    #[test]
+    fn newlines_end_commands_and_continuations_join_lines() {
+        assert!(runs_icx("cd /repo\nicx deref '#icx:1'"));
+        assert!(runs_icx("sh -c \"cd /repo\nicx deref x\""));
+        assert_eq!(
+            command_segments("echo a\necho b"),
+            [vec!["echo", "a"], vec!["echo", "b"]]
+        );
+        // A quoted newline stays inside its word; a continuation joins the lines.
+        assert_eq!(command_segments("echo 'a\nb'"), [vec!["echo", "a\nb"]]);
+        assert_eq!(command_segments("echo a \\\n b"), [vec!["echo", "a", "b"]]);
+        assert!(!runs_icx("echo icx\nls"));
+        // shell_words keeps separators as word characters and reads quotes the same way.
+        assert_eq!(shell_words("a;b \"c\\\"d\"\ne"), ["a;b", "c\"d", "e"]);
     }
 }
