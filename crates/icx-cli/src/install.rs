@@ -608,7 +608,10 @@ fn stale_claude_matchers(p: &Plan, path: &Path) -> Vec<String> {
     else {
         return Vec::new();
     };
-    groups
+    // Every icx PostToolUse group's matcher, judged together: a setup split into a Bash group
+    // and a Read/Grep/Glob/Agent group is covered (review of #94, #95). A group with no matcher
+    // matches every tool.
+    let matchers: Vec<&str> = groups
         .iter()
         .filter(|g| {
             g.get("hooks")
@@ -621,13 +624,25 @@ fn stale_claude_matchers(p: &Plan, path: &Path) -> Vec<String> {
                     })
                 })
         })
-        .filter_map(|g| g.get("matcher").and_then(serde_json::Value::as_str))
-        // An empty or match-all matcher already covers every tool.
-        .filter(|m| !matches!(*m, "" | "*" | ".*" | ".+" | "^.*$" | "^.+$" | "^.*" | ".*$"))
-        .filter(|m| !CLAUDE_SHRUNK_BUILTINS.iter().any(|t| m.contains(t)))
+        .map(|g| {
+            g.get("matcher")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+        })
+        .collect();
+    let covered = |m: &str| {
+        matches!(m, "" | "*" | ".*" | ".+" | "^.*$" | "^.+$" | "^.*" | ".*$")
+            || CLAUDE_SHRUNK_BUILTINS.iter().any(|t| m.contains(t))
+    };
+    if matchers.is_empty() || matchers.iter().any(|m| covered(m)) {
+        return Vec::new();
+    }
+    matchers
+        .iter()
         .map(|m| {
-            // The insertion point is named only when the matcher has the documented `^(` form.
-            let how = if m.starts_with("^(") {
+            // The insertion point is named only for a plain `^(` group: after `^(?:` or `^(?!`
+            // it would produce an invalid regex (#95).
+            let how = if m.starts_with("^(") && !m.starts_with("^(?") {
                 "add `Read|Grep|Glob|Agent|Task|REPL|` after `^(`"
             } else {
                 "add `Read|Grep|Glob|Agent|Task|REPL` as alternatives"

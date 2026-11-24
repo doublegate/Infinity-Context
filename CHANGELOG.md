@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- `icx install`: the Claude Code matcher note judges all icx `PostToolUse` groups together, so a
+  setup split into a Bash group and a Read/Grep/Glob/Agent group gets no note, and it gives the
+  "after `^(`" advice only for a plain `^(` group (never `^(?:` or `^(?!`, where it would yield
+  an invalid regex). An empty `{}` or `[]` file gets its new content laid out over several
+  lines (#95).
+
 ## [1.4.1] - 2026-11-24
 
 Fixes found while installing v1.4.0 on a real machine, and the remaining suggestions from the

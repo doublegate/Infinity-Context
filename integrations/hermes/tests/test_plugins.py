@@ -430,6 +430,11 @@ class ReviewFixTests(ScratchIcx):
         self.assertFalse(own("echo icx\nls"))
         self.assertTrue(own("cd /repo && \\\nicx deref x"))
         self.assertTrue(own("cd /repo && \\\r\nicx deref x"))
+        # Inside double quotes a continuation joins too, matching shell.rs (#95).
+        split = terminal_mod._split_simple_commands
+        self.assertEqual(split('echo "a\\\nb"'), [["echo", "ab"]])
+        self.assertEqual(split('echo "a\\\r\nb"'), [["echo", "ab"]])
+        self.assertEqual(split('echo "a\\qb"'), [["echo", "a\\qb"]])
 
     def test_output_that_cannot_be_stored_exactly_keeps_its_raw_form(self) -> None:
         # A lone surrogate cannot be stored byte for byte, so nothing lossy is stored (#92).
