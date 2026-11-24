@@ -483,16 +483,35 @@ impl HdcAssociativeIndex {
         force_anomaly: bool,
     ) -> ObservationReceipt {
         let composite_hv = Hypervector::encode_text(&format!("{subject} {content}"));
-
-        let verdict = self.surprise_gate.observe_with_exit_code(
+        self.observe_composite(
+            artifact_id,
+            subject,
+            content,
             &composite_hv,
+            exit_code,
+            force_anomaly,
+        )
+    }
+
+    /// The body of [`Self::observe_event_with_exit_code`] once the event's hypervector is known.
+    fn observe_composite(
+        &mut self,
+        artifact_id: ArtifactId,
+        subject: &str,
+        content: &str,
+        composite_hv: &Hypervector,
+        exit_code: Option<i32>,
+        force_anomaly: bool,
+    ) -> ObservationReceipt {
+        let verdict = self.surprise_gate.observe_with_exit_code(
+            composite_hv,
             content,
             exit_code,
             force_anomaly,
         );
         let current_trajectory = self
             .trajectory_archive
-            .record_step(artifact_id, &composite_hv);
+            .record_step(artifact_id, composite_hv);
 
         let sketch = composite_hv.sketch_u32().to_be_bytes();
         let quad_u16 = current_trajectory.quadrant_signature_u16();
@@ -518,7 +537,7 @@ impl HdcAssociativeIndex {
         let entry = IndexedEntry::new(
             artifact_id,
             stored_subject,
-            composite_hv,
+            *composite_hv,
             current_trajectory,
             verdict.momentum_surprise,
         );
@@ -662,9 +681,7 @@ impl HdcAssociativeIndex {
                 / q_tokens.len() as f32
         };
         let hdc_sim = (text_sim + 0.25 * lexical_overlap + 0.5 * content_frac).clamp(0.0, 1.0);
-        let suffix = self
-            .current_trajectory()
-            .verified_suffix_depth(&e.fractal_coord);
+        let suffix = self.exact_shared_suffix(idx);
         let combined =
             0.65 * hdc_sim + 0.20 * e.surprise + 0.15 * ((suffix as f32) / 8.0).clamp(0.0, 1.0);
 
@@ -675,6 +692,26 @@ impl HdcAssociativeIndex {
             shared_fractal_suffix: suffix,
             combined_score: combined,
         }
+    }
+
+    /// How many trailing events entry `idx`'s history shares with the current one, counted on the
+    /// stored states themselves (ICX-AUD-052). Each IFS step keeps only a 16-bit corner of its
+    /// state, so two distinct states can produce the same coordinates; the coordinate distance is
+    /// used only as an upper bound, and each step within it is confirmed by comparing the two
+    /// events' hypervectors. Entries are appended one per trajectory step, so entry `i` is step
+    /// `i`, and the latest entry shares its whole (bounded) history with itself.
+    fn exact_shared_suffix(&self, idx: usize) -> u32 {
+        let Some(last) = self.entries.len().checked_sub(1) else {
+            return 0;
+        };
+        let bound = self
+            .current_trajectory()
+            .verified_suffix_depth(&self.entries[idx].fractal_coord) as usize;
+        let mut k = 0usize;
+        while k < bound && k <= idx && self.entries[idx - k].hv == self.entries[last - k].hv {
+            k += 1;
+        }
+        k as u32
     }
 
     /// Distinct, sorted lookup tokens of a query, filtered by the same rule as indexing.
@@ -1080,5 +1117,71 @@ mod tests {
         // Verify requesting top_k > 64 returns all requested hits up to entries.len()
         let large_hits = trait_ref.query_associative("helper module", 100);
         assert_eq!(large_hits.len(), 100);
+    }
+
+    /// ICX-AUD-052: a shared fractal suffix is reported only for a history that really repeats.
+    /// Each IFS step keeps a 16-bit corner of its state, so two distinct states with the same
+    /// corners give identical trajectories; that must not count as a shared suffix.
+    #[test]
+    fn distinct_states_with_equal_corners_share_no_suffix() {
+        let a = Hypervector::encode_text("Bash:cargo test ok 1");
+        // Swap a 1 and a 0 inside the first 640-bit block: every block's popcount, and so every
+        // corner, is unchanged, but the state differs.
+        let mut b = a;
+        let one = (0..640)
+            .find(|&i| a.words[i / 64] >> (i % 64) & 1 == 1)
+            .unwrap();
+        let zero = (0..640)
+            .find(|&i| a.words[i / 64] >> (i % 64) & 1 == 0)
+            .unwrap();
+        b.words[one / 64] ^= 1 << (one % 64);
+        b.words[zero / 64] ^= 1 << (zero % 64);
+        assert_ne!(a, b);
+        assert_eq!(
+            FractalCoord::corner_vertex(&a),
+            FractalCoord::corner_vertex(&b)
+        );
+
+        let mut idx = HdcAssociativeIndex::new();
+        idx.observe_composite(ArtifactId(1), "first", "one", &a, None, false);
+        idx.observe_composite(ArtifactId(2), "second", "two", &b, None, false);
+        // The coordinates alone claim a one-step shared history.
+        let coord_claim = idx
+            .current_trajectory()
+            .verified_suffix_depth(&idx.entries[0].fractal_coord);
+        assert!(coord_claim >= 1, "the constructed collision exists");
+        let first = idx
+            .query_associative("first one", 10)
+            .into_iter()
+            .find(|h| h.artifact_id == ArtifactId(1))
+            .expect("recalled");
+        assert_eq!(
+            first.shared_fractal_suffix, 0,
+            "distinct states reported as shared"
+        );
+
+        // A genuinely repeated sequence still is: A, B, C, then A, B, C again.
+        let mut rep = HdcAssociativeIndex::new();
+        for (i, (s, c)) in [("a", "one"), ("b", "two"), ("c", "three")]
+            .iter()
+            .cycle()
+            .take(6)
+            .enumerate()
+        {
+            rep.observe_event(ArtifactId(i as u64), s, c, false);
+        }
+        let first_c = rep
+            .query_associative("c three", 10)
+            .into_iter()
+            .find(|h| h.artifact_id == ArtifactId(2))
+            .expect("the first C is recalled");
+        assert_eq!(first_c.shared_fractal_suffix, 3, "A, B, C repeated exactly");
+        // The latest entry shares its whole history with itself.
+        let latest = rep
+            .query_associative("c three", 10)
+            .into_iter()
+            .find(|h| h.artifact_id == ArtifactId(5))
+            .expect("the latest C is recalled");
+        assert_eq!(latest.shared_fractal_suffix, 6);
     }
 }

@@ -131,6 +131,15 @@ At each transition $s_t$:
    The upper-bound shared suffix depth is:
    $$L_{\text{shared}} = \min\left(\lfloor -\log_2(\max(d_{\infty}(z_a, z_b) / 2, 2^{-32})) \rfloor, \, \text{depth}_a, \, \text{depth}_b, \, 32\right)$$
    This is an upper bound inferred from distance and can over-estimate (ICX-AUD-052). `verified_suffix_depth` verifies boundary-compatible inverse IFS transitions ($2 z_j \mp 1$) across all 16 dimensions so opposite-orthant endpoints are rejected while zero-boundary matches are preserved.
+4. **Exact confirmation in recall (v1.5.0, ICX-AUD-052 fixed):** each step keeps only the 16-bit
+   corner $v(s_t)$ of its state, so two distinct states with equal corners give identical
+   coordinates, and even `verified_suffix_depth` reports them as a shared step. Measured over
+   20,000 events: 3 distinct and 66 similar events (0.33%) were reported as sharing a one-step
+   history. `HdcAssociativeIndex` therefore uses the coordinate depth only as an upper bound
+   and confirms each step by comparing the stored hypervectors of the two events (entry $i$ is
+   trajectory step $i$), so `shared_fractal_suffix` counts only histories that really repeat.
+   `FractalTrajectoryArchive::query_shared_suffix` holds coordinates only and still returns
+   corner-level candidates.
 
 ---
 
