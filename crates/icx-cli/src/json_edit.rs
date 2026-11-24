@@ -260,7 +260,7 @@ pub(crate) fn merge(original: &str, old: &J, new: &J) -> Option<String> {
     }
     // An empty root (`{}`, `[]`, as written by an editor or `echo '{}'`) has no style to keep:
     // its new content is laid out over several lines with the file's indent unit (#95).
-    if original[root.start..root.end].len() == 2 {
+    if matches!(old, J::Obj(m) if m.is_empty()) || matches!(old, J::Arr(a) if a.is_empty()) {
         return Some(reserialize(original, new));
     }
     let unit = indent_unit(original);
@@ -601,7 +601,12 @@ mod tests {
 
     #[test]
     fn an_empty_root_gets_a_multi_line_layout() {
-        for (original, end) in [("{}", ""), ("{}\n", "\n"), ("{}\r\n", "\r\n")] {
+        for (original, end) in [
+            ("{}", ""),
+            ("{}\n", "\n"),
+            ("{}\r\n", "\r\n"),
+            ("{ }\n", "\n"),
+        ] {
             let out = edit(original, |v| v.insert("a", parse("[1]")));
             let want =
                 "{\n  \"a\": [\n    1\n  ]\n}".to_owned() + if end.is_empty() { "" } else { "\n" };
@@ -612,5 +617,15 @@ mod tests {
             };
             assert_eq!(out, want, "{original:?}");
         }
+    }
+
+    #[test]
+    fn an_empty_array_root_gets_a_multi_line_layout() {
+        let out = edit("[]\n", |v| {
+            if let J::Arr(a) = v {
+                a.push(parse("{\"x\": 1}"));
+            }
+        });
+        assert_eq!(out, "[\n  {\n    \"x\": 1\n  }\n]\n");
     }
 }

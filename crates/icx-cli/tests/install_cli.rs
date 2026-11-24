@@ -753,6 +753,23 @@ fn an_old_claude_matcher_gets_advice_not_an_edit() {
     fs::write(h.join(".claude/settings.json"), split).unwrap();
     let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
     assert!(!out(&o).contains("names none of Read"), "{}", out(&o));
+    // A group with no matcher matches every tool, so it covers the others (review of #96).
+    let nomatch = r#"{"hooks": {"PostToolUse": [{"matcher": "^(Bash)$", "hooks": [{"type": "command", "command": "/x/icx hook --agent claude-code --event PostToolUse"}]}, {"hooks": [{"type": "command", "command": "/x/icx hook --agent claude-code --event PostToolUse"}]}]}}"#;
+    fs::write(h.join(".claude/settings.json"), nomatch).unwrap();
+    let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
+    assert!(!out(&o).contains("names none of Read"), "{}", out(&o));
+    // Lookahead groups and text after the group get the generic advice.
+    for m in ["^(?!mcp__icx__).*Bash$", "^(Bash)Output$"] {
+        let s = settings.replace("^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!icx__).+)$", m);
+        fs::write(h.join(".claude/settings.json"), s).unwrap();
+        let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
+        assert!(out(&o).contains("as alternatives"), "{m}: {}", out(&o));
+    }
+    // A matcher that is not a string is ignored, not taken as match-all.
+    let odd = r#"{"hooks": {"PostToolUse": [{"matcher": "^(Bash)$", "hooks": [{"type": "command", "command": "/x/icx hook --agent claude-code --event PostToolUse"}]}, {"matcher": ["Read"], "hooks": [{"type": "command", "command": "/x/icx hook --agent claude-code --event PostToolUse"}]}]}}"#;
+    fs::write(h.join(".claude/settings.json"), odd).unwrap();
+    let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
+    assert!(out(&o).contains("names none of Read"), "{}", out(&o));
     // A matcher that already covers them, or matches everything, gets no advice.
     for m in ["^(Bash|Read|Grep|Glob|Agent)$", "", "^.*$", ".+"] {
         let s = settings.replace("^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!icx__).+)$", m);

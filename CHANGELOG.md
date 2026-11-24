@@ -10,8 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `icx install`: the Claude Code matcher note judges all icx `PostToolUse` groups together, so a
   setup split into a Bash group and a Read/Grep/Glob/Agent group gets no note, and it gives the
   "after `^(`" advice only for a plain `^(` group (never `^(?:` or `^(?!`, where it would yield
-  an invalid regex). An empty `{}` or `[]` file gets its new content laid out over several
-  lines (#95).
+  an invalid regex) and only when that group spans the whole matcher. An empty `{}` or `[]`
+  file (spaces inside included) gets its new content laid out over several lines (#95, #96). A
+  group with no matcher counts as matching every tool; a matcher that is not a string is
+  ignored.
+- Recall reports a shared fractal suffix only for a history that really repeats. Each trajectory
+  step keeps a 16-bit corner of its state, so distinct events with equal corners were reported as
+  a shared history (0.33% of similar events in a 20,000-event measurement, ICX-AUD-052); each
+  step is now confirmed against the stored states (T-71-004).
 
 ## [1.4.1] - 2026-11-24
 
