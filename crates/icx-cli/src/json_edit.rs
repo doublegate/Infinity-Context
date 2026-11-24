@@ -178,7 +178,8 @@ pub(crate) fn indent_unit(text: &str) -> String {
 /// The leading whitespace of the line holding byte `at`, whatever follows it, or `None` for a
 /// single-line document (kept compact). Used for an empty container's own indentation.
 fn line_base(text: &str, at: usize) -> Option<String> {
-    if !text.contains('\n') {
+    // A one-line file with a trailing newline is still one line (review of #94).
+    if !text.trim_end_matches(['\r', '\n']).contains('\n') {
         return None;
     }
     let line_start = text[..at].rfind('\n').map_or(0, |i| i + 1);
@@ -228,7 +229,19 @@ pub(crate) fn reserialize(original: &str, new: &J) -> String {
     if original.is_empty() || original.ends_with('\n') {
         out.push('\n');
     }
-    out
+    with_line_endings(original, out)
+}
+
+/// `out` with CRLF line endings when every line of `original` ends in CRLF, so inserted lines
+/// match the file (review of #94). Raw newlines cannot occur inside JSON strings, so converting
+/// every `\n` changes only line breaks, and the original's are already CRLF.
+fn with_line_endings(original: &str, out: String) -> String {
+    let lf = original.matches('\n').count();
+    if lf > 0 && lf == original.matches("\r\n").count() {
+        out.replace("\r\n", "\n").replace('\n', "\r\n")
+    } else {
+        out
+    }
 }
 
 /// `original` edited to hold `new`, when `new` only adds to `old` (the parse of `original`):
@@ -250,7 +263,7 @@ pub(crate) fn merge(original: &str, old: &J, new: &J) -> Option<String> {
     out.push_str(&original[..root.start]);
     out.push_str(&emit(original, &unit, &root, old, new)?);
     out.push_str(&original[root.end..]);
-    Some(out)
+    Some(with_line_endings(original, out))
 }
 
 fn emit(text: &str, unit: &str, node: &Node, old: &J, new: &J) -> Option<String> {
@@ -280,12 +293,17 @@ fn emit(text: &str, unit: &str, node: &Node, old: &J, new: &J) -> Option<String>
             let (indent, sep) = match members.last() {
                 Some(last) => {
                     let sep = &text[last.key_end..last.value.start];
-                    let sep = if sep.contains(' ') { ": " } else { ":" };
+                    let sep = if sep.contains([' ', '\t']) { ": " } else { ":" };
                     (line_indent(text, last.key_start), sep)
                 }
+                // No sibling to copy: the colon style of the rest of the file.
                 None => (
                     line_base(text, node.start).map(|base| format!("{base}{unit}")),
-                    ": ",
+                    if text.contains("\":") && !text.contains("\": ") {
+                        ":"
+                    } else {
+                        ": "
+                    },
                 ),
             };
             let entries: Vec<String> = added
@@ -515,5 +533,64 @@ mod tests {
             reserialize("{\n\t\"a\": 1\n}\n", &parse("{\"a\": [1]}")),
             "{\n\t\"a\": [\n\t\t1\n\t]\n}\n"
         );
+    }
+
+    #[test]
+    fn one_line_files_crlf_files_and_tab_colons_keep_their_style() {
+        // A compact file with a trailing newline stays compact (review of #94).
+        let out = edit("{\"mcpServers\":{}}\n", |v| {
+            v.obj_mut("mcpServers").unwrap().insert("icx", parse("1"));
+        });
+        assert_eq!(out, "{\"mcpServers\":{\"icx\":1}}\n");
+        // CRLF files get CRLF lines.
+        let crlf = "{\r\n  \"a\": [\r\n    1\r\n  ]\r\n}\r\n";
+        let out = edit(crlf, |v| v.arr_mut("a").unwrap().push(parse("{\"b\": 2}")));
+        assert_eq!(
+            out.matches('\n').count(),
+            out.matches("\r\n").count(),
+            "{out:?}"
+        );
+        assert!(
+            out.starts_with("{\r\n  \"a\": [\r\n    1,\r\n    {"),
+            "{out:?}"
+        );
+        // A colon followed by a tab is spaced like its siblings.
+        let out = edit("{\n  \"a\":\t1\n}\n", |v| v.insert("b", parse("2")));
+        assert!(out.contains("\"b\": 2"), "{out:?}");
+    }
+
+    #[test]
+    fn malformed_or_unsupported_text_is_refused() {
+        let new = parse("{\"a\": 1}");
+        for bad in [
+            "",
+            "{\"a\" 1}",
+            "{\"a\": 1,}",
+            "{\"a\": 1 \"b\": 2}",
+            "[1 2]",
+            "[1,",
+            "{\"a\": \"unterminated}",
+            "{1: 2}",
+            "{\"a\": }",
+        ] {
+            assert!(merge(bad, &parse("{}"), &new).is_none(), "{bad:?}");
+        }
+        // Too deep to parse: refused, not a stack overflow.
+        let deep = format!("{}{}", "[".repeat(200), "]".repeat(200));
+        assert!(merge(&deep, &parse("[]"), &parse("[1]")).is_none());
+    }
+
+    #[test]
+    fn nested_additions_inside_arrays_and_unchanged_containers() {
+        let original = "[\n  {\"a\": [1]},\n  [2]\n]\n";
+        let out = edit(original, |v| {
+            if let J::Arr(items) = v {
+                if let J::Obj(m) = &mut items[0] {
+                    m[0].1 = parse("[1, 3]");
+                }
+                items.push(parse("4"));
+            }
+        });
+        assert_eq!(out, "[\n  {\"a\": [1, 3]},\n  [2],\n  4\n]\n");
     }
 }

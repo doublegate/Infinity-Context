@@ -97,13 +97,18 @@ def _split_simple_commands(command: str) -> list[list[str]]:
             elif c == "\\" and i < n and command[i] in '"\\$`':
                 cur.append(command[i])
                 i += 1
-            elif c == "\\" and i < n and command[i] == "\n":
+            elif c == "\\" and command[i : i + 1] == "\n":
                 i += 1
+            elif c == "\\" and command[i : i + 2] == "\r\n":
+                i += 2
             else:
                 cur.append(c)
         elif c == "\\":
-            if i < n and command[i] == "\n":
+            if command[i : i + 1] == "\n":
                 i += 1
+                continue
+            if command[i : i + 2] == "\r\n":
+                i += 2
                 continue
             if i < n:
                 cur.append(command[i])

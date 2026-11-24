@@ -693,6 +693,35 @@ fn a_parent_dir_path_never_becomes_a_hook_command() {
     assert!(cmd.contains("/bin/icx hook"), "{line}");
 }
 
+#[cfg(unix)]
+#[test]
+fn a_path_entry_with_a_parent_dir_is_skipped() {
+    // `PATH=<dir>/../bin` would put `..` into hooks; that entry is skipped and the canonical
+    // path of the binary is used instead (review of #92).
+    let h = home("pathparent");
+    let bin = h.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    fs::create_dir_all(h.join("x")).unwrap();
+    fs::copy(env!("CARGO_BIN_EXE_icx"), bin.join("icx")).unwrap();
+    let o = Command::new("icx")
+        .args(["install", "--agent", "codex", "--dry-run"])
+        .env("PATH", h.join("x/../bin"))
+        .env("HOME", &h)
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("CODEX_HOME")
+        .env_remove("HERMES_HOME")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", out(&o));
+    let line = out(&o)
+        .lines()
+        .find(|l| l.contains("hook --agent codex --event"))
+        .unwrap()
+        .to_owned();
+    assert!(!line.contains(".."), "{line}");
+}
+
 #[test]
 fn an_old_claude_matcher_gets_advice_not_an_edit() {
     let h = home("oldmatcher");
@@ -702,8 +731,17 @@ fn an_old_claude_matcher_gets_advice_not_an_edit() {
     let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
     assert!(o.status.success(), "{}", out(&o));
     assert!(out(&o).contains("names none of Read, Grep"), "{}", out(&o));
+    assert!(out(&o).contains("after `^(`"), "{}", out(&o));
+    // A matcher without the `^(` form gets advice that does not assume it.
+    let plain = settings.replace(
+        "^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!icx__).+)$",
+        "Bash|WebFetch",
+    );
+    fs::write(h.join(".claude/settings.json"), plain).unwrap();
+    let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
+    assert!(out(&o).contains("as alternatives"), "{}", out(&o));
     // A matcher that already covers them, or matches everything, gets no advice.
-    for m in ["^(Bash|Read|Grep|Glob|Agent)$", ""] {
+    for m in ["^(Bash|Read|Grep|Glob|Agent)$", "", "^.*$", ".+"] {
         let s = settings.replace("^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!icx__).+)$", m);
         fs::write(h.join(".claude/settings.json"), s).unwrap();
         let o = run(&h, &["--agent", "claude-code", "--dry-run"]);

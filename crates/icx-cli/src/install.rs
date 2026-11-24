@@ -382,13 +382,10 @@ fn edit_json(
     }
     // Only the new members and elements are written into the file's own text, indented like
     // their siblings; every existing byte, formatting included, is kept (v1.4.1). A change that
-    // is not a pure addition falls back to re-serialising with the file's indent unit.
-    let current = plan
-        .current(path)
-        .ok()
-        .flatten()
-        .filter(|t| !t.trim().is_empty());
-    let text = match &current {
+    // is not a pure addition falls back to re-serialising with the file's indent unit. The text
+    // merged into is the one `unchanged` was parsed from, never a second read (review of #94).
+    let source = before.as_deref().filter(|t| !t.trim().is_empty());
+    let text = match source {
         Some(t) => crate::json_edit::merge(t, &unchanged, &v)
             .unwrap_or_else(|| crate::json_edit::reserialize(t, &v)),
         None => json_text(&v),
@@ -605,11 +602,12 @@ fn stale_claude_matchers(p: &Plan, path: &Path) -> Vec<String> {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
         return Vec::new();
     };
-    let groups = v
+    let Some(groups) = v
         .pointer("/hooks/PostToolUse")
         .and_then(serde_json::Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    else {
+        return Vec::new();
+    };
     groups
         .iter()
         .filter(|g| {
@@ -625,14 +623,20 @@ fn stale_claude_matchers(p: &Plan, path: &Path) -> Vec<String> {
         })
         .filter_map(|g| g.get("matcher").and_then(serde_json::Value::as_str))
         // An empty or match-all matcher already covers every tool.
-        .filter(|m| !m.is_empty() && *m != ".*" && *m != "*")
+        .filter(|m| !matches!(*m, "" | "*" | ".*" | ".+" | "^.*$" | "^.+$" | "^.*" | ".*$"))
         .filter(|m| !CLAUDE_SHRUNK_BUILTINS.iter().any(|t| m.contains(t)))
         .map(|m| {
+            // The insertion point is named only when the matcher has the documented `^(` form.
+            let how = if m.starts_with("^(") {
+                "add `Read|Grep|Glob|Agent|Task|REPL|` after `^(`"
+            } else {
+                "add `Read|Grep|Glob|Agent|Task|REPL` as alternatives"
+            };
             format!(
                 "Claude Code: the existing icx PostToolUse matcher `{m}` names none of Read, Grep, \
                  Glob or Agent, whose results icx shrinks since v1.4.0; icx does not edit an \
-                 existing hook. To include them, add `Read|Grep|Glob|Agent|Task|REPL|` after `^(`, \
-                 as in `^(Bash|BashOutput|Read|Grep|Glob|WebFetch|WebSearch|Agent|Task|REPL|mcp__(?!icx__).+)$`."
+                 existing hook. To include them, {how}, as in \
+                 `^(Bash|BashOutput|Read|Grep|Glob|WebFetch|WebSearch|Agent|Task|REPL|mcp__(?!icx__).+)$`."
             )
         })
         .collect()

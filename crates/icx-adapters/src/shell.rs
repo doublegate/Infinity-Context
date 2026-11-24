@@ -60,8 +60,8 @@ fn split_simple_commands(command: &str) -> Vec<Vec<String>> {
 
 /// The shared lexer. With `split`, `&&`, `||`, `;`, `|`, `&` and an unquoted newline end a
 /// simple command (a multi-line script is several commands, review of #92); without it they are
-/// word characters, and a newline is whitespace. A backslash before a newline outside quotes is a
-/// line continuation and joins the lines.
+/// word characters, and a newline is whitespace. A backslash before a newline (or CRLF), outside
+/// quotes or inside double quotes, is a line continuation and joins the lines.
 fn lex(command: &str, split: bool) -> Vec<Vec<String>> {
     let mut segments = vec![Vec::new()];
     let mut cur = String::new();
@@ -81,12 +81,16 @@ fn lex(command: &str, split: bool) -> Vec<Vec<String>> {
             Some('\'') if c == '\'' => quote = None,
             Some('\'') => cur.push(c),
             Some(_) if c == '"' => quote = None,
-            Some(_) if c == '\\' => match chars.peek() {
-                Some(&n) if matches!(n, '"' | '\\' | '$' | '`') => {
+            Some(_) if c == '\\' => match chars.peek().copied() {
+                Some(n) if matches!(n, '"' | '\\' | '$' | '`') => {
                     cur.push(n);
                     chars.next();
                 }
                 Some('\n') => {
+                    chars.next();
+                }
+                Some('\r') if chars.clone().nth(1) == Some('\n') => {
+                    chars.next();
                     chars.next();
                 }
                 _ => cur.push(c),
@@ -94,6 +98,9 @@ fn lex(command: &str, split: bool) -> Vec<Vec<String>> {
             Some(_) => cur.push(c),
             None if c == '\\' => match chars.next() {
                 Some('\n') => {}
+                Some('\r') if chars.peek() == Some(&'\n') => {
+                    chars.next();
+                }
                 Some(n) => {
                     cur.push(n);
                     in_word = true;
@@ -228,6 +235,16 @@ mod tests {
         assert_eq!(command_segments("echo 'a\nb'"), [vec!["echo", "a\nb"]]);
         assert_eq!(command_segments("echo a \\\n b"), [vec!["echo", "a", "b"]]);
         assert!(!runs_icx("echo icx\nls"));
+        assert_eq!(
+            command_segments("echo a \\\r\n b"),
+            [vec!["echo", "a", "b"]]
+        );
+        // Inside double quotes: a continuation (LF or CRLF) joins, another backslash stays.
+        assert_eq!(shell_words("\"a\\\nb\""), ["ab"]);
+        assert_eq!(shell_words("\"a\\\r\nb\""), ["ab"]);
+        assert_eq!(shell_words("\"a\\qb\""), ["a\\qb"]);
+        // A trailing backslash still ends a word.
+        assert_eq!(shell_words("a \\"), ["a", ""]);
         // shell_words keeps separators as word characters and reads quotes the same way.
         assert_eq!(shell_words("a;b \"c\\\"d\"\ne"), ["a;b", "c\"d", "e"]);
     }

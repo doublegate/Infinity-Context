@@ -15,15 +15,17 @@ v1.4.0 release review. Release notes: [`docs/releases/v1.4.1/README.md`](docs/re
 - `icx install` keeps each JSON file's own formatting. It used to re-serialise a whole file with
   two-space indentation, so a tab-indented or hand-aligned config such as OpenCode's
   `opencode.json` changed on every line for a one-entry addition. Now every existing byte is kept
-  and only the new members and elements are inserted, indented like their siblings; a compact
-  file stays compact. A change that is not a pure addition falls back to re-serialising with the
+  and only the new members and elements are inserted, indented like their siblings, with the
+  file's colon spacing and line endings (CRLF stays CRLF); a compact file stays compact, trailing
+  newline or not. A change that is not a pure addition falls back to re-serialising with the
   file's own indent unit.
 - `icx install` warns when an existing icx `PostToolUse` hook for Claude Code has a matcher from
   before v1.4.0 that names none of Read, Grep, Glob or Agent, so file reads and subagent reports
-  were never shrunk; it prints the matcher to use. It still never edits an existing hook.
+  were never shrunk; it prints the matcher to use (match-all matchers such as `.*` or `^.*$` get
+  no note). It still never edits an existing hook.
 - Command reading (own-command and existing-hook detection, Rust and Python): an unquoted newline
   ends a command, so `cd /repo` followed by `icx deref ...` on the next line is recognised as
-  icx's own command; a backslash before a newline joins the lines. `shell_words` and the command
+  icx's own command; a backslash before a newline (LF or CRLF) joins the lines. `shell_words` and the command
   splitter now share one lexer.
 - `icx install` never writes a hook path containing `..` (from `../bin/icx install` or a `PATH`
   entry with `..`); it uses the binary's canonical path, so removing the directory the install
@@ -34,6 +36,11 @@ v1.4.0 release review. Release notes: [`docs/releases/v1.4.1/README.md`](docs/re
 ### Documentation
 
 - The v1.4.0 Hermes plugin test count was stale: 27 tests, not 24.
+
+### Tests
+
+- A daemon lock test waits 5 s instead of 600 ms for the released lock; under coverage
+  instrumentation it flaked on a slow but correct release.
 
 ## [1.4.0] - 2026-11-23
 

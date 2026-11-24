@@ -2925,8 +2925,11 @@ mod tests {
         std::thread::spawn(move || {
             let _ = tx.send(InfinityContextMmu::acquire_workspace_lock(&ws_lock).is_ok());
         });
+        // 5 s, not 600 ms: under coverage instrumentation with the rest of the suite running,
+        // taking the process-wide lock can take over a second (flaked twice in three runs while
+        // measuring v1.4.1). A lock that is never released still fails.
         assert_eq!(
-            rx.recv_timeout(std::time::Duration::from_millis(600)),
+            rx.recv_timeout(std::time::Duration::from_secs(5)),
             Ok(true),
             "daemon kept the workspace lock after a failed commit"
         );

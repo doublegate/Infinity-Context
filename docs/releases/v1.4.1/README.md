@@ -13,7 +13,8 @@ the remaining suggestions from the v1.4.0 release review (#92). No format or pro
 - **`icx install` keeps your config's formatting.** v1.4.0 re-serialised every JSON file it
   edited with two-space indentation. On a tab-indented, hand-aligned `opencode.json`, adding one
   MCP server rewrote all 370 lines. Now every existing byte is kept and only the new entries are
-  inserted, indented like their neighbours; a one-line file stays on one line. Verified against a
+  inserted, indented like their neighbours, with the file's colon spacing and line endings
+  (CRLF files stay CRLF); a one-line file stays on one line. Verified against a
   real `opencode.json`: the diff is the seven lines of the new `icx` entry.
 - **Out-of-date Claude Code matcher.** An icx `PostToolUse` hook registered before v1.4.0 often
   has a matcher that names only Bash, web and MCP tools, so v1.4.0's shrinking of Read, Grep,
@@ -34,6 +35,6 @@ Replace the binary. If `icx install` prints the Claude Code matcher note, update
 
 ## Verification
 
-521 workspace tests (0 failed, 3 ignored by design), 6 OpenCode and 27 Hermes plugin tests, line
-coverage 95.18% (empty `HOME`, as in CI), clippy and rustfmt clean. The v1.4.0 notes gave 24
+525 workspace tests (0 failed, 3 ignored by design), 6 OpenCode and 27 Hermes plugin tests, line
+coverage 95.24% (empty `HOME`, as in CI), clippy and rustfmt clean. The v1.4.0 notes gave 24
 Hermes tests; the true count at v1.4.0 was already 27.
