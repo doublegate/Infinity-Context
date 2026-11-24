@@ -660,3 +660,109 @@ fn a_relative_path_entry_never_becomes_a_hook_command() {
     let cmd = line.split('"').nth(3).unwrap_or("");
     assert!(cmd.starts_with('/'), "{line}");
 }
+
+#[cfg(unix)]
+#[test]
+fn a_parent_dir_path_never_becomes_a_hook_command() {
+    // `../bin/icx install` from a directory that may later be removed (review of #92): the hook
+    // gets the binary's canonical path, with no `..` in it.
+    let h = home("parentdir");
+    let bin = h.join("bin");
+    let cwd = h.join("cwd");
+    fs::create_dir_all(&bin).unwrap();
+    fs::create_dir_all(&cwd).unwrap();
+    fs::copy(env!("CARGO_BIN_EXE_icx"), bin.join("icx")).unwrap();
+    let o = Command::new("../bin/icx")
+        .args(["install", "--agent", "codex", "--dry-run"])
+        .current_dir(&cwd)
+        .env("HOME", &h)
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("CODEX_HOME")
+        .env_remove("HERMES_HOME")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", out(&o));
+    let line = out(&o)
+        .lines()
+        .find(|l| l.contains("hook --agent codex --event"))
+        .unwrap()
+        .to_owned();
+    let cmd = line.split('"').nth(3).unwrap_or("");
+    assert!(cmd.starts_with('/') && !cmd.contains(".."), "{line}");
+    assert!(cmd.contains("/bin/icx hook"), "{line}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_path_entry_with_a_parent_dir_is_skipped() {
+    // `PATH=<dir>/../bin` would put `..` into hooks; that entry is skipped and the canonical
+    // path of the binary is used instead (review of #92).
+    let h = home("pathparent");
+    let bin = h.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    fs::create_dir_all(h.join("x")).unwrap();
+    fs::copy(env!("CARGO_BIN_EXE_icx"), bin.join("icx")).unwrap();
+    let o = Command::new("icx")
+        .args(["install", "--agent", "codex", "--dry-run"])
+        .env("PATH", h.join("x/../bin"))
+        .env("HOME", &h)
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("CODEX_HOME")
+        .env_remove("HERMES_HOME")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", out(&o));
+    let line = out(&o)
+        .lines()
+        .find(|l| l.contains("hook --agent codex --event"))
+        .unwrap()
+        .to_owned();
+    assert!(!line.contains(".."), "{line}");
+}
+
+#[test]
+fn an_old_claude_matcher_gets_advice_not_an_edit() {
+    let h = home("oldmatcher");
+    fs::create_dir_all(h.join(".claude")).unwrap();
+    let settings = r#"{"hooks": {"PostToolUse": [{"matcher": "^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!icx__).+)$", "hooks": [{"type": "command", "command": "/x/icx-hook --agent claude-code --event PostToolUse"}]}]}}"#;
+    fs::write(h.join(".claude/settings.json"), settings).unwrap();
+    let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
+    assert!(o.status.success(), "{}", out(&o));
+    assert!(out(&o).contains("names none of Read, Grep"), "{}", out(&o));
+    assert!(out(&o).contains("after `^(`"), "{}", out(&o));
+    // A matcher without the `^(` form gets advice that does not assume it.
+    let plain = settings.replace(
+        "^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!icx__).+)$",
+        "Bash|WebFetch",
+    );
+    fs::write(h.join(".claude/settings.json"), plain).unwrap();
+    let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
+    assert!(out(&o).contains("as alternatives"), "{}", out(&o));
+    // A matcher that already covers them, or matches everything, gets no advice.
+    for m in ["^(Bash|Read|Grep|Glob|Agent)$", "", "^.*$", ".+"] {
+        let s = settings.replace("^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!icx__).+)$", m);
+        fs::write(h.join(".claude/settings.json"), s).unwrap();
+        let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
+        assert!(!out(&o).contains("names none of Read"), "{m}: {}", out(&o));
+    }
+}
+
+#[test]
+fn a_tab_indented_aligned_file_keeps_every_existing_line() {
+    let h = home("tabs");
+    fs::create_dir_all(h.join(".config/opencode")).unwrap();
+    let original = "{\n\t\"mcp\": {\n\t\t\"servers\": {\n\t\t\t\"a\": {\n\t\t\t\t\"pool\":     true\n\t\t\t}\n\t\t}\n\t},\n\t\"model\":   \"m\"\n}\n";
+    fs::write(h.join(".config/opencode/opencode.json"), original).unwrap();
+    let o = run(&h, &["--agent", "opencode", "--yes"]);
+    assert!(o.status.success(), "{}", out(&o));
+    let after = fs::read_to_string(h.join(".config/opencode/opencode.json")).unwrap();
+    for line in original.lines().filter(|l| *l != "\t\t\t}") {
+        assert!(
+            after.lines().any(|a| a == line),
+            "lost {line:?} in\n{after}"
+        );
+    }
+    assert!(after.contains("\t\t\t\"icx\": {"), "{after}");
+}

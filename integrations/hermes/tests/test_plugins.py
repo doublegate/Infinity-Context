@@ -423,6 +423,13 @@ class ReviewFixTests(ScratchIcx):
             nested = "sh -c " + "'" + nested.replace("'", "'\\''") + "'"
         self.assertFalse(own(nested), "deeper than 8 levels is not unwrapped")
         self.assertFalse(own("cat icx"))
+        # A newline ends a command, as in the Rust scanner; a quoted one does not.
+        self.assertTrue(own("cd /repo\nicx deref '#icx:1'"))
+        self.assertTrue(own('sh -c "cd /repo\nicx deref x"'))
+        self.assertFalse(own("echo 'a\nicx deref x'"))
+        self.assertFalse(own("echo icx\nls"))
+        self.assertTrue(own("cd /repo && \\\nicx deref x"))
+        self.assertTrue(own("cd /repo && \\\r\nicx deref x"))
 
     def test_output_that_cannot_be_stored_exactly_keeps_its_raw_form(self) -> None:
         # A lone surrogate cannot be stored byte for byte, so nothing lossy is stored (#92).

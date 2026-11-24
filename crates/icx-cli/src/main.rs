@@ -23,6 +23,7 @@ use std::time::Instant;
 mod daemon;
 mod install;
 mod install_hermes;
+mod json_edit;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -897,7 +898,16 @@ fn installing_binary() -> String {
             } else {
                 env::current_dir().ok()?.join(a)
             };
-            // Without `.` components, so the hook command reads cleanly.
+            // Without `.` components, so the hook command reads cleanly. A `..` component is
+            // refused, not kept: `../bin/icx` run from a directory that is later removed (a temp
+            // dir, a worktree) would leave hooks pointing at a missing path (review of #92);
+            // the canonical path of this binary is used instead.
+            if abs
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                return None;
+            }
             Some(
                 abs.components()
                     .filter(|c| !matches!(c, std::path::Component::CurDir))
@@ -909,7 +919,12 @@ fn installing_binary() -> String {
             // the first one that really is this binary (review of #92).
             env::var_os("PATH").and_then(|path| {
                 env::split_paths(&path)
-                    .filter(|d| d.is_absolute())
+                    .filter(|d| {
+                        d.is_absolute()
+                            && !d
+                                .components()
+                                .any(|c| matches!(c, std::path::Component::ParentDir))
+                    })
                     .map(|d| d.join(&a))
                     .find(|p| p.is_file() && same(p))
             })
@@ -2910,8 +2925,11 @@ mod tests {
         std::thread::spawn(move || {
             let _ = tx.send(InfinityContextMmu::acquire_workspace_lock(&ws_lock).is_ok());
         });
+        // 5 s, not 600 ms: under coverage instrumentation with the rest of the suite running,
+        // taking the process-wide lock can take over a second (flaked twice in three runs while
+        // measuring v1.4.1). A lock that is never released still fails.
         assert_eq!(
-            rx.recv_timeout(std::time::Duration::from_millis(600)),
+            rx.recv_timeout(std::time::Duration::from_secs(5)),
             Ok(true),
             "daemon kept the workspace lock after a failed commit"
         );

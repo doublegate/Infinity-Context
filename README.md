@@ -72,6 +72,10 @@ The inline size reduction depends on the input. In the built-in synthetic benchm
 
 ## Latest Release
 
+**v1.4.1** makes `icx install` keep each config file's formatting (only new lines are added),
+warns about a Claude Code tool matcher from before v1.4.0, and fixes multi-line command reading.
+See the [v1.4.1 release notes](docs/releases/v1.4.1/README.md).
+
 **v1.4.0** reaches more agents and shows exactly what icx does with each: Gemini CLI, Cursor and
 OpenCode adapters, Hermes plugins, `icx install` for one-command setup, a read-only `icx` MCP
 tool (writes move to `icx_write`), and a generated [capability matrix](docs/capability-matrix.md)
