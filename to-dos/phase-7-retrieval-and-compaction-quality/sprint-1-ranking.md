@@ -47,6 +47,19 @@ trees resolved in a scratch crate, upstream sources):
 - **Not verified:** the paper's text (the PDF did not extract; k = 60 is confirmed by secondary
   sources).
 
+**2026-11-24, T-71-003 and T-71-004 results:**
+
+- **T-71-003:** the prescreen was already 1,024 bits with a `max(4 * sqrt(n), n / 64, ...)` cap
+  (v1.1.0). It was measured at 1k, 10k and 100k (`docs/numbers.md`, v1.5.0 measurements):
+  stage-1 recall is 100% for rare-word queries at every size and 98.5% for common-word queries at
+  100k. A 2,048-bit prescreen gave identical recall and was up to 2x slower. Hypothesis rejected;
+  the width is unchanged, and the ticket closes with the measurement.
+- **T-71-004:** measured before the fix over 20,000 events: 3 distinct and 66 similar events
+  (0.33%) were false one-step suffixes, all from colliding 16-bit corners. None of the nonzero
+  suffixes in the measurement was a real repeat. The fractal bonus (15% of the combined score)
+  was therefore almost always zero, and when it was not, it rewarded a coincidence. After the
+  fix it is nonzero only for exactly repeated event sequences.
+
 **Ticket changes:** T-71-001 uses SQLite FTS5 tables in the workspace store instead of a separate
 crate or snapshot index. T-71-002 starts from plain RRF at k = 60 and adds per-list weights and a
 per-source cap only if the evaluation set (Sprint 2) shows a gain.
@@ -116,10 +129,10 @@ candidate set) at 1k, 10k and 100k artifacts, before and after.
 
 **Acceptance Criteria:**
 
-- [ ] Prescreen width and cap formula documented in `docs/hyperdimensional-and-fractal-index.md`.
-- [ ] Stage-1 recall and query time per corpus size measured and published in
+- [x] Prescreen width and cap formula documented in `docs/hyperdimensional-and-fractal-index.md`.
+- [x] Stage-1 recall and query time per corpus size measured and published in
   `docs/numbers.md`.
-- [ ] No change to final ranking when the cap already covers the corpus (test).
+- [x] No change to final ranking when the cap already covers the corpus (test).
 
 **Dependencies:** None
 
@@ -141,9 +154,9 @@ audit finding.
 
 **Acceptance Criteria:**
 
-- [ ] A failing test reproduces the false positive, then passes.
-- [ ] Suffix matches are verified before they are reported.
-- [ ] ICX-AUD-052 moved to fixed in `docs/claude/findings.csv` with the commit.
+- [x] A failing test reproduces the false positive, then passes.
+- [x] Suffix matches are verified before they are reported.
+- [x] ICX-AUD-052 moved to fixed in `docs/claude/findings.csv` with the commit.
 
 **Dependencies:** None
 
