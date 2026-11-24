@@ -740,6 +740,19 @@ fn an_old_claude_matcher_gets_advice_not_an_edit() {
     fs::write(h.join(".claude/settings.json"), plain).unwrap();
     let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
     assert!(out(&o).contains("as alternatives"), "{}", out(&o));
+    // A non-capturing group is not given the `^(` advice (#95).
+    let ncg = settings.replace(
+        "^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!icx__).+)$",
+        "^(?:Bash|WebFetch)$",
+    );
+    fs::write(h.join(".claude/settings.json"), ncg).unwrap();
+    let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
+    assert!(out(&o).contains("as alternatives"), "{}", out(&o));
+    // Two icx groups that together cover the built-ins get no note (#95).
+    let split = r#"{"hooks": {"PostToolUse": [{"matcher": "^(Bash|WebFetch)$", "hooks": [{"type": "command", "command": "/x/icx hook --agent claude-code --event PostToolUse"}]}, {"matcher": "^(Read|Grep|Glob|Agent)$", "hooks": [{"type": "command", "command": "/x/icx hook --agent claude-code --event PostToolUse"}]}]}}"#;
+    fs::write(h.join(".claude/settings.json"), split).unwrap();
+    let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
+    assert!(!out(&o).contains("names none of Read"), "{}", out(&o));
     // A matcher that already covers them, or matches everything, gets no advice.
     for m in ["^(Bash|Read|Grep|Glob|Agent)$", "", "^.*$", ".+"] {
         let s = settings.replace("^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!icx__).+)$", m);

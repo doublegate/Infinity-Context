@@ -258,6 +258,11 @@ pub(crate) fn merge(original: &str, old: &J, new: &J) -> Option<String> {
     if p.i != original.len() {
         return None;
     }
+    // An empty root (`{}`, `[]`, as written by an editor or `echo '{}'`) has no style to keep:
+    // its new content is laid out over several lines with the file's indent unit (#95).
+    if original[root.start..root.end].len() == 2 {
+        return Some(reserialize(original, new));
+    }
     let unit = indent_unit(original);
     let mut out = String::with_capacity(original.len() + 256);
     out.push_str(&original[..root.start]);
@@ -592,5 +597,20 @@ mod tests {
             }
         });
         assert_eq!(out, "[\n  {\"a\": [1, 3]},\n  [2],\n  4\n]\n");
+    }
+
+    #[test]
+    fn an_empty_root_gets_a_multi_line_layout() {
+        for (original, end) in [("{}", ""), ("{}\n", "\n"), ("{}\r\n", "\r\n")] {
+            let out = edit(original, |v| v.insert("a", parse("[1]")));
+            let want =
+                "{\n  \"a\": [\n    1\n  ]\n}".to_owned() + if end.is_empty() { "" } else { "\n" };
+            let want = if end == "\r\n" {
+                want.replace('\n', "\r\n")
+            } else {
+                want
+            };
+            assert_eq!(out, want, "{original:?}");
+        }
     }
 }
