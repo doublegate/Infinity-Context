@@ -495,3 +495,31 @@ fn review_round_annotations_and_comment_markers() {
         ),
     ]);
 }
+
+/// Commit security review of 63d21dd: each loosening applies only where the code is unambiguous.
+#[test]
+fn annotation_comment_and_code_rules_fail_closed() {
+    check(&[
+        // A sensitive name before any annotation colon.
+        (
+            "let a: u8 = 1; let api_key: &str = (\n  \"qqzz\"\n);\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "fn f(x: u8, api_key: &str = (\n  \"qqzz\"\n)) {}\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        // A glued `//` that is not a URL is a comment: the value stays open, so it is hidden.
+        (
+            "api_key = (\n  x//)\n  \"qqzz\"\n)\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        // An annotated value on a line without a binding keyword or `;` is config text, where `;`
+        // is part of the value.
+        ("password: Foo = abc; qqzz\n", &["qqzz"], &[]),
+        ("let api_key: Option<String> = None;\n", &[], &["None;"]),
+    ]);
+}

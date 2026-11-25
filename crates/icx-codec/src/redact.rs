@@ -391,23 +391,26 @@ impl SecretRedactor {
                         let mut key = &head[key_start..];
                         // `api_key: str = ...`, `const password: string = ...`: the name is
                         // before the annotation's colon (review of #103).
-                        if !Self::is_sensitive_key_name(key)
-                            && line[..i].ends_with([' ', '\t'])
-                            // The annotation's colon: the first one that is not part of `::`
-                            // (`let api_key: std::string::String =`).
-                            && let Some(c) = head.char_indices().map(|(k, _)| k).find(|&k| {
-                                head.as_bytes()[k] == b':'
-                                    && head.as_bytes().get(k + 1) != Some(&b':')
-                                    && (k == 0 || head.as_bytes()[k - 1] != b':')
-                            })
-                        {
-                            let name = head[..c].trim_end();
-                            let start = name
-                                .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-                                .map_or(0, |k| {
-                                    k + name[k..].chars().next().map_or(1, char::len_utf8)
-                                });
-                            key = &name[start..];
+                        // `api_key: str = ...`, `let a: u8, api_key: &str = ...`: a name before
+                        // any annotation colon (not `::`) may be the key (review of #103).
+                        if !Self::is_sensitive_key_name(key) && line[..i].ends_with([' ', '\t']) {
+                            let hb = head.as_bytes();
+                            for c in (0..hb.len()).filter(|&k| {
+                                hb[k] == b':'
+                                    && hb.get(k + 1) != Some(&b':')
+                                    && (k == 0 || hb[k - 1] != b':')
+                            }) {
+                                let name = head[..c].trim_end();
+                                let start = name
+                                    .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                                    .map_or(0, |k| {
+                                        k + name[k..].chars().next().map_or(1, char::len_utf8)
+                                    });
+                                if Self::is_sensitive_key_name(&name[start..]) {
+                                    key = &name[start..];
+                                    break;
+                                }
+                            }
                         }
                         if !key.is_empty() && Self::is_sensitive_key_name(key) {
                             // Only this assignment's own value: up to a `;` that starts the
@@ -1189,7 +1192,14 @@ impl SecretRedactor {
         // in that text `;` is part of a value, not a shell separator (red-team review of #103).
         // A type-annotated code assignment (`let api_key: Option<String> = None;`) comes through
         // the same pass but is code, not config text (review of #103).
-        let config = stop_at_comma && code_context < CODE_STRONG;
+        let line_text = out[line_start..].split('\n').next().unwrap_or("").trim();
+        let is_code_line = line_text.ends_with(';')
+            || [
+                "let ", "const ", "var ", "val ", "final ", "static ", "pub ", "def ", "fn ",
+            ]
+            .iter()
+            .any(|k| line_text.starts_with(k));
+        let config = stop_at_comma && !(code_context >= CODE_STRONG && is_code_line);
         let stop_at_comma = stop_at_comma && Self::open_brackets(&out[line_start..val_start]) > 0;
         // `Authorization: Bearer <t>` / `Basic <t>`: the scheme stays and the rest of the line is
         // hidden here with the scheme's own marker, whatever the token's length (security
@@ -3123,14 +3133,9 @@ fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
             // A comment ends the structure on this line (review of #103: a `)` or `(` in a
             // comment is not a bracket).
             '#' if before.is_none_or(char::is_whitespace) => return out,
-            '/' if before == Some('/')
-                && text[..i - 1]
-                    .chars()
-                    .next_back()
-                    .is_none_or(char::is_whitespace) =>
-            {
-                return out;
-            }
+            // `//` is a comment unless it follows a URL scheme (`https://`); a comment ends
+            // the scan, which keeps a pending value open rather than closing it early.
+            '/' if before == Some('/') && !text[..i - 1].ends_with(':') => return out,
             '(' | '[' | '{' => out.depth += 1,
             ')' | ']' | '}' => {
                 if out.depth > 0 {
