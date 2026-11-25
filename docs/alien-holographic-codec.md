@@ -117,11 +117,13 @@ Tiers:
   [ADR-0011](adr/0011-structural-redactor.md)):
   - **Never a secret, kept:** `null`, `None`, `nil`, `undefined`, `true`, `false`, `""`, `''`;
     numbers of at most 10 digits, except under password, PIN, OTP, passcode and verification-code
-    keys; `$VAR`, `${VAR}`, `%VAR%`; an environment lookup whose only literal is an upper-snake
+    keys; `$VAR`, `${VAR}`, `%VAR%` with an upper-snake name; an environment lookup whose only literal is an upper-snake
     name (`os.environ["API_KEY"]`, `env::var("API_KEY")`); a UUID under a `session_id` key; and,
-    in code only (spaces around `=`, or `let`/`const`/`var`), a quote-free reference such as
-    `settings.SECRET_KEY` or `get_token(user)`. A bare identifier is a literal.
-  - **One literal:** its contents are replaced inside its own quotes
+    in code only (spaces around `=`, or `let`/`const`/`var`), a quote-free call, subscript or
+    dotted path that ends in a constant or starts at a code root (`get_token(user)`,
+    `settings.SECRET_KEY`, `self.token`). A bare identifier or a value such as `my.dog.rex` is a
+    literal, since INI files also put spaces around `=`.
+  - **One literal** that ends the value token: its contents are replaced inside its own quotes
     (`password = "[REDACTED:ENV_SECRET]"  # comment`).
   - **Either way,** the rest of the line stays when it holds no quote and is hidden from its first
     quote to the end of the line when it does: a later literal may be a second secret.

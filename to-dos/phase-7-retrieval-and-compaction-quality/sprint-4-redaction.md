@@ -39,6 +39,10 @@ Re-check before the sprint starts:
   so the numeric bound is "more than 10 digits" (as for the counter rule), not the 16 first
   drafted; a harmless value followed by a quoted comment (`get_pw(); // "..."`) must still hide
   the quote.
+- **Security review of the first implementation** (automated, on c93a5e3) found three bypasses,
+  closed with tests in `redact_structural_v150.rs` (`review_bypasses_stay_closed`): a literal
+  glued to more text (`PASSWORD="ab"cd` is one shell word), `$`-prefixed passwords taken for
+  variables, and INI values (`password = my.dog.rex`) taken for code references.
 
 ## Tickets
 

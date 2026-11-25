@@ -148,6 +148,36 @@ fn references_stay_only_in_code() {
     }
 }
 
+/// Security review of the T-74-003 commit: three ways a secret could survive.
+#[test]
+fn review_bypasses_stay_closed() {
+    for line in [
+        // A literal glued to more text is one shell word: the tail is part of the secret.
+        "PASSWORD=\"qqzz\"rrssttuu\n",
+        "token = 'qqzz'rrssttuu\n",
+        // A password that starts with `$` is not a variable reference.
+        "PASSWORD=$rrssttuu\n",
+        "password: ${rrssttuu}\n",
+        // INI and properties files allow spaces around `=`.
+        "password = rrss.ttuu.vvww\n",
+        "api_key = rrsstt?\n",
+        "token = get(rrss ttuu!)\n",
+    ] {
+        let clean = once(line);
+        assert!(!clean.contains("rrss"), "{line:?} -> {clean:?}");
+    }
+    // Strong code signals still keep a reference visible.
+    for line in [
+        "token = self.token\n",
+        "api_key = config.api_key\n",
+        "secret_key = settings.SECRET_KEY\n",
+        "token = load_token(path)\n",
+        "password = $DB_PASSWORD\n",
+    ] {
+        assert_eq!(once(line), line, "{line:?}");
+    }
+}
+
 const KEYS: &[&str] = &[
     "password",
     "api_key",
@@ -182,6 +212,9 @@ const SHAPES: &[&str] = &[
     "{k} = env::var(\"K\").unwrap_or(\"{s}\")",
     "{k}: str = None or \"{s}\"",
     "{k} = None; other = \"{s}\"",
+    "{k}=\"a\"{s}",
+    "{k}=${s}",
+    "{k} = {s}.{s}",
 ];
 
 proptest! {
@@ -232,7 +265,10 @@ const CORPUS: &[(&str, &[&str])] = &[
     ("token: true", &[]),
     ("max_tokens: 4096", &[]),
     ("let api_key = config.api_key.clone();", &[]),
-    ("password = \"qqzzqqzz\"  # keep this comment", &["qqzzqqzz"]),
+    (
+        "password = \"qqzzqqzz\"  # keep this comment",
+        &["qqzzqqzz"],
+    ),
     ("API_KEY=qqzzrrss  # prod", &["qqzzrrss"]),
     (
         "\"access_token\": \"qqzzsstt\", \"expires_in\": 3599",
@@ -243,8 +279,14 @@ const CORPUS: &[(&str, &[&str])] = &[
         &["qqzzuuvv"],
     ),
     ("export GITHUB_TOKEN=\"qqzzwwxx\"", &["qqzzwwxx"]),
-    ("password = \"qqzzyyzz\" + \"rrssttuu\"", &["qqzzyyzz", "rrssttuu"]),
-    ("token = env::var(\"K\").unwrap_or(\"rrssvvww\")", &["rrssvvww"]),
+    (
+        "password = \"qqzzyyzz\" + \"rrssttuu\"",
+        &["qqzzyyzz", "rrssttuu"],
+    ),
+    (
+        "token = env::var(\"K\").unwrap_or(\"rrssvvww\")",
+        &["rrssvvww"],
+    ),
 ];
 
 /// Run with `cargo test -p icx-codec --test redact_structural_v150 measure -- --ignored

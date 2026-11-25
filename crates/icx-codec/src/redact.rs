@@ -853,6 +853,14 @@ impl SecretRedactor {
             (val_start + end, line_len - end)
         } else {
             let (open, close) = Self::leading_literal(line)?;
+            // The literal must end the value token: `"abc"def` is one shell word, so its tail
+            // is part of the secret and the #29 rule hides the whole value (security review).
+            let next = line[close + 1..].chars().next();
+            if !next.is_none_or(|c| {
+                c.is_whitespace() || matches!(c, ';' | ',' | ')' | ']' | '}' | '#' | '/')
+            }) {
+                return None;
+            }
             let mut cursor = val_start + close + 1;
             if !Self::is_redaction_marker(&line[open + 1..close]) {
                 out.replace_range(val_start + open + 1..val_start + close, replacement);
@@ -949,7 +957,56 @@ impl SecretRedactor {
         (Self::is_session_id_key(key) && Self::is_uuid(Self::unquoted(v)))
             || Self::is_env_lookup(v)
             || Self::is_variable_reference(v)
-            || (code_context && Self::is_code_reference(v))
+            || (code_context && Self::is_code_reference(v) && Self::looks_like_code(v))
+    }
+
+    /// A reference shape that INI, properties and env files do not produce, since spaces around
+    /// `=` alone do not prove code (`password = my.dog.rex` is an INI value; security review): a
+    /// call or subscript, a last segment that is an upper-snake constant
+    /// (`settings.SECRET_KEY`), or a first segment that is a common code root (`self.token`,
+    /// `config.api_key`).
+    fn looks_like_code(v: &str) -> bool {
+        const ROOTS: &[&str] = &[
+            "self",
+            "this",
+            "cls",
+            "settings",
+            "config",
+            "cfg",
+            "conf",
+            "app",
+            "env",
+            "os",
+            "process",
+            "options",
+            "opts",
+            "args",
+            "params",
+            "ctx",
+            "context",
+            "secrets",
+            "credentials",
+            "creds",
+            "Settings",
+            "Config",
+            "std",
+        ];
+        let v = v.trim_start_matches(['&', '*']).trim_start_matches("mut ");
+        let v = v.strip_prefix("await ").unwrap_or(v);
+        if v.contains(['(', '[']) {
+            return true;
+        }
+        let segments: Vec<&str> = v
+            .split(['.', ':', '?', '-', '>'])
+            .filter(|s| !s.is_empty())
+            .collect();
+        let last_is_const = segments.last().is_some_and(|s| {
+            s.len() > 1
+                && s.bytes().any(|c| c.is_ascii_uppercase())
+                && s.bytes()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
+        });
+        last_is_const || segments.first().is_some_and(|s| ROOTS.contains(s))
     }
 
     /// The number of digits of a plain decimal number (`-12`, `3.5e-2`, `16_384`), or `None`.
@@ -1096,13 +1153,13 @@ impl SecretRedactor {
         })
     }
 
-    /// `$NAME`, `${NAME}`, `%NAME%`, `$env:NAME`.
+    /// `$NAME`, `${NAME}`, `%NAME%`, `$env:NAME`, with an upper-snake `NAME`: a password that
+    /// merely starts with `$` (`$ecretpw`) is not a reference (security review).
     fn is_variable_reference(v: &str) -> bool {
         let ident = |s: &str| {
-            s.as_bytes()
-                .first()
-                .is_some_and(|c| c.is_ascii_alphabetic() || *c == b'_')
-                && s.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+            s.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
+                && s.bytes()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
         };
         v.strip_prefix("${")
             .and_then(|r| r.strip_suffix('}'))
@@ -1175,9 +1232,33 @@ impl SecretRedactor {
                 let Some(end) = end else {
                     return false;
                 };
+                // Arguments are identifiers and simple punctuation, never free text.
+                if !s[1..end].bytes().all(|c| {
+                    c.is_ascii_alphanumeric()
+                        || matches!(
+                            c,
+                            b'_' | b'.'
+                                | b','
+                                | b' '
+                                | b':'
+                                | b'&'
+                                | b'*'
+                                | b'('
+                                | b')'
+                                | b'['
+                                | b']'
+                        )
+                }) {
+                    return false;
+                }
                 s = &s[end + 1..];
             } else if let Some(r) = s.strip_prefix('?') {
+                // `?` (Rust) after a step, never a step of its own.
+                if steps == 0 {
+                    return false;
+                }
                 s = r;
+                continue;
             } else if s.starts_with("!(") {
                 s = &s[1..];
                 continue;

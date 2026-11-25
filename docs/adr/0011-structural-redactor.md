@@ -48,15 +48,21 @@ proven harmless or is a single literal with a harmless tail; otherwise keep the 
      numbers of more than 10 digits, which may be numeric tokens (the same bound as the counter
      rule; tightened from the 16 digits first drafted, because an existing test pins a 15-digit
      access token);
-   - a reference with no quote anywhere in the value: a dotted identifier path
-     (`settings.SECRET_KEY`), a call or subscript of one whose arguments hold no quote
-     (`get_token(user)`), or a variable reference (`$VAR`, `${VAR}`, `%VAR%`);
+   - a variable reference with an upper-snake name (`$DB_PASSWORD`, `${VAR}`, `%VAR%`), so a
+     password that merely starts with `$` is not one;
+   - in code only, a reference with no quote anywhere in the value: a call or subscript whose
+     arguments are identifiers and simple punctuation (`get_token(user)`), or a dotted path that
+     ends in an upper-snake constant (`settings.SECRET_KEY`) or starts at a common code root
+     (`self`, `config`, `settings`, ...). Code means a `let`/`const`/`var` binding or spaces
+     around `=`; since INI and properties files also allow those spaces, a bare dotted value
+     such as `my.dog.rex` stays a literal (security review of the first implementation);
    - an environment lookup whose only literal is an environment variable name in upper snake
      case, ending the value: `os.environ["API_KEY"]`, `os.getenv("API_KEY")`,
      `process.env["API_KEY"]`, `env::var("API_KEY")`, `ENV["API_KEY"]`, `System.getenv("…")`.
      Anything after it in the value (`.unwrap_or("…")`, `or "…"`) falls back to rule 4.
-3. **A value that is one quoted literal** (with an optional prefix such as `b`, `r`, `f`, `u`,
-   or a Rust raw string), followed only by a terminator: the literal's contents are replaced by
+3. **A value that is one quoted literal** (with an optional prefix such as `b`, `r`, `f`, `u`),
+   ending at whitespace, `;`, `,`, a closing bracket, a comment or the end of the line (a literal
+   glued to more text, `"abc"def`, is one shell word and takes rule 4): the literal's contents are replaced by
    the redaction marker inside its own quotes, and the tail is kept when it holds no quote
    character (a comment, `if prod else None`, a closing bracket). A tail that holds a quote is
    hidden from its first quote to the end of the line, as in #29: a later literal on the same

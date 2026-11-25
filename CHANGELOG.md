@@ -9,9 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Redaction keeps what is not secret (ADR-0011, T-74-003, #90). After a sensitive key, a value
   that cannot be a secret stays: `null`, `None`, booleans, `""`, numbers of at most 10 digits
-  (not under password, PIN, OTP or verification-code keys), `$VAR` and `${VAR}`, upper-snake
-  environment lookups such as `os.environ["API_KEY"]`, an agent's UUID `session_id`, and in code
-  quote-free references such as `settings.SECRET_KEY` or `get_token(user)`. A real secret loses
+  (not under password, PIN, OTP or verification-code keys), `$VAR` and `${VAR}` with upper-snake
+  names, upper-snake environment lookups such as `os.environ["API_KEY"]`, an agent's UUID
+  `session_id`, and in code quote-free calls and paths such as `get_token(user)` or
+  `settings.SECRET_KEY` (an INI-style `password = my.dog.rex` stays hidden). A real secret loses
   only its literal, replaced inside its quotes, and the rest of the line stays when it holds no
   quote, so comments and later JSON fields survive. Code-shaped values keep the v1.3.1 rule
   (#29), and a quote later on the line is still hidden from that quote on. Lines of JSON members
