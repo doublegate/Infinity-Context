@@ -222,6 +222,33 @@ fn review_bypasses_stay_closed() {
     }
 }
 
+/// Security review of 298bc52: a short bearer token is hidden too, and a long run of spaces in a
+/// value is scanned in linear time.
+#[test]
+fn short_auth_tokens_are_hidden_and_space_runs_are_linear() {
+    for line in [
+        "Authorization: Bearer qqzz\n",
+        "Authorization: Basic qqzz\n",
+        "\"authorization\": \"Bearer qqzz\"\n",
+    ] {
+        let clean = once(line);
+        assert!(!clean.contains("qqzz"), "{line:?} -> {clean:?}");
+    }
+    assert_eq!(
+        once("Authorization: Bearer qqzzqqzz\n"),
+        "Authorization: Bearer [REDACTED:BEARER]\n"
+    );
+    let long = format!("password: a{}b\n", " ".repeat(200_000));
+    let start = std::time::Instant::now();
+    let clean = once(&long);
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(2),
+        "{:?}",
+        start.elapsed()
+    );
+    assert!(!clean.contains('b'), "the value runs past the spaces");
+}
+
 const KEYS: &[&str] = &[
     "password",
     "api_key",

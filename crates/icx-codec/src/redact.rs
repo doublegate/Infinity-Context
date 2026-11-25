@@ -1021,12 +1021,31 @@ impl SecretRedactor {
         // in that text `;` is part of a value, not a shell separator (red-team review of #103).
         let config = stop_at_comma;
         let stop_at_comma = stop_at_comma && Self::open_brackets(&out[line_start..val_start]) > 0;
-        // `Authorization: Bearer <t>` / `Basic <t>` is left to the auth-scheme detector, which
-        // hides the token and keeps the scheme; any other authorization value is hidden here.
+        // `Authorization: Bearer <t>` / `Basic <t>`: the scheme stays and the rest of the line is
+        // hidden here with the scheme's own marker, whatever the token's length (security
+        // review: the auth-scheme detector skips short tokens).
         if Self::normalized_key(key).contains("AUTHORIZATION") {
-            let v = out[val_start..].trim_start().to_ascii_lowercase();
-            if v.starts_with("bearer ") || v.starts_with("basic ") {
-                return None;
+            let lead = out[val_start..].len() - out[val_start..].trim_start().len();
+            let v_start = val_start + lead;
+            let lower = out[v_start..].to_ascii_lowercase();
+            for (scheme, marker) in [
+                ("bearer ", "[REDACTED:BEARER]"),
+                ("basic ", "[REDACTED:BASIC_AUTH]"),
+            ] {
+                if lower.starts_with(scheme) {
+                    let from = v_start + scheme.len();
+                    let rest = &out[from..];
+                    let line_end = rest.find('\n').unwrap_or(rest.len());
+                    let line = rest[..line_end].trim_end_matches('\r');
+                    let token_start = line.len() - line.trim_start().len();
+                    let token = line[token_start..].trim_end();
+                    if token.is_empty() || Self::is_redaction_marker(token) {
+                        return Some(from + line.len());
+                    }
+                    let (a, b) = (from + token_start, from + token_start + token.len());
+                    out.replace_range(a..b, marker);
+                    return Some(a + marker.len());
+                }
             }
         }
         // ADR-0011: a value that is never a secret is kept, and a value that opens with one
@@ -1093,7 +1112,13 @@ impl SecretRedactor {
         let rest = &out[val_start..];
         let mut val_len = rest.len();
         let cli = replacement == "[REDACTED:CLI_SECRET]";
+        // A whitespace run is judged once and then skipped, so a long run costs linear time
+        // (security review: re-scanning the run at every space was quadratic).
+        let mut skip_to = 0usize;
         for (idx, ch) in rest.char_indices() {
+            if idx < skip_to {
+                continue;
+            }
             // A backtick or an existing marker ends the token too, so a marker the literal pass
             // wrote is never cut in half (idempotence, v1.3.1).
             // `;` ends the value only before whitespace, and closing brackets only inside
@@ -1105,8 +1130,10 @@ impl SecretRedactor {
             // #103: `password: correct horse staple` kept two words). It ends before a comment,
             // a shell `|`, `&&` or `;`, the next query parameter (`&name=`), and line ends. A
             // CLI flag value is one argument, so it still ends at whitespace.
+            let ws_run_end =
+                || idx + (rest[idx..].len() - rest[idx..].trim_start_matches([' ', '\t']).len());
             let ws_ends = || {
-                let next = rest[idx..].trim_start_matches([' ', '\t']);
+                let next = &rest[ws_run_end()..];
                 next.is_empty()
                     || next.starts_with(['\n', '\r', '#'])
                     || (!config && next.starts_with(['|', ';']))
@@ -1138,6 +1165,10 @@ impl SecretRedactor {
             {
                 val_len = idx;
                 break;
+            }
+            if ch == ' ' || ch == '\t' {
+                skip_to = ws_run_end();
+                continue;
             }
             if ch == '\\' {
                 let after_slash = &rest[idx + 1..];
