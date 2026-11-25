@@ -68,7 +68,7 @@ impl CodexAdapter {
                     .get("prompt")
                     .and_then(Value::as_str)
                     .unwrap_or("codex_query");
-                let tail = mmu.build_ephemeral_tail_slot(AgentKind::Codex, prompt, 4);
+                let tail = mmu.build_prompt_tail_slot(AgentKind::Codex, prompt);
                 json!({
                     "continue": true,
                     "hookSpecificOutput": {

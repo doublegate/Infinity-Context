@@ -23,6 +23,8 @@ static WORKSPACE_IO_LOCK: Mutex<()> = Mutex::new(());
 /// Recall entries weaker than this on similarity, fractal suffix and combined score are not
 /// shown (v1.3.2).
 const MIN_RECALL_SIMILARITY: f32 = 0.10;
+/// HDC hits a prompt's recall line may be chosen from (only one is shown).
+const PROMPT_RECALL_CANDIDATES: usize = 4;
 /// Recall depths the fused line uses: HDC hits per prompt (the tail slot's `top_k` at a prompt)
 /// and lexical matches (T-71-002).
 pub const FUSED_HDC_DEPTH: usize = 4;
@@ -932,7 +934,25 @@ impl InfinityContextMmu {
         query: &str,
         top_k: usize,
     ) -> String {
-        let raw_slot = self.build_ephemeral_tail_slot_inner(requesting_agent, query, top_k);
+        let raw_slot = self.build_ephemeral_tail_slot_inner(requesting_agent, query, top_k, false);
+        let slot = self.epochs.bound_tail_slot(raw_slot);
+        self.record_emitted(&slot);
+        slot
+    }
+
+    /// The tail slot added to every user prompt (v1.5.0, owner decision recorded in ADR-0010):
+    /// cross-agent activity as usual, but at most one recall line, and only for a hit that
+    /// shares a word with the prompt. No graph lines. The v1.5.0 evaluation found that at
+    /// prompt time the needed output almost never exists yet (313 of 316 cases), so the full
+    /// slot's up to eight recall and graph lines were mostly noise. The full slot stays for
+    /// `SessionStart`, compaction and the `recall` the agent asks for.
+    pub fn build_prompt_tail_slot(&mut self, requesting_agent: AgentKind, prompt: &str) -> String {
+        let raw_slot = self.build_ephemeral_tail_slot_inner(
+            requesting_agent,
+            prompt,
+            PROMPT_RECALL_CANDIDATES,
+            true,
+        );
         let slot = self.epochs.bound_tail_slot(raw_slot);
         self.record_emitted(&slot);
         slot
@@ -943,6 +963,7 @@ impl InfinityContextMmu {
         requesting_agent: AgentKind,
         query: &str,
         top_k: usize,
+        prompt_only: bool,
     ) -> String {
         let limit = self.epochs.tail_slot_byte_limit();
         let header = format!(
@@ -962,7 +983,20 @@ impl InfinityContextMmu {
         let hdc_hits: Vec<AssociativeHit> = self.hdc_index.query_associative(query, top_k);
         // `legacy` (the default) shows the best HDC hit; with `ICX_RECALL_RANKING=rrf` the HDC
         // hits are fused with BM25 matches by reciprocal rank (T-71-002).
-        let best = if self.lexical_index {
+        let best = if prompt_only {
+            // The first candidate, in ranking order, that shares a word with the prompt.
+            let words = Self::prompt_words(query);
+            let ranked: Vec<AssociativeHit> = if self.lexical_index {
+                self.fused_recall_hit(query, &hdc_hits)
+                    .into_iter()
+                    .collect()
+            } else {
+                hdc_hits.clone()
+            };
+            ranked
+                .into_iter()
+                .find(|h| !words.is_empty() && self.shares_a_word(h, &words))
+        } else if self.lexical_index {
             self.fused_recall_hit(query, &hdc_hits)
         } else {
             hdc_hits.first().cloned()
@@ -1039,6 +1073,10 @@ impl InfinityContextMmu {
                 .insert(requesting_agent as u8, new_cursor);
         }
 
+        if prompt_only {
+            return lines.join("\n");
+        }
+
         // 2. Remaining HDC + Fractal associative hits, only as complete frames.
         for hit in hdc_hits.iter().skip(1) {
             Self::append_tail_recall(&mut lines, &mut used, limit, hit);
@@ -1071,6 +1109,29 @@ impl InfinityContextMmu {
         }
 
         lines.join("\n")
+    }
+
+    /// The words of a prompt that can match an output: at least 3 characters, not a stop word,
+    /// lowercased (the PageRank seed rule).
+    fn prompt_words(prompt: &str) -> BTreeSet<String> {
+        prompt
+            .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .filter(|w| w.chars().count() >= 3 && !Self::is_ppr_stop_word(w))
+            .map(str::to_lowercase)
+            .collect()
+    }
+
+    /// Whether `hit`'s subject or stored text contains one of `words` as a whole word.
+    fn shares_a_word(&self, hit: &AssociativeHit, words: &BTreeSet<String>) -> bool {
+        let has = |text: &str| {
+            text.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                .any(|w| words.contains(&w.to_lowercase()))
+        };
+        has(&hit.subject)
+            || self
+                .cas
+                .deref_bytes(hit.artifact_id)
+                .is_ok_and(|b| has(&String::from_utf8_lossy(&b)))
     }
 
     fn append_tail_line(

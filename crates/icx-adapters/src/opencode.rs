@@ -100,7 +100,7 @@ impl OpenCodeAdapter {
                     .and_then(Value::as_str)
                     .filter(|p| !p.trim().is_empty())
                     .unwrap_or("opencode_query");
-                let tail = mmu.build_ephemeral_tail_slot(AgentKind::OpenCode, prompt, 4);
+                let tail = mmu.build_prompt_tail_slot(AgentKind::OpenCode, prompt);
                 // Each append stays in the conversation, so the plugin asks for the legend only
                 // on a session's first prompt (`"legend": false` afterwards).
                 if payload.get("legend").and_then(Value::as_bool) == Some(false) {

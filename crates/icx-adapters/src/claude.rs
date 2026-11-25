@@ -114,7 +114,7 @@ impl ClaudeCodeAdapter {
                     .get("prompt")
                     .and_then(Value::as_str)
                     .unwrap_or("user_query");
-                let tail = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, prompt, 4);
+                let tail = mmu.build_prompt_tail_slot(AgentKind::ClaudeCode, prompt);
                 context_reply("UserPromptSubmit", &tail)
             }
             "PreToolUse" | "pre-tool-use" => {

@@ -47,10 +47,15 @@ of #98, which found that prompt cases had been timed at the dereference instead 
 ## Consequences
 
 - v1.5.0 ships the index, fusion and harness without changing what any user sees by default.
-- **Open question for the owner:** whether automatic recall should change at all (a stricter
-  threshold, fewer lines, or none) given how rarely its line is used. That needs a measure of
-  benefit beyond "was the handle opened" (an agent may use the subject line without opening it),
-  which this harness does not yet have.
+- **Prompt recall, decided by the owner (2026-11-25):** what icx adds to every user prompt is
+  now at most one recall line, shown only when the hit shares a word (3 or more characters, not
+  a stop word) with the prompt, and no graph lines; before, up to about eight recall and graph
+  lines were added, mostly unrelated. Cross-agent activity is unchanged, and `SessionStart`,
+  compaction and the `recall` an agent asks for keep the full slot
+  (`InfinityContextMmu::build_prompt_tail_slot`).
+- **Next step, once the resume packet has been in use for a while:** inject recall only after a
+  break (compaction, resume or a new session), when older context really is gone, and measure it
+  with the post-install re-read figures (T-73-002).
 - **To revisit the default:** build a long-range set, for example from sessions that resume after
   a compaction or a restart, where the needed output is no longer in context. `icx eval-recall
   --min-age <N>` already selects such cases when they exist.
