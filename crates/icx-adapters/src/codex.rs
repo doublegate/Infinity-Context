@@ -52,11 +52,14 @@ impl CodexAdapter {
         let response = match event_name {
             "SessionStart" | "session-start" => {
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::Codex, "session_start", 3);
+                let resume = mmu
+                    .take_resume_packet(AgentKind::Codex, crate::mmu::RESUME_PACKET_MAX_BYTES)
+                    .map_or_else(String::new, |p| format!("\n{p}"));
                 json!({
                     "continue": true,
                     "hookSpecificOutput": {
                         "hookEventName": "SessionStart",
-                        "additionalContext": codex_inline_context(format!("{ICX_AHTL_LEGEND}\n{tail}"))
+                        "additionalContext": codex_inline_context(format!("{ICX_AHTL_LEGEND}\n{tail}{resume}"))
                     },
                     "stopReason": null,
                     "suppressOutput": false,
@@ -69,11 +72,16 @@ impl CodexAdapter {
                     .and_then(Value::as_str)
                     .unwrap_or("codex_query");
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::Codex, prompt, 4);
+                // Codex has no hook that changes the summary; the first hook after compaction
+                // that carries context delivers the resume packet (T-73-002).
+                let resume = mmu
+                    .take_resume_packet(AgentKind::Codex, crate::mmu::RESUME_PACKET_MAX_BYTES)
+                    .map_or_else(String::new, |p| format!("\n{p}"));
                 json!({
                     "continue": true,
                     "hookSpecificOutput": {
                         "hookEventName": "UserPromptSubmit",
-                        "additionalContext": codex_inline_context(tail)
+                        "additionalContext": codex_inline_context(format!("{tail}{resume}"))
                     },
                     "stopReason": null,
                     "suppressOutput": false,
@@ -175,6 +183,7 @@ impl CodexAdapter {
             }
             "PreCompact" | "pre-compact" | "PostCompact" | "post-compact" => {
                 let _ = mmu.force_rollover_and_sync_dag_root();
+                mmu.mark_resume_pending(AgentKind::Codex);
                 let win = mmu.assemble_prompt_window(AgentKind::Codex, "compact_checkpoint");
                 json!({
                     "continue": true,

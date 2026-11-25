@@ -107,7 +107,14 @@ impl ClaudeCodeAdapter {
         let response = match event_name {
             "SessionStart" | "session-start" => {
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, "session_init", 3);
-                context_reply("SessionStart", &format!("{ICX_AHTL_LEGEND}\n{tail}"))
+                // After a compaction (`source: "compact"`), the resume packet (T-73-002).
+                let resume = mmu
+                    .take_resume_packet(AgentKind::ClaudeCode, crate::mmu::RESUME_PACKET_MAX_BYTES)
+                    .map_or_else(String::new, |p| format!("\n{p}"));
+                context_reply(
+                    "SessionStart",
+                    &format!("{ICX_AHTL_LEGEND}\n{tail}{resume}"),
+                )
             }
             "UserPromptSubmit" | "user-prompt-submit" => {
                 let prompt = payload
@@ -115,7 +122,11 @@ impl ClaudeCodeAdapter {
                     .and_then(Value::as_str)
                     .unwrap_or("user_query");
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, prompt, 4);
-                context_reply("UserPromptSubmit", &tail)
+                // A compaction with no `SessionStart` after it is resumed at the next prompt.
+                let resume = mmu
+                    .take_resume_packet(AgentKind::ClaudeCode, crate::mmu::RESUME_PACKET_MAX_BYTES)
+                    .map_or_else(String::new, |p| format!("\n{p}"));
+                context_reply("UserPromptSubmit", &format!("{tail}{resume}"))
             }
             "PreToolUse" | "pre-tool-use" => {
                 // `permissionDecision` / `updatedInput` are output-only fields; the input never
@@ -225,6 +236,7 @@ impl ClaudeCodeAdapter {
             }
             "PreCompact" | "pre-compact" => {
                 let _ = mmu.force_rollover_and_sync_dag_root();
+                mmu.mark_resume_pending(AgentKind::ClaudeCode);
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, "pre_compact", 5);
                 // Plain stdout is used verbatim as the compaction instructions (< 10,000 chars).
                 return Ok(compaction_instructions(&tail));
@@ -244,6 +256,7 @@ impl ClaudeCodeAdapter {
                     );
                 }
                 let _ = mmu.force_rollover_and_sync_dag_root();
+                mmu.mark_resume_pending(AgentKind::ClaudeCode);
                 json!({})
             }
             "SessionEnd" | "session-end" => {

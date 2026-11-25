@@ -28,6 +28,20 @@ const MIN_RECALL_SIMILARITY: f32 = 0.10;
 pub const FUSED_HDC_DEPTH: usize = 4;
 pub const FUSED_LEXICAL_DEPTH: usize = 20;
 
+/// Behaviours switched by the environment in v1.5.0, read once when the MMU is created.
+#[derive(Clone, Copy, Debug)]
+struct Switches {
+    /// Saves maintain the lexical index and recall fuses it (`ICX_RECALL_RANKING=rrf`).
+    lexical_index: bool,
+    /// Compaction is followed by a resume packet (`ICX_RESUME_PACKET`, default on).
+    resume_packets: bool,
+}
+/// Resume packet bounds (T-73-001): byte budget, outputs listed, subject length, failures.
+pub const RESUME_PACKET_MAX_BYTES: usize = 3_072;
+const MAX_RESUME_HANDLES: usize = 12;
+const MAX_RESUME_SUBJECT_CHARS: usize = 80;
+const MAX_RESUME_FAILURES: usize = 8;
+
 /// Default inline byte threshold above which tool outputs are virtualized into AHTL Holographic Stubs.
 pub const DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES: usize = 512;
 
@@ -64,6 +78,9 @@ struct PersistedMmuState {
     hdc_events: Vec<HdcEventRecord>,
     #[serde(default)]
     agent_read_cursors: BTreeMap<u8, u64>,
+    /// Agents whose context was compacted and that have not yet received a resume packet.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pending_resume: BTreeSet<u8>,
     #[serde(default)]
     indexed_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     #[serde(default)]
@@ -90,6 +107,8 @@ pub struct InfinityContextMmu {
     pub tool_virtualize_threshold: usize,
     pub workspace_hash: u64,
     agent_read_cursors: BTreeMap<u8, u64>,
+    /// See `PersistedMmuState::pending_resume` (T-73-002).
+    pending_resume: BTreeSet<u8>,
     redacted_artifacts: BTreeSet<ArtifactId>,
     subagent_branches: BTreeMap<String, Vec<SubagentStep>>,
     pub(crate) hdc_events: Vec<HdcEventRecord>,
@@ -111,8 +130,8 @@ pub struct InfinityContextMmu {
     /// When `true`, event times come from the wall clock (milliseconds since the Unix epoch,
     /// kept strictly monotonic); otherwise a deterministic logical counter (ICX-AUD-048).
     wall_clock: bool,
-    /// Whether saves maintain the lexical index (`ICX_RECALL_RANKING=rrf`, T-71-001).
-    lexical_index: bool,
+    /// Opt-in and opt-out behaviours added in v1.5.0.
+    switches: Switches,
 }
 
 impl Default for InfinityContextMmu {
@@ -137,6 +156,7 @@ impl InfinityContextMmu {
             tool_virtualize_threshold: DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES,
             workspace_hash: 0x4943_585F_574F_524B,
             agent_read_cursors: BTreeMap::new(),
+            pending_resume: BTreeSet::new(),
             redacted_artifacts: BTreeSet::new(),
             subagent_branches: BTreeMap::new(),
             hdc_events: Vec::new(),
@@ -151,8 +171,121 @@ impl InfinityContextMmu {
             reload_required: false,
             emitted_blocks: BTreeSet::new(),
             wall_clock: false,
-            lexical_index: crate::lexical::enabled(),
+            switches: Switches {
+                lexical_index: crate::lexical::enabled(),
+                resume_packets: std::env::var("ICX_RESUME_PACKET")
+                    .map_or(true, |v| !matches!(v.trim(), "0" | "off" | "false" | "no")),
+            },
         }
+    }
+
+    /// Turns resume packets after compaction on or off (default on; `ICX_RESUME_PACKET=0`).
+    pub fn set_resume_packets(&mut self, on: bool) {
+        self.switches.resume_packets = on;
+        if !on {
+            self.pending_resume.clear();
+        }
+    }
+
+    /// Records that `agent`'s context was just compacted, so its next `SessionStart` or prompt
+    /// hook carries a resume packet (T-73-002). Nothing when resume packets are off.
+    pub fn mark_resume_pending(&mut self, agent: AgentKind) {
+        if self.switches.resume_packets {
+            self.pending_resume.insert(agent as u8);
+        }
+    }
+
+    /// The resume packet for `agent`, once per compaction: `Some` only when one is pending, which
+    /// it then no longer is.
+    pub fn take_resume_packet(&mut self, agent: AgentKind, budget: usize) -> Option<String> {
+        if !self.switches.resume_packets || !self.pending_resume.remove(&(agent as u8)) {
+            return None;
+        }
+        Some(self.resume_packet(agent, budget))
+    }
+
+    /// What an agent needs after its context was compacted (T-73-001), deterministically and
+    /// within `budget` bytes: the most recent outputs with their handles, newest first (recency
+    /// was the strongest signal in the v1.5.0 evaluation), subjects currently failing, and the
+    /// number of open fold branches. Every handle names an artifact in the CAS. Lines that do not
+    /// fit are left out, newest kept first; the header alone is cut to the budget.
+    #[must_use]
+    pub fn resume_packet(&self, agent: AgentKind, budget: usize) -> String {
+        let header = format!(
+            "<<ICX:RESUME│agent={}│epochs={}│cas_artifacts={}>>",
+            agent.as_str(),
+            self.epochs.sealed_epoch_count(),
+            self.cas.artifact_count()
+        );
+        if header.len() >= budget {
+            return header[..header.floor_char_boundary(budget)].to_owned();
+        }
+        let mut out = header;
+        let push = |out: &mut String, line: &str| {
+            if out.len() + 1 + line.len() <= budget {
+                out.push('\n');
+                out.push_str(line);
+                true
+            } else {
+                false
+            }
+        };
+        let one_line = |s: &str| -> String {
+            let flat: String = s
+                .chars()
+                .map(|c| if c.is_control() { ' ' } else { c })
+                .collect();
+            let flat = SecretRedactor::escape_ahtl_delimiters(flat.trim());
+            match flat.char_indices().nth(MAX_RESUME_SUBJECT_CHARS) {
+                Some((i, _)) => format!("{}…", &flat[..i]),
+                None => flat,
+            }
+        };
+        let mut seen = BTreeSet::new();
+        let recent: Vec<(ArtifactId, &str)> = self
+            .hdc_events
+            .iter()
+            .rev()
+            .filter(|(id, ..)| self.cas.get_meta(*id).is_some() && seen.insert(*id))
+            .take(MAX_RESUME_HANDLES)
+            .map(|(id, subject, ..)| (*id, subject.as_str()))
+            .collect();
+        if !recent.is_empty()
+            && push(
+                &mut out,
+                "Recent outputs, newest first (dereference a handle with the icx tool):",
+            )
+        {
+            for (id, subject) in recent {
+                if !push(
+                    &mut out,
+                    &format!("[[Ψ:RESUME⊢subj={}↦{id}]]", one_line(subject)),
+                ) {
+                    break;
+                }
+            }
+        }
+        let mut failing: Vec<String> = self
+            .graph
+            .query_relation("status", None)
+            .into_iter()
+            .filter(|e| e.target_entity == "FAIL")
+            .map(|e| one_line(&e.source_entity))
+            .collect();
+        failing.sort();
+        failing.dedup();
+        failing.truncate(MAX_RESUME_FAILURES);
+        if !failing.is_empty() {
+            push(&mut out, &format!("Failing now: {}", failing.join("; ")));
+        }
+        let open = self.dag.active_branch_depth();
+        if open > 0 {
+            push(
+                &mut out,
+                &format!("Open fold branches: {open} (close with icx_write fold)"),
+            );
+        }
+        out
     }
 
     /// The best recall hit when HDC hits and BM25 matches are fused by reciprocal rank
@@ -207,7 +340,7 @@ impl InfinityContextMmu {
 
     /// Turns maintenance of the lexical index on or off (default: `ICX_RECALL_RANKING=rrf`).
     pub fn set_lexical_index(&mut self, on: bool) {
-        self.lexical_index = on;
+        self.switches.lexical_index = on;
     }
 
     /// The `limit` best BM25 matches for `query` in this workspace's lexical index, best first,
@@ -217,7 +350,7 @@ impl InfinityContextMmu {
     #[must_use]
     pub fn lexical_matches(&self, query: &str, limit: usize) -> Vec<(ArtifactId, f64)> {
         // Off means off: tables left by an earlier run are not maintained, so not read (#97).
-        if !self.lexical_index || limit == 0 {
+        if !self.switches.lexical_index || limit == 0 {
             return Vec::new();
         }
         let Some((dir, _)) = self.loaded_generation.as_ref() else {
@@ -244,7 +377,7 @@ impl InfinityContextMmu {
     /// its stored text; at most `max(64, 8 * limit)` are read, and reading stops at `limit`.
     #[must_use]
     pub fn substring_matches(&self, needle: &str, limit: usize) -> Vec<ArtifactId> {
-        if !self.lexical_index || limit == 0 {
+        if !self.switches.lexical_index || limit == 0 {
             return Vec::new();
         }
         let Some((dir, _)) = self.loaded_generation.as_ref() else {
@@ -962,7 +1095,7 @@ impl InfinityContextMmu {
         let hdc_hits: Vec<AssociativeHit> = self.hdc_index.query_associative(query, top_k);
         // `legacy` (the default) shows the best HDC hit; with `ICX_RECALL_RANKING=rrf` the HDC
         // hits are fused with BM25 matches by reciprocal rank (T-71-002).
-        let best = if self.lexical_index {
+        let best = if self.switches.lexical_index {
             self.fused_recall_hit(query, &hdc_hits)
         } else {
             hdc_hits.first().cloned()
@@ -1781,6 +1914,7 @@ impl InfinityContextMmu {
                 .into_iter()
                 .map(|(k, v)| (k, v.min(bus_seq)))
                 .collect();
+            self.pending_resume = st.pending_resume;
             self.indexed_occurrences = st
                 .indexed_occurrences
                 .into_iter()
@@ -1874,7 +2008,7 @@ impl InfinityContextMmu {
                 .store_seal_key
                 .as_ref()
                 .map(|k| (k, canonical_for_seal.as_path())),
-            lexical: self.lexical_index,
+            lexical: self.switches.lexical_index,
         };
         // The persisted-id cache describes the store it was loaded from or last saved to. A
         // different destination has none of those rows, so write everything (PR #20 review).
@@ -1926,6 +2060,7 @@ impl InfinityContextMmu {
             epochs: Some(self.epochs.clone()),
             hdc_events: self.hdc_events.clone(),
             agent_read_cursors: self.agent_read_cursors.clone(),
+            pending_resume: self.pending_resume.clone(),
             indexed_occurrences: self.indexed_occurrences.clone(),
             reordered_occurrences: self.reordered_occurrences.clone(),
             agent_occurrences: self.agent_occurrences.clone(),

@@ -1,0 +1,152 @@
+// SPDX-FileCopyrightText: 2026 DoubleGate
+// SPDX-License-Identifier: GPL-3.0-or-later AND AGPL-3.0-or-later
+
+//! The resume packet after compaction (v1.5.0, T-73-001 and T-73-002): bounded, deterministic,
+//! made of handles that dereference, delivered once per compaction to Claude Code and Codex, kept
+//! across a save, and switchable off.
+
+use icx_adapters::{ClaudeCodeAdapter, CodexAdapter, InfinityContextMmu};
+use icx_core::AgentKind;
+use proptest::prelude::*;
+
+fn filled(n: usize) -> InfinityContextMmu {
+    let mut mmu = InfinityContextMmu::default();
+    mmu.set_resume_packets(true);
+    for i in 0..n {
+        mmu.ingest_payload(
+            AgentKind::ClaudeCode,
+            &format!("Bash:cargo test step-{i} ⟪tricky⟫\nsecond line"),
+            &format!("test result: ok. {i} passed\n"),
+            false,
+        );
+    }
+    mmu
+}
+
+fn handles(packet: &str) -> Vec<String> {
+    packet
+        .split("↦#icx:")
+        .skip(1)
+        .map(|h| format!("#icx:{}", &h[..16]))
+        .collect()
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(48))]
+    #[test]
+    fn the_packet_fits_its_budget_and_every_handle_dereferences(
+        n in 0usize..40,
+        budget in 0usize..4_096,
+    ) {
+        let mmu = filled(n);
+        let packet = mmu.resume_packet(AgentKind::ClaudeCode, budget);
+        prop_assert!(packet.len() <= budget, "{} > {budget}", packet.len());
+        for h in handles(&packet) {
+            let id = mmu.cas.resolve_handle(&h).unwrap();
+            prop_assert!(mmu.deref_text(id).is_ok(), "{h} does not dereference");
+        }
+        // One line per entry, so a subject cannot break the frame.
+        prop_assert!(packet.lines().all(|l| !l.contains("second line") || l.starts_with("[[Ψ:RESUME")));
+    }
+}
+
+#[test]
+fn the_packet_is_deterministic_lists_newest_first_and_names_failures() {
+    let mut mmu = filled(5);
+    mmu.ingest_payload_with_exit_code(
+        AgentKind::ClaudeCode,
+        "Bash:cargo clippy",
+        "error: unused variable\n",
+        Some(1),
+        false,
+    );
+    let a = mmu.resume_packet(AgentKind::ClaudeCode, 3_072);
+    assert_eq!(a, mmu.resume_packet(AgentKind::ClaudeCode, 3_072));
+    assert!(a.starts_with("<<ICX:RESUME│agent=claude-code"), "{a}");
+    let hs = handles(&a);
+    assert_eq!(hs.len(), 6, "{a}");
+    assert!(
+        a.lines().nth(2).unwrap().contains("cargo clippy"),
+        "newest first: {a}"
+    );
+    assert!(a.contains("Failing now: Bash:cargo clippy"), "{a}");
+    // Delimiters in a subject are escaped, never emitted raw.
+    assert!(!a.contains("⟪tricky⟫"), "{a}");
+    // A tiny budget keeps only the (cut) header.
+    assert!(mmu.resume_packet(AgentKind::ClaudeCode, 10).len() <= 10);
+}
+
+fn context(reply: &str) -> String {
+    let v: serde_json::Value = serde_json::from_str(reply).unwrap();
+    v["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .unwrap_or("")
+        .to_owned()
+}
+
+#[test]
+fn claude_code_gets_one_packet_after_compaction() {
+    let mut mmu = filled(3);
+    let start = ClaudeCodeAdapter::handle_hook("SessionStart", "{}", &mut mmu).unwrap();
+    assert!(!context(&start).contains("ICX:RESUME"), "no compaction yet");
+    ClaudeCodeAdapter::handle_hook("PreCompact", "{}", &mut mmu).unwrap();
+    let after = ClaudeCodeAdapter::handle_hook("SessionStart", r#"{"source":"compact"}"#, &mut mmu)
+        .unwrap();
+    assert!(context(&after).contains("ICX:RESUME"), "{after}");
+    let next =
+        ClaudeCodeAdapter::handle_hook("UserPromptSubmit", r#"{"prompt":"continue"}"#, &mut mmu)
+            .unwrap();
+    assert!(!context(&next).contains("ICX:RESUME"), "delivered once");
+    // Without a SessionStart after compaction, the next prompt carries it.
+    ClaudeCodeAdapter::handle_hook("PostCompact", "{}", &mut mmu).unwrap();
+    let prompt =
+        ClaudeCodeAdapter::handle_hook("UserPromptSubmit", r#"{"prompt":"continue"}"#, &mut mmu)
+            .unwrap();
+    assert!(context(&prompt).contains("ICX:RESUME"), "{prompt}");
+}
+
+#[test]
+fn codex_gets_one_packet_at_its_next_hook_with_context() {
+    let mut mmu = filled(3);
+    CodexAdapter::handle_hook("PreCompact", "{}", &mut mmu).unwrap();
+    let first =
+        CodexAdapter::handle_hook("UserPromptSubmit", r#"{"prompt":"go on"}"#, &mut mmu).unwrap();
+    assert!(context(&first).contains("ICX:RESUME"), "{first}");
+    let second =
+        CodexAdapter::handle_hook("UserPromptSubmit", r#"{"prompt":"go on"}"#, &mut mmu).unwrap();
+    assert!(!context(&second).contains("ICX:RESUME"));
+    // Agents are independent: a Codex compaction leaves Claude Code alone.
+    CodexAdapter::handle_hook("PostCompact", "{}", &mut mmu).unwrap();
+    let claude =
+        ClaudeCodeAdapter::handle_hook("UserPromptSubmit", r#"{"prompt":"x"}"#, &mut mmu).unwrap();
+    assert!(!context(&claude).contains("ICX:RESUME"));
+}
+
+#[test]
+fn a_pending_packet_survives_a_save_and_the_switch_turns_it_off() {
+    let dir = std::env::temp_dir().join(format!("icx-resume-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut mmu = filled(2);
+    ClaudeCodeAdapter::handle_hook("PreCompact", "{}", &mut mmu).unwrap();
+    mmu.save_workspace_dir(&dir).unwrap();
+    let mut next = InfinityContextMmu::default();
+    next.set_resume_packets(true);
+    next.load_workspace_dir(&dir).unwrap();
+    assert!(
+        next.take_resume_packet(AgentKind::ClaudeCode, 3_072)
+            .is_some()
+    );
+    assert!(
+        next.take_resume_packet(AgentKind::ClaudeCode, 3_072)
+            .is_none()
+    );
+
+    let mut off = filled(2);
+    off.set_resume_packets(false);
+    ClaudeCodeAdapter::handle_hook("PreCompact", "{}", &mut off).unwrap();
+    assert!(
+        off.take_resume_packet(AgentKind::ClaudeCode, 3_072)
+            .is_none()
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
