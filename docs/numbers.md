@@ -90,33 +90,34 @@ Synthetic corpora of n events (24 words each from a 50,000- or 500-word vocabula
 of three distinct words of the target. Stage-1 recall is the share of queries whose target is in
 the candidate set (prescreen survivors plus the postings union) that exact scoring sees; the query
 time is `query_associative` alone. Both widths are measured by one command:
-`cargo test --release -p icx-hdc --lib measure_stage1_recall -- --ignored --nocapture`.
+`cargo test --release -p icx-hdc --test measurements measure_stage1 -- --ignored --nocapture`.
 
 | prescreen | n | vocabulary | queries | max candidates | artifacts with all 3 words (mean) | stage-1 recall | recall@1 | recall@5 | mean query |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1024 bits | 1000 | 50000 | 200 | 128 | 1.0 | 100.0% | 100.0% | 100.0% | 0.19 ms |
-| 1024 bits | 1000 | 500 | 200 | 219 | 1.1 | 100.0% | 95.0% | 100.0% | 0.22 ms |
-| 1024 bits | 10000 | 50000 | 200 | 413 | 1.0 | 100.0% | 100.0% | 100.0% | 1.43 ms |
-| 1024 bits | 10000 | 500 | 200 | 714 | 2.0 | 100.0% | 72.0% | 100.0% | 2.51 ms |
-| 1024 bits | 100000 | 50000 | 200 | 1403 | 1.0 | 100.0% | 100.0% | 100.0% | 20.63 ms |
-| 1024 bits | 100000 | 500 | 200 | 1265 | 12.3 | 100.0% | 14.5% | 55.5% | 20.01 ms |
+| 1024 bits | 1000 | 50000 | 200 | 128 | 1.0 | 100.0% | 100.0% | 100.0% | 0.17 ms |
+| 1024 bits | 1000 | 500 | 200 | 219 | 1.1 | 100.0% | 95.0% | 100.0% | 0.20 ms |
+| 1024 bits | 10000 | 50000 | 200 | 413 | 1.0 | 100.0% | 100.0% | 100.0% | 1.16 ms |
+| 1024 bits | 10000 | 500 | 200 | 714 | 2.0 | 100.0% | 72.0% | 100.0% | 1.11 ms |
+| 1024 bits | 100000 | 50000 | 200 | 1403 | 1.0 | 100.0% | 100.0% | 100.0% | 16.58 ms |
+| 1024 bits | 100000 | 500 | 200 | 1265 | 12.3 | 100.0% | 14.5% | 55.5% | 17.59 ms |
 | 2048 bits | 1000 | 50000 | 200 | 128 | 1.0 | 100.0% | 100.0% | 100.0% | 0.20 ms |
-| 2048 bits | 1000 | 500 | 200 | 211 | 1.1 | 100.0% | 95.0% | 100.0% | 0.27 ms |
-| 2048 bits | 10000 | 50000 | 200 | 409 | 1.0 | 100.0% | 100.0% | 100.0% | 3.00 ms |
-| 2048 bits | 10000 | 500 | 200 | 712 | 2.0 | 100.0% | 72.0% | 100.0% | 2.55 ms |
-| 2048 bits | 100000 | 50000 | 200 | 1396 | 1.0 | 100.0% | 100.0% | 100.0% | 61.52 ms |
-| 2048 bits | 100000 | 500 | 200 | 1265 | 12.3 | 100.0% | 14.5% | 55.5% | 29.62 ms |
+| 2048 bits | 1000 | 500 | 200 | 211 | 1.1 | 100.0% | 95.0% | 100.0% | 0.21 ms |
+| 2048 bits | 10000 | 50000 | 200 | 409 | 1.0 | 100.0% | 100.0% | 100.0% | 1.52 ms |
+| 2048 bits | 10000 | 500 | 200 | 712 | 2.0 | 100.0% | 72.0% | 100.0% | 1.54 ms |
+| 2048 bits | 100000 | 50000 | 200 | 1396 | 1.0 | 100.0% | 100.0% | 100.0% | 27.75 ms |
+| 2048 bits | 100000 | 500 | 200 | 1265 | 12.3 | 100.0% | 14.5% | 55.5% | 27.99 ms |
 
 - **1,024-bit prescreen (shipped since v1.1.0):** the target reaches exact scoring in every
   query, at every size, for rare and common words alike.
-- **2,048 bits:** identical recall in every row, never faster, and up to about 3 times slower
-  (timings on a desktop vary by tens of percent between runs). The hypothesis that a wider
+- **2,048 bits:** identical recall in every row, never faster, and about 1.6 times slower at 100k
+  (28 ms against 17 ms; each measurement run alone, since timings on a shared desktop vary by tens
+  of percent). The hypothesis that a wider
   prescreen recovers dropped candidates is rejected, and the width stays 1,024 bits.
 - **The loss with common words is ranking, not the prescreen:** at 100k, about 12 artifacts hold
   all three query words, so recall@1 cannot be much above 1/12 by these words alone; 14.5% is
   above that. Lexical ranking (BM25, T-71-001) and fusion (T-71-002) are measured against this
   on the Sprint 2 evaluation set.
-- **Query time** grows with n: about 0.2 ms at 1k, 1.4–2.5 ms at 10k and about 20 ms at 100k.
+- **Query time** grows with n: about 0.2 ms at 1k, 1.1 ms at 10k and 17 ms at 100k.
 - **Corrections (review of #97):** a first version timed the stage-1 inspection and the
   ambiguity count with the query, and sampled query words with replacement (so some queries had
   two distinct words); it reported about twice these times and lower recall for common words.
@@ -124,7 +125,7 @@ time is `query_associative` alone. Both widths are measured by one command:
 **ICX-AUD-052 measurement (T-71-004):** over 20,000 events with no repeats, the coordinates alone
 claimed a shared history for 3 distinct and 66 similar earlier events; the confirmed suffix
 claims none. Reproduce with
-`cargo test --release -p icx-hdc --lib measure_fractal_suffix -- --ignored --nocapture`.
+`cargo test --release -p icx-hdc --test measurements measure_fractal -- --ignored --nocapture`.
 
 **v1.5.0 measurements: lexical index (2026-11-24, release build, i9-10850K, SQLite 3.54.1,
 T-71-001):**
