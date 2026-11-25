@@ -72,6 +72,14 @@ The inline size reduction depends on the input. In the built-in synthetic benchm
 
 ## Latest Release
 
+**v1.5.0** improves what icx keeps and what it hides. The redactor now hides only the secret
+value after a sensitive key, so code and logs stay readable. An independent red-team pass fixed the
+new rules' regressions and several older gaps (ADR-0011); the remaining older shapes are tracked
+in [#104](https://github.com/doublegate/Infinity-Context/issues/104). After a compaction, the agent receives a short resume
+packet of recent outputs with their handles. Each prompt gets at most one recall line, shown only
+when it matches the prompt. `icx rescan` reports what today's redactor would hide in older stored
+content. See the [v1.5.0 release notes](docs/releases/v1.5.0/README.md).
+
 **v1.4.1** makes `icx install` keep each config file's formatting (only new lines are added),
 warns about a Claude Code tool matcher from before v1.4.0, and fixes multi-line command reading.
 See the [v1.4.1 release notes](docs/releases/v1.4.1/README.md).

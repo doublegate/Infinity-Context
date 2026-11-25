@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-25
+
 ### Added
 
 - `icx rescan` (T-74-001): runs the current redactor over every stored artifact and indexed
@@ -15,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   artifacts, stored under older rules, that today's rules would hide further (`docs/numbers.md`).
 
 - Resume packet after compaction (T-73-001..003): after Claude Code, Codex or Hermes compacts its
-  context, the next hook that carries context adds, once, a bounded (3 KB) deterministic packet:
+  context, the next hook that carries context adds, once, a bounded (3 KiB) deterministic packet:
   the most recent outputs with their `#icx:` handles, subjects failing now, and open fold
   branches. Claude Code receives it in the `SessionStart` after compaction (or the next prompt),
   Codex at its next `SessionStart` or prompt, Hermes in the `SessionStart` reply its engine plugin
@@ -24,6 +26,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Typed folds (T-73-004): `icx_write` `fold` takes an optional `type` (`subtask`, `build_log`,
   `superseded`, `exploration`, `other`), recorded in the fold's summary; unknown types are
   refused, and a typed fold expands back to its exact content.
+- Lexical index (T-71-001, off by default): with `ICX_RECALL_RANKING=rrf`, the workspace store
+  keeps two contentless SQLite FTS5 tables, BM25 over words (compound identifiers also indexed by
+  their parts) and trigrams for substrings, confirmed against the stored text. It is unsealed
+  derived state, so it can only name artifacts the sealed CAS holds; it is backfilled 2,000
+  artifacts per save; the schema version is unchanged, so older builds still open the store.
+  Turning it off also stops its queries, and tables of another version (or only one of the pair)
+  are rebuilt rather than read.
+  Measured on a real 54 MB store with the production code: 10.2 MB of index (rows are numbered
+  compactly; random 64-bit rowids took 38.5 MB), queries under 1.6 ms (`docs/numbers.md`).
+- Recall ranking fusion (T-71-002, opt-in): with `ICX_RECALL_RANKING=rrf`, the injected recall
+  line comes from the HDC hits fused with BM25 matches by reciprocal rank (k = 60, ties by
+  handle). Off by default; with it off, recall output is unchanged.
+- `icx eval-recall` (T-72-002): scores recall rankers (`legacy`, `bm25`, `rrf`, `recent`) by
+  recall@1/5/10 and MRR@10 on a seeded synthetic set or a JSON Lines query set over a workspace,
+  read only, ranking only artifacts that existed when each query was asked.
+- `scripts/build-recall-eval-set.py` (T-72-001): builds a private evaluation set from Claude
+  Code transcripts (agent notes or user prompts paired with the outputs then dereferenced),
+  written only under the gitignored `eval/private/`.
 
 ### Changed
 
@@ -48,9 +68,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   only as constant paths.
 
   On the 19-line corpus, over-redacted bytes went from 183 to 43 with no missed secret
-  (`docs/numbers.md`). 272 distinct red-team inputs are pinned as a regression suite, each checked for its placeholder. The shapes still
-  leaking, all of them older gaps, are tracked for v1.5.1 (#104). Already-stored content is not
-  changed.
+  (`docs/numbers.md`). 272 distinct red-team inputs are pinned as a regression suite, each
+  checked for its placeholder. The shapes still leaking, all of them older gaps, are tracked for
+  v1.5.1 (#104). Already-stored content is not changed.
 
 - What icx adds to every user prompt (Claude Code, Codex, Gemini CLI, Muse, OpenCode, agy): at
   most one recall line, shown only when the hit's subject (command or file path, not the tool prefix)
@@ -59,6 +79,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   of indexed subjects hold it (at least 3 in a small store). On 118 real prompts the line now appears twice, once for the
   output the turn used; matching the output text instead showed a line for 113. Cross-agent activity is unchanged;
   `SessionStart`, compaction and the agent's own `recall` keep the full slot.
+
+- ADR-0010: the default recall ranking stays `legacy`. Real-session answers were almost always
+  just produced (newest-first finds 82–100% at rank 1 per project), and at prompt time 313 of 316
+  needed outputs did not exist yet, so the data cannot show a long-range gain; local embeddings
+  (T-72-003) are therefore not built.
 
 ### Fixed
 
@@ -69,28 +94,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   file (spaces inside included) gets its new content laid out over several lines (#95, #96). A
   group with no matcher counts as matching every tool; a matcher that is not a string is
   ignored.
-- Lexical index (T-71-001, off by default): with `ICX_RECALL_RANKING=rrf`, the workspace store
-  keeps two contentless SQLite FTS5 tables, BM25 over words (compound identifiers also indexed by
-  their parts) and trigrams for substrings, confirmed against the stored text. It is unsealed
-  derived state, so it can only name artifacts the sealed CAS holds; it is backfilled 2,000
-  artifacts per save; the schema version is unchanged, so older builds still open the store.
-  Turning it off also stops its queries, and tables of another version (or only one of the pair)
-  are rebuilt rather than read.
-  Measured on a real 54 MB store with the production code: 10.2 MB of index (rows are numbered
-  compactly; random 64-bit rowids took 38.5 MB), queries under 1.6 ms (`docs/numbers.md`).
-- Recall ranking fusion (T-71-002, opt-in): with `ICX_RECALL_RANKING=rrf`, the injected recall
-  line comes from the HDC hits fused with BM25 matches by reciprocal rank (k = 60, ties by
-  handle). Off by default; with it off, recall output is unchanged.
-- `icx eval-recall` (T-72-002): scores recall rankers (`legacy`, `bm25`, `rrf`, `recent`) by
-  recall@1/5/10 and MRR@10 on a seeded synthetic set or a JSON Lines query set over a workspace,
-  read only, ranking only artifacts that existed when each query was asked.
-- `scripts/build-recall-eval-set.py` (T-72-001): builds a private evaluation set from Claude
-  Code transcripts (agent notes or user prompts paired with the outputs then dereferenced),
-  written only under the gitignored `eval/private/`.
-- ADR-0010: the default recall ranking stays `legacy`. Real-session answers were almost always
-  just produced (newest-first finds 82–100% at rank 1 per project), and at prompt time 313 of 316
-  needed outputs did not exist yet, so the data cannot show a long-range gain; local embeddings
-  (T-72-003) are therefore not built.
 - Recall reports a shared fractal suffix only for a history that really repeats. Each trajectory
   step keeps a 16-bit corner of its state, so distinct events with equal corners were reported as
   a shared history (0.33% of similar events in a 20,000-event measurement, ICX-AUD-052); each
