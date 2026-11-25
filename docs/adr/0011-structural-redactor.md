@@ -178,7 +178,11 @@ Added, each with a test in `crates/icx-codec/tests/redact_v151.rs`:
 **Idempotence.** Line redaction runs to a fixed point, at most four rounds, because the line
 passes pair quotes by position. Whether a line opens a multi-line value is decided on the
 original line or else on the emitted one, so a quote that redaction removed cannot change the
-decision on a second pass.
+decision on a second pass. One exception keeps this stable: a value that ends with one of the
+value-span rule's own markers (`ENV_SECRET`, `CONFIG_SECRET`, `CLI_SECRET`) does not open a
+multi-line value. That marker may have taken the value's closing bracket or quote with it. A
+planted marker that copies one of those three kinds exactly is therefore a residual way to stop
+a continuation. Any other planted marker, or text after one, still opens it.
 
 **Kept by design**, with the reason for each:
 

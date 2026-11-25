@@ -414,3 +414,29 @@ fn security_review_planted_markers_overlaps_and_lookalike_passes() {
         ("token\u{00A0}x API_KEY=qqzz\n", &["qqzz"], &[]),
     ]);
 }
+
+/// Commit security review of 137e5f8: both look-alike passes count, and text around a marker
+/// inside a hidden range is hidden.
+#[test]
+fn both_lookalike_passes_count_and_markers_do_not_shield_neighbours() {
+    check(&[
+        // The original pass hides `API_KEY=…`; the normalised pass hides the NBSP-joined key.
+        (
+            "API_KEY=qqzz password\u{00A0}=\u{00A0}rrss\n",
+            &["qqzz", "rrss"],
+            &[],
+        ),
+        ("token\u{00A0}x API_KEY=qqzz\n", &["qqzz"], &[]),
+        (
+            "token\u{00A0}x API_KEY=qqzz password\u{FF1D}zzzz\n",
+            &["qqzz", "zzzz"],
+            &[],
+        ),
+        // `--password -X` and the glued `-pX` rule target the same word.
+        (
+            "mysql --password -pqqzz[REDACTED:X]rrss db\n",
+            &["qqzz", "rrss"],
+            &["db"],
+        ),
+    ]);
+}

@@ -29,35 +29,24 @@ impl SecretRedactor {
         if !input.chars().any(Self::is_lookalike) {
             return Self::redact_text(input);
         }
-        let normalized: String = input.chars().filter_map(Self::normalize_char).collect();
-        let redacted = Self::redact_text(&normalized);
-        let originals: Vec<&str> = input.split_inclusive('\n').collect();
-        let norm_lines: Vec<&str> = normalized.split_inclusive('\n').collect();
-        let red_lines: Vec<&str> = redacted.split_inclusive('\n').collect();
-        if originals.len() != norm_lines.len() || norm_lines.len() != red_lines.len() {
-            // Line structure changed (a key block folded): keep the redacted text whole.
-            return redacted;
-        }
-        // Redacting the original as it is keeps its look-alikes where that hides the same, and
-        // anything only that pass hides is hidden too (security review of v1.5.1).
+        // The original text is redacted first, and the normalised pass then runs over that
+        // result, so whatever either pass hides is hidden (security review of v1.5.1). A line
+        // keeps its look-alikes only where the combined result is exactly the first pass's.
         let plain = Self::redact_text(input);
+        let normalized: String = plain.chars().filter_map(Self::normalize_char).collect();
+        let combined = Self::redact_text(&normalized);
         let plain_lines: Vec<&str> = plain.split_inclusive('\n').collect();
-        if plain_lines.len() != originals.len() {
-            return redacted;
+        let combined_lines: Vec<&str> = combined.split_inclusive('\n').collect();
+        if plain_lines.len() != combined_lines.len() {
+            return combined;
         }
         let mut out = String::with_capacity(input.len());
-        // Per line: the original pass's line when the normalised pass hides nothing there, or
-        // the same as the original pass (look-alikes kept); otherwise the normalised pass's.
-        for ((plain_line, norm), red) in plain_lines.iter().zip(&norm_lines).zip(&red_lines) {
-            let same_as_plain = plain_line
+        for (plain_line, combined_line) in plain_lines.iter().zip(&combined_lines) {
+            let same = plain_line
                 .chars()
                 .filter_map(Self::normalize_char)
-                .eq(red.chars());
-            out.push_str(if norm == red || same_as_plain {
-                plain_line
-            } else {
-                red
-            });
+                .eq(combined_line.chars());
+            out.push_str(if same { plain_line } else { combined_line });
         }
         out
     }

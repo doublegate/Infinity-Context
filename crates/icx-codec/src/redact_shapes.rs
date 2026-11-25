@@ -108,13 +108,40 @@ fn hide(s: &mut String, start: usize, end: usize, marker: &str) -> usize {
         || end > s.len()
         || !s.is_char_boundary(start)
         || !s.is_char_boundary(end)
-        || s[start..end].contains("[REDACTED:")
         || inside_marker(s, start)
     {
         return end;
     }
-    s.replace_range(start..end, marker);
-    start + marker.len()
+    // Existing markers inside the range stay; every other part of it is hidden (security review
+    // of v1.5.1: refusing the whole range kept the text around a marker visible).
+    let mut pieces: Vec<(usize, usize)> = Vec::new();
+    let mut at = start;
+    while at < end {
+        let rest = &s[at..end];
+        match rest.find("[REDACTED:") {
+            Some(0) => {
+                let close = rest.find(']').map_or(end, |k| at + k + 1);
+                at = close.min(end);
+            }
+            Some(k) => {
+                pieces.push((at, at + k));
+                at += k;
+            }
+            None => {
+                pieces.push((at, end));
+                at = end;
+            }
+        }
+    }
+    let mut new_end = end;
+    for (a, z) in pieces.into_iter().rev() {
+        if s[a..z].trim().is_empty() {
+            continue;
+        }
+        s.replace_range(a..z, marker);
+        new_end = new_end + marker.len() - (z - a);
+    }
+    new_end
 }
 
 fn is_name_byte(b: u8) -> bool {
