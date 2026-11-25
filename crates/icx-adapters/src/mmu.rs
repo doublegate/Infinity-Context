@@ -1007,7 +1007,7 @@ impl InfinityContextMmu {
         } else {
             BTreeSet::new()
         };
-        let hdc_hits: Vec<AssociativeHit> = if prompt_only && words.is_empty() {
+        let mut hdc_hits: Vec<AssociativeHit> = if prompt_only && words.is_empty() {
             Vec::new()
         } else {
             self.hdc_index.query_associative(query, top_k)
@@ -1023,7 +1023,7 @@ impl InfinityContextMmu {
                 let fused = self.fused_recall_hits(query, &hdc_hits, usize::MAX);
                 self.pick_prompt_hit(fused, &words)
             } else {
-                self.pick_prompt_hit(hdc_hits.clone(), &words)
+                self.pick_prompt_hit(std::mem::take(&mut hdc_hits), &words)
             }
         } else if self.lexical_index {
             self.fused_recall_hit(query, &hdc_hits)
@@ -1140,7 +1140,6 @@ impl InfinityContextMmu {
         lines.join("\n")
     }
 
-    /// The lowercased words of a subject or prompt: runs of letters, digits and `_`.
     /// The first of `candidates`, in ranking order, that would be shown, carries its stored
     /// subject, and whose subject shares a word with the prompt (review of #101: a candidate too
     /// weak to show, or a placeholder subject, cannot hide a later one that qualifies).
@@ -1167,8 +1166,10 @@ impl InfinityContextMmu {
     /// prompt that says "edit" or "grep" does not match every such call (review of #101).
     fn subject_words(subject: &str) -> impl Iterator<Item = String> + '_ {
         let rest = match subject.split_once(':') {
+            // `crate::module::item` has no tool prefix (review of #101).
             Some((tool, rest))
                 if !tool.is_empty()
+                    && !rest.starts_with(':')
                     && tool.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') =>
             {
                 rest
@@ -1219,7 +1220,8 @@ impl InfinityContextMmu {
             .collect()
     }
 
-    /// Whether `hit`'s subject (its command, file path or tool name) contains one of `words` as
+    /// Whether `hit`'s subject (its command or file path, without the tool prefix) contains one of
+    /// `words` as
     /// a whole word. The output text is not searched: a long output almost always holds some
     /// prompt word, so a text match filtered almost nothing (measured on 118 real prompts: a
     /// line for 113 with rare words in the text, for 2 with the subject; owner decision).
@@ -2197,6 +2199,12 @@ mod prompt_pick_tests {
         assert!(whole(&["recall"]).is_none());
         let tool = m.pick_prompt_hit(vec![hit(ids[1], "Grep:needle", 0.5)], &words(&["grep"]));
         assert!(tool.is_none(), "the tool name is not a subject word");
+        let path: Vec<String> = InfinityContextMmu::subject_words("icx_core::cas::store").collect();
+        assert_eq!(
+            path,
+            ["icx_core", "cas", "store"],
+            "a path keeps its first segment"
+        );
     }
 
     #[test]

@@ -49,10 +49,10 @@ of #98, which found that prompt cases had been timed at the dereference instead 
 - v1.5.0 ships the index, fusion and harness without changing what any user sees by default.
 - **Prompt recall, decided by the owner (2026-11-25):** what icx adds to every user prompt is
   now at most one recall line, and no graph lines; before, up to about eight recall and graph
-  lines were added, mostly unrelated. The line is shown only when the hit's subject (its command,
-  file path or tool name) shares a distinctive word with the prompt: at least 3 characters, not
-  a stop word, and held by at most 2% of indexed subjects (at least 3 in a store of fewer than
-  150 entries). Matching the output text instead filtered almost nothing. Measured on 118 real
+  lines were added, mostly unrelated. The line is shown only when the hit's subject (its command or
+  file path; the tool prefix such as `Read:` is not counted) shares a distinctive word with the
+  prompt: at least 3 characters, not a stop word, and held by at most 2% of distinct indexed
+  subjects (at least 3 while there are fewer than 200). Matching the output text instead filtered almost nothing. Measured on 118 real
   prompts (each line counted as used when the turn then opened that output; the first and last
   rows are reproduced by the ignored `measure_prompt_recall_lines` test, the others came from
   temporary variants of the rule). The measurement runs every prompt against the final store, so

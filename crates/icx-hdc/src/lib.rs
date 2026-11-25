@@ -699,12 +699,6 @@ impl HdcAssociativeIndex {
         self.entries.iter().map(IndexedEntry::subject)
     }
 
-    /// Number of indexed entries.
-    #[must_use]
-    pub fn entry_count(&self) -> usize {
-        self.entries.len()
-    }
-
     /// The stored subject of the latest entry for `artifact`, if indexed (used to label a
     /// recall hit found by another ranker).
     #[must_use]
@@ -1377,6 +1371,5 @@ mod tests {
         idx.observe_event(ArtifactId(1), "Read:a.rs", "alpha beta", false);
         idx.observe_event(ArtifactId(2), "Bash:ls", "alpha gamma", false);
         assert_eq!(idx.subjects().collect::<Vec<_>>(), ["Read:a.rs", "Bash:ls"]);
-        assert_eq!(idx.entry_count(), 2);
     }
 }
