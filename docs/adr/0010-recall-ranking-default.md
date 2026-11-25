@@ -55,7 +55,9 @@ of #98, which found that prompt cases had been timed at the dereference instead 
   150 entries). Matching the output text instead filtered almost nothing. Measured on 118 real
   prompts (each line counted as used when the turn then opened that output; the first and last
   rows are reproduced by the ignored `measure_prompt_recall_lines` test, the others came from
-  temporary variants of the rule):
+  temporary variants of the rule). The measurement runs every prompt against the final store, so
+  later outputs are present and rarity is the final store's; it compares rules on equal terms but
+  is not a point-in-time replay:
 
   | Rule | Prompts given a line | Lines the turn used |
   | :--- | ---: | ---: |
@@ -64,8 +66,10 @@ of #98, which found that prompt cases had been timed at the dereference instead 
   | Rare word in the subject, rarity counted over output text | 1 | 1 |
   | Rare word in the subject, rarity counted over subjects (shipped) | 2 | 1 |
 
-  Rarity is counted over subjects, the text the match is made against (review of #101): counted
-  over output text, a module name common in diffs could never match its own `Read:` subject.
+  Rarity is counted over distinct subjects, the text the match is made against, without the tool
+  prefix (`Read:`, `Bash:`), and an identifier stays one word (review of #101): counted over
+  output text, a module name common in diffs could never match its own `Read:` subject, and
+  splitting identifiers at `_` showed a line for 58 of the 118 prompts.
   The prompt slot is `InfinityContextMmu::build_prompt_tail_slot`. Cross-agent activity is
   unchanged, and `SessionStart`, compaction and the `recall` an agent asks for keep the full
   slot.

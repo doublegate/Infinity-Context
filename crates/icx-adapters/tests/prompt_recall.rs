@@ -72,30 +72,8 @@ fn a_capitalized_stop_word_does_not_count() {
     assert!(recall_lines(&tail).is_empty(), "{tail}");
 }
 
-#[test]
-fn a_candidate_too_weak_to_show_does_not_hide_one_that_would_be() {
-    let mut m = InfinityContextMmu::default();
-    // Unrelated text gives the first subject almost no HDC similarity to the prompt.
-    m.ingest_payload(AgentKind::ClaudeCode, "Bash:zzqx", "\u{1}\n", false);
-    m.ingest_payload(
-        AgentKind::ClaudeCode,
-        "Read:src/zzqx_parser.rs",
-        "fn zzqx_parser() { parse the zzqx stream }\n",
-        false,
-    );
-    for i in 0..4 {
-        m.ingest_payload(
-            AgentKind::ClaudeCode,
-            &format!("Bash:echo filler{i}"),
-            "filler\n",
-            false,
-        );
-    }
-    let tail = m.build_prompt_tail_slot(AgentKind::ClaudeCode, "zzqx parser stream");
-    let lines = recall_lines(&tail);
-    assert_eq!(lines.len(), 1, "{tail}");
-    assert!(lines[0].contains("zzqx"), "{tail}");
-}
+// The weak-candidate rule is unit-tested on constructed hits in `mmu.rs`
+// (`prompt_pick_tests`), where the ranking can be fixed.
 
 #[test]
 fn the_prompt_slot_keeps_cross_agent_activity() {

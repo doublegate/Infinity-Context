@@ -1015,20 +1015,15 @@ impl InfinityContextMmu {
         // `legacy` (the default) shows the best HDC hit; with `ICX_RECALL_RANKING=rrf` the HDC
         // hits are fused with BM25 matches by reciprocal rank (T-71-002).
         let best = if prompt_only {
-            // The first candidate, in ranking order, that would be shown and whose subject
-            // shares a word with the prompt (review of #101: every fused candidate is checked,
-            // and one too weak to show cannot hide a later one that would be).
-            let qualifies = |h: &AssociativeHit| {
-                Self::displayable(h) && self.has_stored_subject(h) && Self::shares_a_word(h, &words)
-            };
             if words.is_empty() {
                 None
             } else if self.lexical_index {
-                self.fused_recall_hits(query, &hdc_hits, PROMPT_RECALL_CANDIDATES)
-                    .into_iter()
-                    .find(|h| qualifies(h))
+                // Every fused candidate, not the first few (review of #101: fused lists
+                // interleave the rankers, so a cut dropped qualifying hits).
+                let fused = self.fused_recall_hits(query, &hdc_hits, usize::MAX);
+                self.pick_prompt_hit(fused, &words)
             } else {
-                hdc_hits.iter().find(|h| qualifies(h)).cloned()
+                self.pick_prompt_hit(hdc_hits.clone(), &words)
             }
         } else if self.lexical_index {
             self.fused_recall_hit(query, &hdc_hits)
@@ -1146,10 +1141,41 @@ impl InfinityContextMmu {
     }
 
     /// The lowercased words of a subject or prompt: runs of letters, digits and `_`.
+    /// The first of `candidates`, in ranking order, that would be shown, carries its stored
+    /// subject, and whose subject shares a word with the prompt (review of #101: a candidate too
+    /// weak to show, or a placeholder subject, cannot hide a later one that qualifies).
+    fn pick_prompt_hit(
+        &self,
+        candidates: Vec<AssociativeHit>,
+        words: &BTreeSet<String>,
+    ) -> Option<AssociativeHit> {
+        candidates.into_iter().find(|h| {
+            Self::displayable(h) && self.has_stored_subject(h) && Self::shares_a_word(h, words)
+        })
+    }
+
+    /// The lowercased words of a prompt or subject: runs of letters, digits and `_`. An
+    /// identifier stays one word: splitting at `_` (suggested in the review of #101) showed a
+    /// line for 58 of the 118 measured prompts instead of 2, with no more lines used.
     fn words_of(text: &str) -> impl Iterator<Item = String> + '_ {
         text.split(|c: char| !(c.is_alphanumeric() || c == '_'))
             .filter(|w| !w.is_empty())
             .map(str::to_lowercase)
+    }
+
+    /// The words of a subject without its tool prefix (`Read:`, `Bash:`, `mcp__x__y:`), so a
+    /// prompt that says "edit" or "grep" does not match every such call (review of #101).
+    fn subject_words(subject: &str) -> impl Iterator<Item = String> + '_ {
+        let rest = match subject.split_once(':') {
+            Some((tool, rest))
+                if !tool.is_empty()
+                    && tool.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') =>
+            {
+                rest
+            }
+            _ => subject,
+        };
+        Self::words_of(rest)
     }
 
     /// The words of a prompt that can match a subject: at least 3 characters, not a stop word
@@ -1167,12 +1193,14 @@ impl InfinityContextMmu {
         if df.is_empty() {
             return BTreeSet::new();
         }
-        // (count, index of the last subject counted), so a word repeated in one subject counts
-        // once, with no per-subject set (review of #101).
+        // Counted over distinct subjects, so working on one file (reading it again and again)
+        // does not make its own name common (review of #101). (count, index of the last
+        // subject counted), so a word repeated in one subject counts once.
+        let subjects: BTreeSet<&str> = self.hdc_index.subjects().collect();
         let mut counts: BTreeMap<String, (usize, usize)> =
             df.into_keys().map(|w| (w, (0, usize::MAX))).collect();
-        for (i, subject) in self.hdc_index.subjects().enumerate() {
-            for w in Self::words_of(subject) {
+        for (i, subject) in subjects.iter().enumerate() {
+            for w in Self::subject_words(subject) {
                 if let Some((count, last)) = counts.get_mut(&w)
                     && *last != i
                 {
@@ -1183,8 +1211,7 @@ impl InfinityContextMmu {
         }
         // The floor of 3 lets a small, early store match; a word in every one of 3 subjects
         // then still counts, a deliberate trade-off (review of #101).
-        let cap =
-            (self.hdc_index.entry_count() / PROMPT_WORD_SHARE_DIVISOR).max(PROMPT_WORD_MIN_CAP);
+        let cap = (subjects.len() / PROMPT_WORD_SHARE_DIVISOR).max(PROMPT_WORD_MIN_CAP);
         counts
             .into_iter()
             .filter(|&(_, (count, _))| count > 0 && count <= cap)
@@ -1197,7 +1224,7 @@ impl InfinityContextMmu {
     /// prompt word, so a text match filtered almost nothing (measured on 118 real prompts: a
     /// line for 113 with rare words in the text, for 2 with the subject; owner decision).
     fn shares_a_word(hit: &AssociativeHit, words: &BTreeSet<String>) -> bool {
-        Self::words_of(&hit.subject).any(|w| words.contains(&w))
+        Self::subject_words(&hit.subject).any(|w| words.contains(&w))
     }
 
     fn append_tail_line(
@@ -2100,6 +2127,85 @@ impl InfinityContextMmu {
         let out = op(self)?;
         self.save_workspace_dir_unlocked(icx_dir).map_err(E::from)?;
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod prompt_pick_tests {
+    use super::*;
+
+    fn mmu_with(subjects: &[&str]) -> (InfinityContextMmu, Vec<ArtifactId>) {
+        let mut m = InfinityContextMmu::default();
+        let ids = subjects
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                m.ingest_payload(AgentKind::ClaudeCode, s, &format!("body {i}\n"), false)
+                    .artifact_id
+            })
+            .collect();
+        (m, ids)
+    }
+
+    fn hit(id: ArtifactId, subject: &str, sim: f32) -> AssociativeHit {
+        AssociativeHit {
+            artifact_id: id,
+            subject: subject.into(),
+            hdc_similarity: sim,
+            shared_fractal_suffix: 0,
+            combined_score: sim,
+        }
+    }
+
+    fn words(ws: &[&str]) -> BTreeSet<String> {
+        ws.iter().map(|w| (*w).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_weak_candidate_does_not_hide_a_later_one() {
+        let (m, ids) = mmu_with(&["Read:src/alpha.rs", "Read:src/beta.rs"]);
+        let picked = m.pick_prompt_hit(
+            vec![
+                hit(ids[0], "Read:src/alpha.rs", 0.01),
+                hit(ids[1], "Read:src/beta.rs", 0.5),
+            ],
+            &words(&["alpha", "beta"]),
+        );
+        assert_eq!(picked.map(|h| h.artifact_id), Some(ids[1]));
+    }
+
+    #[test]
+    fn a_placeholder_subject_never_matches() {
+        let (m, _) = mmu_with(&["Read:src/alpha.rs"]);
+        let unknown = hit(ArtifactId(0xdead_beef), "artifact", 0.5);
+        assert!(
+            m.pick_prompt_hit(vec![unknown], &words(&["artifact"]))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn identifiers_stay_whole_and_the_tool_prefix_is_ignored() {
+        let (m, ids) = mmu_with(&["Read:src/prompt_recall.rs", "Grep:needle"]);
+        let whole = |w: &[&str]| {
+            m.pick_prompt_hit(
+                vec![hit(ids[0], "Read:src/prompt_recall.rs", 0.5)],
+                &words(w),
+            )
+        };
+        assert!(whole(&["prompt_recall"]).is_some());
+        assert!(whole(&["recall"]).is_none());
+        let tool = m.pick_prompt_hit(vec![hit(ids[1], "Grep:needle", 0.5)], &words(&["grep"]));
+        assert!(tool.is_none(), "the tool name is not a subject word");
+    }
+
+    #[test]
+    fn repeated_reads_of_one_file_keep_its_name_distinctive() {
+        let mut subjects = vec!["Read:src/focus.rs"; 6];
+        subjects.extend(["Bash:ls a", "Bash:ls b"]);
+        let (m, _) = mmu_with(&subjects);
+        // Six reads of one file are one distinct subject.
+        assert!(m.prompt_words("look at focus again").contains("focus"));
     }
 }
 
