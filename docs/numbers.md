@@ -165,8 +165,11 @@ artifacts that existed when it was asked. Queries and judgements are private
 | Agent notes (this project, held-out half, 372 queries) | legacy | BM25 | RRF | newest first |
 | :--- | ---: | ---: | ---: | ---: |
 | recall@1 | 0.0% | 2.2% | 0.3% | 83.3% |
-| recall@10 | 2.4% | 12.6% | 5.4% | 99.2% |
+| recall@10 | 2.4% | 12.6% | 11.6% | 99.2% |
 
+- **RRF is the shipped fusion** (`InfinityContextMmu::fused_ranking`: the first 4 displayable HDC
+  hits with the first 20 BM25 matches). A first version fused 50 unfiltered HDC hits and reported
+  5.4% recall@10 (corrected in the review of #98).
 - **Fresh answers dominate:** across all six projects with at least 40 dereferences (1,676 note
   cases), 7 had 20 or more newer artifacts between the answer and the query. The table therefore
   measures fetching what was just produced, not long-range recall, and cannot decide a default

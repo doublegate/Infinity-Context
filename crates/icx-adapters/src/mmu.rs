@@ -23,6 +23,10 @@ static WORKSPACE_IO_LOCK: Mutex<()> = Mutex::new(());
 /// Recall entries weaker than this on similarity, fractal suffix and combined score are not
 /// shown (v1.3.2).
 const MIN_RECALL_SIMILARITY: f32 = 0.10;
+/// Recall depths the fused line uses: HDC hits per prompt (the tail slot's `top_k` at a prompt)
+/// and lexical matches (T-71-002).
+pub const FUSED_HDC_DEPTH: usize = 4;
+pub const FUSED_LEXICAL_DEPTH: usize = 20;
 
 /// Default inline byte threshold above which tool outputs are virtualized into AHTL Holographic Stubs.
 pub const DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES: usize = 512;
@@ -157,24 +161,12 @@ impl InfinityContextMmu {
     /// as lexical evidence. `None` when neither ranker finds anything.
     fn fused_recall_hit(&self, query: &str, hdc_hits: &[AssociativeHit]) -> Option<AssociativeHit> {
         let lexical: Vec<ArtifactId> = self
-            .lexical_matches(query, 20)
+            .lexical_matches(query, FUSED_LEXICAL_DEPTH)
             .into_iter()
             .map(|(id, _)| id)
             .collect();
-        // Only HDC hits that would be shown take part, so a hit too weak to display can never
-        // win the fusion and hide a lexical match (review of #98).
-        let shown: Vec<&AssociativeHit> = hdc_hits
-            .iter()
-            .filter(|h| {
-                h.hdc_similarity >= MIN_RECALL_SIMILARITY
-                    || h.shared_fractal_suffix > 0
-                    || h.combined_score >= MIN_RECALL_SIMILARITY
-            })
-            .collect();
-        let hdc: Vec<ArtifactId> = shown.iter().map(|h| h.artifact_id).collect();
-        let fused = crate::lexical::rrf(&[hdc, lexical.clone()], crate::lexical::RRF_K);
-        let top = *fused.first()?;
-        if let Some(hit) = shown.into_iter().find(|h| h.artifact_id == top) {
+        let top = *Self::fused_ranking(hdc_hits, &lexical).first()?;
+        if let Some(hit) = hdc_hits.iter().find(|h| h.artifact_id == top) {
             let mut hit = hit.clone();
             // Lexical agreement is evidence enough to show it.
             if lexical.contains(&top) {
@@ -193,6 +185,24 @@ impl InfinityContextMmu {
             shared_fractal_suffix: 0,
             combined_score: MIN_RECALL_SIMILARITY,
         })
+    }
+
+    /// The fused order `ICX_RECALL_RANKING=rrf` uses (T-71-002), shared by recall and by the
+    /// evaluation harness so the harness measures exactly what ships (review of #98): HDC hits
+    /// that would be shown (a hit too weak to display can never win and hide a lexical match),
+    /// fused with the lexical matches by reciprocal rank.
+    #[must_use]
+    pub fn fused_ranking(hdc_hits: &[AssociativeHit], lexical: &[ArtifactId]) -> Vec<ArtifactId> {
+        let shown: Vec<ArtifactId> = hdc_hits
+            .iter()
+            .filter(|h| {
+                h.hdc_similarity >= MIN_RECALL_SIMILARITY
+                    || h.shared_fractal_suffix > 0
+                    || h.combined_score >= MIN_RECALL_SIMILARITY
+            })
+            .map(|h| h.artifact_id)
+            .collect();
+        crate::lexical::rrf(&[shown, lexical.to_vec()], crate::lexical::RRF_K)
     }
 
     /// Turns maintenance of the lexical index on or off (default: `ICX_RECALL_RANKING=rrf`).

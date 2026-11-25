@@ -25,7 +25,7 @@ of #98, which found that prompt cases had been timed at the dereference instead 
   the agent produced later in the same turn. Automatic recall, which runs at the prompt, could
   have surfaced an existing answer in 3 cases.
 - **On the fresh-answer note cases** (this project, held-out half, 372 queries), recall@10 was
-  legacy 2.4%, BM25 12.6%, RRF 5.4%, newest-first 99.2%. They measure fetching what was just
+  legacy 2.4%, BM25 12.6%, RRF (the shipped fusion) 11.6%, newest-first 99.2%. They measure fetching what was just
   produced, which recency answers alone, not the long-range recall that automatic recall exists
   for.
 - **Synthetic sets** (bag-of-words known-item queries) put the three rankers within a few points

@@ -2,7 +2,9 @@
 //! recall@5, recall@10 and MRR@10.
 //!
 //! - **Rankers:** `legacy` is the HDC associative index as recall uses it today; `bm25` is the
-//!   lexical index alone; `rrf` fuses the two by reciprocal rank (`lexical::rrf`, k = 60).
+//!   lexical index alone; `rrf` is the shipped fusion (`InfinityContextMmu::fused_ranking`: the
+//!   first 4 displayable HDC hits and the first 20 lexical matches, k = 60); `recent` is
+//!   newest first.
 //! - **Metrics:** recall@k is the share of queries with a relevant artifact in the top k; MRR@10
 //!   is the mean of `1 / rank` of the first relevant artifact, 0 when none is in the top 10.
 //!   Repeated artifacts are counted once, at their best rank.
@@ -128,7 +130,8 @@ pub struct Times {
 /// Dates every indexed artifact: from the earliest graph edge it is the provenance of, and
 /// otherwise from the next dated artifact in ingest order (ingest order is time order, so this
 /// is an upper bound), or never (`u64::MAX`) after the last one. An upper bound fails closed: an
-/// undated artifact is never treated as existing before it did (review of #98).
+/// undated artifact is never treated as existing before it did (review of #98). An artifact in
+/// the CAS with no index entry gets no time, so a time cutoff hides it (also failing closed).
 #[must_use]
 pub fn artifact_times(mmu: &InfinityContextMmu) -> Times {
     let mut first: std::collections::HashMap<ArtifactId, u64> = std::collections::HashMap::new();
@@ -144,8 +147,9 @@ pub fn artifact_times(mmu: &InfinityContextMmu) -> Times {
             out.order.push(*id);
         }
     }
-    // Walk backwards: each undated artifact takes the next dated time, and dated times are made
-    // monotonic the same way (never later than any artifact after them).
+    // Walk backwards: a dated artifact keeps its own time (review of #98: clamping it to a later
+    // one could move it into the past and fail open); an undated one takes the time of the next
+    // dated artifact, by which it certainly existed.
     let mut next = u64::MAX;
     for id in out.order.iter().rev() {
         let Some(t) = out.at.get_mut(id) else {
@@ -153,7 +157,6 @@ pub fn artifact_times(mmu: &InfinityContextMmu) -> Times {
         };
         if first.contains_key(id) {
             out.dated += 1;
-            *t = (*t).min(next);
             next = *t;
         } else {
             *t = next;
@@ -345,7 +348,23 @@ pub fn rank(
     let mut out = match ranker {
         Ranker::Legacy => legacy(),
         Ranker::Bm25 => bm25(),
-        Ranker::Rrf => crate::lexical::rrf(&[legacy(), bm25()], crate::lexical::RRF_K),
+        // Exactly the shipped fusion (review of #98): the first `FUSED_HDC_DEPTH` HDC hits that
+        // existed and the first `FUSED_LEXICAL_DEPTH` lexical matches, through
+        // `InfinityContextMmu::fused_ranking`.
+        Ranker::Rrf => {
+            let hits: Vec<_> = mmu
+                .hdc_index
+                .query_associative(query, depth)
+                .into_iter()
+                .filter(|h| visible(&h.artifact_id))
+                .take(crate::mmu::FUSED_HDC_DEPTH)
+                .collect();
+            let lexical: Vec<ArtifactId> = bm25()
+                .into_iter()
+                .take(crate::mmu::FUSED_LEXICAL_DEPTH)
+                .collect();
+            InfinityContextMmu::fused_ranking(&hits, &lexical)
+        }
         Ranker::Recent => recent(),
     };
     out.truncate(DEPTH);
@@ -730,5 +749,26 @@ mod tests {
             ts: Some("1970-01-01T00:00:08Z".into()),
         };
         assert_eq!(old_answers(&times, vec![case], 5).len(), 1);
+    }
+
+    #[test]
+    fn a_dated_artifact_keeps_its_own_time() {
+        let mut mmu = InfinityContextMmu::default();
+        let a = mmu
+            .ingest_payload(AgentKind::Codex, "log", "first\n", false)
+            .artifact_id;
+        let b = mmu
+            .ingest_payload(AgentKind::Codex, "log", "second\n", false)
+            .artifact_id;
+        // Out-of-order clocks: the later artifact is dated earlier.
+        mmu.graph.upsert_edge("x", "r", "1", false, 2_000, a, 1.0);
+        mmu.graph.upsert_edge("y", "r", "2", false, 1_000, b, 1.0);
+        let t = artifact_times(&mmu);
+        assert!(
+            t.at[&a] >= 2_000,
+            "never moved into the past: {:?}",
+            t.at[&a]
+        );
+        assert_eq!(t.at[&b], 1_000);
     }
 }

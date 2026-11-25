@@ -47,6 +47,9 @@ _None recorded yet._
   they just received. Only 7 of about 2,100 cases across six projects had an answer with 20 or
   more newer artifacts, so widening to all projects did not yield a long-range set. Decision:
   ADR-0010.
+- **RRF measured as shipped (review of #98):** the harness now calls the recall line's own fusion
+  (4 displayable HDC hits, 20 BM25 matches). Held-out notes recall@10: RRF 11.6% against BM25
+  12.6%; the first figure (5.4%) fused 50 unfiltered HDC hits.
 - **Prompt timing, corrected (review of #98):** prompt cases are now timed at the prompt and
   keyed per turn. 313 of 316 then needed outputs produced later in the turn, so automatic recall
   had an existing answer to surface in only 3.
