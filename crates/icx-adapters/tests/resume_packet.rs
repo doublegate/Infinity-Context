@@ -150,3 +150,40 @@ fn a_pending_packet_survives_a_save_and_the_switch_turns_it_off() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn hermes_gets_the_packet_in_the_session_start_after_compression() {
+    use icx_adapters::HermesAdapter;
+    let mut mmu = filled(3);
+    let msgs =
+        r#"{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"ok"}]}"#;
+    HermesAdapter::handle_hook("on_pre_compress", msgs, &mut mmu).unwrap();
+    let reply: serde_json::Value =
+        serde_json::from_str(&HermesAdapter::handle_hook("SessionStart", "{}", &mut mmu).unwrap())
+            .unwrap();
+    let tail = reply["systemMessage"].as_str().unwrap();
+    assert!(tail.contains("ICX:RESUME"), "{tail}");
+    assert!(tail.chars().count() <= icx_adapters::hermes::HERMES_MAX_TAIL_CHARS);
+    let again: serde_json::Value =
+        serde_json::from_str(&HermesAdapter::handle_hook("SessionStart", "{}", &mut mmu).unwrap())
+            .unwrap();
+    assert!(
+        !again["systemMessage"]
+            .as_str()
+            .unwrap()
+            .contains("ICX:RESUME")
+    );
+}
+
+#[test]
+fn the_hermes_reply_limit_matches_the_plugin() {
+    let plugin = include_str!("../../../integrations/hermes/icx/__init__.py");
+    let line = format!(
+        "_MAX_TAIL_CHARS = {}",
+        icx_adapters::hermes::HERMES_MAX_TAIL_CHARS
+    );
+    assert!(
+        plugin.contains(&line),
+        "plugin and adapter disagree on {line}"
+    );
+}

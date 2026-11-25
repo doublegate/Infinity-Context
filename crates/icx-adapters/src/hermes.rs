@@ -12,6 +12,10 @@ use serde_json::{Value, json};
 /// kept privately under ADR-0008).
 pub const PRE_COMPRESS_CHECKPOINT_API_VERSION: u32 = 2;
 
+/// The longest `SessionStart` reply the Hermes engine plugin accepts (`_MAX_TAIL_CHARS` in
+/// `integrations/hermes/icx/__init__.py`); a longer one is dropped.
+pub const HERMES_MAX_TAIL_CHARS: usize = 8_000;
+
 fn deserialize_hermes_content<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -1007,6 +1011,9 @@ impl HermesAdapter {
             "on_pre_compress" | "on-pre-compress" => {
                 let (msgs, raw_msgs) = Self::parse_messages_with_raw(&payload)?;
                 let checkpoint = Self::on_pre_compress_core(&msgs, Some(&raw_msgs), mmu);
+                // After compression Hermes starts a new session segment, whose `SessionStart`
+                // reply then carries the resume packet (T-73-003).
+                mmu.mark_resume_pending(AgentKind::Hermes);
                 json!({
                     "checkpoint_version": PRE_COMPRESS_CHECKPOINT_API_VERSION,
                     "checkpoint": checkpoint
@@ -1065,7 +1072,18 @@ impl HermesAdapter {
                 }
             }
             "SessionStart" | "session-start" => {
-                let tail = mmu.build_ephemeral_tail_slot(AgentKind::Hermes, "session_init", 3);
+                let mut tail = mmu.build_ephemeral_tail_slot(AgentKind::Hermes, "session_init", 3);
+                // The plugin drops a reply over `HERMES_MAX_TAIL_CHARS`, so the packet gets only
+                // what the tail leaves (T-73-003).
+                let room = HERMES_MAX_TAIL_CHARS
+                    .saturating_sub(tail.chars().count() + 1)
+                    .min(crate::mmu::RESUME_PACKET_MAX_BYTES);
+                if let Some(packet) = mmu.take_resume_packet(AgentKind::Hermes, room)
+                    && !packet.is_empty()
+                {
+                    tail.push('\n');
+                    tail.push_str(&packet);
+                }
                 json!({
                     "systemMessage": tail
                 })

@@ -5,6 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (Phase 7 Sprint 3, compaction)
+
+- Resume packet after compaction (T-73-001..003): after Claude Code, Codex or Hermes compacts its
+  context, the next hook that carries context adds, once, a bounded (3 KB) deterministic packet:
+  the most recent outputs with their `#icx:` handles, subjects failing now, and open fold
+  branches. Claude Code receives it in the `SessionStart` after compaction (or the next prompt),
+  Codex at its next `SessionStart` or prompt, Hermes in the `SessionStart` reply its engine plugin
+  fetches after compression. `ICX_RESUME_PACKET=0` turns it off. Baseline: 4.4% of tool calls
+  after a compaction repeat one made before it (`docs/numbers.md`).
+- Typed folds (T-73-004): `icx_write` `fold` takes an optional `type` (`subtask`, `build_log`,
+  `superseded`, `exploration`, `other`), recorded in the fold's summary; unknown types are
+  refused, and a typed fold expands back to its exact content.
+
 ### Fixed
 
 - `icx install`: the Claude Code matcher note judges all icx `PostToolUse` groups together, so a

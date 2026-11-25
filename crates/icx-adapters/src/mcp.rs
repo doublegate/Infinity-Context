@@ -22,6 +22,10 @@ pub const WRITE_TOOL: &str = "icx_write";
 
 /// Maximum number of simultaneously open `fold begin:` branches (ICX-AUD-014).
 pub const MAX_FOLD_DEPTH: usize = 64;
+/// Kinds of context an agent can fold away by type (T-73-004, CWL/CAT/SWE-MeM eviction patterns):
+/// a finished subtask, a stale build log, a file read a later read superseded, an exploration
+/// that led nowhere, or anything else.
+pub const FOLD_TYPES: [&str; 5] = ["subtask", "build_log", "superseded", "exploration", "other"];
 /// Longest matched line a `grep` reply shows, in characters (the full line is one `slice` away).
 const GREP_LINE_CHARS: usize = 400;
 /// Largest `grep` reply, in bytes.
@@ -139,7 +143,8 @@ impl McpPagerServer {
                         "required": ["op", "q"],
                         "properties": {
                             "op": { "type": "string", "enum": ["fold", "xagent"] },
-                            "q": { "type": "string" }
+                            "q": { "type": "string" },
+                            "type": { "type": "string", "enum": FOLD_TYPES }
                         }
                     }
                 }
@@ -580,8 +585,28 @@ impl McpPagerServer {
                     mmu.epochs.begin_branch(&mut mmu.dag, &clean_label);
                     (format!("⟪ICX:BRANCH_OPENED│{clean_label}⟫"), false)
                 } else {
+                    // A typed fold (T-73-004): what kind of context is being evicted, recorded
+                    // in the summary so a reader knows why it left the window. Untyped folds are
+                    // unchanged.
+                    let kind = match args.get("type") {
+                        None | Some(Value::Null) => None,
+                        Some(Value::String(t)) if FOLD_TYPES.contains(&t.as_str()) => {
+                            Some(t.as_str())
+                        }
+                        Some(other) => {
+                            return (
+                                format!(
+                                    "ERR: fold type {other} is not one of {}",
+                                    FOLD_TYPES.join(", ")
+                                ),
+                                true,
+                            );
+                        }
+                    };
+                    let summary =
+                        kind.map_or_else(|| summary.to_owned(), |k| format!("[{k}] {summary}"));
                     let clean_summary =
-                        InfinityContextMmu::sanitize_hook_label(summary, "completed");
+                        InfinityContextMmu::sanitize_hook_label(&summary, "completed");
                     match mmu.epochs.fold_branch(&mut mmu.dag, &clean_summary) {
                         Ok(bid) => {
                             mmu.sync_global_dag_root();
