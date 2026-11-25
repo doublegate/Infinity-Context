@@ -1219,12 +1219,13 @@ impl SecretRedactor {
         // A type-annotated code assignment (`let api_key: Option<String> = None;`) comes through
         // the same pass but is code, not config text (review of #103).
         let line_text = out[line_start..].split('\n').next().unwrap_or("").trim();
-        let is_code_line = line_text.ends_with(';')
-            || [
-                "let ", "const ", "var ", "val ", "final ", "static ", "pub ", "def ", "fn ",
-            ]
-            .iter()
-            .any(|k| line_text.starts_with(k));
+        // Only a binding keyword marks an annotated value as code: a trailing `;` also ends
+        // connection strings and other config values (review of #103).
+        let is_code_line = [
+            "let ", "const ", "var ", "val ", "final ", "static ", "pub ", "def ", "fn ",
+        ]
+        .iter()
+        .any(|k| line_text.starts_with(k));
         let config = stop_at_comma && !(code_context >= CODE_STRONG && is_code_line);
         let stop_at_comma = stop_at_comma && Self::open_brackets(&out[line_start..val_start]) > 0;
         // `Authorization: Bearer <t>` / `Basic <t>`: the scheme stays and the rest of the line is

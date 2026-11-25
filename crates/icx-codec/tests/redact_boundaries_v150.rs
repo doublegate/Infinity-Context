@@ -652,3 +652,13 @@ fn hash_exemption_is_raw_strings_only_and_bracket_tails_stay_sticky() {
         ),
     ]);
 }
+
+/// Antigravity round at 19:17 UTC: a trailing `;` alone does not make an annotated value code.
+#[test]
+fn a_trailing_semicolon_does_not_make_config_text_code() {
+    check(&[
+        ("password: Foo = abc; qqzz;\n", &["abc", "qqzz"], &[]),
+        ("password: Foo = None; qqzz;\n", &["qqzz"], &[]),
+        ("let api_key: Option<String> = None;\n", &[], &["None;"]),
+    ]);
+}
