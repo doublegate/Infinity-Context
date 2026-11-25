@@ -21,7 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   artifacts per save; the schema version is unchanged, so older builds still open the store.
   Turning it off also stops its queries, and tables of another version (or only one of the pair)
   are rebuilt rather than read.
-  Measured on a real 54 MB store: 6.7 MB of index, queries under 1.2 ms (`docs/numbers.md`).
+  Measured on a real 54 MB store with the production code: 10.2 MB of index (rows are numbered
+  compactly; random 64-bit rowids took 38.5 MB), queries under 1.6 ms (`docs/numbers.md`).
 - Recall reports a shared fractal suffix only for a history that really repeats. Each trajectory
   step keeps a 16-bit corner of its state, so distinct events with equal corners were reported as
   a shared history (0.33% of similar events in a 20,000-event measurement, ICX-AUD-052); each

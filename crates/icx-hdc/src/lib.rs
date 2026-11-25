@@ -743,6 +743,7 @@ impl HdcAssociativeIndex {
     /// Every entry holding a query token with df <= cap stays a candidate (ICX-CODEX-004), so a
     /// unique identifier is never dropped by approximate filtering. Result: sorted, distinct,
     /// at most `3 * candidate_cap` long unless the full corpus is scanned.
+    #[cfg(test)]
     fn candidate_set(
         &self,
         q_hv: &Hypervector,
@@ -750,6 +751,20 @@ impl HdcAssociativeIndex {
         q_postings: &[&[usize]],
         top_k: usize,
     ) -> Vec<usize> {
+        self.candidate_set_width(q_hv, q_tokens, q_postings, top_k, PRESCREEN_WORDS)
+    }
+
+    /// [`Self::candidate_set`] with a prescreen of `width` words (64 bits each); only the
+    /// prescreen measurement varies it (T-71-003), production always uses `PRESCREEN_WORDS`.
+    fn candidate_set_width(
+        &self,
+        q_hv: &Hypervector,
+        q_tokens: &[String],
+        q_postings: &[&[usize]],
+        top_k: usize,
+        width: usize,
+    ) -> Vec<usize> {
+        let width = width.clamp(1, crate::hv::HV_WORDS);
         let n = self.entries.len();
         let adaptive_floor = (n / 64).clamp(16, 512);
         // Grows with the corpus (>= 4 * sqrt(n)) so recall does not collapse as n increases.
@@ -776,12 +791,12 @@ impl HdcAssociativeIndex {
         let mut min_pos = 0usize;
 
         for (idx, s) in self.summaries.iter().enumerate() {
-            let ham1024: u32 = q_hv.words[..PRESCREEN_WORDS]
+            let ham1024: u32 = q_hv.words[..width]
                 .iter()
-                .zip(&self.entries[idx].hv.words[..PRESCREEN_WORDS])
+                .zip(&self.entries[idx].hv.words[..width])
                 .map(|(a, b)| (a ^ b).count_ones())
                 .sum();
-            let sim1024 = (PRESCREEN_WORDS as u32 * 64).saturating_sub(ham1024);
+            let sim1024 = (width as u32 * 64).saturating_sub(ham1024);
             let content = Self::content_hits(s, q_tokens) as u32;
             let raw_bloom_hits = (q_bloom32 & s.subj_bloom32).count_ones();
             let subj_density = s.subj_bloom32.count_ones().max(2);
@@ -835,13 +850,23 @@ impl HdcAssociativeIndex {
     /// 1. Stage 1 L2-cache spectral/Bloom pre-screening over 16-byte `EntrySummary` records.
     /// 2. Stage 2 exact 10,240-bit `hamming_distance_simd` and boundary-aware inverse-IFS `verified_suffix_depth` refinement.
     pub fn query_associative(&self, query_text: &str, top_k: usize) -> Vec<AssociativeHit> {
+        self.query_associative_width(query_text, top_k, PRESCREEN_WORDS)
+    }
+
+    /// [`Self::query_associative`] with a prescreen of `width` words (measurement only).
+    fn query_associative_width(
+        &self,
+        query_text: &str,
+        top_k: usize,
+        width: usize,
+    ) -> Vec<AssociativeHit> {
         if top_k == 0 || self.entries.is_empty() {
             return Vec::new();
         }
         let q_hv = Hypervector::encode_text(query_text);
         let q_tokens = Self::query_tokens(query_text);
         let q_postings = self.query_postings(&q_tokens);
-        let candidates = self.candidate_set(&q_hv, &q_tokens, &q_postings, top_k);
+        let candidates = self.candidate_set_width(&q_hv, &q_tokens, &q_postings, top_k, width);
         let n = self.entries.len();
 
         // Exact lexical evidence per candidate: matched-token count (for `content_frac`) and the
@@ -1232,51 +1257,64 @@ mod tests {
     #[ignore = "measurement; prints a table"]
     fn measure_stage1_recall_by_corpus_size() {
         println!(
-            "| n | vocabulary | queries | max candidates | artifacts with all 3 words (mean) | stage-1 recall | recall@1 | recall@5 | mean query |"
+            "| prescreen | n | vocabulary | queries | max candidates | artifacts with all 3 words (mean) | stage-1 recall | recall@1 | recall@5 | mean query |"
         );
-        for n in [1_000usize, 10_000, 100_000] {
-            for vocab in [50_000usize, 500] {
-                let (idx, words) = synthetic_corpus(n, vocab, 0x1c5_0071 ^ n as u64);
-                let mut rng = Rng(0xfeed ^ n as u64 ^ vocab as u64);
-                let queries = 200;
-                let (mut s1, mut r1, mut r5, mut ties) = (0, 0, 0, 0usize);
-                let mut cap = 0;
-                // Only `query_associative` is timed; the inspection of stage 1 and the count of
-                // ambiguous artifacts run outside the timer (review of #97).
-                let mut timed = std::time::Duration::ZERO;
-                for _ in 0..queries {
-                    let t = rng.below(n);
-                    let q: Vec<String> = (0..3)
-                        .map(|_| format!("w{}", words[t][2 + rng.below(22)]))
-                        .collect();
-                    let query = q.join(" ");
-                    let qw: Vec<usize> = q.iter().map(|w| w[1..].parse().unwrap()).collect();
-                    ties += words
-                        .iter()
-                        .filter(|d| qw.iter().all(|x| d.contains(x)))
-                        .count();
-                    let q_hv = Hypervector::encode_text(&query);
-                    let q_tokens = HdcAssociativeIndex::query_tokens(&query);
-                    let q_postings = idx.query_postings(&q_tokens);
-                    let cands = idx.candidate_set(&q_hv, &q_tokens, &q_postings, 5);
-                    cap = cap.max(cands.len());
-                    s1 += usize::from(cands.binary_search(&t).is_ok());
-                    let started = std::time::Instant::now();
-                    let hits = idx.query_associative(&query, 5);
-                    timed += started.elapsed();
-                    let target = ArtifactId(t as u64 + 1);
-                    r1 += usize::from(hits.first().is_some_and(|h| h.artifact_id == target));
-                    r5 += usize::from(hits.iter().any(|h| h.artifact_id == target));
+        println!("| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+        for width in [PRESCREEN_WORDS, 2 * PRESCREEN_WORDS] {
+            for n in [1_000usize, 10_000, 100_000] {
+                for vocab in [50_000usize, 500] {
+                    let (idx, words) = synthetic_corpus(n, vocab, 0x1c5_0071 ^ n as u64);
+                    let mut rng = Rng(0xfeed ^ n as u64 ^ vocab as u64);
+                    let queries = 200;
+                    let (mut s1, mut r1, mut r5, mut ties) = (0, 0, 0, 0usize);
+                    let mut cap = 0;
+                    // Only `query_associative` is timed; the inspection of stage 1 and the count of
+                    // ambiguous artifacts run outside the timer (review of #97).
+                    let mut timed = std::time::Duration::ZERO;
+                    for _ in 0..queries {
+                        let t = rng.below(n);
+                        // Three distinct positions of the target's words (sampled without
+                        // replacement, review of #97).
+                        let mut pos: Vec<usize> = Vec::with_capacity(3);
+                        while pos.len() < 3 {
+                            let p = 2 + rng.below(22);
+                            if !pos.contains(&p) {
+                                pos.push(p);
+                            }
+                        }
+                        let q: Vec<String> =
+                            pos.iter().map(|&p| format!("w{}", words[t][p])).collect();
+                        let query = q.join(" ");
+                        let qw: Vec<usize> = q.iter().map(|w| w[1..].parse().unwrap()).collect();
+                        ties += words
+                            .iter()
+                            .filter(|d| qw.iter().all(|x| d.contains(x)))
+                            .count();
+                        let q_hv = Hypervector::encode_text(&query);
+                        let q_tokens = HdcAssociativeIndex::query_tokens(&query);
+                        let q_postings = idx.query_postings(&q_tokens);
+                        let cands =
+                            idx.candidate_set_width(&q_hv, &q_tokens, &q_postings, 5, width);
+                        cap = cap.max(cands.len());
+                        s1 += usize::from(cands.binary_search(&t).is_ok());
+                        let started = std::time::Instant::now();
+                        let hits = idx.query_associative_width(&query, 5, width);
+                        timed += started.elapsed();
+                        let target = ArtifactId(t as u64 + 1);
+                        r1 += usize::from(hits.first().is_some_and(|h| h.artifact_id == target));
+                        r5 += usize::from(hits.iter().any(|h| h.artifact_id == target));
+                    }
+                    let per = timed.as_secs_f64() * 1e3 / f64::from(queries);
+                    let pct = |x: usize| 100.0 * x as f64 / f64::from(queries);
+                    println!(
+                        "| {} bits | {n} | {vocab} | {queries} | {cap} | {:.1} | {:.1}% | {:.1}% | {:.1}% | {per:.2} ms |",
+                        width * 64,
+                        ties as f64 / f64::from(queries),
+                        pct(s1),
+                        pct(r1),
+                        pct(r5)
+                    );
                 }
-                let per = timed.as_secs_f64() * 1e3 / f64::from(queries);
-                let pct = |x: usize| 100.0 * x as f64 / f64::from(queries);
-                println!(
-                    "| {n} | {vocab} | {queries} | {cap} | {:.1} | {:.1}% | {:.1}% | {:.1}% | {per:.2} ms |",
-                    ties as f64 / f64::from(queries),
-                    pct(s1),
-                    pct(r1),
-                    pct(r5)
-                );
             }
         }
     }

@@ -87,53 +87,69 @@ last of six would wait about 12 s. The cost grows with store size until saves be
 **v1.5.0 measurements: stage-1 prescreen (2026-11-24, release build, i9-10850K, T-71-003):**
 
 Synthetic corpora of n events (24 words each from a 50,000- or 500-word vocabulary), 200 queries
-of three of the target's words. Stage-1 recall is the share of queries whose target is in the
-candidate set (prescreen survivors plus the postings union) that exact scoring sees; the query
-time is `query_associative` alone. Reproduce with
+of three distinct words of the target. Stage-1 recall is the share of queries whose target is in
+the candidate set (prescreen survivors plus the postings union) that exact scoring sees; the query
+time is `query_associative` alone. Both widths are measured by one command:
 `cargo test --release -p icx-hdc --lib measure_stage1_recall -- --ignored --nocapture`.
 
-| n | vocabulary | queries | max candidates | artifacts with all 3 words (mean) | stage-1 recall | recall@1 | recall@5 | mean query |
-| 1000 | 50000 | 200 | 128 | 1.0 | 100.0% | 100.0% | 100.0% | 0.17 ms |
-| 1000 | 500 | 200 | 219 | 1.9 | 100.0% | 87.0% | 99.0% | 0.20 ms |
-| 10000 | 50000 | 200 | 411 | 1.0 | 100.0% | 99.5% | 100.0% | 1.20 ms |
-| 10000 | 500 | 200 | 689 | 4.6 | 100.0% | 55.5% | 91.0% | 1.04 ms |
-| 100000 | 50000 | 200 | 1401 | 1.0 | 100.0% | 100.0% | 100.0% | 16.74 ms |
-| 100000 | 500 | 200 | 1265 | 85.3 | 98.5% | 13.5% | 49.5% | 15.81 ms |
+| prescreen | n | vocabulary | queries | max candidates | artifacts with all 3 words (mean) | stage-1 recall | recall@1 | recall@5 | mean query |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1024 bits | 1000 | 50000 | 200 | 128 | 1.0 | 100.0% | 100.0% | 100.0% | 0.19 ms |
+| 1024 bits | 1000 | 500 | 200 | 219 | 1.1 | 100.0% | 95.0% | 100.0% | 0.22 ms |
+| 1024 bits | 10000 | 50000 | 200 | 413 | 1.0 | 100.0% | 100.0% | 100.0% | 1.43 ms |
+| 1024 bits | 10000 | 500 | 200 | 714 | 2.0 | 100.0% | 72.0% | 100.0% | 2.51 ms |
+| 1024 bits | 100000 | 50000 | 200 | 1403 | 1.0 | 100.0% | 100.0% | 100.0% | 20.63 ms |
+| 1024 bits | 100000 | 500 | 200 | 1265 | 12.3 | 100.0% | 14.5% | 55.5% | 20.01 ms |
+| 2048 bits | 1000 | 50000 | 200 | 128 | 1.0 | 100.0% | 100.0% | 100.0% | 0.20 ms |
+| 2048 bits | 1000 | 500 | 200 | 211 | 1.1 | 100.0% | 95.0% | 100.0% | 0.27 ms |
+| 2048 bits | 10000 | 50000 | 200 | 409 | 1.0 | 100.0% | 100.0% | 100.0% | 3.00 ms |
+| 2048 bits | 10000 | 500 | 200 | 712 | 2.0 | 100.0% | 72.0% | 100.0% | 2.55 ms |
+| 2048 bits | 100000 | 50000 | 200 | 1396 | 1.0 | 100.0% | 100.0% | 100.0% | 61.52 ms |
+| 2048 bits | 100000 | 500 | 200 | 1265 | 12.3 | 100.0% | 14.5% | 55.5% | 29.62 ms |
 
-- **1,024-bit prescreen (shipped since v1.1.0):** the target is kept in 100% of rare-word queries
-  at every size and in 98.5% of common-word queries at 100k.
-- **2,048 bits, measured the same way:** identical recall in every row, and about 1.5 times
-  slower at 100k (25.3 ms against 16.7 ms). The hypothesis that a wider prescreen recovers
-  dropped candidates is rejected, and the width stays 1,024 bits.
-- **The loss with common words is ranking, not the prescreen:** at 100k, about 85 artifacts hold
-  all three query words, so recall@1 has a ceiling near 1/85, and 13.5% is far above chance.
-  Lexical ranking (BM25, T-71-001) and fusion (T-71-002) are measured against this on the Sprint 2
-  evaluation set.
-- **Query time** grows with n: about 0.2 ms at 1k, 1.0–1.2 ms at 10k and 16–17 ms at 100k on this
-  host. (A first version of this table timed the stage-1 inspection and the ambiguity count too,
-  and reported about twice these times; corrected in the review of #97.)
+- **1,024-bit prescreen (shipped since v1.1.0):** the target reaches exact scoring in every
+  query, at every size, for rare and common words alike.
+- **2,048 bits:** identical recall in every row, never faster, and up to about 3 times slower
+  (timings on a desktop vary by tens of percent between runs). The hypothesis that a wider
+  prescreen recovers dropped candidates is rejected, and the width stays 1,024 bits.
+- **The loss with common words is ranking, not the prescreen:** at 100k, about 12 artifacts hold
+  all three query words, so recall@1 cannot be much above 1/12 by these words alone; 14.5% is
+  above that. Lexical ranking (BM25, T-71-001) and fusion (T-71-002) are measured against this
+  on the Sprint 2 evaluation set.
+- **Query time** grows with n: about 0.2 ms at 1k, 1.4–2.5 ms at 10k and about 20 ms at 100k.
+- **Corrections (review of #97):** a first version timed the stage-1 inspection and the
+  ambiguity count with the query, and sampled query words with replacement (so some queries had
+  two distinct words); it reported about twice these times and lower recall for common words.
 
 **ICX-AUD-052 measurement (T-71-004):** over 20,000 events with no repeats, the coordinates alone
 claimed a shared history for 3 distinct and 66 similar earlier events; the confirmed suffix
 claims none. Reproduce with
 `cargo test --release -p icx-hdc --lib measure_fractal_suffix -- --ignored --nocapture`.
 
-**v1.5.0 measurements: lexical index (2026-11-24, i9-10850K, SQLite 3.54.1, T-71-001):**
+**v1.5.0 measurements: lexical index (2026-11-24, release build, i9-10850K, SQLite 3.54.1,
+T-71-001):**
 
-Built from a copy of a real 54 MB workspace store holding 5,193 artifacts and 8.5 MB of text.
-Reproduce on any store with `python3 -I scripts/measure-lexical-index.py <icx.sqlite3> <out dir>`,
-which reads the store read-only and writes only the scratch tables.
+The production code (`lexical::insert`, `search_words`, `trigram_candidates`) on the text of a real
+54 MB workspace store: 5,230 artifacts, 8.5 MB of text, indexed in one transaction as a backfill
+does, without `optimize` or `VACUUM`. Reproduce on any store with
+`ICX_MEASURE_STORE=<path/to/icx.sqlite3> cargo test --release -p icx-adapters --test lexical_index measure -- --ignored --nocapture`
+(the store is opened read-only; only sizes and timings are printed).
 
-| Table | Size | Insert per artifact | Query |
-| :--- | :--- | :--- | :--- |
-| `lex_words` (porter `unicode61`, contentless) | 3.0 MB | 0.03 ms | BM25 top 20: 0.11–0.81 ms median, 1.16 ms worst, over four 2–4 term queries |
-| `lex_trigrams` (`trigram`, `detail=none`, contentless) | 3.7 MB | 0.17 ms | candidates for a 5–9 character needle: 0.01–0.12 ms median, 0.32 ms worst |
-| Both, with content copies (rejected) | 12.9 MB and 13.6 MB | same | same |
-| Full-detail trigram, with content (rejected) | 30.6 MB | 0.21 ms | same |
+| Measure | Value |
+| :--- | :--- |
+| Index size (`lex_ids`, `lex_words`, `lex_trigrams`) | 10.2 MB: 1.2 times the text, 19% added to this store |
+| Insert, identifier parts included | 0.26 ms per artifact |
+| BM25 top 20, 2–4 query terms | 0.28–1.19 ms median, 1.54 ms worst |
+| Trigram candidates, 5–9 character needle | 0.31–0.56 ms median, 1.24 ms worst |
 
-The contentless pair adds about 0.8 times the text (12% of this store). Trigram candidates are
-confirmed against the artifact's text, so the cost of a substring hit also includes reading the
-candidates from the CAS (at most 8 per result requested, and at least 64).
+- **Compact row numbers matter:** with the artifact id (a random 64-bit number) as the FTS rowid
+  the same index took 38.5 MB, because FTS5 stores rowid gaps as varints and every posting cost
+  about 9 bytes. Rows are therefore numbered compactly and mapped through `lex_ids`.
+- **Corrections (review of #97):** the first figures (3.0 and 3.7 MB) came from a Python probe that
+  numbered rows 0, 1, 2…, left the identifier-parts column empty and compacted the tables, so they
+  did not describe the shipped index.
+- Trigram candidates are confirmed against the artifact's text, so a substring hit also reads the
+  candidates from the CAS (at most `max(64, 8 * limit)`).
 
 ## 3. Constants and Test-Asserted Bounds
 

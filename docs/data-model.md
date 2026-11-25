@@ -249,7 +249,7 @@ CREATE TABLE emitted   (digest BLOB PRIMARY KEY) WITHOUT ROWID;    -- BLAKE3 of 
 | `hdc_index` | HDC associative index, binary snapshot format `ICXHDC05`, including exact token postings. |
 | `hdc_index_events` | Number of events the snapshot covers. |
 | `seal` | Store MAC (§6.2). |
-| `lexical_index` | Version of the optional lexical tables (`1`), present only once they are built (§6.4). |
+| `lexical_index` | Version of the optional lexical tables (`2`), present only once they are built (§6.4). |
 
 `chunks`, `artifacts` and `emitted` rows are append-only (inserted once). Existing store, `-wal`
 and `-shm` files are reset to `0600` on open if their mode was widened. The derived state in `meta` is
@@ -292,12 +292,16 @@ delete CAS/DAG history or reinterpret archived Q15 `fc` fields.
 Built only while `ICX_RECALL_RANKING=rrf` is set (T-71-001; the ranking that uses it is T-71-002):
 
 ```sql
+CREATE TABLE lex_ids (n INTEGER PRIMARY KEY, id INTEGER NOT NULL UNIQUE); -- row number -> artifact id
 CREATE VIRTUAL TABLE lex_words USING fts5(body, parts,
   tokenize = "porter unicode61 remove_diacritics 2 tokenchars '_'", content = '');
-CREATE VIRTUAL TABLE lex_trigrams USING fts5(body, tokenize = 'trigram', detail = none, content = '');
+CREATE VIRTUAL TABLE lex_trigrams USING fts5(body,
+  tokenize = 'trigram case_sensitive 1', detail = none, content = '');
 ```
 
-- **Rows:** one per artifact, `rowid` = the artifact id, holding its first 1 MiB of (redacted) text.
+- **Rows:** one per artifact, holding its first 1 MiB of (redacted) text. The FTS rowid is a
+  compact row number `n`, mapped to the artifact id by `lex_ids`: FTS5 stores rowid gaps as
+  varints, and random 64-bit ids made the index almost four times larger.
   `parts` holds the parts of compound identifiers (`parseHttpRequest`: `parse http request`), so a
   part finds the whole; `snake_case` words also stay whole in `body`.
 - **Contentless:** the text lives in the CAS, so the tables keep no copy. Trigram matches are a
@@ -308,6 +312,8 @@ CREATE VIRTUAL TABLE lex_trigrams USING fts5(body, tokenize = 'trigram', detail 
 - **Maintenance:** new artifacts are indexed in the save transaction, inside a savepoint, so an
   index failure never fails a save. When the index is turned on for an existing store, up to 2,000
   older artifacts are added per save. When a save rewrites the CAS tables, the lexical tables are
-  dropped and rebuilt the same way.
+  dropped (a failure to drop them is reported and ignored) and rebuilt the same way, 2,000 per
+  save. Tables of another version, or an incomplete set, are dropped and rebuilt; a newer version
+  is never read.
 - **Compatibility:** the `schema` version stays `1`. Older builds ignore the tables; artifacts
   they add are indexed by the next save with the index on.

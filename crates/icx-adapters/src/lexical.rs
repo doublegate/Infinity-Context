@@ -9,9 +9,10 @@
 //!   holds all of a needle's trigrams, a candidate set that is never too small. Each candidate is
 //!   then confirmed against the artifact's own text, so a substring hit is exact.
 //!
-//! Both tables are contentless (`content=''`): the text already lives in the CAS. Measured on a
-//! 54 MB store holding 8.5 MB of artifact text, they take 3.0 MB and 3.7 MB; with content copies
-//! they took 12.9 MB and 13.6 MB.
+//! Both tables are contentless (`content=''`): the text already lives in the CAS. Rows are
+//! numbered compactly and mapped to artifact ids through `lex_ids`, because FTS5 stores rowid gaps
+//! as varints and random 64-bit ids made every posting about 9 bytes. Measured sizes are in
+//! `docs/numbers.md`.
 //!
 //! The index is derived state and is not covered by the store seal, so it is treated as
 //! untrusted: every id it returns must name an artifact in the sealed in-memory CAS before it is
@@ -23,7 +24,9 @@ use icx_core::{ArtifactId, IcxError};
 use rusqlite::{Connection, params};
 
 /// Version of the lexical tables, stored in `meta` under `lexical_index`.
-pub const LEXICAL_VERSION: i64 = 1;
+/// Version 2 numbers rows compactly through `lex_ids` (review of #97: random 64-bit rowids made
+/// the trigram postings about five times larger).
+pub const LEXICAL_VERSION: i64 = 2;
 
 /// Text indexed per artifact, in bytes: the first 1 MiB. Longer artifacts are still found by
 /// their beginning; their full text stays in the CAS.
@@ -47,21 +50,23 @@ fn db_err(e: impl std::fmt::Display) -> IcxError {
 }
 
 /// The `lexical_index` version recorded in `meta`, if any.
+/// A value that is not an integer reads as `None`, so the tables are rebuilt (review of #97).
 fn stored_version(conn: &Connection) -> Result<Option<i64>, IcxError> {
     conn.query_row("SELECT v FROM meta WHERE k = 'lexical_index'", [], |r| {
         r.get::<_, i64>(0)
     })
     .map(Some)
     .or_else(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        rusqlite::Error::QueryReturnedNoRows | rusqlite::Error::InvalidColumnType(..) => Ok(None),
         other => Err(db_err(other)),
     })
 }
 
-/// Number of the two lexical tables present (0, 1 or 2).
+/// Number of the three lexical tables present (`lex_ids`, `lex_words`, `lex_trigrams`).
 fn table_count(conn: &Connection) -> Result<i64, IcxError> {
     conn.query_row(
-        "SELECT count(*) FROM sqlite_master WHERE name IN ('lex_words', 'lex_trigrams')",
+        "SELECT count(*) FROM sqlite_master \
+         WHERE type = 'table' AND name IN ('lex_ids', 'lex_words', 'lex_trigrams')",
         [],
         |r| r.get(0),
     )
@@ -71,9 +76,9 @@ fn table_count(conn: &Connection) -> Result<i64, IcxError> {
 /// Creates the tables if missing and records their version. Tables of another version, or only
 /// one of the two, are dropped first and rebuilt (review of #97). Returns `true` when the tables
 /// were (re)created empty, so the caller's record of indexed ids is stale.
-pub(crate) fn ensure_tables(conn: &Connection) -> Result<bool, IcxError> {
+pub fn ensure_tables(conn: &Connection) -> Result<bool, IcxError> {
     let count = table_count(conn)?;
-    let current = count == 2 && stored_version(conn)? == Some(LEXICAL_VERSION);
+    let current = count == 3 && stored_version(conn)? == Some(LEXICAL_VERSION);
     if current {
         return Ok(false);
     }
@@ -81,10 +86,11 @@ pub(crate) fn ensure_tables(conn: &Connection) -> Result<bool, IcxError> {
         drop_tables(conn)?;
     }
     conn.execute_batch(
-        "CREATE VIRTUAL TABLE IF NOT EXISTS lex_words USING fts5(body, parts, \
+        "CREATE TABLE IF NOT EXISTS lex_ids (n INTEGER PRIMARY KEY, id INTEGER NOT NULL UNIQUE);
+         CREATE VIRTUAL TABLE IF NOT EXISTS lex_words USING fts5(body, parts, \
            tokenize = \"porter unicode61 remove_diacritics 2 tokenchars '_'\", content = '');
          CREATE VIRTUAL TABLE IF NOT EXISTS lex_trigrams USING fts5(body, \
-           tokenize = 'trigram', detail = none, content = '');",
+           tokenize = 'trigram case_sensitive 1', detail = none, content = '');",
     )
     .map_err(db_err)?;
     conn.execute(
@@ -96,10 +102,10 @@ pub(crate) fn ensure_tables(conn: &Connection) -> Result<bool, IcxError> {
     Ok(true)
 }
 
-/// Whether this build can query the lexical tables: both exist, at this build's version. A store
+/// Whether this build can query the lexical tables: all three exist, at this build's version. A store
 /// written by a newer build is not read (review of #97).
 pub(crate) fn tables_exist(conn: &Connection) -> Result<bool, IcxError> {
-    Ok(table_count(conn)? == 2 && stored_version(conn)? == Some(LEXICAL_VERSION))
+    Ok(table_count(conn)? == 3 && stored_version(conn)? == Some(LEXICAL_VERSION))
 }
 
 /// Drops the tables (contentless rows cannot be deleted one by one); the next save with the
@@ -107,6 +113,7 @@ pub(crate) fn tables_exist(conn: &Connection) -> Result<bool, IcxError> {
 pub(crate) fn drop_tables(conn: &Connection) -> Result<(), IcxError> {
     conn.execute_batch(
         "DROP TABLE IF EXISTS lex_words; DROP TABLE IF EXISTS lex_trigrams;
+         DROP TABLE IF EXISTS lex_ids;
          DELETE FROM meta WHERE k = 'lexical_index';",
     )
     .map_err(db_err)
@@ -116,9 +123,7 @@ pub(crate) fn drop_tables(conn: &Connection) -> Result<(), IcxError> {
 pub(crate) fn indexed_ids(
     conn: &Connection,
 ) -> Result<std::collections::BTreeSet<ArtifactId>, IcxError> {
-    let mut stmt = conn
-        .prepare("SELECT rowid FROM lex_words")
-        .map_err(db_err)?;
+    let mut stmt = conn.prepare("SELECT id FROM lex_ids").map_err(db_err)?;
     let rows = stmt.query_map([], |r| r.get::<_, i64>(0)).map_err(db_err)?;
     let mut out = std::collections::BTreeSet::new();
     for r in rows {
@@ -140,16 +145,23 @@ fn indexed_prefix(text: &str) -> &str {
 }
 
 /// Adds one artifact to both tables.
-pub(crate) fn insert(conn: &Connection, id: ArtifactId, text: &str) -> Result<(), IcxError> {
+pub fn insert(conn: &Connection, id: ArtifactId, text: &str) -> Result<(), IcxError> {
     let body = indexed_prefix(text);
     let parts = identifier_parts(body);
+    // FTS5 stores rowid gaps as varints, so rows are numbered compactly here and mapped to the
+    // (random 64-bit) artifact id through `lex_ids`.
+    conn.prepare_cached("INSERT INTO lex_ids (id) VALUES (?1)")
+        .map_err(db_err)?
+        .execute(params![id_to_sql(id)])
+        .map_err(db_err)?;
+    let n = conn.last_insert_rowid();
     conn.prepare_cached("INSERT INTO lex_words (rowid, body, parts) VALUES (?1, ?2, ?3)")
         .map_err(db_err)?
-        .execute(params![id_to_sql(id), body, parts])
+        .execute(params![n, body, parts])
         .map_err(db_err)?;
     conn.prepare_cached("INSERT INTO lex_trigrams (rowid, body) VALUES (?1, ?2)")
         .map_err(db_err)?
-        .execute(params![id_to_sql(id), body])
+        .execute(params![n, body])
         .map_err(db_err)?;
     Ok(())
 }
@@ -163,7 +175,8 @@ pub fn identifier_parts(text: &str) -> String {
     let mut out = String::new();
     for word in text.split(|c: char| !(c.is_alphanumeric() || c == '_')) {
         let parts = split_identifier(word);
-        if parts.len() > 1 {
+        // `__init__` or `_private` is one part, but not the word as indexed (review of #97).
+        if parts.len() > 1 || parts.first().is_some_and(|p| *p != word) {
             for p in parts {
                 if !out.is_empty() {
                     out.push(' ');
@@ -215,7 +228,7 @@ pub fn words_query(query: &str) -> Option<String> {
         .flat_map(|w| {
             let parts = split_identifier(w);
             let mut all = vec![w.to_lowercase()];
-            if parts.len() > 1 {
+            if parts.len() > 1 || parts.first().is_some_and(|p| *p != w) {
                 all.extend(parts.into_iter().map(str::to_lowercase));
             }
             all
@@ -240,8 +253,9 @@ pub fn search_words(
     // bm25() is lower for better matches; the body counts twice as much as identifier parts.
     let mut stmt = conn
         .prepare_cached(
-            "SELECT rowid, bm25(lex_words, 1.0, 0.5) AS s FROM lex_words \
-             WHERE lex_words MATCH ?1 ORDER BY s, rowid LIMIT ?2",
+            "SELECT l.id, bm25(lex_words, 1.0, 0.5) AS s FROM lex_words \
+             JOIN lex_ids l ON l.n = lex_words.rowid \
+             WHERE lex_words MATCH ?1 ORDER BY s, l.id LIMIT ?2",
         )
         .map_err(db_err)?;
     let rows = stmt
@@ -286,7 +300,10 @@ pub fn trigram_candidates(
         .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
         .collect();
     let mut stmt = conn
-        .prepare_cached("SELECT rowid FROM lex_trigrams WHERE lex_trigrams MATCH ?1 LIMIT ?2")
+        .prepare_cached(
+            "SELECT l.id FROM lex_trigrams JOIN lex_ids l ON l.n = lex_trigrams.rowid \
+             WHERE lex_trigrams MATCH ?1 ORDER BY l.id LIMIT ?2",
+        )
         .map_err(db_err)?;
     let rows = stmt
         .query_map(
@@ -333,6 +350,7 @@ mod tests {
             "parse http request"
         );
         assert_eq!(identifier_parts("plain words only"), "");
+        assert_eq!(identifier_parts("def __init__(self_)"), "init self");
     }
 
     #[test]
@@ -403,6 +421,8 @@ mod tests {
             trigram_candidates(&c, "0502 can", 10).unwrap(),
             [ArtifactId(1)]
         );
+        // Case-sensitive, like the substring check that confirms each candidate.
+        assert_eq!(trigram_candidates(&c, "e0502", 10).unwrap(), []);
         assert_eq!(trigram_candidates(&c, "zzz9", 10).unwrap(), []);
         assert_eq!(trigram_candidates(&c, "E0", 10).unwrap(), []); // too short
     }
@@ -447,7 +467,7 @@ mod tests {
         assert!(ensure_tables(&c).unwrap(), "rebuilt for this version");
         assert_eq!(indexed_ids(&c).unwrap().len(), 0);
         c.execute_batch("DROP TABLE lex_trigrams").unwrap();
-        assert!(ensure_tables(&c).unwrap(), "half a pair is rebuilt");
+        assert!(ensure_tables(&c).unwrap(), "a partial set is rebuilt");
         assert!(tables_exist(&c).unwrap());
     }
 }

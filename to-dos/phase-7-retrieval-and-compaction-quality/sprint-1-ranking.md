@@ -52,7 +52,8 @@ trees resolved in a scratch crate, upstream sources):
 - **T-71-003:** the prescreen was already 1,024 bits with a `max(4 * sqrt(n), n / 64, ...)` cap
   (v1.1.0). It was measured at 1k, 10k and 100k (`docs/numbers.md`, v1.5.0 measurements):
   stage-1 recall is 100% for rare-word queries at every size and 98.5% for common-word queries at
-  100k. A 2,048-bit prescreen gave identical recall and was about 1.5x slower at 100k. Hypothesis rejected;
+  100k (corrected after the review of #97: 100% for both once query words are sampled without
+  replacement). A 2,048-bit prescreen gave identical recall and was never faster. Hypothesis rejected;
   the width is unchanged, and the ticket closes with the measurement.
 - **T-71-004:** measured before the fix over 20,000 events: 3 distinct and 66 similar events
   (0.33%) were false one-step suffixes, all from colliding 16-bit corners. None of the nonzero
@@ -61,7 +62,8 @@ trees resolved in a scratch crate, upstream sources):
   fix it is nonzero only for exactly repeated event sequences.
 
 **2026-11-24, T-71-001 design (measured on a copy of a real 54 MB store):** contentless tables
-(3.0 MB words, 3.7 MB trigrams, against 12.9 MB and 13.6 MB with content copies); trigrams with
+(10.2 MB for both, measured with the production code; content copies would add the text again,
+and random 64-bit rowids took 38.5 MB, so rows are numbered compactly); trigrams with
 `detail=none`, because that mode rejects phrase queries, so substrings are an AND of trigrams and
 each candidate is confirmed against the CAS text; built only with `ICX_RECALL_RANKING=rrf`
 (additive and off by default until T-72-004 decides); no schema version bump, so v1.4.x can still

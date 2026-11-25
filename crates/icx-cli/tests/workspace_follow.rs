@@ -33,7 +33,9 @@ fn icx(base: &Path, cwd: &Path) -> Command {
 fn git(cwd: &Path, args: &[&str]) {
     let out = Command::new("git")
         .current_dir(cwd)
+        // Independent of the user's git config (commit signing through an agent).
         .args(["-c", "user.name=t", "-c", "user.email=t@example.invalid"])
+        .args(["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"])
         .args(args)
         .output()
         .unwrap();

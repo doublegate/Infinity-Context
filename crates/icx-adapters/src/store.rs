@@ -417,6 +417,7 @@ pub(crate) fn save<'c>(
         .map(|(id, _, _)| *id)
         .collect::<BTreeSet<_>>()
         .len();
+    let mut rewritten = false;
     if count("chunks")? != distinct_chunks
         || count("artifacts")? != artifacts.len()
         || count("emitted")? != derived.emitted.len()
@@ -424,14 +425,18 @@ pub(crate) fn save<'c>(
         tx.execute_batch("DELETE FROM chunks; DELETE FROM artifacts; DELETE FROM emitted;")
             .map_err(db_err)?;
         // The lexical index described the old rows; it is rebuilt from the new ones. Dropped
-        // whatever state it is in (both tables, one, or none).
-        crate::lexical::drop_tables(&tx)?;
+        // whatever state it is in, and like all index work this never fails the save (#97).
+        drop_lexical_fail_open(&tx);
+        rewritten = true;
         *persisted = PersistedIds::default();
         (new_chunks, new_artifacts, new_emitted) =
             insert_rows(&tx, &chunks, &artifacts, derived.emitted, persisted)?;
     }
+    // After a rewrite every row is "new"; the index is then rebuilt in backfill batches like any
+    // other unindexed artifact, so one save never indexes a whole store (review of #97).
+    let lexical_new: &[ArtifactId] = if rewritten { &[] } else { &new_artifacts };
     let lexical_added = if derived.lexical {
-        index_lexical(&tx, &chunks, &artifacts, &new_artifacts, persisted)
+        index_lexical(&tx, &chunks, &artifacts, lexical_new, persisted)
     } else {
         Vec::new()
     };
@@ -577,6 +582,24 @@ fn index_lexical_rows(
 }
 
 static EMPTY_IDS: BTreeSet<ArtifactId> = BTreeSet::new();
+
+/// Drops the lexical tables inside their own savepoint; a failure (a view under the name, a
+/// corrupt table) is reported on stderr and never fails the save.
+fn drop_lexical_fail_open(tx: &rusqlite::Transaction<'_>) {
+    if let Err(e) = tx.execute_batch("SAVEPOINT lexical_drop") {
+        eprintln!("icx: lexical index not dropped: {e}");
+        return;
+    }
+    match crate::lexical::drop_tables(tx) {
+        Ok(()) => {
+            let _ = tx.execute_batch("RELEASE lexical_drop");
+        }
+        Err(e) => {
+            let _ = tx.execute_batch("ROLLBACK TO lexical_drop; RELEASE lexical_drop");
+            eprintln!("icx: lexical index not dropped: {e}");
+        }
+    }
+}
 
 #[cfg(test)]
 mod durability_tests {
