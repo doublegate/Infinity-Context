@@ -1,8 +1,8 @@
 # ADR 0011: A structural redactor that hides values, not lines
 
 Status: accepted, 2026-11-25 UTC, after owner review: rules 1 to 8 approved as drafted, including
-the UUID session-id exemption (rule 6) and visible numbers with the password/PIN/OTP and 16-digit
-exceptions (rule 2). Phase 7 Sprint 4 (T-74-002); implemented by T-74-003. Builds on the v1.3.1
+the UUID session-id exemption (rule 6) and visible numbers with the password/PIN/OTP exceptions
+(rule 2; the digit bound was later tightened from 16 to 10, see rule 2). Phase 7 Sprint 4 (T-74-002); implemented by T-74-003. Builds on the v1.3.1
 decision in #29 (fixed in #31) and addresses #90.
 
 ## Context
@@ -62,10 +62,11 @@ proven harmless or is a single literal with a harmless tail; otherwise keep the 
      `process.env["API_KEY"]`, `env::var("API_KEY")`, `ENV["API_KEY"]`, `System.getenv("…")`.
      Anything after it in the value (`.unwrap_or("…")`, `or "…"`) falls back to rule 4.
 3. **A value that is one quoted literal** (with an optional prefix such as `b`, `r`, `f`, `u`),
-   ending at whitespace, `;` or the end of the line, or in structured text (JSON, YAML, code)
-   also at `,` or a closing bracket. A literal glued to more text (`"abc"def`, `"a"#b`) is one
-   shell word and takes rule 4: the literal's contents are replaced by
-   the redaction marker inside its own quotes, and the tail is kept when it holds no quote
+   ending at whitespace, a `;` before whitespace or the end of the line, or, inside brackets
+   opened before the key (a call, a flow mapping or sequence), also at `,` or a closing bracket
+   followed by whitespace or more structure. A literal glued to more text (`"abc"def`, `"a"#b`,
+   `"a",b`) is one shell word or scalar and takes rule 4. Otherwise the literal's contents are
+   replaced by the redaction marker inside its own quotes, and the tail is kept when it holds no quote
    character (a comment, `if prod else None`, a closing bracket). A tail that holds a quote is
    hidden from its first quote to the end of the line, as in #29: a later literal on the same
    line may be a second secret.
@@ -76,8 +77,9 @@ proven harmless or is a single literal with a harmless tail; otherwise keep the 
    (`"k": v, "k2": v2`, with or without braces or a trailing comma) is redacted by the existing
    strict JSON scanner, so each sensitive field loses only its value. A line that does not parse
    strictly falls back to rules 1 to 4.
-6. **Agent session ids.** A key whose only credential part is `session` (`session_id`,
-   `sessionId`, `session`) is not sensitive when its value is exactly a UUID (8-4-4-4-12 hex).
+6. **Agent session ids.** A `session_id` or `sessionId` key, or `<prefix>_session_id` whose
+   prefix names no credential (not `cookie_`, `token_`, `password_`, `auth_`, ...), is not
+   sensitive when its value is exactly a UUID (8-4-4-4-12 hex).
    `session_token`, `session_secret`, `session_key`, `session_cookie` and non-UUID session values
    stay sensitive. Agent hook payloads carry such ids on every event; they identify a
    transcript, they do not authenticate anything.
@@ -106,8 +108,8 @@ proven harmless or is a single literal with a harmless tail; otherwise keep the 
   and require that none survives; missed secrets (zero required) and over-redacted bytes are
   measured before and after and published in `docs/numbers.md`.
 - Content stored by earlier versions is not changed by this; `icx rescan` (T-74-001) reports what
-  the current redactor would hide in a store, and can re-redact it, but cannot restore what an
-  earlier version removed.
+  the current redactor would hide in a store; re-redacting it is planned for v1.7.0 (#102), and
+  nothing can restore what an earlier version removed.
 - Rejected: a per-language parser (tree-sitter and similar). It would be exact for code, but
   icx sees mixed text (logs, diffs, shell output) where no grammar applies, and the fallback rules
   would still be needed. Rejected: trusting the "next field" boundary inside code (`, name=`),

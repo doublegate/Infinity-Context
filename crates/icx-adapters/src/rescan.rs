@@ -18,10 +18,13 @@ pub struct RescanReport {
     pub artifacts_scanned: usize,
     /// Artifacts whose stored text the current redactor would change.
     pub artifacts_affected: usize,
-    /// Markers the current redactor would add, by kind (`ENV_SECRET`, `HIGH_ENTROPY`, ...).
+    /// Markers the current redactor would add to stored text, by kind (`ENV_SECRET`,
+    /// `HIGH_ENTROPY`, ...): the per-artifact increase, so a newly caught secret folded into an
+    /// existing marker on the same line is not counted. Subjects count in `subjects_affected`.
     pub markers_by_kind: BTreeMap<String, usize>,
-    /// Bytes of stored text that would be hidden (input bytes outside the common prefix and
-    /// suffix of each changed line).
+    /// Bytes of stored text that would be hidden, approximately: input bytes outside the common
+    /// prefix and suffix of each changed line, lines compared in order (a multi-line value that
+    /// collapses shifts the comparison, so this is an upper estimate).
     pub bytes_affected: usize,
     /// Indexed subjects (command lines, paths) the current redactor would change.
     pub subjects_affected: usize,
@@ -43,7 +46,7 @@ fn markers(text: &str) -> BTreeMap<String, usize> {
                 if end > 0
                     && after[..end]
                         .bytes()
-                        .all(|b| b.is_ascii_uppercase() || b == b'_') =>
+                        .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_') =>
             {
                 *out.entry(after[..end].to_owned()).or_insert(0) += 1;
                 rest = &after[end + 1..];
@@ -55,7 +58,8 @@ fn markers(text: &str) -> BTreeMap<String, usize> {
 }
 
 /// Bytes of `before` that differ from `after`, line by line (outside each line's common prefix
-/// and suffix). Lines are compared in order; a changed line count counts the longer side.
+/// and suffix). Lines are compared in order; lines `before` has beyond `after` count whole,
+/// lines only `after` has count nothing.
 fn changed_bytes(before: &str, after: &str) -> usize {
     let mut a = before.split('\n');
     let mut b = after.split('\n');
@@ -96,7 +100,9 @@ pub fn rescan(mmu: &InfinityContextMmu, limit: usize) -> RescanReport {
         handles_truncated: false,
         unreadable: 0,
     };
-    let ids: Vec<_> = mmu.cas.artifact_entries().map(|a| a.id).collect();
+    let mut ids: Vec<_> = mmu.cas.artifact_entries().map(|a| a.id).collect();
+    // Id order, so a `--limit` cut is deterministic.
+    ids.sort();
     for id in ids {
         report.artifacts_scanned += 1;
         let Ok(bytes) = mmu.cas.deref_bytes(id) else {

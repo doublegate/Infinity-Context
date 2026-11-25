@@ -123,7 +123,7 @@ zero) and over-redacted bytes, before and after.
 - [x] The false positives in #90 are fixed and in the corpus: key names containing `token`,
   `key` or `session` no longer blank `None`, `null`, `""`, numbers, booleans or call expressions,
   and a redaction covers the value only, not the rest of the line.
-- [x] Property tests: no secret from a generated set survives in any supported format (22 shapes,
+- [x] Property tests: no secret from a generated set survives in any supported format (27 shapes,
   7 keys, 2,000 cases); output never panics on arbitrary input.
 - [x] Missed secrets (zero required) and over-redacted bytes measured and published in
   `docs/numbers.md`: 0 missed before and after; 183 bytes to 24.

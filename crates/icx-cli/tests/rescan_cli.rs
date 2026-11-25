@@ -79,6 +79,7 @@ fn apply_and_bad_arguments_are_refused() {
         (vec!["rescan", "--apply"], "#102"),
         (vec!["rescan", "--limit", "ten"], "needs a number"),
         (vec!["rescan", "--bogus", "1"], "unknown option"),
+        (vec!["rescan", "--bogus"], "unknown option"),
         (
             vec!["rescan", "--limit", "1", "--limit", "2"],
             "more than once",

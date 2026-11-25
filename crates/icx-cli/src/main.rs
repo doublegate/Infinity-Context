@@ -659,6 +659,10 @@ fn run_rescan(args: &[String]) -> Result<(), String> {
                  Re-redacting a stored workspace is planned for v1.7.0 (#102)"
             ));
         }
+        // The flag is checked before its value, so `--bogus` alone says "unknown option".
+        if !matches!(flag, "--dir" | "--limit") {
+            return Err(format!("{CMD} error: unknown option {flag}"));
+        }
         let value = flag_value_at(args, i, CMD)?.to_owned();
         match flag {
             "--dir" => set_option_once(&mut dir, CMD, flag, value)?,
