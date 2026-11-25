@@ -74,7 +74,7 @@ full-request bound is claimed.
 | Saturated window prefix reuse | 0.94 (was 0.01) | `crates/icx-core/tests/window_eviction.rs` |
 | Frozen retrieval matrix | 27 rows, recall@1/@5 = 100% | synthetic identifiers, not general model recall |
 | Mutation samples | 135 executed; 80 caught/43 missed/7 unviable/5 timeout | `docs/releases/v1.2.0/mutation-triage.md` |
-| Redactor mutation score (Sprint 4 diff) | 551 caught + 15 timeouts of 635 viable (89.1%) | ICX-AUD-039, `cargo mutants --in-diff` at d2d8031 |
+| Redactor mutation score (Sprint 4 diff) | 551 caught + 15 timeouts of 635 viable (89.1% with timeouts, 86.8% caught outright) | ICX-AUD-039, `cargo mutants --in-diff` at d2d8031 |
 | Redactor corpus | 0 missed secrets; 43 over-redacted bytes (183 under the v1.4.1 rule) | `docs/numbers.md` |
 | Release packages | 4 Linux variants pass local and Ubuntu 22.04/glibc 2.35 checks | `docs/releases/v1.2.0/evidence/package-qualification.md` |
 

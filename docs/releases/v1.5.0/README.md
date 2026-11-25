@@ -7,7 +7,7 @@ SPDX-License-Identifier: CC-BY-NC-ND-4.0
 
 Released 2026-11-25. This release closes Phase 7, retrieval and compaction quality:
 [#45](https://github.com/doublegate/Infinity-Context/issues/45) to
-[#48](https://github.com/doublegate/Infinity-Context/issues/48), plus #90 and the #95 install
+[#48](https://github.com/doublegate/Infinity-Context/issues/48), plus [#90](https://github.com/doublegate/Infinity-Context/issues/90) and the [#95](https://github.com/doublegate/Infinity-Context/issues/95) install
 follow-ups.
 
 ## Redaction hides the secret, not the line
@@ -64,7 +64,7 @@ writes nothing. Re-redacting a workspace (`--apply`) is planned for v1.7.0
 ## Compaction and prompt recall
 
 - **Resume packet:** after Claude Code, Codex or Hermes compacts its context, the next hook that
-  carries context adds, once, a bounded (3 KB) deterministic packet. It holds the most recent
+  carries context adds, once, a bounded (3 KiB) deterministic packet. It holds the most recent
   outputs with their `#icx:` handles, subjects that are failing now, and open fold branches.
   `ICX_RESUME_PACKET=0` turns it off.
 - **Typed folds:** `icx_write` `fold` takes an optional `type` (`subtask`, `build_log`,
@@ -87,15 +87,17 @@ writes nothing. Re-redacting a workspace (`--apply`) is planned for v1.7.0
 ## Upgrading
 
 Replace the binary. After an agent's MCP server reconnects (`/mcp` in Claude Code), it runs the
-new version. Nothing in an existing workspace changes. To see what the new redactor would hide in
+new version. The Hermes and OpenCode plugin code is unchanged from v1.4.1 (only the Hermes
+manifests' version moves), and the resume packet comes from the `icx` binary, so installed
+plugins need no reinstall; `icx install --agent hermes` refreshes the manifest version. Nothing in an existing workspace changes. To see what the new redactor would hide in
 older stored content, run `icx rescan`.
 
 ## Known issues
 
-- Redactor shapes that leak in this release and in v1.4.1 are listed with their inputs in #104
-  (v1.5.1).
-- Live-run fixtures for Hermes, Gemini CLI and Cursor are deferred to v1.6.0 (#89).
-- `icx rescan` only reports; stored content is not re-redacted until #102.
+- Redactor shapes that leak in this release and in v1.4.1 are listed with their inputs in
+  [#104](https://github.com/doublegate/Infinity-Context/issues/104) (v1.5.1).
+- Live-run fixtures for Hermes, Gemini CLI and Cursor are deferred to v1.6.0 ([#89](https://github.com/doublegate/Infinity-Context/issues/89)).
+- `icx rescan` only reports; stored content is not re-redacted until [#102](https://github.com/doublegate/Infinity-Context/issues/102).
 
 ## Verification
 
@@ -104,5 +106,6 @@ older stored content, run `icx rescan`.
   plugin tests also pass.
 - **Coverage:** 95.59% of lines (empty `HOME`, as in CI).
 - **Lint and security scans:** clippy, rustfmt, gitleaks and REUSE are clean.
-- **Mutation testing:** on the Sprint 4 `redact.rs` diff, 551 mutants were caught and 15 timed out
-  of 635 viable, 89.1% (ICX-AUD-039).
+- **Mutation testing:** on the Sprint 4 `redact.rs` diff at d2d8031, 551 mutants were caught and
+  15 timed out of 635 viable: 89.1% counting timeouts as caught, 86.8% caught outright
+  (ICX-AUD-039). The redactor changed after d2d8031 (the review rounds' fixes, each with tests).

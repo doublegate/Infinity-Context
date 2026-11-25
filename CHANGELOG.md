@@ -17,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   artifacts, stored under older rules, that today's rules would hide further (`docs/numbers.md`).
 
 - Resume packet after compaction (T-73-001..003): after Claude Code, Codex or Hermes compacts its
-  context, the next hook that carries context adds, once, a bounded (3 KB) deterministic packet:
+  context, the next hook that carries context adds, once, a bounded (3 KiB) deterministic packet:
   the most recent outputs with their `#icx:` handles, subjects failing now, and open fold
   branches. Claude Code receives it in the `SessionStart` after compaction (or the next prompt),
   Codex at its next `SessionStart` or prompt, Hermes in the `SessionStart` reply its engine plugin
@@ -69,8 +69,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
   On the 19-line corpus, over-redacted bytes went from 183 to 43 with no missed secret
   (`docs/numbers.md`). 272 distinct red-team inputs are pinned as a regression suite, each
-  checked for its placeholder. The shapes still leaking, all of them older gaps, are tracked for v1.5.1 (#104). Already-stored content is not
-  changed.
+  checked for its placeholder. The shapes still leaking, all of them older gaps, are tracked for
+  v1.5.1 (#104). Already-stored content is not changed.
 
 - What icx adds to every user prompt (Claude Code, Codex, Gemini CLI, Muse, OpenCode, agy): at
   most one recall line, shown only when the hit's subject (command or file path, not the tool prefix)
