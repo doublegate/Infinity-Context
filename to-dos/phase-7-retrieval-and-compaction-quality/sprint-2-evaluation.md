@@ -25,6 +25,27 @@ Re-check before the sprint starts:
 
 _None recorded yet._
 
+### Research notes (2026-11-24, first real-session run)
+
+- **Owner decision:** use this project's sessions; widen to all projects only if that measurably
+  improves the evaluation. Queries and judgements stay in gitignored `eval/private/`; only
+  aggregate scores are committed.
+- **Judgements:** explicit `recall` is too rare to judge (6 calls, 5 recall-then-deref pairs in 43
+  transcripts), and injected recall lines were followed by a deref of their handle 6 times out of
+  173, so neither source works. Instead each case is a `deref`/`slice` of a handle the agent got
+  from a stub (handles first seen in a recall line are excluded, to avoid favouring `legacy`).
+- **Two query sources** (side-agent review): the agent's note just before the deref, and the
+  user prompt that started the turn. Automatic recall searches with the prompt, so the prompt set
+  decides a default; both are scored.
+- **Size and split:** 733 note cases (18 transcripts) and 110 prompt cases (6 transcripts). One
+  session holds almost all of them, so the split is chronological (older half train), not by
+  session. This is the measured reason to widen to other projects' sessions.
+- **First scores (held-out, recall@10):** notes legacy 1.4%, bm25 9.5%, rrf 3.5%; prompts legacy
+  1.8%, bm25 10.9%, rrf 9.1%. BM25 leads; RRF with the HDC list is worse than BM25 alone.
+- **Known flaw, to fix before T-72-004:** the rankers search the final store, including
+  artifacts created after each query. Ranking only what existed at query time is required, and a
+  recency baseline must be scored too, since the answer is usually a recent output.
+
 ## Tickets
 
 ### T-72-001 — Real-session retrieval evaluation set

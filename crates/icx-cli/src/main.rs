@@ -709,6 +709,7 @@ fn run_eval_recall(args: &[String]) -> Result<(), String> {
             (mmu, cases, "set".to_owned())
         }
     };
+    let (cases, unanswerable) = eval::answerable(&mmu, cases);
     let scores = eval::run(&mmu, &cases, &rankers).map_err(|e| format!("{CMD} error: {e}"))?;
     let report = serde_json::json!({
         "icx_version": env!("CARGO_PKG_VERSION"),
@@ -717,6 +718,7 @@ fn run_eval_recall(args: &[String]) -> Result<(), String> {
         "split": split.unwrap_or_else(|| "heldout".to_owned()),
         "seed": seed,
         "queries": cases.len(),
+        "unanswerable_dropped": unanswerable,
         "artifacts": mmu.cas.artifact_count(),
         "results": scores,
     });

@@ -191,6 +191,25 @@ pub fn evaluate(
     score(ranker, cases, &ranked)
 }
 
+/// The cases with at least one relevant artifact in `mmu`'s CAS, and how many were dropped. A
+/// case whose answer is not stored here (a fold handle, another workspace's artifact) cannot be
+/// found by any ranker, so it is reported and not scored.
+#[must_use]
+pub fn answerable(mmu: &InfinityContextMmu, cases: Vec<Case>) -> (Vec<Case>, usize) {
+    let total = cases.len();
+    let kept: Vec<Case> = cases
+        .into_iter()
+        .filter(|c| {
+            c.relevant
+                .iter()
+                .filter_map(|h| parse_handle(h))
+                .any(|id| mmu.cas.get_meta(id).is_some())
+        })
+        .collect();
+    let dropped = total - kept.len();
+    (kept, dropped)
+}
+
 /// Builds the lexical tables for `mmu` in an in-memory scratch database and evaluates each of
 /// `rankers` on `cases`. Nothing is written to any workspace store.
 pub fn run(
@@ -360,5 +379,17 @@ mod tests {
         let scores = run(&mmu, &cases, &Ranker::ALL).unwrap();
         assert_eq!(scores.len(), 3);
         assert!(scores.iter().all(|s| s.queries == 20));
+    }
+
+    #[test]
+    fn unanswerable_cases_are_dropped_and_counted() {
+        let (mmu, mut cases) = synthetic(50, 1_000, 5, 2);
+        cases.push(Case {
+            query: "nothing stored".into(),
+            relevant: vec!["#icx:00000000000000aa".into()],
+            split: "heldout".into(),
+        });
+        let (kept, dropped) = answerable(&mmu, cases);
+        assert_eq!((kept.len(), dropped), (5, 1));
     }
 }
