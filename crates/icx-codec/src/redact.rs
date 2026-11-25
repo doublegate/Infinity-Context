@@ -169,7 +169,7 @@ impl SecretRedactor {
                             if !(t.is_empty()
                                 || t.starts_with(['#', ';', ',', ')', ']', '}'])
                                 || t.starts_with("//")
-                                || t.starts_with("[REDACTED:"))
+                                || Self::starts_with_marker(t))
                             {
                                 out.push_str(&body[..body.len() - t.len()]);
                                 out.push_str("[REDACTED:SECRET]");
@@ -1052,8 +1052,13 @@ impl SecretRedactor {
         ];
         // Dotted keys (`headers.authorization`, `db.pwd`) split like snake_case ones.
         let parts: Vec<&str> = upper.split(['_', '.']).filter(|p| !p.is_empty()).collect();
-        // A webhook URL is the credential itself, so `_URL` does not make it harmless (#104).
-        if parts.iter().any(|p| p.contains("WEBHOOK")) {
+        // A webhook URL is the credential itself, so `_URL`, `_URI` and `_ENDPOINT` do not make
+        // it harmless (#104); `WEBHOOK_NAME` or `WEBHOOK_EVENT` stay (review of #106).
+        if let Some(w) = parts.iter().position(|p| p.contains("WEBHOOK"))
+            && parts[w + 1..]
+                .iter()
+                .all(|p| matches!(*p, "URL" | "URI" | "ENDPOINT" | "SECRET" | "TOKEN" | "KEY"))
+        {
             return true;
         }
         if parts.contains(&"AUTHORIZATION")
@@ -1309,6 +1314,23 @@ impl SecretRedactor {
         Self::redact_high_entropy_tokens(&current)
     }
 
+    /// The length of the complete marker `s` starts with (`[REDACTED:` + `A-Z` and `_` + `]`),
+    /// if any. An unclosed or malformed `[REDACTED:` is ordinary text and shields nothing
+    /// (review of #106).
+    pub(crate) fn marker_len(s: &str) -> Option<usize> {
+        let rest = s.strip_prefix("[REDACTED:")?;
+        let k = rest
+            .bytes()
+            .take_while(|b| b.is_ascii_uppercase() || *b == b'_')
+            .count();
+        (k > 0 && rest.as_bytes().get(k) == Some(&b']')).then_some("[REDACTED:".len() + k + 1)
+    }
+
+    /// Whether `s` starts with a complete marker.
+    pub(crate) fn starts_with_marker(s: &str) -> bool {
+        Self::marker_len(s).is_some()
+    }
+
     /// Whether `text` is exactly one marker this redactor emits (`[REDACTED:ENV_SECRET]`).
     fn is_redaction_marker(text: &str) -> bool {
         text.strip_prefix("[REDACTED:")
@@ -1454,17 +1476,18 @@ impl SecretRedactor {
             // An earlier pass already replaced this value. Text glued to the marker, or after it
             // in config text, is part of the same value and is hidden too: a planted
             // `[REDACTED:X]secret` must not keep the secret (#104).
-            if out[val_start..].starts_with("[REDACTED:") {
+            if Self::starts_with_marker(&out[val_start..]) {
                 let line_end = out[val_start..]
                     .find('\n')
                     .map_or(out.len(), |k| val_start + k);
                 let line = out[val_start..line_end].trim_end_matches('\r');
-                let close = line.find(']')?;
+                // A complete marker only; anything else is an ordinary value (review of #106).
+                let close = Self::marker_len(line)? - 1;
                 let tail = &line[close + 1..];
                 let t = tail.trim_start();
                 let glued = !tail.is_empty() && !tail.starts_with([' ', '\t']);
                 let structural = t.is_empty()
-                    || t.starts_with("[REDACTED:")
+                    || Self::starts_with_marker(t)
                     || t.starts_with(['#', ';', ',', ')', ']', '}', '&', '|', '\\'])
                     || t.starts_with("//");
                 if !structural && (glued || config) {
@@ -1496,7 +1519,7 @@ impl SecretRedactor {
                 }
             }
             let inner = &out[inner_start..inner_end];
-            if !inner.trim().is_empty() && !inner.starts_with("[REDACTED:") {
+            if !inner.trim().is_empty() && !Self::starts_with_marker(inner) {
                 out.replace_range(inner_start..inner_end, replacement);
                 return Some(inner_start + replacement.len());
             }
@@ -1567,7 +1590,7 @@ impl SecretRedactor {
                     && after.is_none_or(|n| {
                         n.is_whitespace() || matches!(n, ',' | ';' | ')' | ']' | '}')
                     }))
-                || (idx > 0 && rest[idx..].starts_with("[REDACTED:"))
+                || (idx > 0 && Self::starts_with_marker(&rest[idx..]))
             {
                 val_len = idx;
                 break;
@@ -1590,16 +1613,16 @@ impl SecretRedactor {
             }
         }
         let value = &out[val_start..val_start + val_len];
-        if val_len > 0 && !value.starts_with("[REDACTED:") {
+        if val_len > 0 && !Self::starts_with_marker(value) {
             out.replace_range(val_start..val_start + val_len, replacement);
             return Some(val_start + replacement.len());
         }
         // A value that starts with a marker and goes on (`[REDACTED:X]secret`, planted or
         // left by an earlier pass) loses the rest too (#104); markers only stay as they are.
-        if let Some(close) = value.find(']') {
+        if let Some(close) = Self::marker_len(value).map(|n| n - 1) {
             let tail = &value[close + 1..];
             let t = tail.trim_start();
-            if !t.is_empty() && !t.starts_with("[REDACTED:") {
+            if !t.is_empty() && !Self::starts_with_marker(t) {
                 let from = val_start + close + 1 + (tail.len() - t.len());
                 out.replace_range(from..val_start + val_len, replacement);
                 return Some(from + replacement.len());
@@ -1627,7 +1650,7 @@ impl SecretRedactor {
         let line_end = rest.find('\n').unwrap_or(rest.len());
         let line = rest[..line_end].trim_end_matches('\r');
         let line_len = line.len();
-        if line.is_empty() || line.starts_with("[REDACTED:") {
+        if line.is_empty() || Self::starts_with_marker(line) {
             return None;
         }
         // Brackets opened before the key (a call, a flow mapping or sequence): only inside them do
@@ -3390,7 +3413,8 @@ fn find_unescaped(hay: &str, needle: &str) -> Option<usize> {
         if slashes % 2 == 0 {
             return Some(at);
         }
-        from = at + needle.len();
+        // Overlapping matches count: `\""""` closes at its second quote (review of #106).
+        from = at + 1;
     }
     None
 }

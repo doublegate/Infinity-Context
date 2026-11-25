@@ -155,8 +155,8 @@ Tiers:
   - PIN and OTP numbers of 4 to 10 digits.
 
   Unicode look-alikes (no-break spaces, zero-width characters, full-width forms) are normalised
-  before redaction. Line redaction runs to a fixed point, so redacting stored text again changes
-  nothing.
+  before redaction. Line redaction runs to a bounded fixed point (at most five rounds), and in
+  fuzz runs no line changed on a second pass.
 
   A line that is one complete JSON object or array, or a list of JSON members without braces
   (`"k": v, "k2": v2`), is redacted structurally: only sensitive values are replaced, other

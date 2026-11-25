@@ -440,3 +440,129 @@ fn both_lookalike_passes_count_and_markers_do_not_shield_neighbours() {
         ),
     ]);
 }
+
+/// Review round on #106 (Codex and Antigravity).
+#[test]
+fn review_round_on_106() {
+    check(&[
+        // Only a complete marker shields text; an unclosed or malformed one is a value.
+        ("password=[REDACTED:qqzz\n", &["qqzz"], &[]),
+        ("password=\"[REDACTED:qqzz\"\n", &["qqzz"], &[]),
+        ("password=[REDACTED:qqzz]\n", &["qqzz"], &[]),
+        (
+            "note=\"[REDACTED:\" <password>qqzz</password>\n",
+            &["qqzz"],
+            &[],
+        ),
+        ("log=[REDACTED: https://h/x?sig=qqzz\n", &["qqzz"], &[]),
+        // JSON pairs: only same-object members, only string values.
+        (
+            "[{\"name\":\"PASSWORD\",\"value\":null},{\"name\":\"HOST\",\"value\":\"db\"}]\n",
+            &[],
+            &["\"name\":\"HOST\"", "\"db\""],
+        ),
+        (
+            "{\"name\": null, \"api_key\": \"x\", \"value\": \"public\"}\n",
+            &[],
+            &["\"public\""],
+        ),
+        (
+            "{\"name\":\"HOST\",\"value\":\"db\",\"nested\":{\"name\":\"PASSWORD\"}}\n",
+            &[],
+            &["\"db\""],
+        ),
+        (
+            "{\"name\": \"PASSWORD\", \"meta\": {\"env\": \"prod\"}, \"value\": \"qqzz\"}\n",
+            &["qqzz"],
+            &["prod"],
+        ),
+        // URLs without whitespace between them.
+        (
+            "{\"a\":\"https://example.com/ok\",\"b\":\"https://example.com/cb?sig=qqzz\"}\n",
+            &["qqzz"],
+            &["example.com/ok"],
+        ),
+        (
+            "[\"https://a.com\",\"https://b.com?access_token=qqzz\"]\n",
+            &["qqzz"],
+            &[],
+        ),
+        // CLI: passwords starting with `a`, quoted passwords, glued curl and here-strings.
+        ("docker login -papple registry\n", &["apple"], &["registry"]),
+        (
+            "sshpass -p \"my qqzz\" ssh host\n",
+            &["qqzz"],
+            &["ssh host"],
+        ),
+        (
+            "docker login -u bob -p 'my qqzz' registry\n",
+            &["qqzz"],
+            &["registry"],
+        ),
+        (
+            concat!("cur", "l -u \"admin:my qqzz\" https://x\n"),
+            &["qqzz"],
+            &["https://x"],
+        ),
+        (
+            concat!("cur", "l --user=admin:qqzz https://x\n"),
+            &["qqzz"],
+            &[],
+        ),
+        (concat!("cur", "l -Uadmin:qqzz https://x\n"), &["qqzz"], &[]),
+        ("docker login --password-stdin <<<qqzz\n", &["qqzz"], &[]),
+        // The `--password-stdin` flag pass hides to the end of the line here (older rule).
+        (
+            "docker login --password-stdin <<< \"qqzz\" ; echo ok\n",
+            &["qqzz"],
+            &[],
+        ),
+        ("[\"--password\", \"-qqzz\"]\n", &["qqzz"], &[]),
+        // ...and no over-redaction for tools that use `-p` otherwise.
+        ("[\"mysql\", \"-p\", \"dbname\"]\n", &[], &["dbname"]),
+        (
+            "{\"action\": \"login\", \"args\": [\"ssh\", \"-p\", \"2222\"]}\n",
+            &[],
+            &["2222"],
+        ),
+        // XML has no backslash escapes.
+        ("<add key=\"Password\" value=\"qqzz\\\"/>\n", &["qqzz"], &[]),
+        // An unclosed quote before a subscript does not end the scan.
+        ("['unclosed obj[\"password\"] = \"qqzz\"\n", &["qqzz"], &[]),
+        // Webhook metadata stays.
+        ("WEBHOOK_NAME=alerts\n", &[], &["alerts"]),
+        ("WEBHOOK_EVENT=push\n", &[], &["push"]),
+        // Escaped triple quote followed by a real closer.
+        (
+            "password = \"\"\"foo\\\"\"\"\"\nnext = 1\n",
+            &[],
+            &["next = 1"],
+        ),
+    ]);
+}
+
+#[test]
+fn review_round_on_106_yaml() {
+    check(&[
+        (
+            "- value: qqzz\n  name: DB_PASSWORD\n- value: db\n  name: HOST\n",
+            &["qqzz"],
+            &["value: db"],
+        ),
+        (
+            "- name: DB_PASSWORD\n  # the password\n  value: qqzz\n",
+            &["qqzz"],
+            &["# the password"],
+        ),
+        (
+            "tokens:\n- qqzz\n- rrss\nnext: 1\n",
+            &["qqzz", "rrss"],
+            &["next: 1"],
+        ),
+        (
+            "- name: DB_PASSWORD\n  value: |\n    qqzz\n    rrss\n- name: HOST\n  value: db\n",
+            &["qqzz", "rrss"],
+            &["value: db"],
+        ),
+    ]);
+}

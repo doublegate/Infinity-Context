@@ -78,7 +78,8 @@ The inline size reduction depends on the input. In the built-in synthetic benchm
 - password-taking CLI tools, and signed or OAuth URLs;
 - Unicode look-alikes, PIN numbers, and the remaining multi-line shapes.
 
-Redacting stored text again now never changes it. See the
+Each line is redacted until it stops changing, so a second pass leaves stored text as it is in
+all fuzzed cases. See the
 [v1.5.1 release notes](docs/releases/v1.5.1/README.md).
 
 **v1.5.0** improves what icx keeps and what it hides. The redactor now hides only the secret

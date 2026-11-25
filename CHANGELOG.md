@@ -29,8 +29,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - **Multi-line values:** escaped and interior triple quotes, prefixed and tagged literals,
     unspaced and empty annotations, and an apostrophe before the `=`.
   - **PIN and OTP:** plain numbers of 4 to 10 digits under `pin`/`otp` keys.
-- Redaction is idempotent by construction: each line is redacted to a fixed point. 0 of 700,000
-  fuzzed lines change on a second pass.
+- Each line is now redacted again until it stops changing (at most five rounds), and multi-line
+  values open the same way on every pass. In fuzz runs of 700,000 generated lines, no line
+  changed on a second pass.
 
 ### Changed
 

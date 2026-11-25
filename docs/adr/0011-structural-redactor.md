@@ -191,6 +191,8 @@ a continuation. Any other planted marker, or text after one, still opens it.
 - `--password=a b`, where the shell splits `b` into its own argument;
 - a plain user name in a URL (`https://alice@host`); token-shaped userinfo is hidden;
 - a bare `key` member;
+- an XML element whose closing tag is on another line. Text without markup structure must stay
+  byte-exact (ICX-AUD-021), and an opening tag alone is not that structure;
 - a literal `\n` inside an unquoted value. In hook payloads this is almost always a JSON-escaped
   newline, so what follows it is the next command.
 

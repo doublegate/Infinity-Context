@@ -4,8 +4,8 @@
 
 v1.5.1 is the current release (2026-11-25). It fixes the redactor shapes the v1.5.0 red-team
 pass left open (#104): markup and name/value pairs, password-taking CLI tools, credential URL
-parameters, Unicode look-alikes, PIN numbers and the remaining multi-line shapes. Redaction is
-now idempotent by construction. The cases kept visible by owner decision are listed in ADR-0011.
+parameters, Unicode look-alikes, PIN numbers and the remaining multi-line shapes. Each line is
+now redacted to a fixed point (at most five rounds); no fuzzed line changes on a second pass. The cases kept visible by owner decision are listed in ADR-0011.
 Notes: [`docs/releases/v1.5.1/`](docs/releases/v1.5.1/README.md).
 
 v1.5.0 (2026-11-25) closed Phase 7 (#45 to #48) and #90:

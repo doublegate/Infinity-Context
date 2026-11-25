@@ -60,9 +60,10 @@ Of the 82 inputs in #104, 25 still leak, and every one of them is in this list.
 
 ## Idempotence
 
-Redacting stored text again now never changes it. Each line is redacted until it stops changing,
-and whether a line opens a multi-line value is decided the same way on every pass. A fuzz run of
-700,000 generated lines found no line that changes on a second pass.
+Each line is redacted again until it stops changing, at most five rounds, and whether a line
+opens a multi-line value is decided the same way on every pass. This is a bounded loop rather
+than a proof: in fuzz runs of 700,000 generated lines, including the new shapes, no line changed
+on a second pass.
 
 ## Cost
 

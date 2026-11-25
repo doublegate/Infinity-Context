@@ -69,9 +69,22 @@ fn after_last(s: &str, pred: impl Fn(char) -> bool) -> usize {
 
 /// Whether byte `at` falls inside an existing `[REDACTED:...]` marker.
 fn inside_marker(s: &str, at: usize) -> bool {
-    s[..at]
-        .rfind("[REDACTED:")
-        .is_some_and(|open| !s[open..at].contains(']'))
+    let mut from = 0;
+    while let Some(rel) = s[from..at].find("[REDACTED:") {
+        let open = from + rel;
+        if let Some(n) = R::marker_len(&s[open..]) {
+            if open + n > at {
+                return true;
+            }
+            from = open + n;
+        } else {
+            from = open + 1;
+        }
+        if from >= at {
+            break;
+        }
+    }
+    false
 }
 
 /// The v1.5.1 shapes that keep a JSON line valid JSON: they only replace string contents or
@@ -112,30 +125,31 @@ fn hide(s: &mut String, start: usize, end: usize, marker: &str) -> usize {
     {
         return end;
     }
-    // Existing markers inside the range stay; every other part of it is hidden (security review
-    // of v1.5.1: refusing the whole range kept the text around a marker visible).
+    // Complete markers inside the range stay; every other part of it is hidden (security review
+    // of v1.5.1). An unclosed or malformed `[REDACTED:` is ordinary text (review of #106).
     let mut pieces: Vec<(usize, usize)> = Vec::new();
+    let mut piece_start = start;
     let mut at = start;
     while at < end {
-        let rest = &s[at..end];
-        match rest.find("[REDACTED:") {
-            Some(0) => {
-                let close = rest.find(']').map_or(end, |k| at + k + 1);
-                at = close.min(end);
-            }
+        match s[at..end].find("[REDACTED:") {
             Some(k) => {
-                pieces.push((at, at + k));
-                at += k;
+                let open = at + k;
+                match R::marker_len(&s[open..]).filter(|n| open + n <= end) {
+                    Some(n) => {
+                        pieces.push((piece_start, open));
+                        at = open + n;
+                        piece_start = at;
+                    }
+                    None => at = open + 1,
+                }
             }
-            None => {
-                pieces.push((at, end));
-                at = end;
-            }
+            None => at = end,
         }
     }
+    pieces.push((piece_start, end));
     let mut new_end = end;
     for (a, z) in pieces.into_iter().rev() {
-        if s[a..z].trim().is_empty() {
+        if a >= z || s[a..z].trim().is_empty() {
             continue;
         }
         s.replace_range(a..z, marker);
@@ -211,6 +225,11 @@ fn xml_elements(line: &str) -> String {
             pos = open + 1;
             continue;
         }
+        // A tag name ends at whitespace, `>` or `/` (`<pw⟪>` is not a tag; review of #106).
+        if !matches!(b.get(name_end), Some(b' ' | b'\t' | b'>' | b'/')) {
+            pos = open + 1;
+            continue;
+        }
         let name = s[name_start..name_end].to_owned();
         let Some(gt_rel) = s[name_end..].find('>') else {
             break;
@@ -221,13 +240,11 @@ fn xml_elements(line: &str) -> String {
             continue;
         }
         let close_tag = format!("</{name}");
+        // The element must close on this line: text without markup structure is stored
+        // byte-exact (ICX-AUD-021), so `<pw00>(` alone is not a value.
         let Some(close_rel) = s[gt + 1..].find(&close_tag) else {
-            // No closing tag on this line: the rest of the line is the value (fail closed).
-            {
-                let n = s.len();
-                hide(&mut s, gt + 1, n, MARK)
-            };
-            break;
+            pos = gt + 1;
+            continue;
         };
         let close = gt + 1 + close_rel;
         pos = hide(&mut s, gt + 1, close, MARK) + close_tag.len();
@@ -257,7 +274,8 @@ fn tag_attributes(tag: &str) -> Vec<(String, usize, usize)> {
                     j += 1;
                 }
                 if matches!(b.get(j), Some(b'"' | b'\'')) {
-                    if let Some(close) = literal_end(tag, j) {
+                    // XML has no backslash escapes (review of #106).
+                    if let Some(close) = tag[j + 1..].find(char::from(b[j])).map(|k| j + 1 + k) {
                         out.push((name, j + 1, close));
                         i = close + 1;
                     }
@@ -304,6 +322,7 @@ fn xml_attribute_pairs(line: &str) -> String {
 }
 
 /// The quoted JSON strings on a line: `(content_start, content_end)`.
+#[allow(dead_code)]
 fn json_strings(s: &str) -> Vec<(usize, usize)> {
     let b = s.as_bytes();
     let mut out = Vec::new();
@@ -337,52 +356,138 @@ fn next_byte(s: &str, end: usize) -> Option<u8> {
 /// password-taking tool.
 fn json_name_value_pairs(line: &str) -> String {
     let mut s = line.to_owned();
-    let strings = json_strings(&s);
+    let tokens = json_tokens(&s);
     let mut targets: Vec<(usize, usize, &str)> = Vec::new();
-    // Object members, delimited by the braces around each `"value"` member.
-    for (idx, &(a, z)) in strings.iter().enumerate() {
-        if !s[a..z].eq_ignore_ascii_case("value") || next_byte(&s, z) != Some(b':') {
-            continue;
-        }
-        let Some(&(va, vz)) = strings.get(idx + 1) else {
-            continue;
-        };
-        let obj_start = s[..a].rfind('{').unwrap_or(0);
-        let obj_end = s[z..].find('}').map_or(s.len(), |k| z + k);
-        let named = strings.windows(2).any(|w| {
-            let (ka, kz) = w[0];
-            let (xa, xz) = w[1];
-            ka > obj_start
-                && xz < obj_end
-                && matches!(s[ka..kz].to_ascii_lowercase().as_str(), "name" | "key")
-                && next_byte(&s, kz) == Some(b':')
-                && R::is_sensitive_key_name(&s[xa..xz])
+    // Object members: a `value` member's string value, when a `name` or `key` member of the
+    // same object (not a nested one) has a sensitive string value (review of #106).
+    for t in tokens
+        .iter()
+        .filter(|t| t.key && t.text(&s).eq_ignore_ascii_case("value"))
+    {
+        let Some((va, vz)) = t.value else { continue };
+        let named = tokens.iter().any(|k| {
+            k.key
+                && k.object == t.object
+                && matches!(k.text(&s).to_ascii_lowercase().as_str(), "name" | "key")
+                && k.value
+                    .is_some_and(|(xa, xz)| R::is_sensitive_key_name(&s[xa..xz]))
         });
-        if named && va > z {
+        if named {
             targets.push((va, vz, MARK));
         }
     }
-    // Argv arrays.
-    let tool = strings
-        .iter()
-        .any(|&(a, z)| password_tool(&s[a..z]).is_some())
-        || strings.iter().any(|&(a, z)| &s[a..z] == "login");
-    for w in strings.windows(2) {
-        let (fa, fz) = w[0];
-        let (va, vz) = w[1];
-        let flag = &s[fa..fz];
-        let comma_between = s[fz + 1..va - 1].trim() == ",";
+    // Argv arrays: an element after a sensitive long flag, or after `-p` when the same array
+    // names `sshpass`, or `login` with a registry client.
+    let elements: Vec<&JsonToken> = tokens.iter().filter(|t| !t.key && !t.is_value).collect();
+    for w in elements.windows(2) {
+        let (f, v) = (w[0], w[1]);
+        if f.array != v.array || f.array == 0 || s[f.end + 1..v.start - 1].trim() != "," {
+            continue;
+        }
+        let flag = f.text(&s);
+        let in_array = |pred: &dyn Fn(&str) -> bool| {
+            elements
+                .iter()
+                .any(|e| e.array == f.array && pred(e.text(&s)))
+        };
+        let tool = in_array(&|e| e.rsplit('/').next() == Some("sshpass"))
+            || (in_array(&|e| e == "login")
+                && in_array(&|e| {
+                    matches!(
+                        e.rsplit('/').next(),
+                        Some("docker" | "podman" | "nerdctl" | "helm")
+                    )
+                }));
         let sensitive_flag =
             (flag.starts_with("--") && !flag.contains('=') && R::is_sensitive_key_name(flag))
                 || (flag == "-p" && tool);
-        if comma_between && sensitive_flag && !s[va..vz].starts_with('-') {
-            targets.push((va, vz, MARK_CLI));
+        if sensitive_flag && !v.text(&s).starts_with("--") {
+            targets.push((v.start, v.end, MARK_CLI));
         }
     }
     for (a, z, m) in merged_desc(targets) {
         hide(&mut s, a, z, m);
     }
     s
+}
+
+/// One JSON string on a line: its content range, whether it is an object key (followed by
+/// `:`), its string value when it is a key with one, whether it is itself such a value, and
+/// the object and array it sits in (0 when none).
+struct JsonToken {
+    start: usize,
+    end: usize,
+    key: bool,
+    is_value: bool,
+    value: Option<(usize, usize)>,
+    object: usize,
+    array: usize,
+}
+
+impl JsonToken {
+    fn text<'a>(&self, s: &'a str) -> &'a str {
+        &s[self.start..self.end]
+    }
+}
+
+/// The strings of a JSON-like line with their structure, honouring nesting: each `{` and `[`
+/// opens a new container id.
+fn json_tokens(s: &str) -> Vec<JsonToken> {
+    let b = s.as_bytes();
+    let mut out: Vec<JsonToken> = Vec::new();
+    let mut stack: Vec<(u8, usize)> = Vec::new();
+    let mut next_id = 1usize;
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'{' | b'[' => {
+                stack.push((b[i], next_id));
+                next_id += 1;
+            }
+            b'}' | b']' => {
+                stack.pop();
+            }
+            b'"' => {
+                let Some(close) = literal_end(s, i) else {
+                    break;
+                };
+                let object = stack.iter().rev().find(|c| c.0 == b'{').map_or(0, |c| c.1);
+                let array = match stack.last() {
+                    Some(&(b'[', id)) => id,
+                    _ => 0,
+                };
+                let key = next_byte(s, close) == Some(b':');
+                out.push(JsonToken {
+                    start: i + 1,
+                    end: close,
+                    key,
+                    is_value: false,
+                    value: None,
+                    object: if key || array == 0 { object } else { 0 },
+                    array,
+                });
+                i = close + 1;
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    // A key's value is the string that starts right after its `:`; any other value type leaves
+    // it `None`.
+    for k in 0..out.len() {
+        if !out[k].key || k + 1 >= out.len() {
+            continue;
+        }
+        let colon = s[out[k].end + 1..].find(':').map(|c| out[k].end + 1 + c);
+        let Some(colon) = colon else { continue };
+        let after = s[colon + 1..].len() - s[colon + 1..].trim_start().len();
+        if out[k + 1].start == colon + 1 + after + 1 {
+            out[k].value = Some((out[k + 1].start, out[k + 1].end));
+            out[k + 1].is_value = true;
+        }
+    }
+    out
 }
 
 /// `obj["password"] = "secret"`, `os.environ['API_KEY'] = "secret"`, and `=>` pairs
@@ -402,7 +507,8 @@ fn subscript_and_arrow(line: &str) -> String {
             continue;
         }
         let Some(close) = literal_end(&s, open + 1) else {
-            break;
+            pos = open + 1;
+            continue;
         };
         let key = s[open + 2..close].to_owned();
         let mut j = close + 1;
@@ -475,7 +581,8 @@ fn segments(s: &str) -> Vec<(usize, usize)> {
     out
 }
 
-/// Whitespace-separated words of `s[a..z]`, without surrounding quotes: `(start, end)`.
+/// Whitespace-separated words of `s[a..z]`, a quoted part counting as one word: `(start, end)`,
+/// quotes included.
 #[allow(clippy::many_single_char_names)] // byte scanners: `s`, `b`, `i` as everywhere in redact.rs
 fn words(s: &str, a: usize, z: usize) -> Vec<(usize, usize)> {
     let b = s.as_bytes();
@@ -489,7 +596,16 @@ fn words(s: &str, a: usize, z: usize) -> Vec<(usize, usize)> {
             break;
         }
         let start = i;
-        while i < z && b[i] != b' ' && b[i] != b'\t' {
+        // A quoted part keeps its spaces (`-p "my secret"`; review of #106).
+        let mut quote: Option<u8> = None;
+        while i < z {
+            let c = b[i];
+            match quote {
+                Some(q) if c == q => quote = None,
+                None if c == b'"' || c == b'\'' => quote = Some(c),
+                None if c == b' ' || c == b'\t' => break,
+                _ => {}
+            }
             i += 1;
         }
         out.push((start, i));
@@ -602,7 +718,7 @@ fn cli_shapes(line: &str) -> String {
                     if let Some((nx, ny)) = next {
                         targets.push((nx, ny));
                     }
-                } else if !tok.starts_with("-pa") || tool == Some("sshpass") {
+                } else {
                     targets.push((x + 2, y));
                 }
             }
@@ -610,7 +726,6 @@ fn cli_shapes(line: &str) -> String {
             if matches!(tool, Some(t) if t.starts_with("mysql") || t.starts_with("mariadb"))
                 && tok.starts_with("-p")
                 && tok.len() > 2
-                && !tok.starts_with("--")
             {
                 targets.push((x + 2, y));
             }
@@ -621,16 +736,22 @@ fn cli_shapes(line: &str) -> String {
                 {
                     targets.push((nx + c + 1, ny));
                 }
-            } else if tool == Some("curl") && tok.starts_with("-u") && tok.len() > 2 {
-                if let Some(c) = tok.find(':') {
-                    targets.push((x + c + 1, y));
-                }
+            } else if tool == Some("curl")
+                && let Some(p) = ["--user=", "--proxy-user=", "-u", "-U"]
+                    .into_iter()
+                    .find(|p| tok.starts_with(p) && tok.len() > p.len())
+                && let Some(c) = tok[p.len()..].find(':')
+            {
+                // Glued forms: `--user=admin:secret`, `-Uadmin:secret`.
+                targets.push((x + p.len() + c + 1, y));
             }
-            // `<<< secret` feeding --password-stdin.
+            // `<<< secret` (or glued `<<<secret`) feeding --password-stdin.
             if stdin_login && tok == "<<<" {
-                if let Some((nx, _)) = next {
-                    targets.push((nx, z));
+                if let Some((nx, ny)) = next {
+                    targets.push((nx, ny));
                 }
+            } else if stdin_login && tok.starts_with("<<<") {
+                targets.push((x + 3, y));
             }
         }
         // `echo secret | ... --password-stdin`.
@@ -649,11 +770,14 @@ fn cli_shapes(line: &str) -> String {
     }
     let targets = merged_desc(targets.into_iter().map(|(x, y)| (x, y, ())).collect());
     for (x, y, ()) in targets {
-        // Keep surrounding quotes of a quoted argument.
+        // Keep the quotes of a quoted argument, also when only its tail is hidden
+        // (`-u "admin:my secret"`).
         let (mut x, mut y) = (x, y);
         let b = s.as_bytes();
         if y > x + 1 && matches!(b[x], b'"' | b'\'') && b[y - 1] == b[x] {
             x += 1;
+            y -= 1;
+        } else if y > x && matches!(b[y - 1], b'"' | b'\'') {
             y -= 1;
         }
         hide(&mut s, x, y, MARK_CLI);
@@ -723,10 +847,11 @@ fn url_shapes(line: &str) -> String {
                 }
             }
         }
-        match s[auth_start.min(s.len())..].find(char::is_whitespace) {
-            Some(k) => pos = auth_start + k,
-            None => break,
-        }
+        // The next URL may follow without whitespace (`"a":"https://…","b":"https://…"`).
+        let url_end = s[auth_start.min(s.len())..]
+            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | '`'))
+            .map_or(s.len(), |k| auth_start + k);
+        pos = url_end.max(auth_start).min(s.len());
     }
     s
 }
@@ -751,7 +876,9 @@ fn pin_values(line: &str) -> String {
         if c != b'=' && c != b':' {
             continue;
         }
-        if b.get(i + 1) == Some(&b':') || (i > 0 && b[i - 1] == b':') || b.get(i + 1) == Some(&b'=')
+        if b.get(i + 1) == Some(&b':')
+            || (i > 0 && matches!(b[i - 1], b':' | b'='))
+            || b.get(i + 1) == Some(&b'=')
         {
             continue;
         }
@@ -851,8 +978,27 @@ pub(crate) fn redact_yaml_pairs(text: String) -> String {
     let lines: Vec<&str> = text.split_inclusive('\n').collect();
     // Only changed lines are copied; an unchanged text is returned as it is.
     let mut changed: std::collections::BTreeMap<usize, String> = std::collections::BTreeMap::new();
+    let skippable = |l: &str| l.trim().is_empty() || l.trim_start().starts_with('#');
+    // Hides a member's value; a block scalar (`value: |`) loses its indented body instead.
+    let hide_member =
+        |changed: &mut std::collections::BTreeMap<usize, String>, j: usize, v: usize| {
+            let body = lines[j].trim_end_matches(['\r', '\n']);
+            let value = body.get(v..).unwrap_or("").trim();
+            if value.starts_with(['|', '>']) {
+                let base = indent_of(lines[j]);
+                for (k, l) in lines.iter().enumerate().skip(j + 1).take(200) {
+                    if !l.trim().is_empty() && indent_of(l) <= base {
+                        break;
+                    }
+                    if !l.trim().is_empty() {
+                        changed.insert(k, hide_yaml_value(l, indent_of(l)));
+                    }
+                }
+            } else {
+                changed.insert(j, hide_yaml_value(lines[j], v));
+            }
+        };
     for i in 0..lines.len() {
-        // Only a `key:` line can open either shape.
         if !lines[i].contains(':') {
             continue;
         }
@@ -861,49 +1007,74 @@ pub(crate) fn redact_yaml_pairs(text: String) -> String {
         };
         let body = lines[i].trim_end_matches(['\r', '\n']);
         let value = body[v.min(body.len())..].trim();
-        // Name/value siblings.
+        // Name/value siblings, in either order, skipping comments (review of #106).
         if matches!(key.to_ascii_lowercase().as_str(), "name" | "key")
             && R::is_sensitive_key_name(value.trim_matches(|c| c == '"' || c == '\''))
         {
             for j in i + 1..lines.len().min(i + 12) {
-                let l = lines[j];
-                if l.trim().is_empty() {
+                if skippable(lines[j]) {
                     continue;
                 }
-                let Some((c2, k2, v2)) = yaml_member(l) else {
+                let Some((c2, k2, v2)) = yaml_member(lines[j]) else {
                     break;
                 };
-                // A new sequence item or a shallower key ends the mapping.
-                if c2 < col || (c2 == col && l.trim_start().starts_with("- ")) {
+                if c2 < col || (c2 == col && lines[j].trim_start().starts_with("- ")) {
                     break;
                 }
                 if c2 == col && k2.eq_ignore_ascii_case("value") {
-                    changed.insert(j, hide_yaml_value(lines[j], v2));
+                    hide_member(&mut changed, j, v2);
                     break;
                 }
             }
+            if !lines[i].trim_start().starts_with("- ") {
+                for j in (i.saturating_sub(12)..i).rev() {
+                    if skippable(lines[j]) {
+                        continue;
+                    }
+                    let Some((c2, k2, v2)) = yaml_member(lines[j]) else {
+                        break;
+                    };
+                    if c2 != col {
+                        break;
+                    }
+                    if k2.eq_ignore_ascii_case("value") {
+                        hide_member(&mut changed, j, v2);
+                        break;
+                    }
+                    // The start of this list item ends the mapping.
+                    if lines[j].trim_start().starts_with("- ") {
+                        break;
+                    }
+                }
+            }
         }
-        // A sensitive block key: hide its children's values.
+        // A sensitive block key: plain list items (also at the key's own indent, as YAML
+        // allows) and `value:` members below it are hidden. Other mapping members keep their
+        // own per-key judgement (`username: alice` under `credentials:` stays).
         if value.is_empty() && R::is_sensitive_key_name(key) {
             let base = indent_of(lines[i]);
             for (n, j) in (i + 1..lines.len()).enumerate() {
                 let l = lines[j];
-                if l.trim().is_empty() {
+                if skippable(l) {
                     continue;
                 }
-                if indent_of(l) <= base || n >= 200 {
+                let item = l.trim_start().starts_with("- ");
+                // A line an earlier pass already hid whole is part of the block.
+                if R::starts_with_marker(l.trim())
+                    && R::marker_len(l.trim()) == Some(l.trim().len())
+                {
+                    continue;
+                }
+                if indent_of(l) < base || (indent_of(l) == base && !item) || n >= 200 {
                     break;
                 }
-                // Mapping members keep their own per-key judgement (`username: alice` under
-                // `credentials:` stays); a `value:` member and a plain list item are the secret.
                 if let Some((_, k2, v2)) = yaml_member(l) {
                     if k2.eq_ignore_ascii_case("value") {
-                        changed.insert(j, hide_yaml_value(lines[j], v2));
+                        hide_member(&mut changed, j, v2);
                     }
-                } else if let Some(item) = l.trim_start().strip_prefix("- ") {
-                    let v2 =
-                        l.len() - l.trim_start().len() + 2 + (item.len() - item.trim_start().len());
-                    changed.insert(j, hide_yaml_value(lines[j], v2));
+                } else if let Some(rest) = l.trim_start().strip_prefix("- ") {
+                    let v2 = indent_of(l) + 2 + (rest.len() - rest.trim_start().len());
+                    changed.insert(j, hide_yaml_value(l, v2));
                 }
             }
         }
