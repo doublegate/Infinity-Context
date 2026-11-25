@@ -69,9 +69,14 @@ fn after_last(s: &str, pred: impl Fn(char) -> bool) -> usize {
 
 /// Whether byte `at` falls inside an existing `[REDACTED:...]` marker.
 fn inside_marker(s: &str, at: usize) -> bool {
+    // A marker that opens before `at` (its prefix may itself contain `at`, such as the `:` of
+    // `[REDACTED:`; review of #106).
     let mut from = 0;
-    while let Some(rel) = s[from..at].find("[REDACTED:") {
+    while let Some(rel) = s[from..].find("[REDACTED:") {
         let open = from + rel;
+        if open >= at {
+            break;
+        }
         if let Some(n) = R::marker_len(&s[open..]) {
             if open + n > at {
                 return true;
@@ -394,33 +399,64 @@ fn json_name_value_pairs(line: &str) -> String {
             targets.push((va, vz, MARK));
         }
     }
-    // Argv arrays: an element after a sensitive long flag, or after `-p` when the same array
-    // names `sshpass`, or `login` with a registry client.
+    // Argv arrays get the same per-tool rules as a command line (review of #106): a value after
+    // a sensitive long flag (not `--password-stdin`); `-p` and glued `-pX` for sshpass and
+    // registry logins; glued `-pX` for MySQL/MariaDB; curl `-u user:pass` and glued forms.
     let elements: Vec<&JsonToken> = tokens.iter().filter(|t| !t.key && !t.is_value).collect();
-    for w in elements.windows(2) {
-        let (f, v) = (w[0], w[1]);
-        if f.array != v.array || f.array == 0 || s[f.end + 1..v.start - 1].trim() != "," {
+    for (idx, f) in elements.iter().enumerate() {
+        if f.array == 0 {
             continue;
         }
-        let flag = f.text(&s);
-        let in_array = |pred: &dyn Fn(&str) -> bool| {
+        let next = elements
+            .get(idx + 1)
+            .filter(|v| v.array == f.array && s[f.end + 1..v.start - 1].trim() == ",");
+        let base = |e: &&JsonToken| e.text(&s).rsplit('/').next().unwrap_or("").to_owned();
+        let in_array = |names: &[&str]| {
             elements
                 .iter()
-                .any(|e| e.array == f.array && pred(e.text(&s)))
+                .any(|e| e.array == f.array && names.contains(&base(e).as_str()))
         };
-        let tool = in_array(&|e| e.rsplit('/').next() == Some("sshpass"))
-            || (in_array(&|e| e == "login")
-                && in_array(&|e| {
-                    matches!(
-                        e.rsplit('/').next(),
-                        Some("docker" | "podman" | "nerdctl" | "helm")
-                    )
-                }));
-        let sensitive_flag =
-            (flag.starts_with("--") && !flag.contains('=') && R::is_sensitive_key_name(flag))
-                || (flag == "-p" && tool);
-        if sensitive_flag && !v.text(&s).starts_with("--") {
+        let sshpass = in_array(&["sshpass"]);
+        let login = in_array(&["login"])
+            && in_array(&["docker", "podman", "nerdctl", "buildah", "skopeo", "helm"]);
+        let mysql = elements.iter().any(|e| {
+            e.array == f.array && {
+                let b = base(e);
+                b.starts_with("mysql") || b.starts_with("mariadb")
+            }
+        });
+        let curl = in_array(&["curl"]);
+        let flag = f.text(&s);
+        if let Some(v) = next
+            && flag.starts_with("--")
+            && !flag.contains('=')
+            && flag != "--password-stdin"
+            && R::is_sensitive_key_name(flag)
+            && !v.text(&s).starts_with("--")
+        {
             targets.push((v.start, v.end, MARK_CLI));
+        }
+        if (sshpass || login) && flag == "-p" {
+            if let Some(v) = next {
+                targets.push((v.start, v.end, MARK_CLI));
+            }
+        } else if (sshpass || login || mysql) && flag.starts_with("-p") && flag.len() > 2 {
+            targets.push((f.start + 2, f.end, MARK_CLI));
+        }
+        if curl {
+            if matches!(flag, "-u" | "--user" | "-U" | "--proxy-user") {
+                if let Some(v) = next
+                    && let Some(c) = colon_outside_markers(&s, v.start, v.end)
+                {
+                    targets.push((c + 1, v.end, MARK_CLI));
+                }
+            } else if let Some(p) = ["--user=", "--proxy-user=", "-u", "-U"]
+                .into_iter()
+                .find(|p| flag.starts_with(p) && flag.len() > p.len())
+                && let Some(c) = colon_outside_markers(&s, f.start + p.len(), f.end)
+            {
+                targets.push((c + 1, f.end, MARK_CLI));
+            }
         }
     }
     for (a, z, m) in merged_desc(targets) {
@@ -787,18 +823,18 @@ fn cli_shapes(line: &str) -> String {
             // curl user:password.
             if curl && matches!(tok, "-u" | "--user" | "-U" | "--proxy-user") {
                 if let Some((nx, ny)) = next
-                    && let Some(c) = s[nx..ny].find(':')
+                    && let Some(c) = colon_outside_markers(&s, nx, ny)
                 {
-                    targets.push((nx + c + 1, ny));
+                    targets.push((c + 1, ny));
                 }
             } else if curl
                 && let Some(p) = ["--user=", "--proxy-user=", "-u", "-U"]
                     .into_iter()
                     .find(|p| tok.starts_with(p) && tok.len() > p.len())
-                && let Some(c) = tok[p.len()..].find(':')
+                && let Some(c) = colon_outside_markers(&s, x + p.len(), y)
             {
                 // Glued forms: `--user=admin:secret`, `-Uadmin:secret`.
-                targets.push((x + p.len() + c + 1, y));
+                targets.push((c + 1, y));
             }
             // `<<< secret` (or glued `<<<secret`) feeding --password-stdin.
             if stdin_login && tok == "<<<" {
@@ -866,6 +902,15 @@ fn cli_shapes(line: &str) -> String {
         hide(&mut s, x, y, MARK_CLI);
     }
     s
+}
+
+/// The first `:` in `s[from..to]` that is not inside a marker (`-u [REDACTED:X]:secret`;
+/// review of #106).
+fn colon_outside_markers(s: &str, from: usize, to: usize) -> Option<usize> {
+    s[from..to]
+        .match_indices(':')
+        .map(|(k, _)| from + k)
+        .find(|&at| !inside_marker(s, at))
 }
 
 /// Whether `text` leaves a quote open (backslash escapes honoured outside single quotes).

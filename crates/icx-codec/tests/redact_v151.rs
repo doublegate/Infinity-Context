@@ -693,3 +693,56 @@ fn review_round_on_8caa434() {
         ("https://h/#/auth?sig=qqzz\n", &["qqzz"], &[]),
     ]);
 }
+
+/// Antigravity round on 4926f27 (23:20 UTC).
+#[test]
+fn review_round_on_4926f27() {
+    check(&[
+        // Spans that only start with a marker still hide the rest.
+        ("tokens: [[REDACTED:X], qqzz]\n", &["qqzz"], &[]),
+        ("password = [[REDACTED:X]qqzz]\n", &["qqzz"], &[]),
+        (
+            "api_key = (\n  \"rrss\"\n) [REDACTED:X]qqzz\n",
+            &["rrss", "qqzz"],
+            &[],
+        ),
+        // A colon inside a marker is not the user:password separator.
+        (
+            concat!("cur", "l -u [REDACTED:X]:qqzz https://x\n"),
+            &["qqzz"],
+            &["https://x"],
+        ),
+        // JSON argv arrays get the command-line rules.
+        (
+            "[\"sshpass\", \"-pqqzz\", \"ssh\", \"host\"]\n",
+            &["qqzz"],
+            &["\"host\""],
+        ),
+        (
+            "[\"docker\", \"login\", \"-pqqzz\", \"registry\"]\n",
+            &["qqzz"],
+            &["registry"],
+        ),
+        ("[\"mysql\", \"-pqqzz\", \"db\"]\n", &["qqzz"], &["\"db\""]),
+        (
+            "[\"buildah\", \"login\", \"-p\", \"qqzz\", \"reg\"]\n",
+            &["qqzz"],
+            &["\"reg\""],
+        ),
+        (
+            "[\"skopeo\", \"login\", \"-p\", \"qqzz\", \"reg\"]\n",
+            &["qqzz"],
+            &["\"reg\""],
+        ),
+        (
+            concat!("[\"cur", "l\", \"-u\", \"admin:qqzz\", \"https://x\"]\n"),
+            &["qqzz"],
+            &["admin:"],
+        ),
+        (
+            "[\"docker\", \"login\", \"--password-stdin\", \"registry.example.com\"]\n",
+            &[],
+            &["registry.example.com"],
+        ),
+    ]);
+}

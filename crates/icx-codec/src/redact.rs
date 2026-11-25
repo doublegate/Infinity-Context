@@ -169,7 +169,7 @@ impl SecretRedactor {
                             if !(t.is_empty()
                                 || t.starts_with(['#', ';', ',', ')', ']', '}'])
                                 || t.starts_with("//")
-                                || Self::starts_with_marker(t))
+                                || Self::is_marker_run(t))
                             {
                                 out.push_str(&body[..body.len() - t.len()]);
                                 out.push_str("[REDACTED:SECRET]");
@@ -1367,6 +1367,13 @@ impl SecretRedactor {
         }
     }
 
+    /// Whether `s` (trimmed) is nothing but complete markers, so there is nothing left to hide
+    /// (review of #106: a span that only starts with one may still hold a secret).
+    pub(crate) fn is_marker_run(s: &str) -> bool {
+        let t = s.trim();
+        !t.is_empty() && Self::marker_run(t, true) == t.len()
+    }
+
     /// Whether `s` starts with a complete marker.
     pub(crate) fn starts_with_marker(s: &str) -> bool {
         Self::marker_len(s).is_some()
@@ -1561,7 +1568,7 @@ impl SecretRedactor {
                 }
             }
             let inner = &out[inner_start..inner_end];
-            if !inner.trim().is_empty() && !Self::starts_with_marker(inner) {
+            if !inner.trim().is_empty() && !Self::is_marker_run(inner) {
                 out.replace_range(inner_start..inner_end, replacement);
                 return Some(inner_start + replacement.len());
             }
@@ -1693,7 +1700,7 @@ impl SecretRedactor {
         let line_end = rest.find('\n').unwrap_or(rest.len());
         let line = rest[..line_end].trim_end_matches('\r');
         let line_len = line.len();
-        if line.is_empty() || Self::starts_with_marker(line) {
+        if line.is_empty() || Self::is_marker_run(line) {
             return None;
         }
         // Brackets opened before the key (a call, a flow mapping or sequence): only inside them do
