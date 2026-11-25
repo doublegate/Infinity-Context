@@ -1219,7 +1219,7 @@ impl SecretRedactor {
             && !Self::has_credential_part(&parts)
     }
 
-    /// One line, redacted until it stops changing (at most four rounds). The line passes pair
+    /// One line, redacted until it stops changing (at most five rounds). The line passes pair
     /// quotes by position, so a replacement can change what a second pass sees; running to a
     /// fixed point here makes `redact(redact(x)) == redact(x)` hold for every line shape
     /// (v1.5.1). A line without a secret costs one round.

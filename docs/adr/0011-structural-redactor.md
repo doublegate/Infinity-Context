@@ -152,8 +152,9 @@ Added, each with a test in `crates/icx-codec/tests/redact_v151.rs`:
   - Kubernetes-style YAML `name:` plus `value:` siblings, and list items and `value:` members
     under a sensitive block key. Other members keep their own per-key judgement.
 - **Assignments without `=` between key and value:** subscripts (`obj["password"] = "…"`), `=>`
-  pairs, and shell `set`/`set -x`/`setenv`. Only a quoted literal value is hidden; code on the
-  right, and a command or variable substitution, stay.
+  pairs, and shell `set`/`set -x`/`setenv`. For subscripts and `=>`, only a quoted literal value
+  is hidden and code on the right stays; a shell `set` value is hidden quoted or not, except a
+  command or variable substitution.
 - **CLI:**
   - a value that starts with `-` after a sensitive long flag;
   - `-p` only for `sshpass` and registry `login`, and glued `-pX` only for the MySQL and MariaDB
@@ -175,7 +176,7 @@ Added, each with a test in `crates/icx-codec/tests/redact_v151.rs`:
   - a stray apostrophe before the `=`, handled by a quote-blind second scan, only when the
     line ends inside an apostrophe.
 
-**Idempotence.** Line redaction runs to a fixed point, at most four rounds, because the line
+**Idempotence.** Line redaction runs to a fixed point, at most five rounds, because the line
 passes pair quotes by position. Whether a line opens a multi-line value is decided on the
 original line or else on the emitted one, so a quote that redaction removed cannot change the
 decision on a second pass. One exception keeps this stable: a value that ends with one of the

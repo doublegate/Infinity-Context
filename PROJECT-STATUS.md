@@ -72,7 +72,7 @@ full-request bound is claimed.
 | --- | --- | --- |
 | Current release | v1.5.1 (v1.5.0 at bf19628, v1.4.1 at c1be4d1) | git tags |
 | Audit findings | 19: 1 High/10 Medium/8 Low | `docs/codex/10-findings-register.md` |
-| Workspace tests | 654 pass, 0 fail (8 ignored: long-horizon qualification, two daemon child scenarios, five measurements) | `cargo test --workspace`, v1.5.1 |
+| Workspace tests | 661 pass, 0 fail (8 ignored: long-horizon qualification, two daemon child scenarios, five measurements) | `cargo test --workspace`, v1.5.1 |
 | Plugin tests | 6 OpenCode (Bun), 27 Hermes stand-in | CI check job, v1.5.1 |
 | Line coverage | 95.57% at v1.5.1 (empty `HOME`, as in CI); floor 95% | `cargo llvm-cov` |
 | Benchmark | 10/10 quiet-host runs pass all gates | `docs/performance.md`, evidence `benchmark-native-final-series.json` |
@@ -96,8 +96,8 @@ full-request bound is claimed.
 - 2026-11-22: v1.3.2 released: worktree and moved-session stubs resolve (#37, #34), MCP results stored as lines, 2 KiB stub floor, recall floor, `slice`/`grep` bounds, CLI and redactor follow-ups (#33), docs-site hardening (#36).
 - 2026-11-23: v1.4.0 released: Phase 6. Gemini CLI, Cursor and OpenCode adapters; Hermes plugins; `icx install`; read-only `icx` tool and `icx_write`; live fixtures; capability matrix.
 - 2026-11-24: v1.4.1 released: `icx install` keeps config formatting, matcher note, multi-line commands.
-- 2026-11-25: v1.5.1 released: the #104 redactor follow-ups and idempotent redaction.
 - 2026-11-25: v1.5.0 released: Phase 7. Structural redactor and red-team fixes, `icx rescan`, resume packet, typed folds, one recall line per prompt, opt-in lexical ranking and `icx eval-recall`.
+- 2026-11-25: v1.5.1 released: the #104 redactor follow-ups and fixed-point line redaction.
 
 ## Known issues and remaining work
 

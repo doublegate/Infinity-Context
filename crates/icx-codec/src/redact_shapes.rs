@@ -344,26 +344,6 @@ fn xml_attribute_pairs(line: &str) -> String {
     s
 }
 
-/// The quoted JSON strings on a line: `(content_start, content_end)`.
-#[allow(dead_code)]
-fn json_strings(s: &str) -> Vec<(usize, usize)> {
-    let b = s.as_bytes();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'"' {
-            if let Some(close) = literal_end(s, i) {
-                out.push((i + 1, close));
-                i = close + 1;
-                continue;
-            }
-            break;
-        }
-        i += 1;
-    }
-    out
-}
-
 /// What follows the string ending at `end` (a quote), skipping spaces.
 fn next_byte(s: &str, end: usize) -> Option<u8> {
     s.as_bytes()[end + 1..]

@@ -15,8 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     - `<password>…</password>`, and `<add key="Password" value="…">`;
     - JSON and Kubernetes `name`/`value` pairs, and list items under a sensitive block key
       such as `tokens:`.
-  - **Assignments:** `obj["password"] = "…"`, `'password' => '…'`, and shell `set -x` and
-    `setenv` (quoted literals only; code on the right stays).
+  - **Assignments:** `obj["password"] = "…"` and `'password' => '…'` (quoted literals only;
+    code on the right stays), and shell `set -x` and `setenv` values (quoted or not, but not
+    substitutions).
   - **CLI:**
     - `--password -x`, `sshpass -p`, `docker login -p`, glued `mysql -pX`;
     - `curl -u user:pass` and `--password-stdin` input;

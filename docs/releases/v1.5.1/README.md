@@ -21,8 +21,9 @@ Every shape below has a test in `crates/icx-codec/tests/redact_v151.rs`.
   - Kubernetes-style YAML `name:` with a sibling `value:`;
   - list items and `value:` members under a sensitive block key such as `tokens:`.
 - **Assignments that are not `key = value`:** subscripts (`obj["password"] = "…"`), `=>` pairs,
-  and shell `set`, `set -x` and `setenv`. Only a quoted literal is hidden; code on the right, and a
-  command substitution, stay visible.
+  and shell `set`, `set -x` and `setenv`. For subscripts and `=>` only a quoted literal is hidden,
+  and code on the right stays visible; a shell `set` value is hidden quoted or not, except a
+  command substitution.
 - **Password-taking CLI tools:**
   - a value starting with `-` after a sensitive long flag;
   - `sshpass -p` and `docker`/`podman login -p`;
@@ -81,7 +82,7 @@ redaction. `icx rescan` reports what v1.5.1 would hide in it.
 
 ## Verification
 
-- **Tests:** 654 workspace tests pass, 0 fail, and 8 are ignored by design. The 6 OpenCode and
+- **Tests:** 661 workspace tests pass, 0 fail, and 8 are ignored by design. The 6 OpenCode and
   27 Hermes plugin tests are unchanged.
 - **Coverage:** 95.59% of lines at v1.5.0, 95.57% now (empty `HOME`, as in CI). The new
   `redact_shapes.rs` is at 95.56%.
