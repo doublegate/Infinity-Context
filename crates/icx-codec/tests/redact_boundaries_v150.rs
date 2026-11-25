@@ -523,3 +523,31 @@ fn annotation_comment_and_code_rules_fail_closed() {
         ("let api_key: Option<String> = None;\n", &[], &["None;"]),
     ]);
 }
+
+/// Commit security review of 2916983: a glued `//` can keep a value open but never close it or
+/// drop an opener.
+#[test]
+fn a_glued_double_slash_fails_closed() {
+    check(&[
+        (
+            "api_key = a//b + (\n  \"qqzz\"\n)\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "api_key = (\n  x//y) \"rrss\"\n  \"qqzz\"\n)\nnext = 1\n",
+            &["rrss", "qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "api_key = (\n  // a real comment )\n  \"qqzz\"\n)\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "token = \"https://x\"; api_key = (\n  \"qqzz\"\n)\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+    ]);
+}

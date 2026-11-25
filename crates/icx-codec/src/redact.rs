@@ -3109,6 +3109,7 @@ fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
         quote_at: None,
     };
     let mut escaped = false;
+    let mut ambiguous = false;
     let mut prev: Option<char> = None;
     for (i, c) in text.char_indices() {
         let before = prev;
@@ -3133,11 +3134,21 @@ fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
             // A comment ends the structure on this line (review of #103: a `)` or `(` in a
             // comment is not a bracket).
             '#' if before.is_none_or(char::is_whitespace) => return out,
-            // `//` is a comment unless it follows a URL scheme (`https://`); a comment ends
-            // the scan, which keeps a pending value open rather than closing it early.
-            '/' if before == Some('/') && !text[..i - 1].ends_with(':') => return out,
+            // `//` after whitespace is a comment and ends the scan. A glued `//` that is not a
+            // URL scheme (`a//b`: floor division, or a comment) is ambiguous: openers and quotes
+            // after it still count, closers do not, so it can keep a value open but never close
+            // it or drop an opener (security review of #103).
+            '/' if before == Some('/')
+                && text[..i - 1]
+                    .chars()
+                    .next_back()
+                    .is_none_or(char::is_whitespace) =>
+            {
+                return out;
+            }
+            '/' if before == Some('/') && !text[..i - 1].ends_with(':') => ambiguous = true,
             '(' | '[' | '{' => out.depth += 1,
-            ')' | ']' | '}' => {
+            ')' | ']' | '}' if !ambiguous => {
                 if out.depth > 0 {
                     out.depth -= 1;
                     if out.depth == 0 && depth > 0 && out.close.is_none() {
