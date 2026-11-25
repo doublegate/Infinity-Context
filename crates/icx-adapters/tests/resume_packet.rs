@@ -216,6 +216,37 @@ fn a_session_never_takes_another_sessions_packet() {
 }
 
 #[test]
+fn one_compaction_marked_two_ways_is_delivered_once() {
+    let mut mmu = filled(3);
+    mmu.mark_resume_pending_for(AgentKind::ClaudeCode, Some("session-a"));
+    mmu.mark_resume_pending_for(AgentKind::ClaudeCode, None);
+    assert!(
+        mmu.take_resume_packet_for(AgentKind::ClaudeCode, Some("session-a"), 3_072)
+            .is_some()
+    );
+    assert!(
+        mmu.take_resume_packet_for(AgentKind::ClaudeCode, Some("session-a"), 3_072)
+            .is_none()
+    );
+}
+
+#[test]
+fn a_header_only_budget_keeps_the_packet_pending() {
+    let mut mmu = filled(3);
+    mmu.mark_resume_pending(AgentKind::ClaudeCode);
+    let full = mmu.resume_packet(AgentKind::ClaudeCode, 3_072);
+    let header_len = full.lines().next().unwrap().len();
+    assert!(
+        mmu.take_resume_packet(AgentKind::ClaudeCode, header_len + 1)
+            .is_none()
+    );
+    assert!(
+        mmu.take_resume_packet(AgentKind::ClaudeCode, 3_072)
+            .is_some()
+    );
+}
+
+#[test]
 fn pending_sessions_survive_a_save_and_are_bounded() {
     let dir = std::env::temp_dir().join(format!("icx-resume-sessions-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -225,6 +256,7 @@ fn pending_sessions_survive_a_save_and_are_bounded() {
     }
     mmu.save_workspace_dir(&dir).unwrap();
     let mut next = InfinityContextMmu::default();
+    next.set_resume_packets(true);
     next.load_workspace_dir(&dir).unwrap();
     // The oldest are dropped beyond 32; the newest survive the save.
     assert!(

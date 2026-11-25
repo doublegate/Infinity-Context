@@ -611,10 +611,18 @@ impl McpPagerServer {
                             );
                         }
                     };
-                    let summary =
-                        kind.map_or_else(|| summary.to_owned(), |k| format!("[{k}] {summary}"));
-                    let clean_summary =
-                        InfinityContextMmu::sanitize_hook_label(&summary, "completed");
+                    // The summary gets its default before the type prefix, so an empty typed
+                    // fold reads `[subtask] completed` (review of #99).
+                    let plain = InfinityContextMmu::sanitize_hook_label(summary, "completed");
+                    let clean_summary = kind.map_or_else(
+                        || plain.clone(),
+                        |k| {
+                            InfinityContextMmu::sanitize_hook_label(
+                                &format!("[{k}] {plain}"),
+                                "completed",
+                            )
+                        },
+                    );
                     match mmu.epochs.fold_branch(&mut mmu.dag, &clean_summary) {
                         Ok(bid) => {
                             mmu.sync_global_dag_root();
@@ -625,6 +633,12 @@ impl McpPagerServer {
                 }
             }
             "xagent" => {
+                if args.get("type").is_some_and(|t| !t.is_null()) {
+                    return (
+                        "ERR: type applies when closing a fold, not to xagent".to_owned(),
+                        true,
+                    );
+                }
                 if let Some(broadcast_q) = args
                     .get("q")
                     .and_then(Value::as_str)

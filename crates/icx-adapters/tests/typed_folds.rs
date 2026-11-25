@@ -74,6 +74,12 @@ fn unknown_fold_types_are_refused_and_untyped_folds_are_unchanged() {
         refused.starts_with("ERR") && refused.len() < 200,
         "{refused}"
     );
+    // A type on xagent is refused too.
+    let refused = McpPagerServer::execute_icx_op(
+        &json!({"op": "xagent", "q": "hello", "type": "subtask"}),
+        &mut mmu,
+    );
+    assert!(refused.starts_with("ERR"), "{refused}");
     // A type on begin: is refused and opens nothing.
     let refused = McpPagerServer::execute_icx_op(
         &json!({"op": "fold", "q": "begin:y", "type": "subtask"}),

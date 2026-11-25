@@ -234,9 +234,11 @@ impl InfinityContextMmu {
                 let key = (agent as u8, s.to_owned());
                 self.pending_resume_sessions.retain(|k| *k != key);
                 self.pending_resume_sessions.push(key);
-                if self.pending_resume_sessions.len() > MAX_PENDING_RESUME_SESSIONS {
-                    self.pending_resume_sessions.remove(0);
-                }
+                let excess = self
+                    .pending_resume_sessions
+                    .len()
+                    .saturating_sub(MAX_PENDING_RESUME_SESSIONS);
+                self.pending_resume_sessions.drain(..excess);
             }
             None => {
                 self.pending_resume.insert(agent as u8);
@@ -268,12 +270,26 @@ impl InfinityContextMmu {
                 .iter()
                 .position(|(a, id)| *a == agent as u8 && id == s)
         });
-        if let Some(i) = own {
-            self.pending_resume_sessions.remove(i);
-        } else if !self.pending_resume.remove(&(agent as u8)) {
+        if own.is_none() && !self.pending_resume.contains(&(agent as u8)) {
             return None;
         }
-        Some(self.resume_packet(agent, budget))
+        let packet = self.resume_packet(agent, budget);
+        // A budget that fits the header but nothing under it, when there is something to say,
+        // keeps the packet pending for a hook with more room (review of #99).
+        if !packet.contains('\n')
+            && self
+                .resume_packet(agent, RESUME_PACKET_MAX_BYTES)
+                .contains('\n')
+        {
+            return None;
+        }
+        // One delivery covers the compaction, however it was marked (a `PreCompact` with a
+        // session id and a `PostCompact` without one must not deliver twice; review of #99).
+        if let Some(i) = own {
+            self.pending_resume_sessions.remove(i);
+        }
+        self.pending_resume.remove(&(agent as u8));
+        Some(packet)
     }
 
     fn resume_header(&self, agent: AgentKind) -> String {
@@ -332,6 +348,7 @@ impl InfinityContextMmu {
             .into_iter()
             .filter(|e| e.target_entity == "FAIL")
             .map(|e| one_line(&e.source_entity))
+            .filter(|s| !s.is_empty())
             .collect();
         failing.sort();
         failing.dedup();
@@ -2015,6 +2032,12 @@ impl InfinityContextMmu {
                 .collect();
             self.pending_resume = st.pending_resume;
             self.pending_resume_sessions = st.pending_resume_sessions;
+            // A snapshot written with a larger bound keeps only the newest (review of #99).
+            let excess = self
+                .pending_resume_sessions
+                .len()
+                .saturating_sub(MAX_PENDING_RESUME_SESSIONS);
+            self.pending_resume_sessions.drain(..excess);
             self.indexed_occurrences = st
                 .indexed_occurrences
                 .into_iter()
