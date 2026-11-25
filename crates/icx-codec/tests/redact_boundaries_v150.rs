@@ -98,8 +98,12 @@ fn literal_tails() {
         ("password = \"qqzz\"  # note\n", &["qqzz"], &["# note"]),
         ("password = \"qqzz\" // note\n", &["qqzz"], &["// note"]),
         ("password = \"qqzz\" next=1\n", &["qqzz"], &["next=1"]),
-        ("password = \"qqzz\" user: bob\n", &["qqzz"], &["user: bob"]),
-        ("password = \"qqzz\" --flag x\n", &["qqzz"], &["--flag"]),
+        // On an `=` line, `name:` is part of the value (review of #103), so it is hidden.
+        ("password = \"qqzz\" user: bob\n", &["qqzz", "bob"], &[]),
+        ("password: \"qqzz\" user: bob\n", &["qqzz"], &["user: bob"]),
+        // After a value that is not a CLI flag, `--x` is part of the value (review of #103).
+        ("password = \"qqzz\" --flag x\n", &["qqzz", "flag"], &[]),
+        ("run --token \"qqzz\" --flag x\n", &["qqzz"], &["--flag x"]),
         ("password = \"qqzz\" rrss\n", &["qqzz", "rrss"], &[]),
         ("password = \"qqzz\" 1rrss=x\n", &["qqzz", "rrss"], &[]),
         ("password = \"qqzz\" -rrss\n", &["qqzz", "rrss"], &[]),
@@ -222,4 +226,85 @@ fn an_unclosed_bracket_stops_after_the_cap() {
         "{clean:.200}"
     );
     assert!(clean.contains("line249"), "the cap ends the continuation");
+}
+
+/// Security review of d2d8031: what follows the bracket that closes a multi-line value is
+/// redacted like any other line.
+#[test]
+fn text_after_a_closing_bracket_is_still_redacted() {
+    check(&[
+        (
+            "api_key = (\n  rrss\n); password=qqzzqqzz\n",
+            &["rrss", "qqzz"],
+            &[");"],
+        ),
+        (
+            "api_key = (\n  rrss\n) export GITHUB_TOKEN=\"qqzzqqzz\"\n",
+            &["rrss", "qqzz"],
+            &[")"],
+        ),
+        (
+            "token = [\n  rrss\n] # note\nnext = 1\n",
+            &["rrss"],
+            &["# note", "next = 1"],
+        ),
+    ]);
+}
+
+/// Antigravity review of d2d8031: tails that only look like a new assignment or separator.
+#[test]
+fn review_round_tail_and_continuation_cases() {
+    check(&[
+        // A separator outside brackets is part of the value.
+        ("password: \"a\" , qqzzqqzz\n", &["qqzz"], &[]),
+        ("password = \"a\" ) qqzzqqzz\n", &["qqzz"], &[]),
+        ("PASSWORD=\"\" ] qqzzqqzz\n", &["qqzz"], &[]),
+        // `name:` on an `=` line, or `--x` outside a CLI flag, is part of the value.
+        ("password = \"a\" foo:qqzzqqzz\n", &["qqzz"], &[]),
+        ("password: \"a\" --qqzzqqzz\n", &["qqzz"], &[]),
+        // `&&` inside a config value.
+        ("password: abc&&qqzzqqzz\n", &["qqzz"], &[]),
+        // Quotes and brackets win over a trailing backslash.
+        (
+            "password = \"\"\"\\\nrrss\nqqzz\n\"\"\"\nnext = 1\n",
+            &["rrss", "qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "api_key = (\\\n  rrss\n  qqzz\n)\nnext = 1\n",
+            &["rrss", "qqzz"],
+            &["next = 1"],
+        ),
+        // A later sensitive assignment on the line continues.
+        (
+            "token = None; password = \"\"\"\nqqzz\n\"\"\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "token = 1; password =\n  qqzz\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        // Only a triple quote closes a triple-quoted value.
+        (
+            "password = \"\"\"\n\"prefix\"\nqqzz\n\"\"\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "password = r\"\"\"\nqqzz\n\"\"\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "password = f\"\nqqzz\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        // Numeric passcodes under the new key spellings.
+        ("{\"pwd\": 123456}\n", &["123456"], &[]),
+        ("pw = 123456\n", &["123456"], &[]),
+        ("DBPASS=123456\n", &["123456"], &[]),
+    ]);
 }

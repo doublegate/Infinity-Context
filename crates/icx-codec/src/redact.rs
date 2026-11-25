@@ -38,7 +38,15 @@ impl SecretRedactor {
                     continue;
                 }
                 let content_start = body.len() - body.trim_start().len();
-                let Some(close) = closing_quote(&body.as_bytes()[content_start..], q) else {
+                let triple = pending_value.as_ref().is_some_and(|p| p.triple);
+                let close = if triple {
+                    let closer = [q; 3];
+                    let closer = std::str::from_utf8(&closer).unwrap_or("\"\"\"");
+                    body[content_start..].find(closer).map(|i| i + 2)
+                } else {
+                    closing_quote(&body.as_bytes()[content_start..], q)
+                };
+                let Some(close) = close else {
                     out.push_str(&Self::redact_bare_value_line(body));
                     out.push_str(ending);
                     continue;
@@ -77,8 +85,10 @@ impl SecretRedactor {
                 } else {
                     p.lines += 1;
                     if p.brackets > 0 {
-                        // Hide up to the bracket that closes the value; keep that bracket and
-                        // what follows, so a second pass sees the value close again.
+                        // Hide up to the bracket that closes the value and keep that bracket,
+                        // so a second pass sees the value close again. The rest of the line is
+                        // classified like any other line (security review: it was written
+                        // verbatim, so a secret after the bracket survived).
                         if let Some(at) = closing_bracket_at(body, p.brackets) {
                             let (inside, after) = body.split_at(at);
                             if inside.trim().is_empty() {
@@ -86,8 +96,14 @@ impl SecretRedactor {
                             } else {
                                 out.push_str(&Self::redact_bare_value_line(inside));
                             }
-                            out.push_str(after);
+                            let close_len = after.chars().next().map_or(1, char::len_utf8);
+                            out.push_str(&after[..close_len]);
+                            body = &after[close_len..];
                             pending_value = None;
+                            if body.is_empty() {
+                                out.push_str(ending);
+                                continue;
+                            }
                         } else {
                             let depth = isize::try_from(p.brackets).unwrap_or(isize::MAX)
                                 + bracket_delta(body);
@@ -96,16 +112,17 @@ impl SecretRedactor {
                             if p.lines >= MAX_KEY_BLOCK_LINES {
                                 pending_value = None;
                             }
+                            out.push_str(ending);
+                            continue;
                         }
+                    } else {
+                        if !body.trim_end().ends_with('\\') || p.lines >= MAX_KEY_BLOCK_LINES {
+                            pending_value = None;
+                        }
+                        out.push_str(&Self::redact_bare_value_line(body));
                         out.push_str(ending);
                         continue;
                     }
-                    if !body.trim_end().ends_with('\\') || p.lines >= MAX_KEY_BLOCK_LINES {
-                        pending_value = None;
-                    }
-                    out.push_str(&Self::redact_bare_value_line(body));
-                    out.push_str(ending);
-                    continue;
                 }
             }
             if let Some(pending) = pending_value.as_mut() {
@@ -332,7 +349,19 @@ impl SecretRedactor {
                             });
                         let key = &head[key_start..];
                         if !key.is_empty() && Self::is_sensitive_key_name(key) {
-                            let rhs = line[i + 1..].trim();
+                            // Only this assignment's own value: up to a `;` that starts the
+                            // next statement (`token = 1; password = \"\"\"`).
+                            let rhs_full = line[i + 1..].trim();
+                            let rhs = rhs_full
+                                .trim_start_matches(|c: char| {
+                                    matches!(c, 'r' | 'R' | 'b' | 'B' | 'u' | 'U' | 'f' | 'F')
+                                })
+                                .trim_start();
+                            let rhs = if rhs.starts_with(['"', '\'', '`']) {
+                                rhs
+                            } else {
+                                rhs_full
+                            };
                             let base = PendingSecret {
                                 indent: line.len() - line.trim_start().len(),
                                 ..PendingSecret::default()
@@ -340,18 +369,15 @@ impl SecretRedactor {
                             if rhs.is_empty() {
                                 return Some(base);
                             }
-                            if rhs.ends_with('\\') {
-                                return Some(PendingSecret {
-                                    backslash: true,
-                                    ..base
-                                });
-                            }
+                            // Quotes and brackets first: a backslash inside them does not end
+                            // the value on the next line (review of #103).
                             for t in ["\"\"\"", "'''"] {
                                 if let Some(r) = rhs.strip_prefix(t)
                                     && !r.contains(t)
                                 {
                                     return Some(PendingSecret {
                                         quote: Some(t.as_bytes()[0]),
+                                        triple: true,
                                         ..base
                                     });
                                 }
@@ -375,7 +401,14 @@ impl SecretRedactor {
                                     ..base
                                 });
                             }
-                            return None;
+                            if rhs.ends_with('\\') {
+                                return Some(PendingSecret {
+                                    backslash: true,
+                                    ..base
+                                });
+                            }
+                            // This value ends on its line; a later sensitive assignment on the
+                            // same line may still continue (review of #103).
                         }
                     }
                 }
@@ -1274,16 +1307,21 @@ impl SecretRedactor {
             let name_len = t
                 .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')))
                 .unwrap_or(t.len());
+            // The next assignment of the same kind (`name:` in config text, `name=` elsewhere),
+            // or the next flag after a CLI flag (review of #103: `foo:x` on an `=` line and
+            // `--x` in config text are part of the value).
+            let sep = if config { ':' } else { '=' };
             let next_assignment = (name_len > 0
                 && t.as_bytes()[0].is_ascii_alphabetic()
-                && t[name_len..].starts_with(['=', ':']))
-                // The next CLI flag is the next argument.
-                || t.strip_prefix("--")
-                    .is_some_and(|r| r.starts_with(|c: char| c.is_ascii_alphabetic()));
+                && t[name_len..].starts_with(sep))
+                || (key.trim_start().starts_with("--")
+                    && t.strip_prefix("--")
+                        .is_some_and(|r| r.starts_with(|c: char| c.is_ascii_alphabetic())));
             if !(t.is_empty()
                 || t.starts_with('#')
                 || t.starts_with("//")
-                || t.starts_with([',', ')', ']', '}'])
+                // Separators and closers count only inside brackets opened before the key.
+                || (open_before > 0 && t.starts_with([',', ')', ']', '}']))
                 || (!config && t.starts_with(';'))
                 || next_assignment)
             {
@@ -1583,7 +1621,19 @@ impl SecretRedactor {
     /// Password, passphrase, PIN, OTP, passcode and verification-code keys, whose numbers stay
     /// hidden.
     fn is_passcode_key(key: &str) -> bool {
-        let k = Self::normalized_key(key);
+        // Numbered keys (`pin2`, `otp_2`) are the same keys (review of #103).
+        let full = Self::normalized_key(key);
+        let k = full
+            .trim_end_matches(|c: char| c.is_ascii_digit())
+            .trim_end_matches('_')
+            .to_owned();
+        if Self::key_parts(&k)
+            .iter()
+            .any(|p| matches!(p.as_str(), "PW" | "PWD" | "DBPASS"))
+            || k.ends_with("DBPASS")
+        {
+            return true;
+        }
         [
             "PASSWORD",
             "PASSWD",
@@ -2871,6 +2921,8 @@ impl ContinuationLine {
     }
 }
 
+// Each flag is one continuation mode of a pending value; they are independent and tested apart.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, Debug, Default)]
 struct PendingSecret {
     indent: usize,
@@ -2886,6 +2938,8 @@ struct PendingSecret {
     brackets: usize,
     /// Lines hidden so far in the backslash and bracket modes (capped like key blocks).
     lines: usize,
+    /// The open quote is a triple quote (`"""`, `'''`): only the same triple closes it.
+    triple: bool,
 }
 
 /// The byte index of the bracket in `text` that brings `depth` open brackets back to zero,
