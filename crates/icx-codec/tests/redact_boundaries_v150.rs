@@ -551,3 +551,20 @@ fn a_glued_double_slash_fails_closed() {
         ),
     ]);
 }
+
+/// Commit security review of 1fb07e8: an apostrophe after a glued `//` does not hide an opener.
+#[test]
+fn an_apostrophe_after_a_glued_double_slash_does_not_hide_an_opener() {
+    check(&[
+        (
+            "api_key = a//it's (\n  \"qqzz\"\n)\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "api_key = (\n  x//don't )\n  \"qqzz\"\n)\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+    ]);
+}

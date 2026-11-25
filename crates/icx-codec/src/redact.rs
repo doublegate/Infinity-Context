@@ -3127,6 +3127,9 @@ fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
         match c {
             // A Rust lifetime (`&'static`, `<'a>`) is not a quote.
             '\'' if before.is_some_and(|b| matches!(b, '&' | '<')) => {}
+            // After a glued `//` a quote character may be an apostrophe in a comment; it must
+            // not hide a later opener, so it does not open a quote (security review of #103).
+            '"' | '\'' | '`' if ambiguous => {}
             '"' | '\'' | '`' => {
                 out.quote = Some(c);
                 out.quote_at = Some(i);
