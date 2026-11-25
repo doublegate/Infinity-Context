@@ -2997,4 +2997,294 @@ path: C:\\Users\\dev\\file.rs root={high_entropy_hex}
         assert!(clean_edges.contains(&format!("root={high_entropy_hex}")));
         assert!(clean_edges.contains("\"stdout\":\"\\n[REDACTED:HIGH_ENTROPY]\""));
     }
+
+    // T-74-004: direct tests of the ADR-0011 helpers, so a changed boundary or operator is
+    // caught where it lives (mutation run on the Sprint 4 diff, 2026-11-25).
+    type R = SecretRedactor;
+
+    #[test]
+    fn value_extent_stops_at_structure_outside_quotes_and_brackets() {
+        assert_eq!(R::value_extent("abc", false), Some(3));
+        assert_eq!(R::value_extent("abc; x", false), Some(3));
+        assert_eq!(R::value_extent("a,b", false), Some(3));
+        assert_eq!(R::value_extent("a,b", true), Some(1));
+        assert_eq!(R::value_extent("f(a,b), c", true), Some(6));
+        assert_eq!(R::value_extent("a) x", false), Some(1));
+        assert_eq!(R::value_extent("[a];b", false), Some(3));
+        assert_eq!(R::value_extent("\"a;b\";c", false), Some(5));
+        assert_eq!(R::value_extent("'a)b' x", false), Some(7));
+        assert_eq!(R::value_extent("`a,b`,c", true), Some(5));
+        assert_eq!(R::value_extent("a # c", false), Some(2));
+        assert_eq!(R::value_extent("a#c", false), Some(3));
+        assert_eq!(R::value_extent("# c", false), Some(0));
+        assert_eq!(R::value_extent("a // c", false), Some(2));
+        assert_eq!(R::value_extent("http://x", false), Some(8));
+        assert_eq!(R::value_extent("a / b", false), Some(5));
+        assert_eq!(R::value_extent("(a # b) c", false), Some(9));
+        assert_eq!(R::value_extent("f(a; b)", false), Some(7));
+        assert_eq!(R::value_extent("\"open", false), None);
+        assert_eq!(R::value_extent("f(a", false), None);
+    }
+
+    #[test]
+    fn leading_literal_takes_short_prefixes_only() {
+        assert_eq!(R::leading_literal("\"ab\" x"), Some((0, 3)));
+        assert_eq!(R::leading_literal("'ab'"), Some((0, 3)));
+        assert_eq!(R::leading_literal("rb\"ab\""), Some((2, 5)));
+        // Single quotes close YAML-style (`''` escapes, a backslash does not), so a Python
+        // `'a\'b'` ends early; the glued remainder then sends the value to the #29 rule.
+        assert_eq!(R::leading_literal("f'a\\'b'"), Some((1, 4)));
+        assert_eq!(R::leading_literal("'a''b'"), Some((0, 5)));
+        assert_eq!(R::leading_literal("\"a\\\"b\""), Some((0, 5)));
+        assert!(!SecretRedactor::redact("password = 'qqzz\\'rrss'\n").contains("rrss"));
+        assert_eq!(R::leading_literal("xy\"ab\""), None);
+        assert_eq!(R::leading_literal("abc\"d\""), None);
+        assert_eq!(R::leading_literal("`ab`"), None);
+        assert_eq!(R::leading_literal("\"ab"), None);
+    }
+
+    #[test]
+    fn number_digits_reads_plain_decimals_only() {
+        assert_eq!(R::number_digits("0"), Some(1));
+        assert_eq!(R::number_digits("-12"), Some(2));
+        assert_eq!(R::number_digits("+7"), Some(1));
+        assert_eq!(R::number_digits("16_384"), Some(5));
+        assert_eq!(R::number_digits("3.25"), Some(3));
+        assert_eq!(R::number_digits("3.5e-2"), Some(2));
+        assert_eq!(R::number_digits("1E9"), Some(1));
+        for bad in [
+            "", "-", "1.", ".5", "1..2", "1.2.3", "_1", "1_", "1__2", "1e", "1e+", "1ex", "0x10",
+            "12a", "e5",
+        ] {
+            assert_eq!(R::number_digits(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn key_classifiers() {
+        assert_eq!(R::normalized_key(" export \"api-key\" "), "API_KEY");
+        assert_eq!(R::normalized_key("--auth-token"), "AUTH_TOKEN");
+        for k in [
+            "password",
+            "db_passwd",
+            "PASSCODE",
+            "pass_phrase_x",
+            "user_pin",
+            "pin",
+            "otp",
+            "mfa_token",
+            "totp_seed",
+            "verification_code",
+            "x_pass",
+        ] {
+            assert!(R::is_passcode_key(k), "{k}");
+        }
+        for k in ["api_key", "token", "auth_tokens", "spin_rate", "session_id"] {
+            assert!(!R::is_passcode_key(k), "{k}");
+        }
+        for k in [
+            "session_id",
+            "sessionId",
+            "SESSIONID",
+            "claude_session_id",
+            "agent-session-id",
+        ] {
+            assert!(R::is_session_id_key(k), "{k}");
+        }
+        for k in [
+            "session_token",
+            "auth_session_id",
+            "api_session_id",
+            "session",
+            "sessions_id",
+        ] {
+            assert!(!R::is_session_id_key(k), "{k}");
+        }
+    }
+
+    #[test]
+    fn small_shape_helpers() {
+        assert_eq!(R::unquoted("\"ab\""), "ab");
+        assert_eq!(R::unquoted("'ab'"), "ab");
+        assert_eq!(R::unquoted("\"ab'"), "\"ab'");
+        assert_eq!(R::unquoted("\""), "\"");
+        assert_eq!(R::unquoted("ab"), "ab");
+        assert!(R::is_uuid("8f2c1e9a-3b4d-4c5e-9f60-718293a4b5c6"));
+        assert!(R::is_uuid("8F2C1E9A-3B4D-4C5E-9F60-718293A4B5C6"));
+        assert!(!R::is_uuid("8f2c1e9a-3b4d-4c5e-9f60-718293a4b5c"));
+        assert!(!R::is_uuid("8f2c1e9a3b4d-4c5e-9f60-718293a4b5c6x"));
+        assert!(!R::is_uuid("8f2c1e9a-3b4d-4c5e-9f60-718293a4b5cg"));
+        assert!(!R::is_uuid("8f2c1e9a-3b4d-4c5e-9f60_718293a4b5c6"));
+        for v in [
+            "$DB_PASSWORD",
+            "${GITHUB_TOKEN}",
+            "%APP_DATA%",
+            "$env:MY_KEY",
+            "$A_1",
+        ] {
+            assert!(R::is_variable_reference(v), "{v}");
+        }
+        for v in [
+            "$HUNTER2",
+            "$A_",
+            "${A_B",
+            "$db_password",
+            "%A_B",
+            "$",
+            "A_B",
+            "$_A",
+        ] {
+            assert!(!R::is_variable_reference(v), "{v}");
+        }
+        for v in [
+            "os.environ[\"API_KEY\"]",
+            "os.getenv('API_KEY')",
+            "env::var(\"GITHUB_TOKEN\")",
+            "ENV[\"X1\"]",
+        ] {
+            assert!(R::is_env_lookup(v), "{v}");
+        }
+        for v in [
+            "os.environ[\"api_key\"]",
+            "os.getenv(\"API_KEY\") or \"x\"",
+            "os.environ[\"API_KEY\")",
+            "foo(\"API_KEY\")",
+            "os.getenv(\"\")",
+            "os.getenv(\"A\"B\")",
+        ] {
+            assert!(!R::is_env_lookup(v), "{v}");
+        }
+    }
+
+    #[test]
+    fn code_references_and_code_shapes() {
+        for v in [
+            "a.b",
+            "a::b",
+            "a?.b",
+            "a->b",
+            "f(x)",
+            "a.b(c)",
+            "a[b]",
+            "a.b?",
+            "&a.b",
+            "&mut a.b",
+            "*a.b",
+            "await a.b",
+            "fmt!(x)",
+            "a.b(c, d).e",
+        ] {
+            assert!(R::is_code_reference(v), "{v}");
+        }
+        for v in [
+            "a", "a?", "a.", ".a", "a.b c", "f(\"x\")", "f(a!b)", "f(a", "1a.b", "a..b", "a.b)",
+            "a.1b",
+        ] {
+            assert!(!R::is_code_reference(v), "{v}");
+        }
+        for v in [
+            "self.token",
+            "config.api_key",
+            "settings.SECRET_KEY",
+            "get_token(u)",
+            "getToken(u)",
+            "os.getenv(K)",
+            "a::b(c)",
+            "x.API_KEY",
+        ] {
+            assert!(R::looks_like_code(v), "{v}");
+        }
+        for v in ["my.dog.rex", "abc(def)", "Secret(x)", "a.B", "my.dog.Rex"] {
+            assert!(!R::looks_like_code(v), "{v}");
+        }
+    }
+
+    #[test]
+    fn kept_tails_are_exact() {
+        for (line, expected) in [
+            (
+                "password = \"abc\"  # c\n",
+                "password = \"[REDACTED:ENV_SECRET]\"  # c\n",
+            ),
+            ("password = 'abc'\n", "password = '[REDACTED:ENV_SECRET]'\n"),
+            (
+                "password = \"abc\" + x\n",
+                "password = \"[REDACTED:ENV_SECRET]\" + x\n",
+            ),
+            (
+                "password = \"abc\" + \"d\"\n",
+                "password = \"[REDACTED:ENV_SECRET]\" + [REDACTED:ENV_SECRET]\n",
+            ),
+            (
+                // Code holding a literal takes the #29 rule: hidden from its start.
+                "token = None or \"abc\"\n",
+                "token = [REDACTED:ENV_SECRET]\n",
+            ),
+            ("token = None\n", "token = None\n"),
+            (
+                "token = None # \"c\"\n",
+                "token = None # [REDACTED:ENV_SECRET]\n",
+            ),
+            (
+                "password = \"[REDACTED:ENV_SECRET]\" x\n",
+                "password = \"[REDACTED:ENV_SECRET]\" x\n",
+            ),
+            (
+                "token: \"abc\", next: 1\n",
+                "token: \"[REDACTED:CONFIG_SECRET]\", next: 1\n",
+            ),
+        ] {
+            assert_eq!(SecretRedactor::redact(line), expected, "{line:?}");
+        }
+    }
+
+    #[test]
+    fn env_code_context_needs_spaces_or_a_binding() {
+        assert_eq!(
+            SecretRedactor::redact("password = settings.SECRET_KEY\n"),
+            "password = settings.SECRET_KEY\n"
+        );
+        assert_eq!(
+            SecretRedactor::redact("let password=settings.SECRET_KEY;\n"),
+            "let password=settings.SECRET_KEY;\n"
+        );
+        for line in [
+            "password=settings.SECRET_KEY\n",
+            "password =settings.SECRET_KEY\n",
+            "password= settings.SECRET_KEY\n",
+        ] {
+            assert!(
+                !SecretRedactor::redact(line).contains("settings"),
+                "{line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn json_fields_need_a_leading_member() {
+        assert_eq!(SecretRedactor::redact_json_fields("   "), None);
+        assert_eq!(SecretRedactor::redact_json_fields(""), None);
+        assert_eq!(SecretRedactor::redact_json_fields("a: \"x\""), None);
+        assert_eq!(
+            SecretRedactor::redact_json_fields("  \"token\": \"x\", \"n\": 1,  "),
+            Some("  \"token\": \"[REDACTED:CONFIG_SECRET]\", \"n\": 1,  ".to_owned())
+        );
+        assert_eq!(
+            SecretRedactor::redact_json_fields("\"n\": 1"),
+            Some("\"n\": 1".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_cli_flag_without_a_value_is_left_alone() {
+        for line in ["run --token\n", "run --token\tother\n", "run --to x\n"] {
+            let clean = SecretRedactor::redact(line);
+            assert!(
+                !clean.contains("CLI_SECRET") || line.contains("--token\t"),
+                "{line:?} -> {clean:?}"
+            );
+        }
+        assert!(!SecretRedactor::redact("run --token abcdefgh\n").contains("abcdefgh"));
+        assert!(!SecretRedactor::redact("run --token\tabcdefgh\n").contains("abcdefgh"));
+    }
 }
