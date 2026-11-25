@@ -176,7 +176,15 @@ pub fn parse_rfc3339_ms(ts: &str) -> Option<u64> {
     {
         return None;
     }
-    let num = |r: std::ops::Range<usize>| ts.get(r)?.parse::<i64>().ok();
+    // Digits only (review of #98: a signed parse accepted `-1` and `+1`).
+    let num = |r: std::ops::Range<usize>| {
+        let f = ts.get(r)?;
+        if f.bytes().all(|c| c.is_ascii_digit()) {
+            f.parse::<i64>().ok()
+        } else {
+            None
+        }
+    };
     let (y, mo, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
     let (hour, mi, sec) = (num(11..13)?, num(14..16)?, num(17..19)?);
     // Nothing, or `.` and 1 to 9 digits, between the seconds and `Z` (review of #98).
@@ -186,7 +194,15 @@ pub fn parse_rfc3339_ms(ts: &str) -> Option<u64> {
         Some(f) if (1..=9).contains(&f.len()) && f.bytes().all(|c| c.is_ascii_digit()) => f,
         _ => return None,
     };
-    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) || hour > 23 || mi > 59 || sec > 60 {
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let month_days = match mo {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return None,
+    };
+    if !(1..=month_days).contains(&d) || hour > 23 || mi > 59 || sec > 60 {
         return None;
     }
     let ms: i64 = format!("{frac:0<3}").get(..3)?.parse().ok()?;
@@ -612,6 +628,10 @@ mod tests {
     fn times_parse_and_the_cutoff_hides_the_future() {
         assert_eq!(parse_rfc3339_ms("1970-01-01T00:00:00Z"), Some(0));
         assert_eq!(parse_rfc3339_ms("1970-01-01T00:00:01.5Z"), Some(1_500));
+        assert!(
+            parse_rfc3339_ms("2024-02-29T00:00:00Z").is_some(),
+            "leap day"
+        );
         assert_eq!(
             parse_rfc3339_ms("2026-11-24T20:51:00.123Z"),
             Some(1_795_553_460_123)
@@ -682,6 +702,10 @@ mod tests {
             "2026-11-24T20:51:00+00:00",
             "2026-11-24T20:51:00.Z",
             "2026-11-24T20:51:0é0Z",
+            "2026-11-24T-1:-2:-3Z",
+            "2026-11-24T+1:00:00Z",
+            "2026-02-31T00:00:00Z",
+            "2025-02-29T00:00:00Z",
         ] {
             assert_eq!(parse_rfc3339_ms(bad), None, "{bad}");
             let line = format!("{{\"query\":\"q\",\"relevant\":[],\"ts\":\"{bad}\"}}");

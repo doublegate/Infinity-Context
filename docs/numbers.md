@@ -162,16 +162,16 @@ agent's note before the call or the user's prompt that started the turn; each qu
 artifacts that existed when it was asked. Queries and judgements are private
 (`eval/private/`, built by `scripts/build-recall-eval-set.py`); these are aggregates.
 
-| Agent notes (this project, held-out half, 371 queries) | legacy | BM25 | RRF | newest first |
+| Agent notes (this project, held-out half, 372 queries) | legacy | BM25 | RRF | newest first |
 | :--- | ---: | ---: | ---: | ---: |
 | recall@1 | 0.0% | 2.2% | 0.3% | 83.3% |
-| recall@10 | 2.4% | 12.7% | 5.4% | 99.2% |
+| recall@10 | 2.4% | 12.6% | 5.4% | 99.2% |
 
-- **Fresh answers dominate:** across all six projects with at least 40 dereferences (1,661 note
+- **Fresh answers dominate:** across all six projects with at least 40 dereferences (1,676 note
   cases), 7 had 20 or more newer artifacts between the answer and the query. The table therefore
   measures fetching what was just produced, not long-range recall, and cannot decide a default
   (ADR-0010).
-- **Prompts as queries:** timed at the prompt, when automatic recall runs, 311 of 314 prompt
+- **Prompts as queries:** timed at the prompt, when automatic recall runs, 313 of 316 prompt
   cases had answers that did not exist yet (the agent produced them during the turn). Only 3
   cases could have been answered by recall at all, too few to score.
 - **Every indexed artifact was dated** from a graph edge in each workspace measured; an undated

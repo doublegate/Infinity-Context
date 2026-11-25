@@ -341,9 +341,13 @@ pub fn rrf(lists: &[Vec<ArtifactId>], k: f64) -> Vec<ArtifactId> {
     let mut score: std::collections::BTreeMap<ArtifactId, f64> = std::collections::BTreeMap::new();
     for list in lists {
         let mut seen = std::collections::BTreeSet::new();
-        for (rank, id) in list.iter().enumerate() {
+        // Ranks count distinct items only, so a repeat never pushes later items down (review of
+        // #98).
+        let mut rank = 0usize;
+        for id in list {
             if seen.insert(*id) {
-                *score.entry(*id).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
+                rank += 1;
+                *score.entry(*id).or_insert(0.0) += 1.0 / (k + rank as f64);
             }
         }
     }
@@ -509,8 +513,11 @@ mod tests {
         let c = ArtifactId(3);
         // `b` is second in both lists, so it beats items that are first in only one.
         assert_eq!(rrf(&[vec![a, b], vec![c, b]], RRF_K), [b, a, c]);
-        // A repeat within a list counts once.
+        // A repeat within a list counts once and does not push later items down: `c` is second
+        // in the first list despite the repeats, so it ties `b` (first in the other list after a
+        // repeat is skipped) and wins the tie by id only when its score is equal.
         assert_eq!(rrf(&[vec![a, a, a], vec![b]], RRF_K), [a, b]);
+        assert_eq!(rrf(&[vec![a, a, c], vec![b, c]], RRF_K), [c, a, b]);
         // Equal scores: by id.
         assert_eq!(rrf(&[vec![c], vec![a]], RRF_K), [a, c]);
         assert_eq!(rrf(&[], RRF_K), []);

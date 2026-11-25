@@ -18,14 +18,14 @@ Queries and judgements stay private (`eval/private/`); only these aggregates are
 Measured (2026-11-25, all six projects with at least 40 dereferences; corrected after the review
 of #98, which found that prompt cases had been timed at the dereference instead of the prompt):
 
-- **Answers are almost always fresh.** Of 1,661 note cases, ranked newest-first, the needed
+- **Answers are almost always fresh.** Of 1,676 note cases, ranked newest-first, the needed
   output is first in 82–100% per project. Only 7 cases had 20 or more newer artifacts between the
   answer and the query. Widening from this project to all six did not change that.
-- **At prompt time the answer usually did not exist.** Of 314 prompt cases, 311 needed outputs
+- **At prompt time the answer usually did not exist.** Of 316 prompt cases, 311 needed outputs
   the agent produced later in the same turn. Automatic recall, which runs at the prompt, could
   have surfaced an existing answer in 3 cases.
-- **On the fresh-answer note cases** (this project, held-out half, 371 queries), recall@10 was
-  legacy 2.4%, BM25 12.7%, RRF 5.4%, newest-first 99.2%. They measure fetching what was just
+- **On the fresh-answer note cases** (this project, held-out half, 372 queries), recall@10 was
+  legacy 2.4%, BM25 12.6%, RRF 5.4%, newest-first 99.2%. They measure fetching what was just
   produced, which recency answers alone, not the long-range recall that automatic recall exists
   for.
 - **Synthetic sets** (bag-of-words known-item queries) put the three rankers within a few points

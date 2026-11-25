@@ -33,7 +33,20 @@ import sys
 
 HANDLE = re.compile(r"#icx:[0-9a-f]{12,16}")
 HEX_RUN = re.compile(r"\b[0-9a-f]{8,}\b")
-RECALL_HANDLE = re.compile(r"HDC_RECALL[^\n]*?↦(#icx:[0-9a-f]{16})")
+RECALL_HANDLE = re.compile(r"HDC_RECALL[^\n]*?\u21a6(#icx:[0-9a-f]{16})")
+
+
+def strings(value: object) -> list[str]:
+    """Every string inside a decoded JSON value."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in strings(v)]
+    return []
+
+
 MAX_QUERY_CHARS = 300
 MIN_QUERY_WORDS = 3
 
@@ -88,12 +101,16 @@ def cases_from(path: str, kind: str) -> tuple[str, list[dict]]:
     seen: set[tuple[str, str]] = set()
     with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
-            for h in RECALL_HANDLE.findall(line):
-                from_recall.add(h)
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            # Matched on the decoded text, one line at a time (review of #98: on the raw JSONL
+            # line an escaped newline let the pattern run on to an unrelated handle).
+            for text in strings(entry):
+                if "HDC_RECALL" in text:
+                    for part in text.splitlines():
+                        from_recall.update(RECALL_HANDLE.findall(part))
             ts = str(entry.get("timestamp") or "")
             if not first_ts:
                 first_ts = ts
