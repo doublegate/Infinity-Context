@@ -88,7 +88,7 @@ pub struct InfinityContextMmu {
     agent_read_cursors: BTreeMap<u8, u64>,
     redacted_artifacts: BTreeSet<ArtifactId>,
     subagent_branches: BTreeMap<String, Vec<SubagentStep>>,
-    hdc_events: Vec<HdcEventRecord>,
+    pub(crate) hdc_events: Vec<HdcEventRecord>,
     indexed_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     reordered_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     agent_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
@@ -149,6 +149,34 @@ impl InfinityContextMmu {
             wall_clock: false,
             lexical_index: crate::lexical::enabled(),
         }
+    }
+
+    /// The best recall hit when HDC hits and BM25 matches are fused by reciprocal rank
+    /// (`ICX_RECALL_RANKING=rrf`, T-71-002). A hit that only BM25 found carries its stored
+    /// subject, no HDC similarity, and a combined score at the display threshold, so it is shown
+    /// as lexical evidence. `None` when neither ranker finds anything.
+    fn fused_recall_hit(&self, query: &str, hdc_hits: &[AssociativeHit]) -> Option<AssociativeHit> {
+        let lexical: Vec<ArtifactId> = self
+            .lexical_matches(query, 20)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        let hdc: Vec<ArtifactId> = hdc_hits.iter().map(|h| h.artifact_id).collect();
+        let top = *crate::lexical::rrf(&[hdc, lexical], crate::lexical::RRF_K).first()?;
+        if let Some(hit) = hdc_hits.iter().find(|h| h.artifact_id == top) {
+            return Some(hit.clone());
+        }
+        Some(AssociativeHit {
+            artifact_id: top,
+            subject: self
+                .hdc_index
+                .subject_of(top)
+                .unwrap_or("artifact")
+                .to_owned(),
+            hdc_similarity: 0.0,
+            shared_fractal_suffix: 0,
+            combined_score: MIN_RECALL_SIMILARITY,
+        })
     }
 
     /// Turns maintenance of the lexical index on or off (default: `ICX_RECALL_RANKING=rrf`).
@@ -906,7 +934,14 @@ impl InfinityContextMmu {
         // Reserve useful recall before consuming space with sibling events. A large public
         // subject can fall back to a complete handle frame instead of dropping all recall.
         let hdc_hits: Vec<AssociativeHit> = self.hdc_index.query_associative(query, top_k);
-        if let Some(hit) = hdc_hits.first() {
+        // `legacy` (the default) shows the best HDC hit; with `ICX_RECALL_RANKING=rrf` the HDC
+        // hits are fused with BM25 matches by reciprocal rank (T-71-002).
+        let best = if self.lexical_index {
+            self.fused_recall_hit(query, &hdc_hits)
+        } else {
+            hdc_hits.first().cloned()
+        };
+        if let Some(hit) = best.as_ref() {
             Self::append_tail_recall(&mut lines, &mut used, limit, hit);
         }
 

@@ -23,6 +23,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   are rebuilt rather than read.
   Measured on a real 54 MB store with the production code: 10.2 MB of index (rows are numbered
   compactly; random 64-bit rowids took 38.5 MB), queries under 1.6 ms (`docs/numbers.md`).
+- Recall ranking fusion (T-71-002, opt-in): with `ICX_RECALL_RANKING=rrf`, the injected recall
+  line comes from the HDC hits fused with BM25 matches by reciprocal rank (k = 60, ties by
+  handle). Off by default; with it off, recall output is unchanged.
+- `icx eval-recall` (T-72-002): scores recall rankers (`legacy`, `bm25`, `rrf`, `recent`) by
+  recall@1/5/10 and MRR@10 on a seeded synthetic set or a JSON Lines query set over a workspace,
+  read only, ranking only artifacts that existed when each query was asked.
+- `scripts/build-recall-eval-set.py` (T-72-001): builds a private evaluation set from Claude
+  Code transcripts (agent notes or user prompts paired with the outputs then dereferenced),
+  written only under the gitignored `eval/private/`.
+- ADR-0010: the default recall ranking stays `legacy`. Real-session answers were almost always
+  just produced (newest-first finds 83–88% at rank 1), so the data cannot show a long-range gain;
+  local embeddings (T-72-003) are therefore not built.
 - Recall reports a shared fractal suffix only for a history that really repeats. Each trajectory
   step keeps a 16-bit corner of its state, so distinct events with equal corners were reported as
   a shared history (0.33% of similar events in a 20,000-event measurement, ICX-AUD-052); each

@@ -236,9 +236,12 @@ Subcommands:",
   proxy-transform [--provider <anthropic|openai|gemini>] [--dir <PATH>]
       Transform an outbound Anthropic (`/v1/messages`), OpenAI (`/v1/chat/completions`, `/v1/responses`), or Gemini (`/v1beta/models/*`) JSON request
   eval-recall [--set <FILE> [--split <train|heldout|all>] [--dir <PATH>] | --synthetic <N> [--vocab <V>]
-              [--queries <Q>]] [--seed <S>] [--ranker <legacy|bm25|rrf|all>] [--commit <SHA>] [--out <FILE>]
+              [--queries <Q>]] [--seed <S>] [--ranker <legacy|bm25|rrf|recent|all>] [--min-age <N>]
+              [--commit <SHA>] [--out <FILE>]
       Score recall rankers by recall@1/5/10 and MRR@10 on a JSON Lines query set over a workspace
-      (read only; the lexical index is built in memory), or on a seeded synthetic set
+      (read only; the lexical index is built in memory), or on a seeded synthetic set. Each query
+      ranks only artifacts that existed when it was asked; --min-age keeps the cases whose answer
+      had at least N newer artifacts by then
   encode-ahtl <FILE> [--dir <PATH>] [--profile <a|b>]
       Compress a source file, diff, or build log into an AHTL Holographic Packet + BLAKE3 handle
   decode-ahtl <AHTL_STRING>
@@ -645,6 +648,7 @@ fn run_eval_recall(args: &[String]) -> Result<(), String> {
     let (mut set, mut split, mut dir, mut synthetic) = (None, None, None, None);
     let (mut vocab, mut queries, mut seed, mut ranker, mut commit, mut out) =
         (None, None, None, None, None, None);
+    let mut min_age = None;
     let mut i = 0;
     while i < args.len() {
         let flag = args[i].as_str();
@@ -664,6 +668,7 @@ fn run_eval_recall(args: &[String]) -> Result<(), String> {
             "--ranker" => set_option_once(&mut ranker, CMD, flag, value)?,
             "--commit" => set_option_once(&mut commit, CMD, flag, value)?,
             "--out" => set_option_once(&mut out, CMD, flag, value)?,
+            "--min-age" => set_option_once(&mut min_age, CMD, flag, num(&value)?)?,
             _ => return Err(format!("{CMD} error: unknown option {flag}")),
         }
         i += 2;
@@ -710,6 +715,8 @@ fn run_eval_recall(args: &[String]) -> Result<(), String> {
         }
     };
     let (cases, unanswerable) = eval::answerable(&mmu, cases);
+    let min_age = usize::try_from(min_age.unwrap_or(0)).unwrap_or(usize::MAX);
+    let cases = eval::old_answers(&eval::artifact_times(&mmu), cases, min_age);
     let scores = eval::run(&mmu, &cases, &rankers).map_err(|e| format!("{CMD} error: {e}"))?;
     let report = serde_json::json!({
         "icx_version": env!("CARGO_PKG_VERSION"),
@@ -719,6 +726,7 @@ fn run_eval_recall(args: &[String]) -> Result<(), String> {
         "seed": seed,
         "queries": cases.len(),
         "unanswerable_dropped": unanswerable,
+        "min_age": min_age,
         "artifacts": mmu.cas.artifact_count(),
         "results": scores,
     });

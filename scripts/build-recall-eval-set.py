@@ -167,6 +167,7 @@ def main() -> None:
             "query": c["query"],
             "relevant": c["relevant"],
             "split": "train" if i < half else "heldout",
+            "ts": c["ts"],
         }
         for i, c in enumerate(cases)
     ]

@@ -26,10 +26,12 @@ pub enum Ranker {
     Legacy,
     Bm25,
     Rrf,
+    /// Newest first: the baseline every ranker must beat when the answer is usually recent.
+    Recent,
 }
 
 impl Ranker {
-    pub const ALL: [Self; 3] = [Self::Legacy, Self::Bm25, Self::Rrf];
+    pub const ALL: [Self; 4] = [Self::Legacy, Self::Bm25, Self::Rrf, Self::Recent];
 
     /// Parses `legacy`, `bm25` or `rrf`.
     #[must_use]
@@ -38,6 +40,7 @@ impl Ranker {
             "legacy" => Some(Self::Legacy),
             "bm25" => Some(Self::Bm25),
             "rrf" => Some(Self::Rrf),
+            "recent" => Some(Self::Recent),
             _ => None,
         }
     }
@@ -48,6 +51,7 @@ impl Ranker {
             Self::Legacy => "legacy",
             Self::Bm25 => "bm25",
             Self::Rrf => "rrf",
+            Self::Recent => "recent",
         }
     }
 }
@@ -60,6 +64,10 @@ pub struct Case {
     pub relevant: Vec<String>,
     #[serde(default = "default_split")]
     pub split: String,
+    /// When the query was asked (RFC 3339, UTC). With it, only artifacts dated at or before it
+    /// are ranked, so no ranker sees the future.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ts: Option<String>,
 }
 
 fn default_split() -> String {
@@ -107,39 +115,164 @@ fn dedup(ids: impl IntoIterator<Item = ArtifactId>) -> Vec<ArtifactId> {
     ids.into_iter().filter(|id| seen.insert(*id)).collect()
 }
 
+/// When each artifact entered the workspace, in milliseconds since the Unix epoch, and the
+/// artifacts in ingest order.
+#[derive(Debug, Default)]
+pub struct Times {
+    pub at: std::collections::HashMap<ArtifactId, u64>,
+    pub order: Vec<ArtifactId>,
+    /// Artifacts dated from a graph edge rather than carried forward from the one before.
+    pub dated: usize,
+}
+
+/// Dates every indexed artifact: from the earliest graph edge it is the provenance of, and
+/// otherwise from the artifact before it in ingest order (ingest order is time order, so this
+/// is a lower bound).
+#[must_use]
+pub fn artifact_times(mmu: &InfinityContextMmu) -> Times {
+    let mut first: std::collections::HashMap<ArtifactId, u64> = std::collections::HashMap::new();
+    for e in mmu.graph.edges() {
+        let t = first.entry(e.provenance).or_insert(e.t_tx_start);
+        *t = (*t).min(e.t_tx_start);
+    }
+    let mut out = Times::default();
+    let mut last = 0u64;
+    for (id, ..) in &mmu.hdc_events {
+        if out.at.contains_key(id) {
+            continue;
+        }
+        let t = match first.get(id) {
+            Some(&t) => {
+                out.dated += 1;
+                last = last.max(t);
+                last
+            }
+            None => last,
+        };
+        out.at.insert(*id, t);
+        out.order.push(*id);
+    }
+    out
+}
+
+/// Milliseconds since the Unix epoch for an RFC 3339 UTC time (`2026-11-24T20:51:00.123Z`).
+#[must_use]
+pub fn parse_rfc3339_ms(ts: &str) -> Option<u64> {
+    let b = ts.as_bytes();
+    if b.len() < 20 || b[4] != b'-' || b[7] != b'-' || b[10] != b'T' || !ts.ends_with('Z') {
+        return None;
+    }
+    let num = |r: std::ops::Range<usize>| ts.get(r)?.parse::<i64>().ok();
+    let (y, mo, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
+    let (h, mi, sec) = (num(11..13)?, num(14..16)?, num(17..19)?);
+    let frac = ts[19..ts.len() - 1].strip_prefix('.').unwrap_or("");
+    let ms: i64 = format!("{frac:0<3}").get(..3)?.parse().ok()?;
+    // Days from civil (Howard Hinnant's algorithm).
+    let yy = if mo <= 2 { y - 1 } else { y };
+    let era = yy.div_euclid(400);
+    let yoe = yy - era * 400;
+    let mp = (mo + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    let total = ((days * 24 + h) * 60 + mi) * 60 + sec;
+    u64::try_from(total * 1000 + ms).ok()
+}
+
+/// The cases whose answer is old when asked: at least `min_age` artifacts entered the workspace
+/// after the newest relevant one and before the query. A just-produced output is still in the
+/// agent's context and is found by recency alone, so it does not measure recall (first real-set
+/// run: newest-first had recall@1 above 0.8). Cases without a time are kept only when
+/// `min_age` is 0.
+#[must_use]
+pub fn old_answers(times: &Times, cases: Vec<Case>, min_age: usize) -> Vec<Case> {
+    if min_age == 0 {
+        return cases;
+    }
+    cases
+        .into_iter()
+        .filter(|c| {
+            let Some(at) = c.ts.as_deref().and_then(parse_rfc3339_ms) else {
+                return false;
+            };
+            let newest = c
+                .relevant
+                .iter()
+                .filter_map(|h| parse_handle(h))
+                .filter_map(|id| times.order.iter().position(|x| *x == id))
+                .max();
+            newest.is_some_and(|pos| {
+                times.order[pos + 1..]
+                    .iter()
+                    .filter(|id| times.at.get(id).is_some_and(|&t| t <= at))
+                    .count()
+                    >= min_age
+            })
+        })
+        .collect()
+}
+
+/// How deep rankers search before the time cutoff is applied, so the cutoff cannot starve them.
+const DEPTH_BEFORE_CUTOFF: usize = 400;
+
 /// The ranked artifacts `ranker` returns for `query`, at most [`DEPTH`], without repeats.
 /// `lexical` is the scratch database from [`build_lexical`]; without it, `bm25` returns nothing
-/// and `rrf` is the legacy ranking.
+/// and `rrf` is the legacy ranking. With `asked`, only artifacts dated at or before that time
+/// are ranked.
 #[must_use]
 pub fn rank(
     mmu: &InfinityContextMmu,
     lexical: Option<&Connection>,
     ranker: Ranker,
     query: &str,
+    asked: Option<(&Times, u64)>,
 ) -> Vec<ArtifactId> {
+    let depth = if asked.is_some() {
+        DEPTH_BEFORE_CUTOFF
+    } else {
+        DEPTH
+    };
+    let visible = |id: &ArtifactId| {
+        asked.is_none_or(|(times, at)| times.at.get(id).is_some_and(|&t| t <= at))
+    };
     let legacy = || {
         dedup(
             mmu.hdc_index
-                .query_associative(query, DEPTH)
+                .query_associative(query, depth)
                 .into_iter()
-                .map(|h| h.artifact_id),
+                .map(|h| h.artifact_id)
+                .filter(visible),
         )
     };
     let bm25 = || {
         lexical.map_or_else(Vec::new, |conn| {
             dedup(
-                crate::lexical::search_words(conn, query, DEPTH)
+                crate::lexical::search_words(conn, query, depth)
                     .unwrap_or_default()
                     .into_iter()
                     .map(|(id, _)| id)
-                    .filter(|id| mmu.cas.get_meta(*id).is_some()),
+                    .filter(|id| mmu.cas.get_meta(*id).is_some())
+                    .filter(visible),
             )
+        })
+    };
+    let recent = || {
+        asked.map_or_else(Vec::new, |(times, _)| {
+            times
+                .order
+                .iter()
+                .rev()
+                .copied()
+                .filter(visible)
+                .take(DEPTH)
+                .collect()
         })
     };
     let mut out = match ranker {
         Ranker::Legacy => legacy(),
         Ranker::Bm25 => bm25(),
         Ranker::Rrf => crate::lexical::rrf(&[legacy(), bm25()], crate::lexical::RRF_K),
+        Ranker::Recent => recent(),
     };
     out.truncate(DEPTH);
     out
@@ -183,10 +316,14 @@ pub fn evaluate(
     lexical: Option<&Connection>,
     ranker: Ranker,
     cases: &[Case],
+    times: Option<&Times>,
 ) -> Scores {
     let ranked: Vec<Vec<ArtifactId>> = cases
         .iter()
-        .map(|c| rank(mmu, lexical, ranker, &c.query))
+        .map(|c| {
+            let asked = times.zip(c.ts.as_deref().and_then(parse_rfc3339_ms));
+            rank(mmu, lexical, ranker, &c.query, asked)
+        })
         .collect();
     score(ranker, cases, &ranked)
 }
@@ -220,9 +357,10 @@ pub fn run(
     let conn = Connection::open_in_memory()
         .map_err(|e| IcxError::Io(format!("eval scratch store: {e}")))?;
     build_lexical(mmu, &conn)?;
+    let times = artifact_times(mmu);
     Ok(rankers
         .iter()
-        .map(|&r| evaluate(mmu, Some(&conn), r, cases))
+        .map(|&r| evaluate(mmu, Some(&conn), r, cases, Some(&times)))
         .collect())
 }
 
@@ -293,6 +431,7 @@ pub fn synthetic(
                 query: picked.join(" "),
                 relevant: vec![id.to_string()],
                 split: if q % 5 == 0 { "train" } else { "heldout" }.to_owned(),
+                ts: None,
             }
         })
         .collect();
@@ -312,6 +451,7 @@ mod tests {
             query: String::new(),
             relevant: vec![ArtifactId(h).to_string()],
             split: "heldout".into(),
+            ts: None,
         };
         let cases = [case(1), case(2), case(3), case(4)];
         let ids = |v: &[u64]| v.iter().map(|&x| ArtifactId(x)).collect::<Vec<_>>();
@@ -340,8 +480,8 @@ mod tests {
         build_lexical(&b, &lb).unwrap();
         for r in Ranker::ALL {
             assert_eq!(
-                evaluate(&a, Some(&la), r, &ca),
-                evaluate(&b, Some(&lb), r, &cb)
+                evaluate(&a, Some(&la), r, &ca, None),
+                evaluate(&b, Some(&lb), r, &cb, None)
             );
         }
         let (_, other) = synthetic(300, 400, 40, 8);
@@ -353,16 +493,19 @@ mod tests {
         let (mmu, cases) = synthetic(500, 50_000, 60, 3);
         let lex = Connection::open_in_memory().unwrap();
         build_lexical(&mmu, &lex).unwrap();
-        for r in Ranker::ALL {
-            let s = evaluate(&mmu, Some(&lex), r, &cases);
+        for r in [Ranker::Legacy, Ranker::Bm25, Ranker::Rrf] {
+            let s = evaluate(&mmu, Some(&lex), r, &cases, None);
             assert!(s.recall_at_5 > 0.9, "{}: {s:?}", r.name());
         }
         // Without the lexical tables, bm25 finds nothing and rrf is the legacy ranking.
-        assert_eq!(evaluate(&mmu, None, Ranker::Bm25, &cases).recall_at_10, 0.0);
-        let legacy = evaluate(&mmu, None, Ranker::Legacy, &cases);
-        let rrf = evaluate(&mmu, None, Ranker::Rrf, &cases);
+        assert_eq!(
+            evaluate(&mmu, None, Ranker::Bm25, &cases, None).recall_at_10,
+            0.0
+        );
+        let legacy = evaluate(&mmu, None, Ranker::Legacy, &cases, None);
+        let rrf = evaluate(&mmu, None, Ranker::Rrf, &cases, None);
         assert_eq!(legacy.recall_at_10, rrf.recall_at_10);
-        for r in ["legacy", "bm25", "rrf"] {
+        for r in ["legacy", "bm25", "rrf", "recent"] {
             assert_eq!(Ranker::parse(r).unwrap().name(), r);
         }
         assert_eq!(Ranker::parse("x"), None);
@@ -377,7 +520,7 @@ mod tests {
         assert!(read_cases("{not json", "all").is_err());
         let (mmu, cases) = synthetic(200, 50_000, 20, 11);
         let scores = run(&mmu, &cases, &Ranker::ALL).unwrap();
-        assert_eq!(scores.len(), 3);
+        assert_eq!(scores.len(), 4);
         assert!(scores.iter().all(|s| s.queries == 20));
     }
 
@@ -388,8 +531,57 @@ mod tests {
             query: "nothing stored".into(),
             relevant: vec!["#icx:00000000000000aa".into()],
             split: "heldout".into(),
+            ts: None,
         });
         let (kept, dropped) = answerable(&mmu, cases);
         assert_eq!((kept.len(), dropped), (5, 1));
+    }
+
+    #[test]
+    fn times_parse_and_the_cutoff_hides_the_future() {
+        assert_eq!(parse_rfc3339_ms("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(parse_rfc3339_ms("1970-01-01T00:00:01.5Z"), Some(1_500));
+        assert_eq!(
+            parse_rfc3339_ms("2026-11-24T20:51:00.123Z"),
+            Some(1_795_553_460_123)
+        );
+        assert_eq!(parse_rfc3339_ms("2026-11-24 20:51:00"), None);
+        let mut times = Times::default();
+        for (i, id) in [10u64, 20, 30].into_iter().enumerate() {
+            times.at.insert(ArtifactId(id), 1_000 * (i as u64 + 1));
+            times.order.push(ArtifactId(id));
+        }
+        let mmu = InfinityContextMmu::default();
+        // Recent ranks only what existed at the time, newest first.
+        assert_eq!(
+            rank(&mmu, None, Ranker::Recent, "x", Some((&times, 2_000))),
+            [ArtifactId(20), ArtifactId(10)]
+        );
+        assert_eq!(rank(&mmu, None, Ranker::Recent, "x", None), []);
+    }
+
+    #[test]
+    fn old_answers_keeps_only_cases_with_enough_newer_artifacts() {
+        let mut times = Times::default();
+        for i in 0..10u64 {
+            times.at.insert(ArtifactId(i), 1_000 * i);
+            times.order.push(ArtifactId(i));
+        }
+        let case = |rel: u64, ts: &str| Case {
+            query: String::new(),
+            relevant: vec![ArtifactId(rel).to_string()],
+            split: "heldout".into(),
+            ts: Some(ts.into()),
+        };
+        // Asked at 9 s: artifact 2 has seven newer ones, artifact 8 has one.
+        let cases = vec![
+            case(2, "1970-01-01T00:00:09Z"),
+            case(8, "1970-01-01T00:00:09Z"),
+        ];
+        assert_eq!(old_answers(&times, cases.clone(), 5).len(), 1);
+        assert_eq!(old_answers(&times, cases.clone(), 0).len(), 2);
+        // Artifacts after the question do not count.
+        let early = vec![case(2, "1970-01-01T00:00:04Z")];
+        assert_eq!(old_answers(&times, early, 5).len(), 0);
     }
 }

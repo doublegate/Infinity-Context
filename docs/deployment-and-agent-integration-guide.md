@@ -179,6 +179,7 @@ icx daemon --idle-exit 900 &
 | `ICX_SHM_PATH` | `<workspace>/icx-fabric-v1.shm` | Bus file path. The file is opened `O_NOFOLLOW`, mode `0600`; symlinks, other owners, and group/world modes are refused. |
 | `ICX_NO_DAEMON` | unset | `1` disables the daemon fast path for `icx hook`. |
 | `ICX_DAEMON_AUTOSTART` | unset | `1` spawns a background daemon on the first hook. |
+| `ICX_RECALL_RANKING` | `legacy` | `rrf` (v1.5.0, opt-in) maintains the lexical index in the workspace store (BM25 and trigram FTS5 tables, about 1.2 times the stored text) and fuses BM25 with the HDC hits for the injected recall line. Off by default (ADR-0010); with it off, recall is unchanged. |
 | `ICX_STUB_MIN_BYTES` | `2048` | Smallest tool output (bytes, 256..1 MiB) a hook replaces with a stub; smaller outputs stay inline (v1.3.2). A running `icx daemon` uses the value from its own environment, so set it where the daemon starts (`ICX_DAEMON_AUTOSTART` inherits the first hook's environment). |
 | `ICX_MCP_FOLLOW_HOOKS` | follow | `0` pins `icx mcp-serve` to its launch workspace. By default it follows the workspace its own agent's hooks use, so a session that moved into a nested project or works in a git worktree reads the store its stubs were written to (v1.3.2). |
 | `ICX_PROXY_BIND` | `127.0.0.1:49380` | Default `icx proxy` listen address. |

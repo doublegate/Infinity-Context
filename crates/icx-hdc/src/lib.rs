@@ -694,6 +694,17 @@ impl HdcAssociativeIndex {
         }
     }
 
+    /// The stored subject of the latest entry for `artifact`, if indexed (used to label a
+    /// recall hit found by another ranker).
+    #[must_use]
+    pub fn subject_of(&self, artifact: ArtifactId) -> Option<&str> {
+        self.entries
+            .iter()
+            .rev()
+            .find(|e| e.artifact_id == artifact)
+            .map(IndexedEntry::subject)
+    }
+
     /// Measurement hook (T-71-003, not for production use): whether entry `target` reaches exact
     /// scoring with a prescreen of `words` 64-bit words, and the size of the candidate set.
     #[doc(hidden)]

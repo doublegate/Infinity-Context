@@ -337,3 +337,60 @@ fn measure_lexical_index_on_a_store() {
     drop(out);
     let _ = std::fs::remove_file(&path);
 }
+
+#[test]
+fn rrf_recall_surfaces_a_lexical_match_and_legacy_is_unchanged() {
+    let dir = workspace("rrf");
+    let mut mmu = InfinityContextMmu::default();
+    mmu.set_lexical_index(true);
+    let target = mmu
+        .ingest_payload(
+            AgentKind::ClaudeCode,
+            "Read:src/net/http.rs",
+            "pub fn parseHttpRequest(buf: &[u8]) -> Request { todo!() }\n",
+            false,
+        )
+        .artifact_id;
+    for i in 0..40 {
+        mmu.ingest_payload(
+            AgentKind::ClaudeCode,
+            "Bash:cargo build",
+            &format!("Compiling crate{i} v0.1.0\nFinished dev profile in {i}.0s\n"),
+            false,
+        );
+    }
+    mmu.save_workspace_dir(&dir).unwrap();
+    // "parsing" reaches the identifier only through stemming and its parts.
+    let tail = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, "request parsing", 3);
+    assert!(tail.contains(&target.to_string()), "{tail}");
+
+    // With the index off, the line is the legacy one: the same as a workspace that never
+    // had the index.
+    mmu.set_lexical_index(false);
+    let off = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, "cargo build finished", 3);
+    let mut plain = InfinityContextMmu::default();
+    plain.set_lexical_index(false);
+    plain.ingest_payload(
+        AgentKind::ClaudeCode,
+        "Read:src/net/http.rs",
+        "pub fn parseHttpRequest(buf: &[u8]) -> Request { todo!() }\n",
+        false,
+    );
+    for i in 0..40 {
+        plain.ingest_payload(
+            AgentKind::ClaudeCode,
+            "Bash:cargo build",
+            &format!("Compiling crate{i} v0.1.0\nFinished dev profile in {i}.0s\n"),
+            false,
+        );
+    }
+    let legacy = plain.build_ephemeral_tail_slot(AgentKind::ClaudeCode, "cargo build finished", 3);
+    let recall = |t: &str| {
+        t.lines()
+            .filter(|l| l.contains("HDC_RECALL"))
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(recall(&off), recall(&legacy));
+    let _ = std::fs::remove_dir_all(&dir);
+}

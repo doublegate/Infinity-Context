@@ -42,9 +42,11 @@ _None recorded yet._
   session. This is the measured reason to widen to other projects' sessions.
 - **First scores (held-out, recall@10):** notes legacy 1.4%, bm25 9.5%, rrf 3.5%; prompts legacy
   1.8%, bm25 10.9%, rrf 9.1%. BM25 leads; RRF with the HDC list is worse than BM25 alone.
-- **Known flaw, to fix before T-72-004:** the rankers search the final store, including
-  artifacts created after each query. Ranking only what existed at query time is required, and a
-  recency baseline must be scored too, since the answer is usually a recent output.
+- **Time leak, fixed:** each query now ranks only artifacts that existed when it was asked, and a
+  newest-first baseline is scored. It wins outright (recall@1 83–88%): agents dereference the stub
+  they just received. Only 7 of about 2,100 cases across six projects had an answer with 20 or
+  more newer artifacts, so widening to all projects did not yield a long-range set. Decision:
+  ADR-0010.
 
 ## Tickets
 
@@ -59,9 +61,9 @@ and check how many queries are needed for a usable train and held-out split.
 
 **Acceptance Criteria:**
 
-- [ ] Consent and redaction procedure documented; gitleaks clean over the set.
-- [ ] Set size, sources and split recorded; held-out split never used for tuning.
-- [ ] If raw text cannot be published, only derived queries and judgements are committed, and
+- [x] Consent and redaction procedure documented; gitleaks clean over the set.
+- [x] Set size, sources and split recorded; held-out split never used for tuning.
+- [x] If raw text cannot be published, only derived queries and judgements are committed, and
   the private part is documented as such.
 
 **Dependencies:** None
@@ -81,9 +83,9 @@ recall@10 and MRR, and writes a result file with commit, seed and set size.
 
 **Acceptance Criteria:**
 
-- [ ] Harness runs on the synthetic set and on the T-72-001 set.
-- [ ] Output is machine-readable and feeds `docs/numbers.md`.
-- [ ] Deterministic for a fixed seed (test).
+- [x] Harness runs on the synthetic set and on the T-72-001 set.
+- [x] Output is machine-readable and feeds `docs/numbers.md`.
+- [x] Deterministic for a fixed seed (test).
 
 **Dependencies:** None
 
@@ -108,6 +110,11 @@ not merged, and the finding is recorded.
 - [ ] Model licence, size and source recorded; no download without explicit user action.
 - [ ] recall@k, MRR, ingest time and memory measured and published in `docs/numbers.md`.
 
+**Result (2026-11-25): closed without a feature.** The hypothesis (a gain over BM25 plus HDC on
+the held-out real set) cannot be measured: real-session answers are almost always just produced
+(7 of about 2,100 cases had 20 or more newer artifacts), so no long-range set exists to test it on.
+Per the sprint rule nothing is merged; revisit with a long-range set (ADR-0010).
+
 **Dependencies:** T-71-002, T-72-001, T-72-002
 
 **Reference:** Plan Phase 7 Sprint 2; `ref-docs/research-report.md`
@@ -125,10 +132,10 @@ embeddings, and record the decision with the numbers.
 
 **Acceptance Criteria:**
 
-- [ ] Decision recorded as an ADR with the measured results.
-- [ ] A ranking becomes the default only if it beats `legacy` on the held-out split and does
+- [x] Decision recorded as an ADR with the measured results.
+- [x] A ranking becomes the default only if it beats `legacy` on the held-out split and does
   not lower recall@1 on the synthetic set.
-- [ ] `docs/numbers.md` updated with the final table.
+- [x] `docs/numbers.md` updated with the final table.
 
 **Dependencies:** T-71-002, T-71-003, T-72-001, T-72-002
 

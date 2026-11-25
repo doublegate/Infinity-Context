@@ -155,6 +155,28 @@ does, without `optimize` or `VACUUM`. Reproduce on any store with
   a substring hit reads its candidates from the CAS until `limit` are confirmed (at most
   `max(64, 8 * limit)`).
 
+**v1.5.0 measurements: recall evaluation (2026-11-24, `icx eval-recall`, T-72-001..004):**
+
+Real-session cases: a `deref` or `slice` of a handle the agent got from a stub; the query is the
+agent's note before the call or the user's prompt that started the turn; each query ranks only
+artifacts that existed when it was asked. Queries and judgements are private
+(`eval/private/`, built by `scripts/build-recall-eval-set.py`); these are aggregates.
+
+| Set (this project, held-out half) | Queries | legacy | BM25 | RRF | newest first |
+| :--- | ---: | ---: | ---: | ---: | ---: |
+| Agent notes, recall@10 | 368 | 2.4% | 12.5% | 5.2% | 99.2% |
+| User prompts, recall@10 | 56 | 3.6% | 10.7% | 7.1% | 100% |
+| Agent notes, recall@1 | 368 | 0.0% | 2.2% | 0.3% | 83.2% |
+| User prompts, recall@1 | 56 | 0.0% | 3.6% | 0.0% | 87.5% |
+
+- **Fresh answers dominate:** across all six projects with at least 40 dereferences (about 2,100
+  cases), 7 had 20 or more newer artifacts between the answer and the query, and 2 had 100 or
+  more. The table therefore measures fetching what was just produced, not long-range recall, and
+  cannot decide a default (ADR-0010).
+- **Synthetic sets** (`icx eval-recall --synthetic <n> --vocab <v>`, seed 7, 200 queries): with a
+  50,000-word vocabulary every ranker has recall@1 of 100% at 1k and 10k artifacts; with 500
+  words at 10k, recall@1 is 59.0% (legacy), 56.5% (BM25) and 58.5% (RRF).
+
 ## 3. Constants and Test-Asserted Bounds
 
 ### Handles, hashing and storage
