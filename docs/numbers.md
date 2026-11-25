@@ -88,32 +88,41 @@ last of six would wait about 12 s. The cost grows with store size until saves be
 
 Synthetic corpora of n events (24 words each from a 50,000- or 500-word vocabulary), 200 queries
 of three of the target's words. Stage-1 recall is the share of queries whose target is in the
-candidate set (prescreen survivors plus the postings union) that exact scoring sees. Reproduce with
+candidate set (prescreen survivors plus the postings union) that exact scoring sees; the query
+time is `query_associative` alone. Reproduce with
 `cargo test --release -p icx-hdc --lib measure_stage1_recall -- --ignored --nocapture`.
 
 | n | vocabulary | queries | max candidates | artifacts with all 3 words (mean) | stage-1 recall | recall@1 | recall@5 | mean query |
-| 1000 | 50000 | 200 | 128 | 1.0 | 100.0% | 100.0% | 100.0% | 0.27 ms |
-| 1000 | 500 | 200 | 219 | 1.9 | 100.0% | 87.0% | 99.0% | 0.28 ms |
-| 10000 | 50000 | 200 | 411 | 1.0 | 100.0% | 99.5% | 100.0% | 3.55 ms |
-| 10000 | 500 | 200 | 689 | 4.6 | 100.0% | 55.5% | 91.0% | 2.40 ms |
-| 100000 | 50000 | 200 | 1401 | 1.0 | 100.0% | 100.0% | 100.0% | 37.49 ms |
-| 100000 | 500 | 200 | 1265 | 85.3 | 98.5% | 13.5% | 49.5% | 42.81 ms |
+| 1000 | 50000 | 200 | 128 | 1.0 | 100.0% | 100.0% | 100.0% | 0.17 ms |
+| 1000 | 500 | 200 | 219 | 1.9 | 100.0% | 87.0% | 99.0% | 0.20 ms |
+| 10000 | 50000 | 200 | 411 | 1.0 | 100.0% | 99.5% | 100.0% | 1.20 ms |
+| 10000 | 500 | 200 | 689 | 4.6 | 100.0% | 55.5% | 91.0% | 1.04 ms |
+| 100000 | 50000 | 200 | 1401 | 1.0 | 100.0% | 100.0% | 100.0% | 16.74 ms |
+| 100000 | 500 | 200 | 1265 | 85.3 | 98.5% | 13.5% | 49.5% | 15.81 ms |
 
 - **1,024-bit prescreen (shipped since v1.1.0):** the target is kept in 100% of rare-word queries
   at every size and in 98.5% of common-word queries at 100k.
-- **2,048 bits, measured the same way:** identical recall in every row, with queries up to twice
-  as slow (60.65 ms against 37.49 ms at 100k with rare words). The hypothesis that a wider
-  prescreen recovers dropped candidates is rejected, and the width stays 1,024 bits.
+- **2,048 bits, measured the same way:** identical recall in every row, and about 1.5 times
+  slower at 100k (25.3 ms against 16.7 ms). The hypothesis that a wider prescreen recovers
+  dropped candidates is rejected, and the width stays 1,024 bits.
 - **The loss with common words is ranking, not the prescreen:** at 100k, about 85 artifacts hold
   all three query words, so recall@1 has a ceiling near 1/85, and 13.5% is far above chance.
   Lexical ranking (BM25, T-71-001) and fusion (T-71-002) are measured against this on the Sprint 2
   evaluation set.
-- **Query time** grows with n (one pass over the summaries plus exact scoring of the
-  candidates): about 0.3 ms at 1k, 2–4 ms at 10k and 30–43 ms at 100k on this host.
+- **Query time** grows with n: about 0.2 ms at 1k, 1.0–1.2 ms at 10k and 16–17 ms at 100k on this
+  host. (A first version of this table timed the stage-1 inspection and the ambiguity count too,
+  and reported about twice these times; corrected in the review of #97.)
+
+**ICX-AUD-052 measurement (T-71-004):** over 20,000 events with no repeats, the coordinates alone
+claimed a shared history for 3 distinct and 66 similar earlier events; the confirmed suffix
+claims none. Reproduce with
+`cargo test --release -p icx-hdc --lib measure_fractal_suffix -- --ignored --nocapture`.
 
 **v1.5.0 measurements: lexical index (2026-11-24, i9-10850K, SQLite 3.54.1, T-71-001):**
 
 Built from a copy of a real 54 MB workspace store holding 5,193 artifacts and 8.5 MB of text.
+Reproduce on any store with `python3 -I scripts/measure-lexical-index.py <icx.sqlite3> <out dir>`,
+which reads the store read-only and writes only the scratch tables.
 
 | Table | Size | Insert per artifact | Query |
 | :--- | :--- | :--- | :--- |

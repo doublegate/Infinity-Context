@@ -671,10 +671,15 @@ fn is_one_plain_group(m: &str) -> bool {
     }
     let mut depth = 0i32;
     let mut escaped = false;
+    // Inside a character class (`[...]`), parentheses are literal (review of #97).
+    let mut in_class = false;
     for c in body.chars() {
         match c {
             _ if escaped => escaped = false,
             '\\' => escaped = true,
+            ']' if in_class => in_class = false,
+            _ if in_class => {}
+            '[' => in_class = true,
             '(' => depth += 1,
             ')' => {
                 depth -= 1;
@@ -686,7 +691,8 @@ fn is_one_plain_group(m: &str) -> bool {
             _ => {}
         }
     }
-    depth == 0
+    // A trailing backslash escapes the closing parenthesis itself (`^(foo\)$`).
+    depth == 0 && !escaped && !in_class
 }
 
 fn codex(p: &mut Plan, o: &Opts) {
@@ -1654,5 +1660,18 @@ mod tests {
             p.notes
         );
         let _ = fs::remove_dir_all(&h);
+    }
+
+    #[test]
+    fn one_plain_group_handles_classes_and_escapes() {
+        assert!(is_one_plain_group(
+            "^(Bash|BashOutput|WebFetch|mcp__(?!icx__).+)$"
+        ));
+        assert!(is_one_plain_group("^([)]|Bash)$"));
+        assert!(!is_one_plain_group("^(foo\\)$"));
+        assert!(!is_one_plain_group("^(Bash)Output$"));
+        assert!(!is_one_plain_group("^(?:Bash)$"));
+        assert!(!is_one_plain_group("^(a)(b)$"));
+        assert!(!is_one_plain_group("^([abc)$"));
     }
 }

@@ -52,7 +52,7 @@ trees resolved in a scratch crate, upstream sources):
 - **T-71-003:** the prescreen was already 1,024 bits with a `max(4 * sqrt(n), n / 64, ...)` cap
   (v1.1.0). It was measured at 1k, 10k and 100k (`docs/numbers.md`, v1.5.0 measurements):
   stage-1 recall is 100% for rare-word queries at every size and 98.5% for common-word queries at
-  100k. A 2,048-bit prescreen gave identical recall and was up to 2x slower. Hypothesis rejected;
+  100k. A 2,048-bit prescreen gave identical recall and was about 1.5x slower at 100k. Hypothesis rejected;
   the width is unchanged, and the ticket closes with the measurement.
 - **T-71-004:** measured before the fix over 20,000 events: 3 distinct and 66 similar events
   (0.33%) were false one-step suffixes, all from colliding 16-bit corners. None of the nonzero
@@ -85,7 +85,8 @@ synthetic set and then on the real-session set.
 **Acceptance Criteria:**
 
 - [x] Index kept in SQLite FTS5 tables of the workspace store (a porter `unicode61` table for
-  BM25, a `trigram` table for substrings), written at ingest; rebuildable from the CAS.
+  BM25, a `trigram` table for substrings), written when the workspace is saved (each hook saves
+  once; unsaved artifacts are not yet searchable); rebuildable from the CAS.
 - [x] Tokenizer handles code identifiers (camelCase, snake_case, paths) with tests.
 - [x] Ingest and query time measured and published in `docs/numbers.md`.
 - [x] Store schema change versioned through a migration and documented. (Versioned by the

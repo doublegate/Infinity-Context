@@ -92,6 +92,14 @@ fn disabled_index_builds_nothing_and_answers_nothing() {
     assert!(!has_tables(&dir));
     assert_eq!(mmu.lexical_matches("alpha", 5), []);
     assert_eq!(mmu.substring_matches("alpha", 5), []);
+    // Tables left by an earlier run with the index on are not read once it is off (#97).
+    mmu.set_lexical_index(true);
+    mmu.ingest_payload(AgentKind::Codex, "log", "delta epsilon\n", false);
+    mmu.save_workspace_dir(&dir).unwrap();
+    assert_eq!(mmu.lexical_matches("alpha", 5).len(), 1);
+    mmu.set_lexical_index(false);
+    assert_eq!(mmu.lexical_matches("alpha", 5), []);
+    assert_eq!(mmu.substring_matches("alpha", 5), []);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -157,6 +165,16 @@ fn rows_the_sealed_cas_does_not_hold_are_ignored() {
         )
         .unwrap();
     assert_eq!(mmu.lexical_matches("planted", 5), []);
+    // Many planted rows that outrank the genuine one cannot hide it (over-fetch).
+    for i in 0..20 {
+        db(&dir)
+            .execute(
+                "INSERT INTO lex_words (rowid, body, parts) VALUES (?1, 'genuine genuine genuine', '')",
+                [500_000 + i],
+            )
+            .unwrap();
+    }
+    assert_eq!(mmu.lexical_matches("genuine", 1).len(), 1);
     assert_eq!(mmu.substring_matches("planted", 5), []);
     // Genuine rows still answer.
     assert_eq!(mmu.lexical_matches("genuine", 5).len(), 1);
@@ -170,9 +188,10 @@ fn a_broken_index_never_fails_a_save() {
     mmu.set_lexical_index(false);
     mmu.ingest_payload(AgentKind::Codex, "log", "first save\n", false);
     mmu.save_workspace_dir(&dir).unwrap();
-    // An ordinary table under the index's name makes every index write fail.
+    // A view under the index's name cannot be dropped or written as a table, so every index
+    // write fails. (A stray plain table is simply rebuilt: half a pair is dropped first.)
     db(&dir)
-        .execute_batch("CREATE TABLE lex_words (x INTEGER);")
+        .execute_batch("CREATE VIEW lex_words AS SELECT 1 AS x;")
         .unwrap();
     mmu.set_lexical_index(true);
     let id = mmu

@@ -1241,14 +1241,15 @@ mod tests {
                 let queries = 200;
                 let (mut s1, mut r1, mut r5, mut ties) = (0, 0, 0, 0usize);
                 let mut cap = 0;
-                let started = std::time::Instant::now();
+                // Only `query_associative` is timed; the inspection of stage 1 and the count of
+                // ambiguous artifacts run outside the timer (review of #97).
+                let mut timed = std::time::Duration::ZERO;
                 for _ in 0..queries {
                     let t = rng.below(n);
                     let q: Vec<String> = (0..3)
                         .map(|_| format!("w{}", words[t][2 + rng.below(22)]))
                         .collect();
                     let query = q.join(" ");
-                    // How ambiguous the query is: artifacts holding all three words.
                     let qw: Vec<usize> = q.iter().map(|w| w[1..].parse().unwrap()).collect();
                     ties += words
                         .iter()
@@ -1260,12 +1261,14 @@ mod tests {
                     let cands = idx.candidate_set(&q_hv, &q_tokens, &q_postings, 5);
                     cap = cap.max(cands.len());
                     s1 += usize::from(cands.binary_search(&t).is_ok());
+                    let started = std::time::Instant::now();
                     let hits = idx.query_associative(&query, 5);
+                    timed += started.elapsed();
                     let target = ArtifactId(t as u64 + 1);
                     r1 += usize::from(hits.first().is_some_and(|h| h.artifact_id == target));
                     r5 += usize::from(hits.iter().any(|h| h.artifact_id == target));
                 }
-                let per = started.elapsed().as_secs_f64() * 1e3 / f64::from(queries);
+                let per = timed.as_secs_f64() * 1e3 / f64::from(queries);
                 let pct = |x: usize| 100.0 * x as f64 / f64::from(queries);
                 println!(
                     "| {n} | {vocab} | {queries} | {cap} | {:.1} | {:.1}% | {:.1}% | {:.1}% | {per:.2} ms |",
@@ -1285,6 +1288,42 @@ mod tests {
         let (idx, _) = synthetic_corpus(60, 500, 7);
         for query in ["w1 w2 w3", "Bash:run", "w499"] {
             assert_eq!(candidate_count(&idx, query, 5), 60, "{query}");
+        }
+    }
+
+    /// ICX-AUD-052 measurement (run with `--ignored --nocapture` in release): over 20,000 events,
+    /// how many earlier entries the coordinates alone report as sharing the latest history, and
+    /// how many the confirmed suffix does. Every coordinate-level claim here is false, since no
+    /// event repeats.
+    #[test]
+    #[ignore = "measurement; prints counts"]
+    fn measure_fractal_suffix_false_positives() {
+        for (label, similar) in [("distinct", false), ("similar", true)] {
+            let mut idx = HdcAssociativeIndex::new();
+            let n = 20_000usize;
+            for i in 0..n {
+                let (subj, content) = if similar {
+                    (
+                        "Bash:cargo test".to_owned(),
+                        format!("test result: ok. {i} passed"),
+                    )
+                } else {
+                    (
+                        format!("cmd-{i}"),
+                        format!("payload {} {}", i * 7919, i ^ 0x5a5a),
+                    )
+                };
+                idx.observe_event(ArtifactId(i as u64), &subj, &content, false);
+            }
+            let cur = idx.current_trajectory();
+            let coord = (0..n - 1)
+                .filter(|&i| cur.verified_suffix_depth(&idx.entries[i].fractal_coord) > 0)
+                .count();
+            let exact = (0..n - 1)
+                .filter(|&i| idx.exact_shared_suffix(i) > 0)
+                .count();
+            println!("{label}: n={n} coordinate-level claims={coord} confirmed={exact}");
+            assert_eq!(exact, 0);
         }
     }
 }

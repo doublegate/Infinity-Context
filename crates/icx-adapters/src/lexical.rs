@@ -34,7 +34,7 @@ pub const MAX_INDEXED_BYTES: usize = 1 << 20;
 pub const BACKFILL_BATCH: usize = 2_000;
 
 /// Query terms used, so a long query cannot build an unbounded FTS5 expression.
-const MAX_QUERY_TERMS: usize = 32;
+pub const MAX_QUERY_TERMS: usize = 32;
 
 /// Whether lexical ranking, and with it the index, is enabled (`ICX_RECALL_RANKING=rrf`).
 #[must_use]
@@ -46,8 +46,40 @@ fn db_err(e: impl std::fmt::Display) -> IcxError {
     IcxError::Io(format!("lexical index: {e}"))
 }
 
-/// Creates the tables if missing and records their version.
-pub(crate) fn ensure_tables(conn: &Connection) -> Result<(), IcxError> {
+/// The `lexical_index` version recorded in `meta`, if any.
+fn stored_version(conn: &Connection) -> Result<Option<i64>, IcxError> {
+    conn.query_row("SELECT v FROM meta WHERE k = 'lexical_index'", [], |r| {
+        r.get::<_, i64>(0)
+    })
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(db_err(other)),
+    })
+}
+
+/// Number of the two lexical tables present (0, 1 or 2).
+fn table_count(conn: &Connection) -> Result<i64, IcxError> {
+    conn.query_row(
+        "SELECT count(*) FROM sqlite_master WHERE name IN ('lex_words', 'lex_trigrams')",
+        [],
+        |r| r.get(0),
+    )
+    .map_err(db_err)
+}
+
+/// Creates the tables if missing and records their version. Tables of another version, or only
+/// one of the two, are dropped first and rebuilt (review of #97). Returns `true` when the tables
+/// were (re)created empty, so the caller's record of indexed ids is stale.
+pub(crate) fn ensure_tables(conn: &Connection) -> Result<bool, IcxError> {
+    let count = table_count(conn)?;
+    let current = count == 2 && stored_version(conn)? == Some(LEXICAL_VERSION);
+    if current {
+        return Ok(false);
+    }
+    if count > 0 {
+        drop_tables(conn)?;
+    }
     conn.execute_batch(
         "CREATE VIRTUAL TABLE IF NOT EXISTS lex_words USING fts5(body, parts, \
            tokenize = \"porter unicode61 remove_diacritics 2 tokenchars '_'\", content = '');
@@ -61,19 +93,13 @@ pub(crate) fn ensure_tables(conn: &Connection) -> Result<(), IcxError> {
         params![LEXICAL_VERSION],
     )
     .map_err(db_err)?;
-    Ok(())
+    Ok(true)
 }
 
-/// Whether the lexical tables exist in this store.
+/// Whether this build can query the lexical tables: both exist, at this build's version. A store
+/// written by a newer build is not read (review of #97).
 pub(crate) fn tables_exist(conn: &Connection) -> Result<bool, IcxError> {
-    let n: i64 = conn
-        .query_row(
-            "SELECT count(*) FROM sqlite_master WHERE name IN ('lex_words', 'lex_trigrams')",
-            [],
-            |r| r.get(0),
-        )
-        .map_err(db_err)?;
-    Ok(n == 2)
+    Ok(table_count(conn)? == 2 && stored_version(conn)? == Some(LEXICAL_VERSION))
 }
 
 /// Drops the tables (contentless rows cannot be deleted one by one); the next save with the
@@ -129,12 +155,13 @@ pub(crate) fn insert(conn: &Connection, id: ArtifactId, text: &str) -> Result<()
 }
 
 /// The parts of every compound identifier in `text`, lowercased and space-separated:
-/// `parseHttpRequest` gives `parse http request`, `shell_words` gives `shell words`,
-/// `icx-adapters` gives `icx adapters`. A plain word gives nothing (it is in the body already).
+/// `parseHttpRequest` gives `parse http request`, `shell_words` gives `shell words`. A plain
+/// word gives nothing, and neither does `kebab-case`, which the tokenizer already splits in the
+/// body (review of #97).
 #[must_use]
 pub fn identifier_parts(text: &str) -> String {
     let mut out = String::new();
-    for word in text.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '-')) {
+    for word in text.split(|c: char| !(c.is_alphanumeric() || c == '_')) {
         let parts = split_identifier(word);
         if parts.len() > 1 {
             for p in parts {
@@ -148,11 +175,11 @@ pub fn identifier_parts(text: &str) -> String {
     out
 }
 
-/// Splits one identifier at `_`, `-`, lower-to-upper and letter-digit boundaries, and before the
-/// last capital of an acronym run (`HTTPServer` gives `HTTP`, `Server`).
+/// Splits one identifier at `_`, lower-to-upper and letter-digit boundaries, and before the last
+/// capital of an acronym run (`HTTPServer` gives `HTTP`, `Server`).
 fn split_identifier(word: &str) -> Vec<&str> {
     let mut parts = Vec::new();
-    for piece in word.split(['_', '-']).filter(|p| !p.is_empty()) {
+    for piece in word.split('_').filter(|p| !p.is_empty()) {
         let chars: Vec<(usize, char)> = piece.char_indices().collect();
         let mut start = 0;
         for i in 1..chars.len() {
@@ -176,15 +203,23 @@ fn split_identifier(word: &str) -> Vec<&str> {
 }
 
 /// The FTS5 query for `query`: each distinct word (letters, digits and `_`) as a quoted term,
-/// joined by OR, at most [`MAX_QUERY_TERMS`]. Quoting makes every term a literal, so no query
-/// text is read as FTS5 syntax. `None` when the query has no words.
+/// and the parts of each compound identifier as well (so `parseHttpRequest` also finds
+/// `parse_http_request`), joined by OR, at most [`MAX_QUERY_TERMS`]. Quoting makes every term a
+/// literal, so no query text is read as FTS5 syntax. `None` when the query has no words.
 #[must_use]
 pub fn words_query(query: &str) -> Option<String> {
     let mut seen = std::collections::BTreeSet::new();
     let terms: Vec<String> = query
         .split(|c: char| !(c.is_alphanumeric() || c == '_'))
         .filter(|w| !w.is_empty())
-        .map(str::to_lowercase)
+        .flat_map(|w| {
+            let parts = split_identifier(w);
+            let mut all = vec![w.to_lowercase()];
+            if parts.len() > 1 {
+                all.extend(parts.into_iter().map(str::to_lowercase));
+            }
+            all
+        })
         .filter(|w| seen.insert(w.clone()))
         .take(MAX_QUERY_TERMS)
         .map(|w| format!("\"{}\"", w.replace('"', "\"\"")))
@@ -218,23 +253,36 @@ pub fn search_words(
     rows.collect::<Result<_, _>>().map_err(db_err)
 }
 
-/// Ids of artifacts holding every trigram of `needle` (at least 3 characters), at most `limit`.
-/// A superset of the artifacts containing `needle`; the caller confirms each against its text.
+/// Ids of artifacts holding every sampled trigram of `needle` (at least 3 characters), at most
+/// `limit`. A superset of the artifacts containing `needle`; the caller confirms each against
+/// its text. A needle with more than [`MAX_QUERY_TERMS`] distinct trigrams is sampled evenly
+/// along its length, start and end included, so a long shared prefix (a path, a URL) does not
+/// decide the candidates alone (review of #97). A needle holding NUL matches nothing.
 pub fn trigram_candidates(
     conn: &Connection,
     needle: &str,
     limit: usize,
 ) -> Result<Vec<ArtifactId>, IcxError> {
     let chars: Vec<char> = needle.chars().collect();
-    if chars.len() < 3 {
+    if chars.len() < 3 || limit == 0 || chars.contains(&'\0') {
         return Ok(Vec::new());
     }
     let mut seen = std::collections::BTreeSet::new();
-    let terms: Vec<String> = chars
+    let distinct: Vec<String> = chars
         .windows(3)
         .map(|w| w.iter().collect::<String>())
         .filter(|t| seen.insert(t.clone()))
-        .take(MAX_QUERY_TERMS)
+        .collect();
+    let picked: Vec<&String> = if distinct.len() <= MAX_QUERY_TERMS {
+        distinct.iter().collect()
+    } else {
+        let last = distinct.len() - 1;
+        (0..MAX_QUERY_TERMS)
+            .map(|i| &distinct[i * last / (MAX_QUERY_TERMS - 1)])
+            .collect()
+    };
+    let terms: Vec<String> = picked
+        .iter()
         .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
         .collect();
     let mut stmt = conn
@@ -276,7 +324,8 @@ mod tests {
         );
         assert_eq!(split_identifier("HTTPServer"), ["HTTP", "Server"]);
         assert_eq!(split_identifier("shell_words"), ["shell", "words"]);
-        assert_eq!(split_identifier("icx-adapters"), ["icx", "adapters"]);
+        assert_eq!(split_identifier("icx-adapters"), ["icx-adapters"]); // no `-` splitting here
+        assert_eq!(identifier_parts("icx-adapters"), "");
         assert_eq!(split_identifier("v1beta2"), ["v", "1", "beta", "2"]);
         assert_eq!(split_identifier("plain"), ["plain"]);
         assert_eq!(
@@ -298,6 +347,10 @@ mod tests {
             Some("\"a\" OR \"and\" OR \"b\" OR \"near\" OR \"c\"".into())
         );
         assert_eq!(words_query("!!! ..."), None);
+        assert_eq!(
+            words_query("parseHttp"),
+            Some("\"parsehttp\" OR \"parse\" OR \"http\"".into())
+        );
         let long = (0..100)
             .map(|i| format!("w{i}"))
             .collect::<Vec<_>>()
@@ -366,5 +419,35 @@ mod tests {
         assert!(!tables_exist(&c).unwrap());
         ensure_tables(&c).unwrap();
         assert_eq!(indexed_ids(&c).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn long_needles_are_sampled_along_their_length_and_nul_matches_nothing() {
+        let c = mem();
+        let shared = "https://example.invalid/a/very/long/shared/prefix/";
+        insert(&c, ArtifactId(1), &format!("{shared}first-target")).unwrap();
+        insert(&c, ArtifactId(2), &format!("{shared}second-other")).unwrap();
+        // Past the term budget, but the end of the needle still decides.
+        assert_eq!(
+            trigram_candidates(&c, &format!("{shared}first-target"), 10).unwrap(),
+            [ArtifactId(1)]
+        );
+        assert_eq!(trigram_candidates(&c, "pre\0fix", 10).unwrap(), []);
+        assert_eq!(trigram_candidates(&c, "prefix", 0).unwrap(), []);
+    }
+
+    #[test]
+    fn tables_of_another_version_or_half_a_pair_are_rebuilt() {
+        let c = mem();
+        insert(&c, ArtifactId(1), "kept until a rebuild").unwrap();
+        assert!(!ensure_tables(&c).unwrap(), "current tables are kept");
+        c.execute("UPDATE meta SET v = 99 WHERE k = 'lexical_index'", [])
+            .unwrap();
+        assert!(!tables_exist(&c).unwrap(), "a newer version is not read");
+        assert!(ensure_tables(&c).unwrap(), "rebuilt for this version");
+        assert_eq!(indexed_ids(&c).unwrap().len(), 0);
+        c.execute_batch("DROP TABLE lex_trigrams").unwrap();
+        assert!(ensure_tables(&c).unwrap(), "half a pair is rebuilt");
+        assert!(tables_exist(&c).unwrap());
     }
 }

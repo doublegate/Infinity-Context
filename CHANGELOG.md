@@ -19,6 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   their parts) and trigrams for substrings, confirmed against the stored text. It is unsealed
   derived state, so it can only name artifacts the sealed CAS holds; it is backfilled 2,000
   artifacts per save; the schema version is unchanged, so older builds still open the store.
+  Turning it off also stops its queries, and tables of another version (or only one of the pair)
+  are rebuilt rather than read.
   Measured on a real 54 MB store: 6.7 MB of index, queries under 1.2 ms (`docs/numbers.md`).
 - Recall reports a shared fractal suffix only for a history that really repeats. Each trajectory
   step keeps a 16-bit corner of its state, so distinct events with equal corners were reported as

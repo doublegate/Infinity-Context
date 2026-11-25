@@ -423,10 +423,9 @@ pub(crate) fn save<'c>(
     {
         tx.execute_batch("DELETE FROM chunks; DELETE FROM artifacts; DELETE FROM emitted;")
             .map_err(db_err)?;
-        // The lexical index described the old rows; it is rebuilt from the new ones.
-        if crate::lexical::tables_exist(&tx)? {
-            crate::lexical::drop_tables(&tx)?;
-        }
+        // The lexical index described the old rows; it is rebuilt from the new ones. Dropped
+        // whatever state it is in (both tables, one, or none).
+        crate::lexical::drop_tables(&tx)?;
         *persisted = PersistedIds::default();
         (new_chunks, new_artifacts, new_emitted) =
             insert_rows(&tx, &chunks, &artifacts, derived.emitted, persisted)?;
@@ -514,6 +513,9 @@ fn index_lexical(
     match index_lexical_rows(tx, chunks, artifacts, new_artifacts, persisted) {
         Ok(added) => {
             if let Err(e) = tx.execute_batch("RELEASE lexical") {
+                // Undo the index rows too, so the record of indexed ids stays true.
+                let _ = tx.execute_batch("ROLLBACK TO lexical; RELEASE lexical");
+                persisted.lexical = None;
                 eprintln!("icx: lexical index skipped: {e}");
                 return Vec::new();
             }
@@ -537,7 +539,9 @@ fn index_lexical_rows(
     persisted: &mut PersistedIds,
 ) -> Result<Vec<ArtifactId>, IcxError> {
     {
-        crate::lexical::ensure_tables(tx)?;
+        if crate::lexical::ensure_tables(tx)? {
+            persisted.lexical = Some(BTreeSet::new());
+        }
         if persisted.lexical.is_none() {
             persisted.lexical = Some(crate::lexical::indexed_ids(tx)?);
         }

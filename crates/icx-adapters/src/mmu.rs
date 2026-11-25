@@ -162,6 +162,10 @@ impl InfinityContextMmu {
     /// can name only artifacts the sealed store vouches for (T-71-001).
     #[must_use]
     pub fn lexical_matches(&self, query: &str, limit: usize) -> Vec<(ArtifactId, f64)> {
+        // Off means off: tables left by an earlier run are not maintained, so not read (#97).
+        if !self.lexical_index || limit == 0 {
+            return Vec::new();
+        }
         let Some((dir, _)) = self.loaded_generation.as_ref() else {
             return Vec::new();
         };
@@ -171,17 +175,24 @@ impl InfinityContextMmu {
         if !crate::lexical::tables_exist(&conn).unwrap_or(false) {
             return Vec::new();
         }
-        crate::lexical::search_words(&conn, query, limit)
+        // Over-fetch, so rows the CAS does not hold (stale or planted) cannot crowd out genuine
+        // ones up to a bound (review of #97).
+        crate::lexical::search_words(&conn, query, limit.saturating_mul(4).max(50))
             .unwrap_or_default()
             .into_iter()
             .filter(|(id, _)| self.cas.get_meta(*id).is_some())
+            .take(limit)
             .collect()
     }
 
-    /// Artifacts whose text contains `needle` (at least 3 characters), at most `limit`, in id
-    /// order: trigram candidates from the lexical index, each confirmed against its stored text.
+    /// Artifacts whose text contains `needle` (at least 3 characters), at most `limit`, sorted
+    /// by artifact id: trigram candidates from the lexical index, each confirmed against its
+    /// stored text. At most `max(64, 8 * limit)` candidates are read from the CAS.
     #[must_use]
     pub fn substring_matches(&self, needle: &str, limit: usize) -> Vec<ArtifactId> {
+        if !self.lexical_index || limit == 0 {
+            return Vec::new();
+        }
         let Some((dir, _)) = self.loaded_generation.as_ref() else {
             return Vec::new();
         };
@@ -192,16 +203,19 @@ impl InfinityContextMmu {
             return Vec::new();
         }
         // Candidates are a superset; scan a bounded number of them.
-        crate::lexical::trigram_candidates(&conn, needle, limit.saturating_mul(8).max(64))
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|id| {
-                self.cas
-                    .deref_bytes(*id)
-                    .is_ok_and(|b| String::from_utf8_lossy(&b).contains(needle))
-            })
-            .take(limit)
-            .collect()
+        let mut found: Vec<ArtifactId> =
+            crate::lexical::trigram_candidates(&conn, needle, limit.saturating_mul(8).max(64))
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|id| {
+                    self.cas
+                        .deref_bytes(*id)
+                        .is_ok_and(|b| String::from_utf8_lossy(&b).contains(needle))
+                })
+                .collect();
+        found.sort_unstable();
+        found.truncate(limit);
+        found
     }
 
     /// Returns `true` if `tool_name` refers to Infinity-Context's own MCP pager tool (`icx` /
