@@ -128,6 +128,23 @@ impl SecretRedactor {
                                         bracket_quote: tail.quote,
                                         ..PendingSecret::default()
                                     });
+                                } else if let Some(q) =
+                                    tail.quote.and_then(|q| u8::try_from(q).ok())
+                                {
+                                    // `) + """` or `` ) + ` ``: the tail opens a string.
+                                    let rb = t.as_bytes();
+                                    let at = tail.quote_at.unwrap_or(0);
+                                    let start = if at >= 2 && rb[at - 1] == q && rb[at - 2] == q {
+                                        at - 2
+                                    } else {
+                                        at
+                                    };
+                                    pending_value = Some(PendingSecret {
+                                        indent: indent_of_key,
+                                        quote: Some(q),
+                                        triple: start != at,
+                                        ..PendingSecret::default()
+                                    });
                                 } else if ends_with_continuation(t) {
                                     pending_value = Some(PendingSecret {
                                         indent: indent_of_key,
@@ -381,7 +398,11 @@ impl SecretRedactor {
                     let prev = if i > 0 { b[i - 1] } else { 0 };
                     let next = b.get(i + 1).copied().unwrap_or(0);
                     if !matches!(prev, b'=' | b'!' | b'<' | b'>') && !matches!(next, b'=' | b'>') {
-                        let head = line[..i].trim_end_matches([' ', '\t']);
+                        // `password := ...` (Go, Python walrus): the colon belongs to the operator.
+                        let head = line[..i]
+                            .trim_end_matches([' ', '\t'])
+                            .trim_end_matches(':')
+                            .trim_end_matches([' ', '\t']);
                         let key_start = head
                             .rfind(|c: char| {
                                 !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
@@ -1474,7 +1495,11 @@ impl SecretRedactor {
                 || t.starts_with("//")
                 // Separators and closers count only inside brackets opened before the key.
                 || (open_before > 0 && t.starts_with([',', ')', ']', '}']))
-                || (!config && t.starts_with(';'))
+                // `;` ends a statement only before whitespace (`"abc" ;x` is one shell word with
+                // the value; review of #103).
+                || (!config
+                    && t.strip_prefix(';')
+                        .is_some_and(|r| r.chars().next().is_none_or(char::is_whitespace)))
                 || next_assignment)
             {
                 let from = cursor + (tail.len() - t.len());
@@ -3147,6 +3172,9 @@ fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
             // A comment ends the structure on this line (review of #103: a `)` or `(` in a
             // comment is not a bracket).
             '#' if before.is_none_or(char::is_whitespace) => return out,
+            // A glued `#` (`"part1"#)`) may start a comment: like a glued `//`, it can keep a
+            // value open but never close it (review of #103). `r#"` raw strings are excluded.
+            '#' if !before.is_some_and(|b| b == 'r' || b == '#') => ambiguous = true,
             // `//` after whitespace is a comment and ends the scan. A glued `//` that is not a
             // URL scheme (`a//b`: floor division, or a comment) is ambiguous: openers and quotes
             // after it still count, closers do not, so it can keep a value open but never close

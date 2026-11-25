@@ -590,3 +590,38 @@ fn a_quote_after_a_glued_double_slash_keeps_the_value_pending() {
     let clean = SecretRedactor::redact(&text);
     assert!(clean.contains("line249"), "the line cap ends it");
 }
+
+/// Antigravity round after 63d21dd.
+#[test]
+fn review_round_semicolon_tail_bracket_tail_glued_hash_and_walrus() {
+    check(&[
+        ("PASSWORD=\"abc\" ;qqzzqqzz\n", &["abc", "qqzz"], &[]),
+        ("password = \"abc\" ;qqzzqqzz\n", &["abc", "qqzz"], &[]),
+        ("password = \"abc\"; next = 1\n", &["abc"], &["next = 1"]),
+        (
+            "api_key = (\n  \"rrss\"\n) + \"\"\"\nqqzz\n\"\"\"\nnext = 1\n",
+            &["rrss", "qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "api_key = (\n  \"rrss\"\n) + `\nqqzz\n`;\nnext = 1\n",
+            &["rrss", "qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "api_key = (\n  \"rrss\"#)\n  \"qqzz\"\n)\n",
+            &["rrss", "qqzz"],
+            &[],
+        ),
+        (
+            "password := `\nqqzz\n`\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "password := \"\"\"\nqqzz\n\"\"\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+    ]);
+}
