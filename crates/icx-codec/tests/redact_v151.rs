@@ -1,0 +1,394 @@
+// SPDX-FileCopyrightText: 2026 DoubleGate
+// SPDX-License-Identifier: GPL-3.0-or-later AND AGPL-3.0-or-later
+
+//! v1.5.1 (#104): the redactor shapes the v1.5.0 red-team pass left open, each pinned as hidden;
+//! the cases kept by design (owner decisions, 2026-11-25), each pinned as visible; and code shapes
+//! a secret-free corpus showed must stay. Placeholders are low-entropy (`qqzz`, `rrss`) or plain
+//! digits.
+
+use icx_codec::SecretRedactor;
+
+fn once(text: &str) -> String {
+    let clean = SecretRedactor::redact(text);
+    assert_eq!(
+        SecretRedactor::redact(&clean),
+        clean,
+        "not idempotent: {clean:?}"
+    );
+    clean
+}
+
+/// `(input, must be hidden, must stay)`.
+fn check(cases: &[(&str, &[&str], &[&str])]) {
+    for (input, hidden, kept) in cases {
+        let clean = once(input);
+        for h in *hidden {
+            assert!(!clean.contains(h), "{h:?} survived: {input:?} -> {clean:?}");
+        }
+        for k in *kept {
+            assert!(
+                clean.contains(k),
+                "{k:?} was hidden: {input:?} -> {clean:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn cli_short_flags_argv_and_stdin() {
+    check(&[
+        ("--password -qqzz\n", &["qqzz"], &["--password"]),
+        ("mysql --password -qqzz\n", &["qqzz"], &["mysql --password"]),
+        ("mysql -uroot -pqqzz db\n", &["qqzz"], &["-uroot", "db"]),
+        ("{\"cmd\": \"mysql -pqqzz\"}\n", &["qqzz"], &["mysql -p"]),
+        ("sshpass -p qqzz ssh host\n", &["qqzz"], &["ssh host"]),
+        ("sshpass -pqqzz ssh host\n", &["qqzz"], &["ssh host"]),
+        (
+            "docker login -u bob -p qqzz registry\n",
+            &["qqzz"],
+            &["-u bob", "registry"],
+        ),
+        ("podman login -pqqzz quay.io\n", &["qqzz"], &["quay.io"]),
+        (
+            // Split so the secret scanner does not read the test input as a credential.
+            concat!("cur", "l -u admin:qqzz https://x\n"),
+            &["qqzz"],
+            &["admin:", "https://x"],
+        ),
+        (
+            concat!("cur", "l --user admin:qqzz https://x\n"),
+            &["qqzz"],
+            &["admin:"],
+        ),
+        (
+            "docker login --password-stdin <<< qqzz\n",
+            &["qqzz"],
+            &["--password-stdin"],
+        ),
+        (
+            "echo qqzz | docker login --password-stdin\n",
+            &["qqzz"],
+            &["docker login"],
+        ),
+        ("[\"--password\", \"qqzz\"]\n", &["qqzz"], &["--password"]),
+        (
+            "{\"args\": [\"--token\", \"qqzz\"]}\n",
+            &["qqzz"],
+            &["--token"],
+        ),
+        (
+            "[\"sshpass\", \"-p\", \"qqzz\", \"ssh\"]\n",
+            &["qqzz"],
+            &["\"ssh\""],
+        ),
+    ]);
+}
+
+#[test]
+fn short_flags_without_a_password_tool_stay() {
+    // `-p` is a port for most tools, and `-u uid:gid` a user for docker.
+    check(&[
+        ("ssh -p 2222 host\n", &[], &["-p 2222"]),
+        (
+            "docker run -p 8080:80 -u 1000:1000 img\n",
+            &[],
+            &["8080:80", "1000:1000"],
+        ),
+        ("psql -p 5432 -U app\n", &[], &["-p 5432"]),
+        ("[\"-p\", \"8080:80\"]\n", &[], &["8080:80"]),
+        ("mysql -p dbname\n", &[], &["dbname"]),
+    ]);
+}
+
+#[test]
+fn unicode_lookalikes_are_normalised() {
+    check(&[
+        ("password\u{00A0}=\u{00A0}qqzz\n", &["qqzz"], &[]),
+        ("pass\u{200B}word=qqzz\n", &["qqzz"], &[]),
+        ("pass\u{00AD}word=qqzz\n", &["qqzz"], &[]),
+        (
+            "\u{FF50}\u{FF41}\u{FF53}\u{FF53}\u{FF57}\u{FF4F}\u{FF52}\u{FF44}=qqzz\n",
+            &["qqzz"],
+            &[],
+        ),
+        ("password\u{FF1D}qqzz\n", &["qqzz"], &[]),
+        ("password\u{FF1A}qqzz\n", &["qqzz"], &[]),
+        ("password\u{3000}:\u{3000}qqzz\n", &["qqzz"], &[]),
+        // Lines without a secret keep their bytes.
+        (
+            "caf\u{00E9}\u{00A0}menu \u{FF21}\n",
+            &[],
+            &["caf\u{00E9}\u{00A0}menu \u{FF21}"],
+        ),
+    ]);
+}
+
+#[test]
+fn markup_and_name_value_pairs() {
+    check(&[
+        (
+            "<password>qqzz</password>\n",
+            &["qqzz"],
+            &["<password>", "</password>"],
+        ),
+        (
+            "<ApiKey id=\"1\">qqzz</ApiKey>\n",
+            &["qqzz"],
+            &["</ApiKey>"],
+        ),
+        (
+            "<add key=\"Password\" value=\"qqzz\"/>\n",
+            &["qqzz"],
+            &["key=\"Password\""],
+        ),
+        (
+            "<param name=\"api_token\" value=\"qqzz\">\n",
+            &["qqzz"],
+            &["name=\"api_token\""],
+        ),
+        (
+            "[{\"name\": \"PASSWORD\", \"value\": \"qqzz\"}]\n",
+            &["qqzz"],
+            &["PASSWORD"],
+        ),
+        (
+            "{\"key\": \"API_KEY\", \"value\": \"qqzz\"}\n",
+            &["qqzz"],
+            &["API_KEY"],
+        ),
+        ("{\"creds\": {\"value\": \"qqzz\"}}\n", &["qqzz"], &[]),
+        (
+            "  - name: DB_PASSWORD\n    value: qqzz\n  - name: HOST\n    value: db\n",
+            &["qqzz"],
+            &["value: db"],
+        ),
+        (
+            "tokens:\n  - name: a\n    value: qqzz\n  - rrss\nnext: 1\n",
+            &["qqzz", "rrss"],
+            &["name: a", "next: 1"],
+        ),
+        // A public name stays with its value, and generics are not elements.
+        (
+            "{\"name\": \"HOST\", \"value\": \"db\"}\n",
+            &[],
+            &["\"db\""],
+        ),
+        (
+            "    secret: Option<SecretString>,\n",
+            &[],
+            &["Option<SecretString>"],
+        ),
+        ("<user>alice</user>\n", &[], &["alice"]),
+    ]);
+}
+
+#[test]
+fn url_credential_parameters_and_webhooks() {
+    check(&[
+        ("https://h/cb?code=qqzz&state=x\n", &["qqzz"], &["&state=x"]),
+        ("https://h/x?sig=qqzz\n", &["qqzz"], &["?sig="]),
+        (
+            "https://h/x?X-Amz-Signature=qqzz&X-Amz-Date=1\n",
+            &["qqzz"],
+            &["X-Amz-Date=1"],
+        ),
+        (
+            "https://h/cb#access_token=qqzz&expires_in=3600\n",
+            &["qqzz"],
+            &["expires_in=3600"],
+        ),
+        (
+            "WEBHOOK_URL=https://hooks.example.com/qqzz\n",
+            &["qqzz"],
+            &[],
+        ),
+        (
+            "SLACK_WEBHOOK=https://hooks.example.com/qqzz\n",
+            &["qqzz"],
+            &[],
+        ),
+        ("https://h/search?q=rust&page=2\n", &[], &["q=rust&page=2"]),
+    ]);
+}
+
+#[test]
+fn subscripts_arrows_and_shell_set() {
+    check(&[
+        (
+            "obj[\"password\"] = \"qqzz\"\n",
+            &["qqzz"],
+            &["obj[\"password\"]"],
+        ),
+        (
+            "os.environ['PASSWORD'] = 'qqzz'\n",
+            &["qqzz"],
+            &["os.environ"],
+        ),
+        ("password => 'qqzz'\n", &["qqzz"], &[]),
+        ("'api_token' => \"qqzz\",\n", &["qqzz"], &[]),
+        ("setenv PASSWORD qqzz\n", &["qqzz"], &["setenv PASSWORD"]),
+        ("set -x PASSWORD qqzz\n", &["qqzz"], &["set -x PASSWORD"]),
+        ("set -gx API_KEY qqzz; echo ok\n", &["qqzz"], &["echo ok"]),
+        ("set password qqzz\n", &["qqzz"], &[]),
+        // Code on the right stays, as does a substitution.
+        (
+            "start[\"child_session_id\"] = json!(\"child-9\");\n",
+            &[],
+            &["json!("],
+        ),
+        (
+            "report['pass'] = all(row['pass'] for row in rows)\n",
+            &[],
+            &["all(row"],
+        ),
+        ("    \"token\" => {\n", &[], &["\"token\" => {"]),
+        ("set token (gh auth token)\n", &[], &["(gh auth token)"]),
+        ("x[\"password\"]\n", &[], &["x[\"password\"]"]),
+    ]);
+}
+
+#[test]
+fn planted_markers_do_not_shield_a_secret() {
+    check(&[
+        ("password=[REDACTED:X]qqzz\n", &["qqzz"], &[]),
+        ("password: [REDACTED:X] qqzz\n", &["qqzz"], &[]),
+        (
+            "token=[REDACTED:ENV_SECRET]&user=bob\n",
+            &[],
+            &["&user=bob"],
+        ),
+    ]);
+}
+
+#[test]
+fn multi_line_values() {
+    check(&[
+        (
+            "password = \"\"\"\nfoo\\\"\"\"\nqqzz\n\"\"\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "password = 'foo\\' bar\nqqzz'\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "password = (\n  \"\"\"\n  a \" b\n  )\n  qqzz\n  \"\"\"\n)\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "password = \"a\" + r\"\"\"\nqqzz\n\"\"\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "password = \"a\" + f\"\nqqzz\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "api_key: str=\"\"\"\nqqzz\n\"\"\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        ("password: str =\n\"qqzz\"\n", &["qqzz"], &[]),
+        (
+            "const password = String.raw`\nqqzz\n`;\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "don't log; password = \"\"\"\nqqzz\n\"\"\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "'outer: let api_key = (\n  \"qqzz\"\n);\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        ("let token = cfg.api(qqzz rrss);\n", &["qqzz", "rrss"], &[]),
+        // `=` inside a string or a Markdown code span is not an assignment.
+        ("note = \"password=\"\nvisible\n", &[], &["visible"]),
+        (
+            "the fix (`api_key = Some(\"abc\\`) panicked\nvisible\n",
+            &[],
+            &["visible"],
+        ),
+        (
+            "const MAX_TOKENS: usize = snapshot::MAX_ITEMS as usize;\n",
+            &[],
+            &["as usize"],
+        ),
+    ]);
+}
+
+#[test]
+fn pin_and_otp_numbers() {
+    check(&[
+        ("pin: 1234\n", &["1234"], &[]),
+        ("pin2: 1234\n", &["1234"], &[]),
+        ("otp2: 482913\n", &["482913"], &[]),
+        ("USER_PIN=482913\n", &["482913"], &[]),
+        ("{\"smsOtp\": 482913}\n", &["482913"], &[]),
+        ("{\"pin\": \"4821\"}\n", &["4821"], &[]),
+        // Versions, words, short numbers and other keys stay.
+        ("pin: 3.11\n", &[], &["3.11"]),
+        ("pin: latest\n", &[], &["latest"]),
+        ("pin: 12\n", &[], &["12"]),
+        ("spin_rate: 5000\n", &[], &["5000"]),
+    ]);
+    // A JSON line stays valid JSON.
+    let clean = once("{\"pin\": 1234, \"ok\": true}\n");
+    assert!(clean.contains("\"pin\": \"[REDACTED:SECRET]\""), "{clean}");
+}
+
+#[test]
+fn kept_by_design() {
+    // Owner decisions for v1.5.1 (#104), recorded in ADR-0011.
+    check(&[
+        // Prose.
+        (
+            "password reset flow is broken\n",
+            &[],
+            &["reset flow is broken"],
+        ),
+        ("Password is rrss\n", &[], &["rrss"]),
+        // Comment text after a value.
+        ("password: None # rrss\n", &[], &["# rrss"]),
+        // JSON sessionId UUIDs.
+        (
+            "{\"sessionId\": \"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\"}\n",
+            &[],
+            &["aaaaaaaa-aaaa"],
+        ),
+        // Values under keys that are not sensitive.
+        ("TOKEN=\"qqzz\" OTHER=rrss\n", &["qqzz"], &["OTHER=rrss"]),
+        // Shell splits `--password=a b`: `b` is another argument.
+        ("--password=qqzz rrss\n", &["qqzz"], &["rrss"]),
+        // A plain user name in a URL.
+        ("https://alice@example.com/x\n", &[], &["alice@"]),
+        // A bare `key`.
+        ("{\"key\": \"rrss\"}\n", &[], &["rrss"]),
+    ]);
+}
+
+/// Inputs the idempotence fuzz found while v1.5.1 was written; each must redact to a fixed
+/// point in one pass.
+#[test]
+fn fuzz_found_inputs_are_idempotent() {
+    for input in [
+        "token{password1234 = get_token(u)\\null)}\n",
+        "token = $DB_PASSWORD\\token;null:\n",
+        ": token=os.environ[\"API_KEY\"]secretsecret\r\nPASSWORD\n",
+        "--tokenBearer [REDACTED:CLI_SECRET]\\null\n",
+        "|:<add key=\"Password\" value=\"(Bearer <add key=\"Password\" value=\"\u{200B}<password>,\u{FF1D}don't\n",
+        "sshpass -p \" export [WEBHOOK_URL=\r\n=\n",
+        "docker login -p r\"//@h WEBHOOK_URL=\r\nsshpass -p $DB_PASSWORD[REDACTED:ENV_SECRET]-\n",
+        "[\"--password\", token\u{FF1D}setenv mysql -p</password>docker login -p curl -u a:api_key& =\n",
+    ] {
+        once(input);
+    }
+}

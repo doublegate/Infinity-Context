@@ -5,6 +5,7 @@
 pub mod ahtl;
 pub mod braille;
 pub mod redact;
+mod redact_shapes;
 pub mod skeleton;
 
 pub use ahtl::{
