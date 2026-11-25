@@ -379,6 +379,9 @@ impl FractalTrajectoryArchive {
     /// trailing transitions with `target`, returning `(ArtifactId, shared_suffix_depth, chebyshev_distance)`
     /// sorted by `shared_suffix_depth` descending, `chebyshev_distance` ascending, 64-bit Morton
     /// XOR proximity ascending, and 16-D Euclidean ($L_2$) distance ascending.
+    ///
+    /// Coordinates alone cannot tell two distinct states with the same 16-bit corner apart, so
+    /// the results are candidates (ICX-AUD-052); recall confirms them against stored states.
     pub fn query_shared_suffix(
         &self,
         target: &FractalCoord,

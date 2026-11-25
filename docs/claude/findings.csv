@@ -46,7 +46,7 @@ ICX-AUD-048,Medium,claims,Bi-temporal timestamps are a synthetic counter,crates/
 ICX-AUD-049,High,claims,Associative recall collapses with corpus size (top-1 5.1% at 1k docs),crates/icx-hdc/src/lib.rs:361-430,03,PoC,fixed,046b461
 ICX-AUD-050,Medium,algorithm,i16 bundler saturation; scalar per-bit accumulate dominates CPU,crates/icx-hdc/src/hv.rs:673-690,03,code+perf,fixed,c03d9ea
 ICX-AUD-051,Low,naming,Titans surprise gate is a hand-tuned heuristic,crates/icx-hdc/src/surprise.rs:36,03,paper comparison,fixed,docs: Titans-inspired naming
-ICX-AUD-052,Low,algorithm,Fractal suffix depth inferred from distance (false positives),crates/icx-hdc/src/fractal.rs:88,03,code,open,deferred
+ICX-AUD-052,Low,algorithm,Fractal suffix depth inferred from distance (false positives),crates/icx-hdc/src/fractal.rs:88,03,code+measured,fixed,"v1.5.0 (T-71-004): exact confirmation on stored states"
 ICX-AUD-053,Low,algorithm,hv_digest_u64 linear fold collides trivially,crates/icx-hdc/src/hv.rs:482,03,code+test,fixed,e0f225b (documented)
 ICX-AUD-054,Medium,correctness,Bus drops events while returning success; readers skip gaps silently,crates/icx-bus/src/ring.rs:631-651;753-799,04,PoC,fixed,b404ca6
 ICX-AUD-055,Low,claims,4-agent propagation latency not measured cross-process,crates/icx-adapters/src/lib.rs:2360,04,code,fixed,b404ca6 (two-handle file-backed test)

@@ -671,7 +671,9 @@ fn a_parent_dir_path_never_becomes_a_hook_command() {
     let cwd = h.join("cwd");
     fs::create_dir_all(&bin).unwrap();
     fs::create_dir_all(&cwd).unwrap();
-    fs::copy(env!("CARGO_BIN_EXE_icx"), bin.join("icx")).unwrap();
+    // A link, not a copy: executing a just-written copy races with other tests' forks, which
+    // can hold its write handle open (ETXTBSY, seen in CI on #97).
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_icx"), bin.join("icx")).unwrap();
     let o = Command::new("../bin/icx")
         .args(["install", "--agent", "codex", "--dry-run"])
         .current_dir(&cwd)
@@ -690,7 +692,13 @@ fn a_parent_dir_path_never_becomes_a_hook_command() {
         .to_owned();
     let cmd = line.split('"').nth(3).unwrap_or("");
     assert!(cmd.starts_with('/') && !cmd.contains(".."), "{line}");
-    assert!(cmd.contains("/bin/icx hook"), "{line}");
+    // The hook runs this very binary, by a path that stays valid.
+    let bin_path = cmd.split(" hook ").next().unwrap();
+    assert_eq!(
+        fs::canonicalize(bin_path).unwrap(),
+        fs::canonicalize(env!("CARGO_BIN_EXE_icx")).unwrap(),
+        "{line}"
+    );
 }
 
 #[cfg(unix)]
@@ -702,7 +710,9 @@ fn a_path_entry_with_a_parent_dir_is_skipped() {
     let bin = h.join("bin");
     fs::create_dir_all(&bin).unwrap();
     fs::create_dir_all(h.join("x")).unwrap();
-    fs::copy(env!("CARGO_BIN_EXE_icx"), bin.join("icx")).unwrap();
+    // A link, not a copy: executing a just-written copy races with other tests' forks, which
+    // can hold its write handle open (ETXTBSY, seen in CI on #97).
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_icx"), bin.join("icx")).unwrap();
     let o = Command::new("icx")
         .args(["install", "--agent", "codex", "--dry-run"])
         .env("PATH", h.join("x/../bin"))
@@ -753,6 +763,23 @@ fn an_old_claude_matcher_gets_advice_not_an_edit() {
     fs::write(h.join(".claude/settings.json"), split).unwrap();
     let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
     assert!(!out(&o).contains("names none of Read"), "{}", out(&o));
+    // A group with no matcher matches every tool, so it covers the others (review of #96).
+    let nomatch = r#"{"hooks": {"PostToolUse": [{"matcher": "^(Bash)$", "hooks": [{"type": "command", "command": "/x/icx hook --agent claude-code --event PostToolUse"}]}, {"hooks": [{"type": "command", "command": "/x/icx hook --agent claude-code --event PostToolUse"}]}]}}"#;
+    fs::write(h.join(".claude/settings.json"), nomatch).unwrap();
+    let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
+    assert!(!out(&o).contains("names none of Read"), "{}", out(&o));
+    // Lookahead groups and text after the group get the generic advice.
+    for m in ["^(?!mcp__icx__).*Bash$", "^(Bash)Output$"] {
+        let s = settings.replace("^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!icx__).+)$", m);
+        fs::write(h.join(".claude/settings.json"), s).unwrap();
+        let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
+        assert!(out(&o).contains("as alternatives"), "{m}: {}", out(&o));
+    }
+    // A matcher that is not a string is ignored, not taken as match-all.
+    let odd = r#"{"hooks": {"PostToolUse": [{"matcher": "^(Bash)$", "hooks": [{"type": "command", "command": "/x/icx hook --agent claude-code --event PostToolUse"}]}, {"matcher": ["Read"], "hooks": [{"type": "command", "command": "/x/icx hook --agent claude-code --event PostToolUse"}]}]}}"#;
+    fs::write(h.join(".claude/settings.json"), odd).unwrap();
+    let o = run(&h, &["--agent", "claude-code", "--dry-run"]);
+    assert!(out(&o).contains("names none of Read"), "{}", out(&o));
     // A matcher that already covers them, or matches everything, gets no advice.
     for m in ["^(Bash|Read|Grep|Glob|Agent)$", "", "^.*$", ".+"] {
         let s = settings.replace("^(Bash|BashOutput|WebFetch|WebSearch|mcp__(?!icx__).+)$", m);

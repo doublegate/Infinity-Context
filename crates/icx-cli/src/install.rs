@@ -624,10 +624,12 @@ fn stale_claude_matchers(p: &Plan, path: &Path) -> Vec<String> {
                     })
                 })
         })
-        .map(|g| {
-            g.get("matcher")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("")
+        // No matcher (or `null`) matches every tool; a matcher that is not a string is not
+        // understood, so it neither covers nor gets a note (review of #96).
+        .filter_map(|g| match g.get("matcher") {
+            None | Some(serde_json::Value::Null) => Some(""),
+            Some(serde_json::Value::String(m)) => Some(m.as_str()),
+            Some(_) => None,
         })
         .collect();
     let covered = |m: &str| {
@@ -640,9 +642,10 @@ fn stale_claude_matchers(p: &Plan, path: &Path) -> Vec<String> {
     matchers
         .iter()
         .map(|m| {
-            // The insertion point is named only for a plain `^(` group: after `^(?:` or `^(?!`
-            // it would produce an invalid regex (#95).
-            let how = if m.starts_with("^(") && !m.starts_with("^(?") {
+            // The insertion point is named only for one plain group that spans the matcher,
+            // `^(...)$`: after `^(?:` or `^(?!` it would be invalid (#95), and with text after
+            // the group (`^(Bash)Output$`) it would change what the rest matches (review of #96).
+            let how = if is_one_plain_group(m) {
                 "add `Read|Grep|Glob|Agent|Task|REPL|` after `^(`"
             } else {
                 "add `Read|Grep|Glob|Agent|Task|REPL` as alternatives"
@@ -655,6 +658,41 @@ fn stale_claude_matchers(p: &Plan, path: &Path) -> Vec<String> {
             )
         })
         .collect()
+}
+
+/// Whether `m` is `^(...)$` with one capturing group whose closing parenthesis is the one before
+/// the final `$` (nested groups inside it are fine).
+fn is_one_plain_group(m: &str) -> bool {
+    let Some(body) = m.strip_prefix("^(").and_then(|r| r.strip_suffix(")$")) else {
+        return false;
+    };
+    if body.starts_with('?') {
+        return false;
+    }
+    let mut depth = 0i32;
+    let mut escaped = false;
+    // Inside a character class (`[...]`), parentheses are literal (review of #97).
+    let mut in_class = false;
+    for c in body.chars() {
+        match c {
+            _ if escaped => escaped = false,
+            '\\' => escaped = true,
+            ']' if in_class => in_class = false,
+            _ if in_class => {}
+            '[' => in_class = true,
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                // The outer group would close before the end.
+                if depth < 0 {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    // A trailing backslash escapes the closing parenthesis itself (`^(foo\)$`).
+    depth == 0 && !escaped && !in_class
 }
 
 fn codex(p: &mut Plan, o: &Opts) {
@@ -1622,5 +1660,18 @@ mod tests {
             p.notes
         );
         let _ = fs::remove_dir_all(&h);
+    }
+
+    #[test]
+    fn one_plain_group_handles_classes_and_escapes() {
+        assert!(is_one_plain_group(
+            "^(Bash|BashOutput|WebFetch|mcp__(?!icx__).+)$"
+        ));
+        assert!(is_one_plain_group("^([)]|Bash)$"));
+        assert!(!is_one_plain_group("^(foo\\)$"));
+        assert!(!is_one_plain_group("^(Bash)Output$"));
+        assert!(!is_one_plain_group("^(?:Bash)$"));
+        assert!(!is_one_plain_group("^(a)(b)$"));
+        assert!(!is_one_plain_group("^([abc)$"));
     }
 }

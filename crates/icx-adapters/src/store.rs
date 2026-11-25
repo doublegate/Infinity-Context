@@ -93,6 +93,8 @@ pub(crate) struct DerivedState<'a> {
     pub emitted: &'a BTreeSet<[u8; 32]>,
     /// `(seal key, canonical workspace dir)`; when set, the new generation is MAC-stamped.
     pub seal: Option<(&'a [u8; 32], &'a Path)>,
+    /// Whether to maintain the lexical index (`crate::lexical`, T-71-001).
+    pub lexical: bool,
 }
 
 fn db_err(e: impl std::fmt::Display) -> IcxError {
@@ -184,6 +186,21 @@ pub(crate) fn open(dir: &Path) -> Result<Connection, IcxError> {
             )));
         }
     }
+    Ok(conn)
+}
+
+/// Opens an existing store read-only, for queries that must never write (the lexical index).
+pub(crate) fn open_read_only(dir: &Path) -> Result<Connection, IcxError> {
+    let conn = Connection::open_with_flags(
+        dir.join(DB_FILE),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(db_err)?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(db_err)?;
+    // A read-only open of a WAL store can create `-shm` with the process umask; reset it to 0600
+    // like every other open (review of #97).
+    tighten_store_file_modes(dir)?;
     Ok(conn)
 }
 
@@ -308,6 +325,8 @@ pub(crate) struct PersistedIds {
     pub chunks: BTreeSet<ArtifactId>,
     pub artifacts: BTreeSet<ArtifactId>,
     pub emitted: BTreeSet<[u8; 32]>,
+    /// Ids in the lexical index; `None` until first read from the store.
+    pub lexical: Option<BTreeSet<ArtifactId>>,
 }
 
 type NewRows = (Vec<ArtifactId>, Vec<ArtifactId>, Vec<[u8; 32]>);
@@ -401,16 +420,35 @@ pub(crate) fn save<'c>(
         .map(|(id, _, _)| *id)
         .collect::<BTreeSet<_>>()
         .len();
+    let mut rewritten = false;
     if count("chunks")? != distinct_chunks
         || count("artifacts")? != artifacts.len()
         || count("emitted")? != derived.emitted.len()
     {
         tx.execute_batch("DELETE FROM chunks; DELETE FROM artifacts; DELETE FROM emitted;")
             .map_err(db_err)?;
+        // The lexical index described the old rows; it is rebuilt from the new ones. Dropped
+        // whatever state it is in, and like all index work this never fails the save (#97).
+        drop_lexical_fail_open(&tx);
+        rewritten = true;
         *persisted = PersistedIds::default();
         (new_chunks, new_artifacts, new_emitted) =
             insert_rows(&tx, &chunks, &artifacts, derived.emitted, persisted)?;
     }
+    // After a rewrite every row is "new"; the index is then rebuilt in backfill batches like any
+    // other unindexed artifact, so one save never indexes a whole store (review of #97).
+    let lexical_new: &[ArtifactId] = if rewritten { &[] } else { &new_artifacts };
+    // The set of indexed ids after this save; applied to `persisted` only once the transaction
+    // commits, like every other persisted-id record (review of #97). `None`: unknown, re-read.
+    let lexical_after = derived.lexical.then(|| {
+        index_lexical(
+            &tx,
+            &chunks,
+            &artifacts,
+            lexical_new,
+            persisted.lexical.as_ref(),
+        )
+    });
     let next_gen = on_disk.saturating_add(1);
     let cfg = serde_json::to_vec(&derived.chunk_config).map_err(db_err)?;
     let mut upsert = tx
@@ -465,7 +503,110 @@ pub(crate) fn save<'c>(
     persisted.chunks.extend(new_chunks);
     persisted.artifacts.extend(new_artifacts);
     persisted.emitted.extend(new_emitted);
+    if let Some(after) = lexical_after {
+        persisted.lexical = after;
+    }
     Ok(next_gen)
+}
+
+/// Adds the new artifacts, and up to [`crate::lexical::BACKFILL_BATCH`] older ones not yet
+/// indexed, to the lexical index. Returns the set of indexed ids afterwards, or `None` when it
+/// is unknown (the caller re-reads it on the next save). `known` is the caller's record, `None`
+/// when not yet read. Optional derived state: any failure rolls back only the index work, is
+/// reported on stderr, and never fails the save.
+fn index_lexical(
+    tx: &rusqlite::Transaction<'_>,
+    chunks: &[(ArtifactId, &Blake3Digest, &[u8])],
+    artifacts: &[&StoredArtifact],
+    new_artifacts: &[ArtifactId],
+    known: Option<&BTreeSet<ArtifactId>>,
+) -> Option<BTreeSet<ArtifactId>> {
+    if let Err(e) = tx.execute_batch("SAVEPOINT lexical") {
+        eprintln!("icx: lexical index skipped: {e}");
+        return None;
+    }
+    match index_lexical_rows(tx, chunks, artifacts, new_artifacts, known) {
+        Ok(after) => {
+            if let Err(e) = tx.execute_batch("RELEASE lexical") {
+                // Undo the index rows too, so no record claims them.
+                let _ = tx.execute_batch("ROLLBACK TO lexical; RELEASE lexical");
+                eprintln!("icx: lexical index skipped: {e}");
+                return None;
+            }
+            Some(after)
+        }
+        Err(e) => {
+            let _ = tx.execute_batch("ROLLBACK TO lexical; RELEASE lexical");
+            eprintln!("icx: lexical index skipped: {e}");
+            None
+        }
+    }
+}
+
+fn index_lexical_rows(
+    tx: &rusqlite::Transaction<'_>,
+    chunks: &[(ArtifactId, &Blake3Digest, &[u8])],
+    artifacts: &[&StoredArtifact],
+    new_artifacts: &[ArtifactId],
+    known: Option<&BTreeSet<ArtifactId>>,
+) -> Result<BTreeSet<ArtifactId>, IcxError> {
+    let mut indexed = if crate::lexical::ensure_tables(tx)? {
+        BTreeSet::new()
+    } else if let Some(k) = known {
+        k.clone()
+    } else {
+        crate::lexical::indexed_ids(tx)?
+    };
+    let new: BTreeSet<ArtifactId> = new_artifacts.iter().copied().collect();
+    // Choose what to index first, so a save with nothing to index builds no chunk map.
+    let mut backfill = 0usize;
+    let todo: Vec<&StoredArtifact> = artifacts
+        .iter()
+        .copied()
+        .filter(|art| !indexed.contains(&art.id))
+        .filter(|art| {
+            if new.contains(&art.id) {
+                return true;
+            }
+            backfill += 1;
+            backfill <= crate::lexical::BACKFILL_BATCH
+        })
+        .collect();
+    if todo.is_empty() {
+        return Ok(indexed);
+    }
+    let bytes: std::collections::HashMap<ArtifactId, &[u8]> =
+        chunks.iter().map(|&(id, _, b)| (id, b)).collect();
+    for art in todo {
+        let mut text = Vec::with_capacity(art.total_bytes.min(crate::lexical::MAX_INDEXED_BYTES));
+        for c in &art.chunk_ids {
+            if text.len() >= crate::lexical::MAX_INDEXED_BYTES {
+                break;
+            }
+            text.extend_from_slice(bytes.get(c).copied().unwrap_or_default());
+        }
+        crate::lexical::insert(tx, art.id, &String::from_utf8_lossy(&text))?;
+        indexed.insert(art.id);
+    }
+    Ok(indexed)
+}
+
+/// Drops the lexical tables inside their own savepoint; a failure (a view under the name, a
+/// corrupt table) is reported on stderr and never fails the save.
+fn drop_lexical_fail_open(tx: &rusqlite::Transaction<'_>) {
+    if let Err(e) = tx.execute_batch("SAVEPOINT lexical_drop") {
+        eprintln!("icx: lexical index not dropped: {e}");
+        return;
+    }
+    match crate::lexical::drop_tables(tx) {
+        Ok(()) => {
+            let _ = tx.execute_batch("RELEASE lexical_drop");
+        }
+        Err(e) => {
+            let _ = tx.execute_batch("ROLLBACK TO lexical_drop; RELEASE lexical_drop");
+            eprintln!("icx: lexical index not dropped: {e}");
+        }
+    }
 }
 
 #[cfg(test)]

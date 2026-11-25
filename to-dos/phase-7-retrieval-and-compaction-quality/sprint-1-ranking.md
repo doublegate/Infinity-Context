@@ -47,6 +47,28 @@ trees resolved in a scratch crate, upstream sources):
 - **Not verified:** the paper's text (the PDF did not extract; k = 60 is confirmed by secondary
   sources).
 
+**2026-11-24, T-71-003 and T-71-004 results:**
+
+- **T-71-003:** the prescreen was already 1,024 bits with a `max(4 * sqrt(n), n / 64, ...)` cap
+  (v1.1.0). It was measured at 1k, 10k and 100k (`docs/numbers.md`, v1.5.0 measurements):
+  stage-1 recall is 100% for rare-word queries at every size and 98.5% for common-word queries at
+  100k (corrected after the review of #97: 100% for both once query words are sampled without
+  replacement). A 2,048-bit prescreen gave identical recall and was about 1.7x slower at 100k. Hypothesis rejected;
+  the width is unchanged, and the ticket closes with the measurement.
+- **T-71-004:** measured before the fix over 20,000 events: 3 distinct and 66 similar events
+  (0.33%) were false one-step suffixes, all from colliding 16-bit corners. None of the nonzero
+  suffixes in the measurement was a real repeat. The fractal bonus (15% of the combined score)
+  was therefore almost always zero, and when it was not, it rewarded a coincidence. After the
+  fix it is nonzero only for exactly repeated event sequences.
+
+**2026-11-24, T-71-001 design (measured on a copy of a real 54 MB store):** contentless tables
+(10.2 MB for both, measured with the production code; content copies would add the text again,
+and random 64-bit rowids took 38.5 MB, so rows are numbered compactly); trigrams with
+`detail=none`, because that mode rejects phrase queries, so substrings are an AND of trigrams and
+each candidate is confirmed against the CAS text; built only with `ICX_RECALL_RANKING=rrf`
+(additive and off by default until T-72-004 decides); no schema version bump, so v1.4.x can still
+open the store.
+
 **Ticket changes:** T-71-001 uses SQLite FTS5 tables in the workspace store instead of a separate
 crate or snapshot index. T-71-002 starts from plain RRF at k = 60 and adds per-list weights and a
 per-source cap only if the evaluation set (Sprint 2) shows a gain.
@@ -64,11 +86,14 @@ synthetic set and then on the real-session set.
 
 **Acceptance Criteria:**
 
-- [ ] Index kept in SQLite FTS5 tables of the workspace store (a porter `unicode61` table for
-  BM25, a `trigram` table for substrings), written at ingest; rebuildable from the CAS.
-- [ ] Tokenizer handles code identifiers (camelCase, snake_case, paths) with tests.
-- [ ] Ingest and query time measured and published in `docs/numbers.md`.
-- [ ] Store schema change versioned through a migration and documented.
+- [x] Index kept in SQLite FTS5 tables of the workspace store (a porter `unicode61` table for
+  BM25, a `trigram` table for substrings), written when the workspace is saved (each hook saves
+  once; unsaved artifacts are not yet searchable); rebuildable from the CAS.
+- [x] Tokenizer handles code identifiers (camelCase, snake_case, paths) with tests.
+- [x] Ingest and query time measured and published in `docs/numbers.md`.
+- [x] Store schema change versioned through a migration and documented. (Versioned by the
+  `lexical_index` meta key rather than the schema version, so a downgrade still opens the store;
+  `docs/data-model.md` §6.4.)
 
 **Dependencies:** None
 
@@ -116,10 +141,10 @@ candidate set) at 1k, 10k and 100k artifacts, before and after.
 
 **Acceptance Criteria:**
 
-- [ ] Prescreen width and cap formula documented in `docs/hyperdimensional-and-fractal-index.md`.
-- [ ] Stage-1 recall and query time per corpus size measured and published in
+- [x] Prescreen width and cap formula documented in `docs/hyperdimensional-and-fractal-index.md`.
+- [x] Stage-1 recall and query time per corpus size measured and published in
   `docs/numbers.md`.
-- [ ] No change to final ranking when the cap already covers the corpus (test).
+- [x] No change to final ranking when the cap already covers the corpus (test).
 
 **Dependencies:** None
 
@@ -141,9 +166,9 @@ audit finding.
 
 **Acceptance Criteria:**
 
-- [ ] A failing test reproduces the false positive, then passes.
-- [ ] Suffix matches are verified before they are reported.
-- [ ] ICX-AUD-052 moved to fixed in `docs/claude/findings.csv` with the commit.
+- [x] A failing test reproduces the false positive, then passes.
+- [x] Suffix matches are verified before they are reported.
+- [x] ICX-AUD-052 moved to fixed in `docs/claude/findings.csv` with the commit.
 
 **Dependencies:** None
 

@@ -483,16 +483,35 @@ impl HdcAssociativeIndex {
         force_anomaly: bool,
     ) -> ObservationReceipt {
         let composite_hv = Hypervector::encode_text(&format!("{subject} {content}"));
-
-        let verdict = self.surprise_gate.observe_with_exit_code(
+        self.observe_composite(
+            artifact_id,
+            subject,
+            content,
             &composite_hv,
+            exit_code,
+            force_anomaly,
+        )
+    }
+
+    /// The body of [`Self::observe_event_with_exit_code`] once the event's hypervector is known.
+    fn observe_composite(
+        &mut self,
+        artifact_id: ArtifactId,
+        subject: &str,
+        content: &str,
+        composite_hv: &Hypervector,
+        exit_code: Option<i32>,
+        force_anomaly: bool,
+    ) -> ObservationReceipt {
+        let verdict = self.surprise_gate.observe_with_exit_code(
+            composite_hv,
             content,
             exit_code,
             force_anomaly,
         );
         let current_trajectory = self
             .trajectory_archive
-            .record_step(artifact_id, &composite_hv);
+            .record_step(artifact_id, composite_hv);
 
         let sketch = composite_hv.sketch_u32().to_be_bytes();
         let quad_u16 = current_trajectory.quadrant_signature_u16();
@@ -518,7 +537,7 @@ impl HdcAssociativeIndex {
         let entry = IndexedEntry::new(
             artifact_id,
             stored_subject,
-            composite_hv,
+            *composite_hv,
             current_trajectory,
             verdict.momentum_surprise,
         );
@@ -662,9 +681,7 @@ impl HdcAssociativeIndex {
                 / q_tokens.len() as f32
         };
         let hdc_sim = (text_sim + 0.25 * lexical_overlap + 0.5 * content_frac).clamp(0.0, 1.0);
-        let suffix = self
-            .current_trajectory()
-            .verified_suffix_depth(&e.fractal_coord);
+        let suffix = self.exact_shared_suffix(idx);
         let combined =
             0.65 * hdc_sim + 0.20 * e.surprise + 0.15 * ((suffix as f32) / 8.0).clamp(0.0, 1.0);
 
@@ -675,6 +692,82 @@ impl HdcAssociativeIndex {
             shared_fractal_suffix: suffix,
             combined_score: combined,
         }
+    }
+
+    /// Measurement hook (T-71-003, not for production use): whether entry `target` reaches exact
+    /// scoring with a prescreen of `words` 64-bit words, and the size of the candidate set.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn measure_prescreen(
+        &self,
+        query_text: &str,
+        top_k: usize,
+        words: usize,
+        target: usize,
+    ) -> (bool, usize) {
+        if top_k == 0 || self.entries.is_empty() {
+            return (false, 0);
+        }
+        let q_hv = Hypervector::encode_text(query_text);
+        let q_tokens = Self::query_tokens(query_text);
+        let q_postings = self.query_postings(&q_tokens);
+        let cands = self.candidate_set_width(&q_hv, &q_tokens, &q_postings, top_k, words);
+        (cands.binary_search(&target).is_ok(), cands.len())
+    }
+
+    /// Measurement hook (T-71-003, not for production use): exactly `query_associative`, with a
+    /// prescreen of `words` 64-bit words.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn measure_query(
+        &self,
+        query_text: &str,
+        top_k: usize,
+        words: usize,
+    ) -> Vec<AssociativeHit> {
+        self.query_associative_width(query_text, top_k, words)
+    }
+
+    /// Measurement hook (ICX-AUD-052, not for production use): how many earlier entries the
+    /// coordinates alone claim share the latest history, and how many the confirmed suffix does.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn measure_suffix_claims(&self) -> (usize, usize) {
+        let n = self.entries.len();
+        let cur = self.current_trajectory();
+        let earlier = 0..n.saturating_sub(1);
+        let coord = earlier
+            .clone()
+            .filter(|&i| cur.verified_suffix_depth(&self.entries[i].fractal_coord) > 0)
+            .count();
+        let exact = earlier.filter(|&i| self.exact_shared_suffix(i) > 0).count();
+        (coord, exact)
+    }
+
+    /// How many trailing events entry `idx`'s history shares with the current one, counted on the
+    /// stored states themselves (ICX-AUD-052). Each IFS step keeps only a 16-bit corner of its
+    /// state, so two distinct states can produce the same coordinates; the coordinate distance is
+    /// used only as an upper bound, and each step within it is confirmed by comparing the two
+    /// events' hypervectors. Entries are appended one per trajectory step, so entry `i` is step
+    /// `i`, and the latest entry shares its whole (bounded) history with itself.
+    fn exact_shared_suffix(&self, idx: usize) -> u32 {
+        let Some(last) = self.entries.len().checked_sub(1) else {
+            return 0;
+        };
+        // Entry `i` is trajectory step `i`; the latest entry holds the current coordinates.
+        debug_assert_eq!(
+            self.entries[last].fractal_coord,
+            self.current_trajectory(),
+            "index entries and trajectory steps are out of step"
+        );
+        let bound = self
+            .current_trajectory()
+            .verified_suffix_depth(&self.entries[idx].fractal_coord) as usize;
+        let mut k = 0usize;
+        while k < bound && k <= idx && self.entries[idx - k].hv == self.entries[last - k].hv {
+            k += 1;
+        }
+        k as u32
     }
 
     /// Distinct, sorted lookup tokens of a query, filtered by the same rule as indexing.
@@ -706,6 +799,7 @@ impl HdcAssociativeIndex {
     /// Every entry holding a query token with df <= cap stays a candidate (ICX-CODEX-004), so a
     /// unique identifier is never dropped by approximate filtering. Result: sorted, distinct,
     /// at most `3 * candidate_cap` long unless the full corpus is scanned.
+    #[cfg(test)]
     fn candidate_set(
         &self,
         q_hv: &Hypervector,
@@ -713,6 +807,20 @@ impl HdcAssociativeIndex {
         q_postings: &[&[usize]],
         top_k: usize,
     ) -> Vec<usize> {
+        self.candidate_set_width(q_hv, q_tokens, q_postings, top_k, PRESCREEN_WORDS)
+    }
+
+    /// [`Self::candidate_set`] with a prescreen of `width` words (64 bits each); only the
+    /// prescreen measurement varies it (T-71-003), production always uses `PRESCREEN_WORDS`.
+    fn candidate_set_width(
+        &self,
+        q_hv: &Hypervector,
+        q_tokens: &[String],
+        q_postings: &[&[usize]],
+        top_k: usize,
+        width: usize,
+    ) -> Vec<usize> {
+        let width = width.clamp(1, crate::hv::HV_WORDS);
         let n = self.entries.len();
         let adaptive_floor = (n / 64).clamp(16, 512);
         // Grows with the corpus (>= 4 * sqrt(n)) so recall does not collapse as n increases.
@@ -739,12 +847,16 @@ impl HdcAssociativeIndex {
         let mut min_pos = 0usize;
 
         for (idx, s) in self.summaries.iter().enumerate() {
-            let ham1024: u32 = q_hv.words[..PRESCREEN_WORDS]
+            let ham1024: u32 = q_hv.words[..width]
                 .iter()
-                .zip(&self.entries[idx].hv.words[..PRESCREEN_WORDS])
+                .zip(&self.entries[idx].hv.words[..width])
                 .map(|(a, b)| (a ^ b).count_ones())
                 .sum();
-            let sim1024 = (PRESCREEN_WORDS as u32 * 64).saturating_sub(ham1024);
+            // Scaled to the 1,024-bit range, so a measured width changes only the width and not
+            // the weight of this term against the others (review of #97). At the shipped width
+            // the factor is 1.
+            let sim1024 =
+                (width as u32 * 64).saturating_sub(ham1024) * PRESCREEN_WORDS as u32 / width as u32;
             let content = Self::content_hits(s, q_tokens) as u32;
             let raw_bloom_hits = (q_bloom32 & s.subj_bloom32).count_ones();
             let subj_density = s.subj_bloom32.count_ones().max(2);
@@ -798,13 +910,23 @@ impl HdcAssociativeIndex {
     /// 1. Stage 1 L2-cache spectral/Bloom pre-screening over 16-byte `EntrySummary` records.
     /// 2. Stage 2 exact 10,240-bit `hamming_distance_simd` and boundary-aware inverse-IFS `verified_suffix_depth` refinement.
     pub fn query_associative(&self, query_text: &str, top_k: usize) -> Vec<AssociativeHit> {
+        self.query_associative_width(query_text, top_k, PRESCREEN_WORDS)
+    }
+
+    /// [`Self::query_associative`] with a prescreen of `width` words (measurement only).
+    fn query_associative_width(
+        &self,
+        query_text: &str,
+        top_k: usize,
+        width: usize,
+    ) -> Vec<AssociativeHit> {
         if top_k == 0 || self.entries.is_empty() {
             return Vec::new();
         }
         let q_hv = Hypervector::encode_text(query_text);
         let q_tokens = Self::query_tokens(query_text);
         let q_postings = self.query_postings(&q_tokens);
-        let candidates = self.candidate_set(&q_hv, &q_tokens, &q_postings, top_k);
+        let candidates = self.candidate_set_width(&q_hv, &q_tokens, &q_postings, top_k, width);
         let n = self.entries.len();
 
         // Exact lexical evidence per candidate: matched-token count (for `content_frac`) and the
@@ -1080,5 +1202,140 @@ mod tests {
         // Verify requesting top_k > 64 returns all requested hits up to entries.len()
         let large_hits = trait_ref.query_associative("helper module", 100);
         assert_eq!(large_hits.len(), 100);
+    }
+
+    /// ICX-AUD-052: a shared fractal suffix is reported only for a history that really repeats.
+    /// Each IFS step keeps a 16-bit corner of its state, so two distinct states with the same
+    /// corners give identical trajectories; that must not count as a shared suffix.
+    #[test]
+    fn distinct_states_with_equal_corners_share_no_suffix() {
+        let a = Hypervector::encode_text("Bash:cargo test ok 1");
+        // Swap a 1 and a 0 inside the first 640-bit block: every block's popcount, and so every
+        // corner, is unchanged, but the state differs.
+        let mut b = a;
+        let one = (0..640)
+            .find(|&i| a.words[i / 64] >> (i % 64) & 1 == 1)
+            .unwrap();
+        let zero = (0..640)
+            .find(|&i| a.words[i / 64] >> (i % 64) & 1 == 0)
+            .unwrap();
+        b.words[one / 64] ^= 1 << (one % 64);
+        b.words[zero / 64] ^= 1 << (zero % 64);
+        assert_ne!(a, b);
+        assert_eq!(
+            FractalCoord::corner_vertex(&a),
+            FractalCoord::corner_vertex(&b)
+        );
+
+        let mut idx = HdcAssociativeIndex::new();
+        idx.observe_composite(ArtifactId(1), "first", "one", &a, None, false);
+        idx.observe_composite(ArtifactId(2), "second", "two", &b, None, false);
+        // The coordinates alone claim a one-step shared history.
+        let coord_claim = idx
+            .current_trajectory()
+            .verified_suffix_depth(&idx.entries[0].fractal_coord);
+        assert!(coord_claim >= 1, "the constructed collision exists");
+        let first = idx
+            .query_associative("first one", 10)
+            .into_iter()
+            .find(|h| h.artifact_id == ArtifactId(1))
+            .expect("recalled");
+        assert_eq!(
+            first.shared_fractal_suffix, 0,
+            "distinct states reported as shared"
+        );
+
+        // A genuinely repeated sequence still is: A, B, C, then A, B, C again.
+        let mut rep = HdcAssociativeIndex::new();
+        for (i, (s, c)) in [("a", "one"), ("b", "two"), ("c", "three")]
+            .iter()
+            .cycle()
+            .take(6)
+            .enumerate()
+        {
+            rep.observe_event(ArtifactId(i as u64), s, c, false);
+        }
+        let first_c = rep
+            .query_associative("c three", 10)
+            .into_iter()
+            .find(|h| h.artifact_id == ArtifactId(2))
+            .expect("the first C is recalled");
+        assert_eq!(first_c.shared_fractal_suffix, 3, "A, B, C repeated exactly");
+        // The latest entry shares its whole history with itself.
+        let latest = rep
+            .query_associative("c three", 10)
+            .into_iter()
+            .find(|h| h.artifact_id == ArtifactId(5))
+            .expect("the latest C is recalled");
+        assert_eq!(latest.shared_fractal_suffix, 6);
+    }
+
+    /// A small deterministic generator for the measurement corpora (xorshift64*).
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 >> 12;
+            self.0 ^= self.0 << 25;
+            self.0 ^= self.0 >> 27;
+            self.0.wrapping_mul(0x2545_f491_4f6c_dd1d)
+        }
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+    }
+
+    /// Builds `n` events over a `vocab`-word vocabulary: subject `Bash:run-<a>-<b>`, content of
+    /// 24 words. Returns the index and each event's words, for building queries.
+    fn synthetic_corpus(
+        n: usize,
+        vocab: usize,
+        seed: u64,
+    ) -> (HdcAssociativeIndex, Vec<Vec<usize>>) {
+        let mut rng = Rng(seed);
+        let mut idx = HdcAssociativeIndex::new();
+        let mut words = Vec::with_capacity(n);
+        for i in 0..n {
+            let w: Vec<usize> = (0..24).map(|_| rng.below(vocab)).collect();
+            let content: Vec<String> = w.iter().map(|x| format!("w{x}")).collect();
+            idx.observe_event(
+                ArtifactId(i as u64 + 1),
+                &format!("Bash:run-{}-{}", w[0], w[1]),
+                &content.join(" "),
+                false,
+            );
+            words.push(w);
+        }
+        (idx, words)
+    }
+
+    /// When the cap covers the whole corpus, the prescreen admits every entry, so ranking equals
+    /// an exhaustive scan (T-71-003).
+    #[test]
+    fn a_cap_that_covers_the_corpus_scans_every_entry() {
+        let (idx, _) = synthetic_corpus(60, 500, 7);
+        for query in ["w1 w2 w3", "Bash:run", "w499"] {
+            assert_eq!(candidate_count(&idx, query, 5), 60, "{query}");
+        }
+    }
+
+    #[test]
+    fn measurement_hooks_agree_with_the_production_paths() {
+        let (idx, _) = synthetic_corpus(300, 500, 5);
+        let q = "w1 w2 w3";
+        let prod: Vec<_> = idx
+            .query_associative(q, 5)
+            .into_iter()
+            .map(|h| h.artifact_id)
+            .collect();
+        let hook: Vec<_> = idx
+            .measure_query(q, 5, PRESCREEN_WORDS)
+            .into_iter()
+            .map(|h| h.artifact_id)
+            .collect();
+        assert_eq!(prod, hook);
+        let (_, n) = idx.measure_prescreen(q, 5, PRESCREEN_WORDS, 0);
+        assert_eq!(n, candidate_count(&idx, q, 5));
+        assert_eq!(idx.measure_prescreen(q, 0, PRESCREEN_WORDS, 0), (false, 0));
+        assert_eq!(idx.measure_suffix_claims().1, 0, "no event repeats");
     }
 }

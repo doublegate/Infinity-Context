@@ -10,8 +10,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `icx install`: the Claude Code matcher note judges all icx `PostToolUse` groups together, so a
   setup split into a Bash group and a Read/Grep/Glob/Agent group gets no note, and it gives the
   "after `^(`" advice only for a plain `^(` group (never `^(?:` or `^(?!`, where it would yield
-  an invalid regex). An empty `{}` or `[]` file gets its new content laid out over several
-  lines (#95).
+  an invalid regex) and only when that group spans the whole matcher. An empty `{}` or `[]`
+  file (spaces inside included) gets its new content laid out over several lines (#95, #96). A
+  group with no matcher counts as matching every tool; a matcher that is not a string is
+  ignored.
+- Lexical index (T-71-001, off by default): with `ICX_RECALL_RANKING=rrf`, the workspace store
+  keeps two contentless SQLite FTS5 tables, BM25 over words (compound identifiers also indexed by
+  their parts) and trigrams for substrings, confirmed against the stored text. It is unsealed
+  derived state, so it can only name artifacts the sealed CAS holds; it is backfilled 2,000
+  artifacts per save; the schema version is unchanged, so older builds still open the store.
+  Turning it off also stops its queries, and tables of another version (or only one of the pair)
+  are rebuilt rather than read.
+  Measured on a real 54 MB store with the production code: 10.2 MB of index (rows are numbered
+  compactly; random 64-bit rowids took 38.5 MB), queries under 1.6 ms (`docs/numbers.md`).
+- Recall reports a shared fractal suffix only for a history that really repeats. Each trajectory
+  step keeps a 16-bit corner of its state, so distinct events with equal corners were reported as
+  a shared history (0.33% of similar events in a 20,000-event measurement, ICX-AUD-052); each
+  step is now confirmed against the stored states (T-71-004).
 
 ## [1.4.1] - 2026-11-24
 

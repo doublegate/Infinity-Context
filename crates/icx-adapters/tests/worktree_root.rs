@@ -19,7 +19,10 @@ fn base_dir(name: &str) -> PathBuf {
 fn git(cwd: &Path, args: &[&str]) {
     let out = Command::new("git")
         .current_dir(cwd)
+        // The scratch repository must not depend on the user's git config (commit signing
+        // through an agent that may not be running).
         .args(["-c", "user.name=t", "-c", "user.email=t@example.invalid"])
+        .args(["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"])
         .args(args)
         .output()
         .unwrap();
