@@ -10,9 +10,9 @@ Usage:
 Each case is a real need with a known answer: the agent dereferenced (`deref` or `slice`) an
 icx handle it got from a stub. The query is, by `--kind`:
 - `note`: the agent's own text just before that call;
-- `prompt`: the user's prompt that started the turn (all handles dereferenced before the next
-  prompt are relevant). This is what automatic recall searches with, so it is the set that
-  decides a default ranking.
+- `prompt`: the user's prompt that started the turn, timed at the prompt (when automatic recall
+  runs); every handle dereferenced before the next prompt is relevant. Outputs produced during the
+  turn did not exist yet, so the harness drops cases whose answer came later.
 Handles that first appeared in an injected recall line are skipped, so the set does not favour
 the ranker that surfaced them. Handles and long hex runs are removed from the query, so the
 answer is never in it. Cases are ordered by the time of the dereference; the older half is
@@ -27,6 +27,7 @@ import argparse
 import glob
 import json
 import os
+import pathlib
 import re
 import sys
 
@@ -78,7 +79,10 @@ def cases_from(path: str, kind: str) -> tuple[str, list[dict]]:
     first_ts = ""
     last_text = ""
     prompt = ""
-    turn: dict[str, list[str]] = {}
+    prompt_ts = ""
+    # One case per user turn (review of #98: keyed by turn, not by prompt text, and timed at the
+    # prompt, when automatic recall runs).
+    turns: list[dict] = []
     from_recall: set[str] = set()
     out: list[dict] = []
     seen: set[tuple[str, str]] = set()
@@ -96,6 +100,8 @@ def cases_from(path: str, kind: str) -> tuple[str, list[dict]]:
             if is_user_prompt(entry):
                 last_text = ""
                 prompt = clean_query(prompt_text(entry))
+                prompt_ts = ts
+                turns.append({"query": prompt, "relevant": [], "ts": prompt_ts})
                 continue
             if entry.get("type") != "assistant":
                 continue
@@ -119,10 +125,8 @@ def cases_from(path: str, kind: str) -> tuple[str, list[dict]]:
                     if handle in from_recall:
                         continue
                     if kind == "prompt":
-                        if len(prompt.split()) >= MIN_QUERY_WORDS:
-                            hs = turn.setdefault(prompt, {"ts": ts, "relevant": []})
-                            if handle not in hs["relevant"]:
-                                hs["relevant"].append(handle)
+                        if turns and handle not in turns[-1]["relevant"]:
+                            turns[-1]["relevant"].append(handle)
                         continue
                     query = clean_query(last_text)
                     if len(query.split()) < MIN_QUERY_WORDS:
@@ -133,8 +137,9 @@ def cases_from(path: str, kind: str) -> tuple[str, list[dict]]:
                         out.append({"query": query, "relevant": [handle], "ts": ts})
     if kind == "prompt":
         out = [
-            {"query": q, "relevant": v["relevant"], "ts": v["ts"]}
-            for q, v in turn.items()
+            t
+            for t in turns
+            if t["relevant"] and len(t["query"].split()) >= MIN_QUERY_WORDS
         ]
     return first_ts, out
 
@@ -145,9 +150,15 @@ def main() -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--kind", choices=["note", "prompt"], default="note")
     a = ap.parse_args()
-    if "eval/private/" not in a.out.replace(os.sep, "/"):
+    # The output must resolve inside this repository's gitignored eval/private/ (review of
+    # #98: a substring test let `../` or another `eval/private/` through).
+    private = (
+        pathlib.Path(__file__).resolve().parent.parent / "eval" / "private"
+    ).resolve()
+    out_path = pathlib.Path(a.out).resolve()
+    if not out_path.is_relative_to(private) or out_path == private:
         sys.exit(
-            "refusing to write outside eval/private/: the set holds private session text"
+            f"refusing to write outside {private}: the set holds private session text"
         )
     sessions = 0
     cases: list[dict] = []
@@ -171,10 +182,12 @@ def main() -> None:
         }
         for i, c in enumerate(cases)
     ]
-    os.makedirs(os.path.dirname(a.out), exist_ok=True)
-    with open(a.out, "w", encoding="utf-8") as f:
+    out_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # Created 0600, never readable by others even briefly (review of #98).
+    fd = os.open(out_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.writelines(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
-    os.chmod(a.out, 0o600)
     n_train = sum(r["split"] == "train" for r in rows)
     print(
         json.dumps(

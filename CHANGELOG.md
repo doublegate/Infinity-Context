@@ -33,8 +33,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   Code transcripts (agent notes or user prompts paired with the outputs then dereferenced),
   written only under the gitignored `eval/private/`.
 - ADR-0010: the default recall ranking stays `legacy`. Real-session answers were almost always
-  just produced (newest-first finds 83–88% at rank 1), so the data cannot show a long-range gain;
-  local embeddings (T-72-003) are therefore not built.
+  just produced (newest-first finds 82–100% at rank 1 per project), and at prompt time 311 of 314
+  needed outputs did not exist yet, so the data cannot show a long-range gain; local embeddings
+  (T-72-003) are therefore not built.
 - Recall reports a shared fractal suffix only for a history that really repeats. Each trajectory
   step keeps a 16-bit corner of its state, so distinct events with equal corners were reported as
   a shared history (0.33% of similar events in a 20,000-event measurement, ICX-AUD-052); each

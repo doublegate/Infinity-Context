@@ -126,8 +126,9 @@ pub struct Times {
 }
 
 /// Dates every indexed artifact: from the earliest graph edge it is the provenance of, and
-/// otherwise from the artifact before it in ingest order (ingest order is time order, so this
-/// is a lower bound).
+/// otherwise from the next dated artifact in ingest order (ingest order is time order, so this
+/// is an upper bound), or never (`u64::MAX`) after the last one. An upper bound fails closed: an
+/// undated artifact is never treated as existing before it did (review of #98).
 #[must_use]
 pub fn artifact_times(mmu: &InfinityContextMmu) -> Times {
     let mut first: std::collections::HashMap<ArtifactId, u64> = std::collections::HashMap::new();
@@ -136,21 +137,27 @@ pub fn artifact_times(mmu: &InfinityContextMmu) -> Times {
         *t = (*t).min(e.t_tx_start);
     }
     let mut out = Times::default();
-    let mut last = 0u64;
     for (id, ..) in &mmu.hdc_events {
-        if out.at.contains_key(id) {
-            continue;
+        if !out.at.contains_key(id) {
+            out.at
+                .insert(*id, first.get(id).copied().unwrap_or(u64::MAX));
+            out.order.push(*id);
         }
-        let t = match first.get(id) {
-            Some(&t) => {
-                out.dated += 1;
-                last = last.max(t);
-                last
-            }
-            None => last,
+    }
+    // Walk backwards: each undated artifact takes the next dated time, and dated times are made
+    // monotonic the same way (never later than any artifact after them).
+    let mut next = u64::MAX;
+    for id in out.order.iter().rev() {
+        let Some(t) = out.at.get_mut(id) else {
+            continue;
         };
-        out.at.insert(*id, t);
-        out.order.push(*id);
+        if first.contains_key(id) {
+            out.dated += 1;
+            *t = (*t).min(next);
+            next = *t;
+        } else {
+            *t = next;
+        }
     }
     out
 }
@@ -177,6 +184,29 @@ pub fn parse_rfc3339_ms(ts: &str) -> Option<u64> {
     let days = era * 146_097 + doe - 719_468;
     let total = ((days * 24 + h) * 60 + mi) * 60 + sec;
     u64::try_from(total * 1000 + ms).ok()
+}
+
+/// The cases that have a relevant artifact existing when they were asked, and how many were
+/// dropped. With prompts as queries, outputs produced later in the turn did not exist yet, so a
+/// case whose answers all came later cannot be answered by any ranker (review of #98). Cases
+/// without a time are kept.
+#[must_use]
+pub fn answer_existed(times: &Times, cases: Vec<Case>) -> (Vec<Case>, usize) {
+    let total = cases.len();
+    let kept: Vec<Case> = cases
+        .into_iter()
+        .filter(|c| {
+            let Some(at) = c.ts.as_deref().and_then(parse_rfc3339_ms) else {
+                return true;
+            };
+            c.relevant
+                .iter()
+                .filter_map(|h| parse_handle(h))
+                .any(|id| times.at.get(&id).is_some_and(|&t| t <= at))
+        })
+        .collect();
+    let dropped = total - kept.len();
+    (kept, dropped)
 }
 
 /// The cases whose answer is old when asked: at least `min_age` artifacts entered the workspace
@@ -212,9 +242,6 @@ pub fn old_answers(times: &Times, cases: Vec<Case>, min_age: usize) -> Vec<Case>
         .collect()
 }
 
-/// How deep rankers search before the time cutoff is applied, so the cutoff cannot starve them.
-const DEPTH_BEFORE_CUTOFF: usize = 400;
-
 /// The ranked artifacts `ranker` returns for `query`, at most [`DEPTH`], without repeats.
 /// `lexical` is the scratch database from [`build_lexical`]; without it, `bm25` returns nothing
 /// and `rrf` is the legacy ranking. With `asked`, only artifacts dated at or before that time
@@ -227,8 +254,10 @@ pub fn rank(
     query: &str,
     asked: Option<(&Times, u64)>,
 ) -> Vec<ArtifactId> {
+    // With a cutoff, search everything before filtering, so later artifacts cannot fill a bounded
+    // candidate list and push an earlier answer out (review of #98).
     let depth = if asked.is_some() {
-        DEPTH_BEFORE_CUTOFF
+        mmu.cas.artifact_count().max(DEPTH)
     } else {
         DEPTH
     };
@@ -583,5 +612,22 @@ mod tests {
         // Artifacts after the question do not count.
         let early = vec![case(2, "1970-01-01T00:00:04Z")];
         assert_eq!(old_answers(&times, early, 5).len(), 0);
+    }
+
+    #[test]
+    fn answers_produced_after_the_query_are_dropped() {
+        let mut times = Times::default();
+        for (i, id) in [1u64, 2].into_iter().enumerate() {
+            times.at.insert(ArtifactId(id), 1_000 * (i as u64 + 1));
+            times.order.push(ArtifactId(id));
+        }
+        let case = |rel: u64| Case {
+            query: String::new(),
+            relevant: vec![ArtifactId(rel).to_string()],
+            split: "heldout".into(),
+            ts: Some("1970-01-01T00:00:01.500Z".into()),
+        };
+        let (kept, dropped) = answer_existed(&times, vec![case(1), case(2)]);
+        assert_eq!((kept.len(), dropped), (1, 1));
     }
 }

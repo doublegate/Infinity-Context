@@ -47,6 +47,9 @@ _None recorded yet._
   they just received. Only 7 of about 2,100 cases across six projects had an answer with 20 or
   more newer artifacts, so widening to all projects did not yield a long-range set. Decision:
   ADR-0010.
+- **Prompt timing, corrected (review of #98):** prompt cases are now timed at the prompt and
+  keyed per turn. 311 of 314 then needed outputs produced later in the turn, so automatic recall
+  had an existing answer to surface in only 3.
 
 ## Tickets
 

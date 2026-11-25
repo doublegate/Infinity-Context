@@ -161,10 +161,26 @@ impl InfinityContextMmu {
             .into_iter()
             .map(|(id, _)| id)
             .collect();
-        let hdc: Vec<ArtifactId> = hdc_hits.iter().map(|h| h.artifact_id).collect();
-        let top = *crate::lexical::rrf(&[hdc, lexical], crate::lexical::RRF_K).first()?;
-        if let Some(hit) = hdc_hits.iter().find(|h| h.artifact_id == top) {
-            return Some(hit.clone());
+        // Only HDC hits that would be shown take part, so a hit too weak to display can never
+        // win the fusion and hide a lexical match (review of #98).
+        let shown: Vec<&AssociativeHit> = hdc_hits
+            .iter()
+            .filter(|h| {
+                h.hdc_similarity >= MIN_RECALL_SIMILARITY
+                    || h.shared_fractal_suffix > 0
+                    || h.combined_score >= MIN_RECALL_SIMILARITY
+            })
+            .collect();
+        let hdc: Vec<ArtifactId> = shown.iter().map(|h| h.artifact_id).collect();
+        let fused = crate::lexical::rrf(&[hdc, lexical.clone()], crate::lexical::RRF_K);
+        let top = *fused.first()?;
+        if let Some(hit) = shown.into_iter().find(|h| h.artifact_id == top) {
+            let mut hit = hit.clone();
+            // Lexical agreement is evidence enough to show it.
+            if lexical.contains(&top) {
+                hit.combined_score = hit.combined_score.max(MIN_RECALL_SIMILARITY);
+            }
+            return Some(hit);
         }
         Some(AssociativeHit {
             artifact_id: top,

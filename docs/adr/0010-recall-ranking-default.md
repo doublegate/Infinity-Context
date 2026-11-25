@@ -15,20 +15,23 @@ agent got from a stub, and its query is either the agent's note before the call 
 prompt that started the turn. Each query ranks only the artifacts that existed when it was asked.
 Queries and judgements stay private (`eval/private/`); only these aggregates are published.
 
-Measured (2026-11-24, all six projects with at least 40 dereferences, about 2,100 cases):
+Measured (2026-11-25, all six projects with at least 40 dereferences; corrected after the review
+of #98, which found that prompt cases had been timed at the dereference instead of the prompt):
 
-- **Answers are almost always fresh.** Ranked newest-first, the needed output is first in 83–88%
-  of cases and in the top 5 in 99–100%. Only 7 cases had 20 or more newer artifacts between the
-  answer and the query, and 2 had 100 or more. Widening from this project to all six did not
-  change that.
-- **On those fresh-answer cases** (this project, held-out half), recall@10 was: notes, legacy 2.4%,
-  BM25 12.5%, RRF 5.2%, newest-first 99.2%; prompts, legacy 3.6%, BM25 10.7%, RRF 7.1%,
-  newest-first 100%. They measure fetching what was just produced, which recency answers alone,
-  not the long-range recall that automatic recall exists for.
+- **Answers are almost always fresh.** Of 1,661 note cases, ranked newest-first, the needed
+  output is first in 82–100% per project. Only 7 cases had 20 or more newer artifacts between the
+  answer and the query. Widening from this project to all six did not change that.
+- **At prompt time the answer usually did not exist.** Of 314 prompt cases, 311 needed outputs
+  the agent produced later in the same turn. Automatic recall, which runs at the prompt, could
+  have surfaced an existing answer in 3 cases.
+- **On the fresh-answer note cases** (this project, held-out half, 370 queries), recall@10 was
+  legacy 2.4%, BM25 12.7%, RRF 5.4%, newest-first 99.2%. They measure fetching what was just
+  produced, which recency answers alone, not the long-range recall that automatic recall exists
+  for.
 - **Synthetic sets** (bag-of-words known-item queries) put the three rankers within a few points
   of each other (`docs/numbers.md`).
 - **Automatic recall** (the injected line) was followed by a dereference of its handle 6 times
-  out of 173 in this project's sessions.
+  out of 173 in this project's sessions, consistent with the prompt-time finding above.
 
 ## Decision
 

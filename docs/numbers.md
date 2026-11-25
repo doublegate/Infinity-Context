@@ -162,17 +162,20 @@ agent's note before the call or the user's prompt that started the turn; each qu
 artifacts that existed when it was asked. Queries and judgements are private
 (`eval/private/`, built by `scripts/build-recall-eval-set.py`); these are aggregates.
 
-| Set (this project, held-out half) | Queries | legacy | BM25 | RRF | newest first |
-| :--- | ---: | ---: | ---: | ---: | ---: |
-| Agent notes, recall@10 | 368 | 2.4% | 12.5% | 5.2% | 99.2% |
-| User prompts, recall@10 | 56 | 3.6% | 10.7% | 7.1% | 100% |
-| Agent notes, recall@1 | 368 | 0.0% | 2.2% | 0.3% | 83.2% |
-| User prompts, recall@1 | 56 | 0.0% | 3.6% | 0.0% | 87.5% |
+| Agent notes (this project, held-out half, 370 queries) | legacy | BM25 | RRF | newest first |
+| :--- | ---: | ---: | ---: | ---: |
+| recall@1 | 0.0% | 2.2% | 0.3% | 83.2% |
+| recall@10 | 2.4% | 12.7% | 5.4% | 99.2% |
 
-- **Fresh answers dominate:** across all six projects with at least 40 dereferences (about 2,100
-  cases), 7 had 20 or more newer artifacts between the answer and the query, and 2 had 100 or
-  more. The table therefore measures fetching what was just produced, not long-range recall, and
-  cannot decide a default (ADR-0010).
+- **Fresh answers dominate:** across all six projects with at least 40 dereferences (1,661 note
+  cases), 7 had 20 or more newer artifacts between the answer and the query. The table therefore
+  measures fetching what was just produced, not long-range recall, and cannot decide a default
+  (ADR-0010).
+- **Prompts as queries:** timed at the prompt, when automatic recall runs, 311 of 314 prompt
+  cases had answers that did not exist yet (the agent produced them during the turn). Only 3
+  cases could have been answered by recall at all, too few to score.
+- **Every indexed artifact was dated** from a graph edge in each workspace measured; an undated
+  one would take the next dated time (an upper bound, so the cutoff fails closed).
 - **Synthetic sets** (`icx eval-recall --synthetic <n> --vocab <v>`, seed 7, 200 queries): with a
   50,000-word vocabulary every ranker has recall@1 of 100% at 1k and 10k artifacts; with 500
   words at 10k, recall@1 is 59.0% (legacy), 56.5% (BM25) and 58.5% (RRF).

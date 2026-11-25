@@ -716,7 +716,9 @@ fn run_eval_recall(args: &[String]) -> Result<(), String> {
     };
     let (cases, unanswerable) = eval::answerable(&mmu, cases);
     let min_age = usize::try_from(min_age.unwrap_or(0)).unwrap_or(usize::MAX);
-    let cases = eval::old_answers(&eval::artifact_times(&mmu), cases, min_age);
+    let times = eval::artifact_times(&mmu);
+    let (cases, answer_later) = eval::answer_existed(&times, cases);
+    let cases = eval::old_answers(&times, cases, min_age);
     let scores = eval::run(&mmu, &cases, &rankers).map_err(|e| format!("{CMD} error: {e}"))?;
     let report = serde_json::json!({
         "icx_version": env!("CARGO_PKG_VERSION"),
@@ -727,6 +729,9 @@ fn run_eval_recall(args: &[String]) -> Result<(), String> {
         "queries": cases.len(),
         "unanswerable_dropped": unanswerable,
         "min_age": min_age,
+        "answer_after_query_dropped": answer_later,
+        "dated_artifacts": times.dated,
+        "indexed_artifacts": times.order.len(),
         "artifacts": mmu.cas.artifact_count(),
         "results": scores,
     });
