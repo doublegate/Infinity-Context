@@ -605,3 +605,12 @@ fn shell_words_honour_escapes_and_stray_quotes() {
         ),
     ]);
 }
+
+/// Commit security review of 8caa434: an unclosed quoted password runs to the segment end.
+#[test]
+fn an_unclosed_quoted_password_runs_to_the_segment_end() {
+    check(&[
+        ("sshpass -p \"my qqzz rrss\n", &["qqzz", "rrss"], &[]),
+        ("docker login -p 'my qqzz; echo ok\n", &["qqzz"], &[]),
+    ]);
+}

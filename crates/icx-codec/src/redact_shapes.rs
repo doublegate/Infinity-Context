@@ -782,7 +782,29 @@ fn cli_shapes(line: &str) -> String {
             }
         }
     }
-    let targets = merged_desc(targets.into_iter().map(|(x, y)| (x, y, ())).collect());
+    // A target whose word opens a quote that never closes runs to the end of its segment: the
+    // value goes on past the first space (security review of #106).
+    let targets: Vec<(usize, usize, ())> = targets
+        .into_iter()
+        .map(|(x, y)| {
+            let Some(&(a, z)) = segs.iter().find(|&&(a, z)| a <= x && x < z) else {
+                return (x, y, ());
+            };
+            // The whole word holding the target decides, not the target alone
+            // (`-u "admin:my secret"` closes its quote).
+            let word = words(&s, a, z)
+                .into_iter()
+                .find(|&(ws, we)| ws <= x && x < we)
+                .map_or(&s[x..y], |(ws, we)| &s[ws..we]);
+            let y = if has_unclosed_quote(word) {
+                z.max(y)
+            } else {
+                y
+            };
+            (x, y, ())
+        })
+        .collect();
+    let targets = merged_desc(targets);
     for (x, y, ()) in targets {
         // Keep the quotes of a quoted argument, also when only its tail is hidden
         // (`-u "admin:my secret"`).
@@ -797,6 +819,24 @@ fn cli_shapes(line: &str) -> String {
         hide(&mut s, x, y, MARK_CLI);
     }
     s
+}
+
+/// Whether `text` leaves a quote open (backslash escapes honoured outside single quotes).
+fn has_unclosed_quote(text: &str) -> bool {
+    let b = text.as_bytes();
+    let mut quote: Option<u8> = None;
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        match quote {
+            _ if c == b'\\' && quote != Some(b'\'') => i += 1,
+            Some(q) if c == q => quote = None,
+            None if c == b'"' || c == b'\'' => quote = Some(c),
+            _ => {}
+        }
+        i += 1;
+    }
+    quote.is_some()
 }
 
 /// URL query and fragment parameters that carry a credential, besides sensitive key names.
