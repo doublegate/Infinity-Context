@@ -23,10 +23,46 @@ static WORKSPACE_IO_LOCK: Mutex<()> = Mutex::new(());
 /// Recall entries weaker than this on similarity, fractal suffix and combined score are not
 /// shown (v1.3.2).
 const MIN_RECALL_SIMILARITY: f32 = 0.10;
+/// HDC hits a prompt's recall line may be chosen from (only one is shown).
+const PROMPT_RECALL_CANDIDATES: usize = 4;
+/// A prompt word counts for the recall line only if at most 1 in `PROMPT_WORD_SHARE_DIVISOR`
+/// (2%) of indexed subjects hold it, or at most `PROMPT_WORD_MIN_CAP` in a small store.
+const PROMPT_WORD_SHARE_DIVISOR: usize = 50;
+const PROMPT_WORD_MIN_CAP: usize = 3;
 /// Recall depths the fused line uses: HDC hits per prompt (the tail slot's `top_k` at a prompt)
 /// and lexical matches (T-71-002).
 pub const FUSED_HDC_DEPTH: usize = 4;
 pub const FUSED_LEXICAL_DEPTH: usize = 20;
+
+/// Behaviours switched by the environment in v1.5.0, read once when the MMU is created.
+#[derive(Clone, Copy, Debug)]
+struct Switches {
+    /// Saves maintain the lexical index and recall fuses it (`ICX_RECALL_RANKING=rrf`).
+    lexical_index: bool,
+    /// Compaction is followed by a resume packet (`ICX_RESUME_PACKET`, default on).
+    resume_packets: bool,
+}
+/// Resume packet bounds (T-73-001): byte budget, outputs listed, subject length, failures.
+pub const RESUME_PACKET_MAX_BYTES: usize = 3_072;
+/// Sessions with a pending resume packet kept at once; the oldest is dropped beyond this.
+const MAX_PENDING_RESUME_SESSIONS: usize = 32;
+
+/// The session a hook payload names (`session_id`), when it looks like one: 1 to 128 ASCII
+/// letters, digits, `-` or `_`. Anything else is treated as no session.
+#[must_use]
+pub fn hook_session_id(payload: &serde_json::Value) -> Option<&str> {
+    payload
+        .get("session_id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|s| {
+            (1..=128).contains(&s.len())
+                && s.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        })
+}
+const MAX_RESUME_HANDLES: usize = 12;
+const MAX_RESUME_SUBJECT_CHARS: usize = 80;
+const MAX_RESUME_FAILURES: usize = 8;
 
 /// Default inline byte threshold above which tool outputs are virtualized into AHTL Holographic Stubs.
 pub const DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES: usize = 512;
@@ -64,6 +100,14 @@ struct PersistedMmuState {
     hdc_events: Vec<HdcEventRecord>,
     #[serde(default)]
     agent_read_cursors: BTreeMap<u8, u64>,
+    /// Agents whose context was compacted and that have not yet received a resume packet.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pending_resume: BTreeSet<u8>,
+    /// Sessions whose context was compacted and that have not yet received a resume packet,
+    /// as (agent, session id), oldest first (review of #99: two sessions of one agent in one
+    /// workspace must not take each other's packet).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pending_resume_sessions: Vec<(u8, String)>,
     #[serde(default)]
     indexed_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     #[serde(default)]
@@ -90,6 +134,10 @@ pub struct InfinityContextMmu {
     pub tool_virtualize_threshold: usize,
     pub workspace_hash: u64,
     agent_read_cursors: BTreeMap<u8, u64>,
+    /// See `PersistedMmuState::pending_resume` (T-73-002).
+    pending_resume: BTreeSet<u8>,
+    /// See `PersistedMmuState::pending_resume_sessions`.
+    pending_resume_sessions: Vec<(u8, String)>,
     redacted_artifacts: BTreeSet<ArtifactId>,
     subagent_branches: BTreeMap<String, Vec<SubagentStep>>,
     pub(crate) hdc_events: Vec<HdcEventRecord>,
@@ -111,8 +159,8 @@ pub struct InfinityContextMmu {
     /// When `true`, event times come from the wall clock (milliseconds since the Unix epoch,
     /// kept strictly monotonic); otherwise a deterministic logical counter (ICX-AUD-048).
     wall_clock: bool,
-    /// Whether saves maintain the lexical index (`ICX_RECALL_RANKING=rrf`, T-71-001).
-    lexical_index: bool,
+    /// Opt-in and opt-out behaviours added in v1.5.0.
+    switches: Switches,
 }
 
 impl Default for InfinityContextMmu {
@@ -137,6 +185,8 @@ impl InfinityContextMmu {
             tool_virtualize_threshold: DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES,
             workspace_hash: 0x4943_585F_574F_524B,
             agent_read_cursors: BTreeMap::new(),
+            pending_resume: BTreeSet::new(),
+            pending_resume_sessions: Vec::new(),
             redacted_artifacts: BTreeSet::new(),
             subagent_branches: BTreeMap::new(),
             hdc_events: Vec::new(),
@@ -151,8 +201,213 @@ impl InfinityContextMmu {
             reload_required: false,
             emitted_blocks: BTreeSet::new(),
             wall_clock: false,
-            lexical_index: crate::lexical::enabled(),
+            switches: Switches {
+                lexical_index: crate::lexical::enabled(),
+                resume_packets: std::env::var("ICX_RESUME_PACKET").map_or(true, |v| {
+                    !matches!(
+                        v.trim().to_ascii_lowercase().as_str(),
+                        "0" | "off" | "false" | "no"
+                    )
+                }),
+            },
         }
+    }
+
+    /// Turns resume packets after compaction on or off (default on; `ICX_RESUME_PACKET=0`).
+    pub fn set_resume_packets(&mut self, on: bool) {
+        self.switches.resume_packets = on;
+        if !on {
+            self.pending_resume.clear();
+            self.pending_resume_sessions.clear();
+        }
+    }
+
+    /// Records that `agent`'s context was just compacted, so its next `SessionStart` or prompt
+    /// hook carries a resume packet (T-73-002). Nothing when resume packets are off.
+    pub fn mark_resume_pending(&mut self, agent: AgentKind) {
+        self.mark_resume_pending_for(agent, None);
+    }
+
+    /// As `mark_resume_pending`, for one session when the hook names it: only that session's
+    /// next hook then takes the packet. Without a session the packet is the agent's, for the
+    /// agent whose next session is a new one (Hermes after compression).
+    pub fn mark_resume_pending_for(&mut self, agent: AgentKind, session: Option<&str>) {
+        if !self.switches.resume_packets {
+            return;
+        }
+        match session {
+            Some(s) => {
+                let key = (agent as u8, s.to_owned());
+                self.pending_resume_sessions.retain(|k| *k != key);
+                self.pending_resume_sessions.push(key);
+                let excess = self
+                    .pending_resume_sessions
+                    .len()
+                    .saturating_sub(MAX_PENDING_RESUME_SESSIONS);
+                self.pending_resume_sessions.drain(..excess);
+            }
+            None => {
+                self.pending_resume.insert(agent as u8);
+            }
+        }
+    }
+
+    /// The resume packet for `agent`, once per compaction: `Some` only when one is pending, which
+    /// it then no longer is. When `budget` cannot hold even the whole header, nothing is
+    /// delivered and the packet stays pending for the next hook (review of #99: a cut header was
+    /// delivered, or an empty one dropped, and the pending packet lost either way).
+    pub fn take_resume_packet(&mut self, agent: AgentKind, budget: usize) -> Option<String> {
+        self.take_resume_packet_for(agent, None, budget)
+    }
+
+    /// As `take_resume_packet`, for the session a hook names: that session's own packet, or else
+    /// one pending for the agent as a whole. Another session's packet is never taken.
+    pub fn take_resume_packet_for(
+        &mut self,
+        agent: AgentKind,
+        session: Option<&str>,
+        budget: usize,
+    ) -> Option<String> {
+        if !self.switches.resume_packets || self.resume_header(agent).len() > budget {
+            return None;
+        }
+        let own = session.and_then(|s| {
+            self.pending_resume_sessions
+                .iter()
+                .position(|(a, id)| *a == agent as u8 && id == s)
+        });
+        if own.is_none() && !self.pending_resume.contains(&(agent as u8)) {
+            return None;
+        }
+        let packet = self.resume_packet(agent, budget);
+        // A budget that fits the header but nothing under it, when there is something to say,
+        // keeps the packet pending for a hook with more room (review of #99).
+        if !packet.contains('\n')
+            && self
+                .resume_packet(agent, RESUME_PACKET_MAX_BYTES)
+                .contains('\n')
+        {
+            return None;
+        }
+        // One delivery covers the compaction, however it was marked (a `PreCompact` with a
+        // session id and a `PostCompact` without one must not deliver twice; review of #99).
+        if let Some(i) = own {
+            self.pending_resume_sessions.remove(i);
+        }
+        self.pending_resume.remove(&(agent as u8));
+        Some(packet)
+    }
+
+    fn resume_header(&self, agent: AgentKind) -> String {
+        format!(
+            "⟪ICX:RESUME│agent={}│epochs={}│cas_artifacts={}⟫",
+            agent.as_str(),
+            self.epochs.sealed_epoch_count(),
+            self.cas.artifact_count()
+        )
+    }
+
+    /// What an agent needs after its context was compacted (T-73-001), deterministically and
+    /// within `budget` bytes: subjects currently failing, the number of open fold branches, and
+    /// the most recent outputs with their handles, newest first (recency was the strongest
+    /// signal in the v1.5.0 evaluation). Failures and folds come first, so a long list of
+    /// outputs cannot crowd them out (review of #99). Every handle names an artifact in the CAS.
+    /// What does not fit is left out, whole subjects and lines at a time; the header alone is
+    /// cut to the budget.
+    #[must_use]
+    pub fn resume_packet(&self, agent: AgentKind, budget: usize) -> String {
+        let header = self.resume_header(agent);
+        if header.len() >= budget {
+            return header[..header.floor_char_boundary(budget)].to_owned();
+        }
+        let mut out = header;
+        let push = |out: &mut String, line: &str| {
+            if out.len() + 1 + line.len() <= budget {
+                out.push('\n');
+                out.push_str(line);
+                true
+            } else {
+                false
+            }
+        };
+        // Cut before escaping, so an escape sequence is never split (review of #99).
+        let one_line = |s: &str| -> String {
+            let flat: String = s
+                .chars()
+                .map(|c| {
+                    if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}') {
+                        ' '
+                    } else {
+                        c
+                    }
+                })
+                .collect();
+            let flat = flat.trim();
+            match flat.char_indices().nth(MAX_RESUME_SUBJECT_CHARS) {
+                Some((i, _)) => format!("{}…", SecretRedactor::escape_ahtl_delimiters(&flat[..i])),
+                None => SecretRedactor::escape_ahtl_delimiters(flat),
+            }
+        };
+        let mut failing: Vec<String> = self
+            .graph
+            .query_relation("status", None)
+            .into_iter()
+            .filter(|e| e.target_entity == "FAIL")
+            .map(|e| one_line(&e.source_entity))
+            .filter(|s| !s.is_empty())
+            .collect();
+        failing.sort();
+        failing.dedup();
+        failing.truncate(MAX_RESUME_FAILURES);
+        // As many failing subjects as fit, not all or none.
+        let mut line = String::new();
+        for subject in &failing {
+            let next = if line.is_empty() {
+                format!("Failing now: {subject}")
+            } else {
+                format!("{line}; {subject}")
+            };
+            if out.len() + 1 + next.len() > budget {
+                break;
+            }
+            line = next;
+        }
+        if !line.is_empty() {
+            push(&mut out, &line);
+        }
+        let open = self.dag.active_branch_depth();
+        if open > 0 {
+            push(
+                &mut out,
+                &format!("Open fold branches: {open} (close with icx_write fold)"),
+            );
+        }
+        let mut seen = BTreeSet::new();
+        let recent: Vec<(ArtifactId, &str)> = self
+            .hdc_events
+            .iter()
+            .rev()
+            .filter(|(id, ..)| self.cas.get_meta(*id).is_some() && seen.insert(*id))
+            .take(MAX_RESUME_HANDLES)
+            .map(|(id, subject, ..)| (*id, subject.as_str()))
+            .collect();
+        let heading = "Recent outputs, newest first (dereference a handle with the icx tool):";
+        let lines: Vec<String> = recent
+            .into_iter()
+            .map(|(id, subject)| format!("⟦Ψ:RESUME⊢subj={}↦{id}⟧", one_line(subject)))
+            .collect();
+        // The heading only with at least one output under it (review of #99).
+        if let Some(first) = lines.first()
+            && out.len() + 2 + heading.len() + first.len() <= budget
+        {
+            push(&mut out, heading);
+            for line in &lines {
+                if !push(&mut out, line) {
+                    break;
+                }
+            }
+        }
+        out
     }
 
     /// The best recall hit when HDC hits and BM25 matches are fused by reciprocal rank
@@ -160,31 +415,48 @@ impl InfinityContextMmu {
     /// subject, no HDC similarity, and a combined score at the display threshold, so it is shown
     /// as lexical evidence. `None` when neither ranker finds anything.
     fn fused_recall_hit(&self, query: &str, hdc_hits: &[AssociativeHit]) -> Option<AssociativeHit> {
+        self.fused_recall_hits(query, hdc_hits, 1)
+            .into_iter()
+            .next()
+    }
+
+    /// The best `k` fused recall hits, in fused order (see `fused_recall_hit`).
+    fn fused_recall_hits(
+        &self,
+        query: &str,
+        hdc_hits: &[AssociativeHit],
+        k: usize,
+    ) -> Vec<AssociativeHit> {
         let lexical: Vec<ArtifactId> = self
             .lexical_matches(query, FUSED_LEXICAL_DEPTH)
             .into_iter()
             .map(|(id, _)| id)
             .collect();
-        let top = *Self::fused_ranking(hdc_hits, &lexical).first()?;
-        if let Some(hit) = hdc_hits.iter().find(|h| h.artifact_id == top) {
-            let mut hit = hit.clone();
-            // Lexical agreement is evidence enough to show it.
-            if lexical.contains(&top) {
-                hit.combined_score = hit.combined_score.max(MIN_RECALL_SIMILARITY);
-            }
-            return Some(hit);
-        }
-        Some(AssociativeHit {
-            artifact_id: top,
-            subject: self
-                .hdc_index
-                .subject_of(top)
-                .unwrap_or("artifact")
-                .to_owned(),
-            hdc_similarity: 0.0,
-            shared_fractal_suffix: 0,
-            combined_score: MIN_RECALL_SIMILARITY,
-        })
+        Self::fused_ranking(hdc_hits, &lexical)
+            .into_iter()
+            .take(k)
+            .map(|top| {
+                if let Some(hit) = hdc_hits.iter().find(|h| h.artifact_id == top) {
+                    let mut hit = hit.clone();
+                    // Lexical agreement is evidence enough to show it.
+                    if lexical.contains(&top) {
+                        hit.combined_score = hit.combined_score.max(MIN_RECALL_SIMILARITY);
+                    }
+                    return hit;
+                }
+                AssociativeHit {
+                    artifact_id: top,
+                    subject: self
+                        .hdc_index
+                        .subject_of(top)
+                        .unwrap_or("artifact")
+                        .to_owned(),
+                    hdc_similarity: 0.0,
+                    shared_fractal_suffix: 0,
+                    combined_score: MIN_RECALL_SIMILARITY,
+                }
+            })
+            .collect()
     }
 
     /// The fused order `ICX_RECALL_RANKING=rrf` uses (T-71-002), shared by recall and by the
@@ -207,7 +479,7 @@ impl InfinityContextMmu {
 
     /// Turns maintenance of the lexical index on or off (default: `ICX_RECALL_RANKING=rrf`).
     pub fn set_lexical_index(&mut self, on: bool) {
-        self.lexical_index = on;
+        self.switches.lexical_index = on;
     }
 
     /// The `limit` best BM25 matches for `query` in this workspace's lexical index, best first,
@@ -217,7 +489,7 @@ impl InfinityContextMmu {
     #[must_use]
     pub fn lexical_matches(&self, query: &str, limit: usize) -> Vec<(ArtifactId, f64)> {
         // Off means off: tables left by an earlier run are not maintained, so not read (#97).
-        if !self.lexical_index || limit == 0 {
+        if !self.switches.lexical_index || limit == 0 {
             return Vec::new();
         }
         let Some((dir, _)) = self.loaded_generation.as_ref() else {
@@ -244,7 +516,7 @@ impl InfinityContextMmu {
     /// its stored text; at most `max(64, 8 * limit)` are read, and reading stops at `limit`.
     #[must_use]
     pub fn substring_matches(&self, needle: &str, limit: usize) -> Vec<ArtifactId> {
-        if !self.lexical_index || limit == 0 {
+        if !self.switches.lexical_index || limit == 0 {
             return Vec::new();
         }
         let Some((dir, _)) = self.loaded_generation.as_ref() else {
@@ -932,7 +1204,25 @@ impl InfinityContextMmu {
         query: &str,
         top_k: usize,
     ) -> String {
-        let raw_slot = self.build_ephemeral_tail_slot_inner(requesting_agent, query, top_k);
+        let raw_slot = self.build_ephemeral_tail_slot_inner(requesting_agent, query, top_k, false);
+        let slot = self.epochs.bound_tail_slot(raw_slot);
+        self.record_emitted(&slot);
+        slot
+    }
+
+    /// The tail slot added to every user prompt (v1.5.0, owner decision recorded in ADR-0010):
+    /// cross-agent activity as usual, but at most one recall line, and only for a hit whose
+    /// subject shares a distinctive word with the prompt. No graph lines. The v1.5.0 evaluation found that at
+    /// prompt time the needed output almost never exists yet (313 of 316 cases), so the full
+    /// slot's up to eight recall and graph lines were mostly noise. The full slot stays for
+    /// `SessionStart`, compaction and the `recall` the agent asks for.
+    pub fn build_prompt_tail_slot(&mut self, requesting_agent: AgentKind, prompt: &str) -> String {
+        let raw_slot = self.build_ephemeral_tail_slot_inner(
+            requesting_agent,
+            prompt,
+            PROMPT_RECALL_CANDIDATES,
+            true,
+        );
         let slot = self.epochs.bound_tail_slot(raw_slot);
         self.record_emitted(&slot);
         slot
@@ -943,6 +1233,7 @@ impl InfinityContextMmu {
         requesting_agent: AgentKind,
         query: &str,
         top_k: usize,
+        prompt_only: bool,
     ) -> String {
         let limit = self.epochs.tail_slot_byte_limit();
         let header = format!(
@@ -959,10 +1250,31 @@ impl InfinityContextMmu {
 
         // Reserve useful recall before consuming space with sibling events. A large public
         // subject can fall back to a complete handle frame instead of dropping all recall.
-        let hdc_hits: Vec<AssociativeHit> = self.hdc_index.query_associative(query, top_k);
+        // A prompt with no distinctive word gets no recall line, so it skips the HDC query.
+        let words = if prompt_only {
+            self.prompt_words(query)
+        } else {
+            BTreeSet::new()
+        };
+        let mut hdc_hits: Vec<AssociativeHit> = if prompt_only && words.is_empty() {
+            Vec::new()
+        } else {
+            self.hdc_index.query_associative(query, top_k)
+        };
         // `legacy` (the default) shows the best HDC hit; with `ICX_RECALL_RANKING=rrf` the HDC
         // hits are fused with BM25 matches by reciprocal rank (T-71-002).
-        let best = if self.lexical_index {
+        let best = if prompt_only {
+            if words.is_empty() {
+                None
+            } else if self.switches.lexical_index {
+                // Every fused candidate, not the first few (review of #101: fused lists
+                // interleave the rankers, so a cut dropped qualifying hits).
+                let fused = self.fused_recall_hits(query, &hdc_hits, usize::MAX);
+                self.pick_prompt_hit(fused, &words)
+            } else {
+                self.pick_prompt_hit(std::mem::take(&mut hdc_hits), &words)
+            }
+        } else if self.switches.lexical_index {
             self.fused_recall_hit(query, &hdc_hits)
         } else {
             hdc_hits.first().cloned()
@@ -1039,6 +1351,10 @@ impl InfinityContextMmu {
                 .insert(requesting_agent as u8, new_cursor);
         }
 
+        if prompt_only {
+            return lines.join("\n");
+        }
+
         // 2. Remaining HDC + Fractal associative hits, only as complete frames.
         for hit in hdc_hits.iter().skip(1) {
             Self::append_tail_recall(&mut lines, &mut used, limit, hit);
@@ -1073,6 +1389,95 @@ impl InfinityContextMmu {
         lines.join("\n")
     }
 
+    /// The first of `candidates`, in ranking order, that would be shown, carries its stored
+    /// subject, and whose subject shares a word with the prompt (review of #101: a candidate too
+    /// weak to show, or a placeholder subject, cannot hide a later one that qualifies).
+    fn pick_prompt_hit(
+        &self,
+        candidates: Vec<AssociativeHit>,
+        words: &BTreeSet<String>,
+    ) -> Option<AssociativeHit> {
+        candidates.into_iter().find(|h| {
+            Self::displayable(h) && self.has_stored_subject(h) && Self::shares_a_word(h, words)
+        })
+    }
+
+    /// The lowercased words of a prompt or subject: runs of letters, digits and `_`. An
+    /// identifier stays one word: splitting at `_` (suggested in the review of #101) showed a
+    /// line for 58 of the 118 measured prompts instead of 2, with no more lines used.
+    fn words_of(text: &str) -> impl Iterator<Item = String> + '_ {
+        text.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .filter(|w| !w.is_empty())
+            .map(str::to_lowercase)
+    }
+
+    /// The words of a subject without its tool prefix (`Read:`, `Bash:`, `mcp__x__y:`), so a
+    /// prompt that says "edit" or "grep" does not match every such call (review of #101).
+    fn subject_words(subject: &str) -> impl Iterator<Item = String> + '_ {
+        let rest = match subject.split_once(':') {
+            // `crate::module::item` has no tool prefix (review of #101).
+            Some((tool, rest))
+                if !tool.is_empty()
+                    && !rest.starts_with(':')
+                    && tool.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') =>
+            {
+                rest
+            }
+            _ => subject,
+        };
+        Self::words_of(rest)
+    }
+
+    /// The words of a prompt that can match a subject: at least 3 characters, not a stop word
+    /// (checked after lowercasing, so "What" is one), and distinctive. A word held by more than
+    /// 1 in `PROMPT_WORD_SHARE_DIVISOR` of indexed subjects ("cargo", "bash", "read") would
+    /// match too many hits, so it does not count; a word no subject holds cannot match either.
+    /// Frequency is counted over subjects, the text the match is made against (review of #101:
+    /// counted over output bodies, a module name common in diffs could never match its own
+    /// `Read:` subject), with the same tokenizer.
+    fn prompt_words(&self, prompt: &str) -> BTreeSet<String> {
+        let df: BTreeMap<String, usize> = Self::words_of(prompt)
+            .filter(|w| w.chars().count() >= 3 && !Self::is_ppr_stop_word(w))
+            .map(|w| (w, 0))
+            .collect();
+        if df.is_empty() {
+            return BTreeSet::new();
+        }
+        // Counted over distinct subjects, so working on one file (reading it again and again)
+        // does not make its own name common (review of #101). (count, index of the last
+        // subject counted), so a word repeated in one subject counts once.
+        let subjects: BTreeSet<&str> = self.hdc_index.subjects().collect();
+        let mut counts: BTreeMap<String, (usize, usize)> =
+            df.into_keys().map(|w| (w, (0, usize::MAX))).collect();
+        for (i, subject) in subjects.iter().enumerate() {
+            for w in Self::subject_words(subject) {
+                if let Some((count, last)) = counts.get_mut(&w)
+                    && *last != i
+                {
+                    *count += 1;
+                    *last = i;
+                }
+            }
+        }
+        // The floor of 3 lets a small, early store match; a word in every one of 3 subjects
+        // then still counts, a deliberate trade-off (review of #101).
+        let cap = (subjects.len() / PROMPT_WORD_SHARE_DIVISOR).max(PROMPT_WORD_MIN_CAP);
+        counts
+            .into_iter()
+            .filter(|&(_, (count, _))| count > 0 && count <= cap)
+            .map(|(w, _)| w)
+            .collect()
+    }
+
+    /// Whether `hit`'s subject (its command or file path, without the tool prefix) contains one of
+    /// `words` as
+    /// a whole word. The output text is not searched: a long output almost always holds some
+    /// prompt word, so a text match filtered almost nothing (measured on 118 real prompts: a
+    /// line for 113 with rare words in the text, for 2 with the subject; owner decision).
+    fn shares_a_word(hit: &AssociativeHit, words: &BTreeSet<String>) -> bool {
+        Self::subject_words(&hit.subject).any(|w| words.contains(&w))
+    }
+
     fn append_tail_line(
         lines: &mut Vec<String>,
         used: &mut usize,
@@ -1089,19 +1494,29 @@ impl InfinityContextMmu {
         }
     }
 
+    /// Whether a recall hit is strong enough to show. A hit that is weak on every signal is
+    /// noise in the agent's context (v1.3.2: 6% of injected recall lines in the field had
+    /// sim < 0.1). Exact-identifier (lexical) hits carry a combined score and are kept.
+    fn displayable(hit: &AssociativeHit) -> bool {
+        hit.hdc_similarity >= MIN_RECALL_SIMILARITY
+            || hit.shared_fractal_suffix > 0
+            || hit.combined_score >= MIN_RECALL_SIMILARITY
+    }
+
+    /// Whether `hit` carries the subject stored for it, not the `artifact` placeholder a
+    /// lexical-only hit gets when the index has no entry (review of #101: the placeholder
+    /// could match a prompt that says "artifact").
+    fn has_stored_subject(&self, hit: &AssociativeHit) -> bool {
+        self.hdc_index.subject_of(hit.artifact_id).is_some()
+    }
+
     fn append_tail_recall(
         lines: &mut Vec<String>,
         used: &mut usize,
         limit: usize,
         hit: &AssociativeHit,
     ) {
-        // A hit that is weak on every signal is noise in the agent's context (v1.3.2: 6% of
-        // injected recall lines in the field had sim < 0.1). Exact-identifier (lexical) hits
-        // carry a combined score and are kept.
-        if hit.hdc_similarity < MIN_RECALL_SIMILARITY
-            && hit.shared_fractal_suffix == 0
-            && hit.combined_score < MIN_RECALL_SIMILARITY
-        {
+        if !Self::displayable(hit) {
             return;
         }
         if !Self::append_tail_line(
@@ -1781,6 +2196,14 @@ impl InfinityContextMmu {
                 .into_iter()
                 .map(|(k, v)| (k, v.min(bus_seq)))
                 .collect();
+            self.pending_resume = st.pending_resume;
+            self.pending_resume_sessions = st.pending_resume_sessions;
+            // A snapshot written with a larger bound keeps only the newest (review of #99).
+            let excess = self
+                .pending_resume_sessions
+                .len()
+                .saturating_sub(MAX_PENDING_RESUME_SESSIONS);
+            self.pending_resume_sessions.drain(..excess);
             self.indexed_occurrences = st
                 .indexed_occurrences
                 .into_iter()
@@ -1874,7 +2297,7 @@ impl InfinityContextMmu {
                 .store_seal_key
                 .as_ref()
                 .map(|k| (k, canonical_for_seal.as_path())),
-            lexical: self.lexical_index,
+            lexical: self.switches.lexical_index,
         };
         // The persisted-id cache describes the store it was loaded from or last saved to. A
         // different destination has none of those rows, so write everything (PR #20 review).
@@ -1926,6 +2349,8 @@ impl InfinityContextMmu {
             epochs: Some(self.epochs.clone()),
             hdc_events: self.hdc_events.clone(),
             agent_read_cursors: self.agent_read_cursors.clone(),
+            pending_resume: self.pending_resume.clone(),
+            pending_resume_sessions: self.pending_resume_sessions.clone(),
             indexed_occurrences: self.indexed_occurrences.clone(),
             reordered_occurrences: self.reordered_occurrences.clone(),
             agent_occurrences: self.agent_occurrences.clone(),
@@ -1963,6 +2388,91 @@ impl InfinityContextMmu {
         let out = op(self)?;
         self.save_workspace_dir_unlocked(icx_dir).map_err(E::from)?;
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod prompt_pick_tests {
+    use super::*;
+
+    fn mmu_with(subjects: &[&str]) -> (InfinityContextMmu, Vec<ArtifactId>) {
+        let mut m = InfinityContextMmu::default();
+        let ids = subjects
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                m.ingest_payload(AgentKind::ClaudeCode, s, &format!("body {i}\n"), false)
+                    .artifact_id
+            })
+            .collect();
+        (m, ids)
+    }
+
+    fn hit(id: ArtifactId, subject: &str, sim: f32) -> AssociativeHit {
+        AssociativeHit {
+            artifact_id: id,
+            subject: subject.into(),
+            hdc_similarity: sim,
+            shared_fractal_suffix: 0,
+            combined_score: sim,
+        }
+    }
+
+    fn words(ws: &[&str]) -> BTreeSet<String> {
+        ws.iter().map(|w| (*w).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_weak_candidate_does_not_hide_a_later_one() {
+        let (m, ids) = mmu_with(&["Read:src/alpha.rs", "Read:src/beta.rs"]);
+        let picked = m.pick_prompt_hit(
+            vec![
+                hit(ids[0], "Read:src/alpha.rs", 0.01),
+                hit(ids[1], "Read:src/beta.rs", 0.5),
+            ],
+            &words(&["alpha", "beta"]),
+        );
+        assert_eq!(picked.map(|h| h.artifact_id), Some(ids[1]));
+    }
+
+    #[test]
+    fn a_placeholder_subject_never_matches() {
+        let (m, _) = mmu_with(&["Read:src/alpha.rs"]);
+        let unknown = hit(ArtifactId(0xdead_beef), "artifact", 0.5);
+        assert!(
+            m.pick_prompt_hit(vec![unknown], &words(&["artifact"]))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn identifiers_stay_whole_and_the_tool_prefix_is_ignored() {
+        let (m, ids) = mmu_with(&["Read:src/prompt_recall.rs", "Grep:needle"]);
+        let whole = |w: &[&str]| {
+            m.pick_prompt_hit(
+                vec![hit(ids[0], "Read:src/prompt_recall.rs", 0.5)],
+                &words(w),
+            )
+        };
+        assert!(whole(&["prompt_recall"]).is_some());
+        assert!(whole(&["recall"]).is_none());
+        let tool = m.pick_prompt_hit(vec![hit(ids[1], "Grep:needle", 0.5)], &words(&["grep"]));
+        assert!(tool.is_none(), "the tool name is not a subject word");
+        let path: Vec<String> = InfinityContextMmu::subject_words("icx_core::cas::store").collect();
+        assert_eq!(
+            path,
+            ["icx_core", "cas", "store"],
+            "a path keeps its first segment"
+        );
+    }
+
+    #[test]
+    fn repeated_reads_of_one_file_keep_its_name_distinctive() {
+        let mut subjects = vec!["Read:src/focus.rs"; 6];
+        subjects.extend(["Bash:ls a", "Bash:ls b"]);
+        let (m, _) = mmu_with(&subjects);
+        // Six reads of one file are one distinct subject.
+        assert!(m.prompt_words("look at focus again").contains("focus"));
     }
 }
 

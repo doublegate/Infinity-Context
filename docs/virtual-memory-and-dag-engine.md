@@ -183,6 +183,41 @@ When `tokens(W_active) > epoch_rollover_tokens`:
 
 ---
 
+### 4.4 Resume Packet After Compaction (v1.5.0, T-73-001)
+
+When an agent's context is compacted, icx marks a resume packet pending (persisted, since hooks are
+separate processes). Where the hook names its session (`session_id`, as Claude Code and Codex do,
+and keep across a compaction), the packet belongs to that session, and a parallel session of the
+same agent in the same workspace never takes it; at most 32 such sessions are kept, oldest dropped
+first. Hermes, whose next session after compression is a new one, has one packet per agent. The next hook that carries context delivers it once
+(`SessionStart` after compaction, otherwise the next prompt; §4 of
+`agent-adapters-and-interception.md` lists the route per agent). `ICX_RESUME_PACKET=0` turns it
+off.
+
+```text
+⟪ICX:RESUME│agent=<agent>│epochs=<sealed>│cas_artifacts=<n>⟫
+Failing now: <subject>; <subject>     (active `status = FAIL` graph edges, at most 8, sorted)
+Open fold branches: <n> (close with icx_write fold)
+Recent outputs, newest first (dereference a handle with the icx tool):
+⟦Ψ:RESUME⊢subj=<subject, one line, at most 80 characters>↦#icx:<16 hex>⟧
+...                                   (at most 12, each a distinct artifact in the CAS)
+```
+
+- **Bounded:** at most `RESUME_PACKET_MAX_BYTES` (3,072) bytes, or less where the agent's channel
+  is smaller: what the tail slot leaves of Claude Code's 8,000-character and Codex's 10,000-byte
+  context bounds, and of Hermes's 8,000-character reply. Failures and open folds come first, so
+  recent outputs cannot crowd them out; what does not fit is left out a whole subject or line at
+  a time, newest outputs kept first, and the outputs heading appears only with an output under
+  it. When the budget cannot hold the whole header, nothing is delivered and the packet stays
+  pending for the next hook (review of #99).
+- **Deterministic:** the same store state gives the same packet.
+- **Every handle dereferences;** subjects have control characters and Unicode line separators
+  replaced, are cut to 80 characters, and then have AHTL frame brackets escaped (cut first, so an
+  escape is never split), so a subject cannot break the frame (property test,
+  `crates/icx-adapters/tests/resume_packet.rs`).
+- **Why recency:** the v1.5.0 evaluation found the output an agent needs is almost always the
+  most recent one (ADR-0010), so the packet lists recent outputs rather than recall hits.
+
 ## 5. Workspace Persistence, Integrity & Backup
 
 1. **Location and trust.** A workspace is a private directory outside the repository, by default

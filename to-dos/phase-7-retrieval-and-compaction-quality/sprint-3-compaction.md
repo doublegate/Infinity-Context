@@ -60,9 +60,14 @@ Claude Code, the `additionalContext` limit handled in T-64-006).
 
 **Acceptance Criteria:**
 
-- [ ] Format specified in `docs/virtual-memory-and-dag-engine.md`.
-- [ ] Property test: the packet never exceeds the budget and every handle dereferences.
-- [ ] Rendering is deterministic for the same store state.
+- [x] Format specified in `docs/virtual-memory-and-dag-engine.md`.
+- [x] Property test: the packet never exceeds the budget and every handle dereferences.
+- [x] Rendering is deterministic for the same store state.
+
+**Result (2026-11-25):** `InfinityContextMmu::resume_packet`, specified in
+`docs/virtual-memory-and-dag-engine.md` §4.4. Budget 3,072 bytes (well inside Claude Code's 10,000
+character `additionalContext` limit and Codex's inline cap); recent outputs rather than recall hits,
+because the Sprint 2 evaluation found the needed output is almost always the most recent one.
 
 **Dependencies:** T-64-006
 
@@ -96,10 +101,19 @@ model:
 
 **Acceptance Criteria:**
 
-- [ ] The event and field that carry the packet are recorded per agent version.
+- [x] The event and field that carry the packet are recorded per agent version.
 - [ ] Contract tests over live-run fixtures.
 - [ ] Re-read counts with and without the packet measured and published in `docs/numbers.md`.
-- [ ] Opt-out switch documented.
+- [x] Opt-out switch documented.
+
+**Result (2026-11-25):** Claude Code 2.1.332 fires `SessionStart` with the `compact` matcher after
+compaction (hooks guide); Codex's docs do not say whether `SessionStart` fires after compaction,
+so a pending packet is taken by whichever of `SessionStart` and `UserPromptSubmit` comes first.
+Contract tests drive both adapters through their hook entry points
+(`crates/icx-adapters/tests/resume_packet.rs`); live fixtures for the new path are added with the live
+runs of #89. Re-reads: baseline measured (4.4% of the 30 tool calls after a compaction repeat a
+pre-compaction call, `docs/numbers.md`); the with-packet figure needs sessions recorded after
+v1.5.0 is installed and is not claimed yet. Opt-out: `ICX_RESUME_PACKET=0`.
 
 **Dependencies:** T-73-001, T-65-001
 
@@ -118,8 +132,14 @@ PostCompact sections)
 
 **Acceptance Criteria:**
 
-- [ ] Shim returns the packet within the budget; fails open.
+- [x] Shim returns the packet within the budget; fails open.
 - [ ] Live verification recorded; fixture added.
+
+**Result (2026-11-25):** the Hermes adapter marks the packet at `on_pre_compress`, and its
+`SessionStart` reply (which the engine plugin fetches after compression and injects through
+`select_context`) carries it within the plugin's 8,000-character limit; a test pins that limit to
+the plugin's `_MAX_TAIL_CHARS`. Live verification stays with #89: the Hermes gateway stays stopped
+(owner decision).
 
 **Dependencies:** T-73-001, T-65-002
 
@@ -142,10 +162,17 @@ finding.
 
 **Acceptance Criteria:**
 
-- [ ] Types and their semantics specified. Per the T-64-008 decision (ADR-0009), typed folds are
+- [x] Types and their semantics specified. Per the T-64-008 decision (ADR-0009), typed folds are
   an operation of the state-changing `icx_write` tool, never of the read-only `icx` tool.
-- [ ] Every fold is reversible with `expand`; no content is lost (Merkle-verified test).
+- [x] Every fold is reversible with `expand`; no content is lost (Merkle-verified test).
 - [ ] Context size and success rate measured and published in `docs/numbers.md`.
+
+**Result (2026-11-25):** five types on `icx_write` `fold` (`subtask`, `build_log`, `superseded`,
+`exploration`, `other`), recorded in the fold summary; unknown types are refused; typed folds
+expand back to the exact content (`crates/icx-adapters/tests/typed_folds.rs`). Not measured:
+context size and success rate with and without typed eviction need paired agent runs on a task
+set, which the Phase 10 paired benchmark harness (#61) provides; the hypothesis stays open until
+then.
 
 **Dependencies:** T-64-008, T-73-001
 

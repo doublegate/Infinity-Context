@@ -77,7 +77,7 @@ writes the text to a file and the model sees a preview. Every icx reply stays wi
      ```
 
 2. **`UserPromptSubmit`:**
-   - Reads `prompt`, builds the tail slot (HDC query + fractal suffix + PPR walk + unseen sibling bus frames), and returns it in `hookSpecificOutput.additionalContext`.
+   - Reads `prompt`, builds the prompt tail slot (unseen sibling bus frames, and at most one recall line, for a recall hit whose subject shares a distinctive word with the prompt; v1.5.0, ADR-0010), and returns it in `hookSpecificOutput.additionalContext`.
 3. **`PostToolUse` (in-flight tool output virtualization):**
    - Reads `tool_name`, `tool_input`, and `tool_response`. If the output is at or above `tool_virtualize_threshold` (default 512 bytes):
      1. Redacts secrets via `SecretRedactor`.
@@ -113,6 +113,11 @@ writes the text to a file and the model sees a preview. Every icx reply stays wi
 6. **`PreCompact` & `PostCompact`:**
    - `PreCompact` seals the active window into an `L3` `CacheEpochNode` and prints **plain stdout** (not JSON), which Claude Code uses as compaction instructions: keep every `#icx:` handle and icx packet verbatim, followed by the current context map. Output stays under Claude Code's 10,000-character limit. (`systemMessage` is discarded on this event.)
    - `PostCompact` stores `compact_summary` in the workspace, seals the epoch, and returns `{}`.
+   - **Resume packet (v1.5.0, T-73-002):** both events mark a resume packet pending. Claude Code
+     2.1.332 fires `SessionStart` with the `compact` matcher after every compaction and adds its
+     output to the context (documented in the hooks guide), so that `SessionStart` reply carries
+     the packet in `additionalContext`; if none follows, the next `UserPromptSubmit` does.
+     Format: `virtual-memory-and-dag-engine.md` §4.4.
    - icx never blocks compaction.
 7. **`SessionEnd`:** folds open subagent branches, seals the epoch, returns `{}`.
 8. **`Stop`:** not handled; returns `{}`.
@@ -141,7 +146,7 @@ Upstream reference: the Codex hooks documentation (developers.openai.com/codex/h
      - icx therefore keeps the non-replacing reply.
 3. **`PreToolUse`:** returns `continue: true` with no decision and no input change.
 4. **`SubagentStop`:** reads `last_assistant_message` and folds the subagent branch; the fold frame is returned in `systemMessage`.
-5. **`PreCompact`, `PostCompact` & `SessionEnd`:** seal the epoch and return `{"continue": true, "systemMessage": "<deterministic prefix>"}`.
+5. **`PreCompact`, `PostCompact` & `SessionEnd`:** seal the epoch and return `{"continue": true, "systemMessage": "<deterministic prefix>"}`. `PreCompact` and `PostCompact` also mark a resume packet pending (v1.5.0, T-73-002). No Codex hook can change the summary, and the Codex documentation does not say whether `SessionStart` fires after compaction, so the packet goes in the `additionalContext` of whichever comes first, `SessionStart` or the next `UserPromptSubmit`, within `CODEX_INLINE_CONTEXT_MAX_BYTES`.
 6. **`PreModelRequest` / `PostModelRequest`:** not used. Upstream defines them as diagnostic only; they cannot change the request.
 7. **Rollout ingestion (`icx codex-ingest`, v1.4.0; `codex_ingest` module):**
    - **What it reads:** the rollouts under `$CODEX_HOME/sessions` (default `~/.codex/sessions`) whose `session_meta.cwd` is the project or lies beneath it, as recorded or once symlinks are resolved, including a linked git worktree of the project. `--all-projects` drops the filter. Only a bounded prefix (4 MiB) of each file is decoded to find the `cwd`.
@@ -248,7 +253,7 @@ Target: the Hermes `ContextEngine` ABC (`agent/context_engine.py`) and `MemoryPr
 | Event | icx action | Reply |
 | --- | --- | --- |
 | `SessionStart` | Tail slot with the AHTL legend | `additionalContext` |
-| `UserPromptSubmit` | Prompt-scoped tail slot (recall) | `additionalContext` |
+| `UserPromptSubmit` | Prompt tail slot: sibling activity, at most one subject-matched recall line | `additionalContext` |
 | `PostToolUse` | Ingest the tool output (Bash JSON unwrapped) | `{"hookSpecificOutput":{"hookEventName":"PostToolUse"}}` |
 | `PostToolUseFailure` | Ingest the error text as an anomaly | `{}` |
 | `SubagentStart` / `SubagentStop` | Open / fold the subagent branch | `{}` |

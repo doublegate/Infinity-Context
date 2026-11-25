@@ -14,6 +14,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   (#102). On this project's 4,694-artifact workspace it ran in 1.9 s and found 169 artifacts,
   stored by versions before v1.3.1, that today's rules would hide further.
 
+- Resume packet after compaction (T-73-001..003): after Claude Code, Codex or Hermes compacts its
+  context, the next hook that carries context adds, once, a bounded (3 KB) deterministic packet:
+  the most recent outputs with their `#icx:` handles, subjects failing now, and open fold
+  branches. Claude Code receives it in the `SessionStart` after compaction (or the next prompt),
+  Codex at its next `SessionStart` or prompt, Hermes in the `SessionStart` reply its engine plugin
+  fetches after compression. `ICX_RESUME_PACKET=0` turns it off. Baseline: 4.4% of tool calls
+  after a compaction repeat one made before it (`docs/numbers.md`).
+- Typed folds (T-73-004): `icx_write` `fold` takes an optional `type` (`subtask`, `build_log`,
+  `superseded`, `exploration`, `other`), recorded in the fold's summary; unknown types are
+  refused, and a typed fold expands back to its exact content.
+
 ### Changed
 
 - Redaction keeps what is not secret (ADR-0011, T-74-003, #90). After a sensitive key, a value
@@ -27,6 +38,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   (#29), and a quote later on the line is still hidden from that quote on. Lines of JSON members
   without braces are redacted structurally. On the 19-line corpus, over-redacted bytes went from
   183 to 24 with no missed secret (`docs/numbers.md`). Already-stored content is not changed.
+
+- What icx adds to every user prompt (Claude Code, Codex, Gemini CLI, Muse, OpenCode, agy): at
+  most one recall line, shown only when the hit's subject (command or file path, not the tool prefix)
+  shares a distinctive word with the prompt, and no graph lines; before, up to about eight
+  recall and graph lines, mostly unrelated (ADR-0010). A word is distinctive when at most 2%
+  of indexed subjects hold it (at least 3 in a small store). On 118 real prompts the line now appears twice, once for the
+  output the turn used; matching the output text instead showed a line for 113. Cross-agent activity is unchanged;
+  `SessionStart`, compaction and the agent's own `recall` keep the full slot.
 
 ### Fixed
 

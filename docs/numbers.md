@@ -183,6 +183,14 @@ artifacts that existed when it was asked. Queries and judgements are private
   50,000-word vocabulary every ranker has recall@1 of 100% at 1k and 10k artifacts; with 500
   words at 10k, recall@1 is 59.0% (legacy), 56.5% (BM25) and 58.5% (RRF).
 
+**v1.5.0 measurements: re-reads after compaction (2026-11-25, T-73-002 baseline):**
+
+Across this machine's Claude Code transcripts with compactions (20 transcripts, 336 compactions),
+of the 30 tool calls after each compaction, 423 of 9,657 (4.4%) repeated a call made before it
+(the same file read, search, command or icx handle). Some repeats are deliberate (re-running
+tests). This is the "without packet" baseline; the "with packet" figure needs sessions recorded
+after v1.5.0 is installed, and is not claimed until then.
+
 ## 3. Constants and Test-Asserted Bounds
 
 ### Handles, hashing and storage

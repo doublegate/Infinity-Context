@@ -250,7 +250,7 @@ impl AntigravityAdapter {
                     })
                     .unwrap_or("agy_turn");
                 let tail = Self::attach_conversation_id(
-                    mmu.build_ephemeral_tail_slot(AgentKind::AntigravityCli, last_input, 4),
+                    mmu.build_prompt_tail_slot(AgentKind::AntigravityCli, last_input),
                     &payload,
                 );
                 json!({

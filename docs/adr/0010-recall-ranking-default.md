@@ -47,10 +47,36 @@ of #98, which found that prompt cases had been timed at the dereference instead 
 ## Consequences
 
 - v1.5.0 ships the index, fusion and harness without changing what any user sees by default.
-- **Open question for the owner:** whether automatic recall should change at all (a stricter
-  threshold, fewer lines, or none) given how rarely its line is used. That needs a measure of
-  benefit beyond "was the handle opened" (an agent may use the subject line without opening it),
-  which this harness does not yet have.
+- **Prompt recall, decided by the owner (2026-11-25):** what icx adds to every user prompt is
+  now at most one recall line, and no graph lines; before, up to about eight recall and graph
+  lines were added, mostly unrelated. The line is shown only when the hit's subject (its command or
+  file path; the tool prefix such as `Read:` is not counted) shares a distinctive word with the
+  prompt: at least 3 characters, not a stop word, and held by at most 2% of distinct indexed
+  subjects (at least 3 while there are fewer than 200). Matching the output text instead filtered almost nothing. Measured on 118 real
+  prompts (each line counted as used when the turn then opened that output; the first and last
+  rows are reproduced by the ignored `measure_prompt_recall_lines` test, the others came from
+  temporary variants of the rule). The measurement runs every prompt against the final store, so
+  later outputs are present and rarity is the final store's; it compares rules on equal terms but
+  is not a point-in-time replay:
+
+  | Rule | Prompts given a line | Lines the turn used |
+  | :--- | ---: | ---: |
+  | Best hit, no word rule | 118 | 1 |
+  | Rare word in the output text (2%, 0.5%, 0.1%) | 113, 90, 17 | 1, 0, 0 |
+  | Rare word in the subject, rarity counted over output text | 1 | 1 |
+  | Rare word in the subject, rarity counted over subjects (shipped) | 2 | 1 |
+
+  Rarity is counted over distinct subjects, the text the match is made against, without the tool
+  prefix (`Read:`, `Bash:`), and an identifier stays one word (review of #101): counted over
+  output text, a module name common in diffs could never match its own `Read:` subject, and
+  splitting identifiers at `_` showed a line for 58 of the 118 prompts.
+  The prompt slot is `InfinityContextMmu::build_prompt_tail_slot`. Cross-agent activity is
+  unchanged, and `SessionStart`, compaction and the `recall` an agent asks for keep the full
+  slot.
+
+- **Next step, once the resume packet has been in use for a while:** inject recall only after a
+  break (compaction, resume or a new session), when older context really is gone, and measure it
+  with the post-install re-read figures (T-73-002).
 - **To revisit the default:** build a long-range set, for example from sessions that resume after
   a compaction or a restart, where the needed output is no longer in context. `icx eval-recall
   --min-age <N>` already selects such cases when they exist.
