@@ -51,18 +51,24 @@ of #98, which found that prompt cases had been timed at the dereference instead 
   now at most one recall line, and no graph lines; before, up to about eight recall and graph
   lines were added, mostly unrelated. The line is shown only when the hit's subject (its command,
   file path or tool name) shares a distinctive word with the prompt: at least 3 characters, not
-  a stop word, and held by at most 2% of indexed outputs. Matching the output text instead
-  filtered almost nothing. Measured on 118 real prompts (each line counted as used when the turn
-  then opened that output):
+  a stop word, and held by at most 2% of indexed subjects (at least 3 in a store of fewer than
+  150 entries). Matching the output text instead filtered almost nothing. Measured on 118 real
+  prompts (each line counted as used when the turn then opened that output; the first and last
+  rows are reproduced by the ignored `measure_prompt_recall_lines` test, the others came from
+  temporary variants of the rule):
 
   | Rule | Prompts given a line | Lines the turn used |
   | :--- | ---: | ---: |
   | Best hit, no word rule | 118 | 1 |
   | Rare word in the output text (2%, 0.5%, 0.1%) | 113, 90, 17 | 1, 0, 0 |
-  | Rare word in the subject (shipped) | 1 | 1 |
+  | Rare word in the subject, rarity counted over output text | 1 | 1 |
+  | Rare word in the subject, rarity counted over subjects (shipped) | 2 | 1 |
 
-  Cross-agent activity is unchanged, and `SessionStart`, compaction and the `recall` an agent
-  asks for keep the full slot (`InfinityContextMmu::build_prompt_tail_slot`).
+  Rarity is counted over subjects, the text the match is made against (review of #101): counted
+  over output text, a module name common in diffs could never match its own `Read:` subject.
+  The prompt slot is `InfinityContextMmu::build_prompt_tail_slot`. Cross-agent activity is
+  unchanged, and `SessionStart`, compaction and the `recall` an agent asks for keep the full
+  slot.
 
 - **Next step, once the resume packet has been in use for a while:** inject recall only after a
   break (compaction, resume or a new session), when older context really is gone, and measure it

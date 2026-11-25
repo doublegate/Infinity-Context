@@ -25,9 +25,9 @@ static WORKSPACE_IO_LOCK: Mutex<()> = Mutex::new(());
 const MIN_RECALL_SIMILARITY: f32 = 0.10;
 /// HDC hits a prompt's recall line may be chosen from (only one is shown).
 const PROMPT_RECALL_CANDIDATES: usize = 4;
-/// A prompt word counts for the recall line only if at most this share of indexed outputs hold
-/// it, or at most `PROMPT_WORD_MIN_CAP` outputs in a small store.
-const PROMPT_WORD_MAX_SHARE: f64 = 0.02;
+/// A prompt word counts for the recall line only if at most 1 in `PROMPT_WORD_SHARE_DIVISOR`
+/// (2%) of indexed subjects hold it, or at most `PROMPT_WORD_MIN_CAP` in a small store.
+const PROMPT_WORD_SHARE_DIVISOR: usize = 50;
 const PROMPT_WORD_MIN_CAP: usize = 3;
 /// Recall depths the fused line uses: HDC hits per prompt (the tail slot's `top_k` at a prompt)
 /// and lexical matches (T-71-002).
@@ -166,31 +166,48 @@ impl InfinityContextMmu {
     /// subject, no HDC similarity, and a combined score at the display threshold, so it is shown
     /// as lexical evidence. `None` when neither ranker finds anything.
     fn fused_recall_hit(&self, query: &str, hdc_hits: &[AssociativeHit]) -> Option<AssociativeHit> {
+        self.fused_recall_hits(query, hdc_hits, 1)
+            .into_iter()
+            .next()
+    }
+
+    /// The best `k` fused recall hits, in fused order (see `fused_recall_hit`).
+    fn fused_recall_hits(
+        &self,
+        query: &str,
+        hdc_hits: &[AssociativeHit],
+        k: usize,
+    ) -> Vec<AssociativeHit> {
         let lexical: Vec<ArtifactId> = self
             .lexical_matches(query, FUSED_LEXICAL_DEPTH)
             .into_iter()
             .map(|(id, _)| id)
             .collect();
-        let top = *Self::fused_ranking(hdc_hits, &lexical).first()?;
-        if let Some(hit) = hdc_hits.iter().find(|h| h.artifact_id == top) {
-            let mut hit = hit.clone();
-            // Lexical agreement is evidence enough to show it.
-            if lexical.contains(&top) {
-                hit.combined_score = hit.combined_score.max(MIN_RECALL_SIMILARITY);
-            }
-            return Some(hit);
-        }
-        Some(AssociativeHit {
-            artifact_id: top,
-            subject: self
-                .hdc_index
-                .subject_of(top)
-                .unwrap_or("artifact")
-                .to_owned(),
-            hdc_similarity: 0.0,
-            shared_fractal_suffix: 0,
-            combined_score: MIN_RECALL_SIMILARITY,
-        })
+        Self::fused_ranking(hdc_hits, &lexical)
+            .into_iter()
+            .take(k)
+            .map(|top| {
+                if let Some(hit) = hdc_hits.iter().find(|h| h.artifact_id == top) {
+                    let mut hit = hit.clone();
+                    // Lexical agreement is evidence enough to show it.
+                    if lexical.contains(&top) {
+                        hit.combined_score = hit.combined_score.max(MIN_RECALL_SIMILARITY);
+                    }
+                    return hit;
+                }
+                AssociativeHit {
+                    artifact_id: top,
+                    subject: self
+                        .hdc_index
+                        .subject_of(top)
+                        .unwrap_or("artifact")
+                        .to_owned(),
+                    hdc_similarity: 0.0,
+                    shared_fractal_suffix: 0,
+                    combined_score: MIN_RECALL_SIMILARITY,
+                }
+            })
+            .collect()
     }
 
     /// The fused order `ICX_RECALL_RANKING=rrf` uses (T-71-002), shared by recall and by the
@@ -988,18 +1005,21 @@ impl InfinityContextMmu {
         // `legacy` (the default) shows the best HDC hit; with `ICX_RECALL_RANKING=rrf` the HDC
         // hits are fused with BM25 matches by reciprocal rank (T-71-002).
         let best = if prompt_only {
-            // The first candidate, in ranking order, that shares a word with the prompt.
+            // The first candidate, in ranking order, whose subject shares a word with the
+            // prompt (review of #101: with fusion on, every candidate is checked, not one).
             let words = self.prompt_words(query);
-            let ranked: Vec<AssociativeHit> = if self.lexical_index {
-                self.fused_recall_hit(query, &hdc_hits)
+            if words.is_empty() {
+                None
+            } else if self.lexical_index {
+                self.fused_recall_hits(query, &hdc_hits, PROMPT_RECALL_CANDIDATES)
                     .into_iter()
-                    .collect()
+                    .find(|h| Self::shares_a_word(h, &words))
             } else {
-                hdc_hits.clone()
-            };
-            ranked
-                .into_iter()
-                .find(|h| !words.is_empty() && Self::shares_a_word(h, &words))
+                hdc_hits
+                    .iter()
+                    .find(|h| Self::shares_a_word(h, &words))
+                    .cloned()
+            }
         } else if self.lexical_index {
             self.fused_recall_hit(query, &hdc_hits)
         } else {
@@ -1115,23 +1135,41 @@ impl InfinityContextMmu {
         lines.join("\n")
     }
 
-    /// The words of a prompt that can match an output: at least 3 characters, not a stop word,
-    /// lowercased (the PageRank seed rule), and distinctive. A word in more than
-    /// `PROMPT_WORD_MAX_SHARE` of indexed outputs ("test", "error", "file") would let almost
-    /// any long output pass, so it does not count (side-agent review); a word no output holds
-    /// cannot match either. An index without token postings keeps every word.
-    fn prompt_words(&self, prompt: &str) -> BTreeSet<String> {
-        let n = self.hdc_index.entry_count();
-        let cap = ((n as f64 * PROMPT_WORD_MAX_SHARE) as usize).max(PROMPT_WORD_MIN_CAP);
-        prompt
-            .split(|c: char| !(c.is_alphanumeric() || c == '_'))
-            .filter(|w| w.chars().count() >= 3 && !Self::is_ppr_stop_word(w))
+    /// The lowercased words of a subject or prompt: runs of letters, digits and `_`.
+    fn words_of(text: &str) -> impl Iterator<Item = String> + '_ {
+        text.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .filter(|w| !w.is_empty())
             .map(str::to_lowercase)
-            .filter(|w| {
-                self.hdc_index
-                    .token_frequency(w)
-                    .is_none_or(|df| df > 0 && df <= cap)
-            })
+    }
+
+    /// The words of a prompt that can match a subject: at least 3 characters, not a stop word
+    /// (checked after lowercasing, so "What" is one), and distinctive. A word held by more than
+    /// 1 in `PROMPT_WORD_SHARE_DIVISOR` of indexed subjects ("cargo", "bash", "read") would
+    /// match too many hits, so it does not count; a word no subject holds cannot match either.
+    /// Frequency is counted over subjects, the text the match is made against (review of #101:
+    /// counted over output bodies, a module name common in diffs could never match its own
+    /// `Read:` subject), with the same tokenizer.
+    fn prompt_words(&self, prompt: &str) -> BTreeSet<String> {
+        let mut df: BTreeMap<String, usize> = Self::words_of(prompt)
+            .filter(|w| w.chars().count() >= 3 && !Self::is_ppr_stop_word(w))
+            .map(|w| (w, 0))
+            .collect();
+        if df.is_empty() {
+            return BTreeSet::new();
+        }
+        for subject in self.hdc_index.subjects() {
+            let words: BTreeSet<String> = Self::words_of(subject).collect();
+            for w in &words {
+                if let Some(count) = df.get_mut(w) {
+                    *count += 1;
+                }
+            }
+        }
+        let cap =
+            (self.hdc_index.entry_count() / PROMPT_WORD_SHARE_DIVISOR).max(PROMPT_WORD_MIN_CAP);
+        df.into_iter()
+            .filter(|&(_, count)| count > 0 && count <= cap)
+            .map(|(w, _)| w)
             .collect()
     }
 
@@ -1140,9 +1178,7 @@ impl InfinityContextMmu {
     /// prompt word, so a text match filtered almost nothing (measured on 118 real prompts: a
     /// line for 113 with rare words in the text, for 1 with the subject; owner decision).
     fn shares_a_word(hit: &AssociativeHit, words: &BTreeSet<String>) -> bool {
-        hit.subject
-            .split(|c: char| !(c.is_alphanumeric() || c == '_'))
-            .any(|w| words.contains(&w.to_lowercase()))
+        Self::words_of(&hit.subject).any(|w| words.contains(&w))
     }
 
     fn append_tail_line(

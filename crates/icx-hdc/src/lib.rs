@@ -694,12 +694,9 @@ impl HdcAssociativeIndex {
         }
     }
 
-    /// How many indexed entries hold `word` (as the exact-token index normalizes it), or `None`
-    /// when this index keeps no token postings (a legacy snapshot).
-    #[must_use]
-    pub fn token_frequency(&self, word: &str) -> Option<usize> {
-        let postings = self.lexical_postings.as_ref()?;
-        Some(postings.get(&word.to_ascii_lowercase()).map_or(0, Vec::len))
+    /// The stored subjects of all indexed entries, oldest first.
+    pub fn subjects(&self) -> impl Iterator<Item = &str> {
+        self.entries.iter().map(IndexedEntry::subject)
     }
 
     /// Number of indexed entries.
@@ -1375,13 +1372,11 @@ mod tests {
     }
 
     #[test]
-    fn token_frequency_counts_entries_holding_a_word() {
+    fn subjects_lists_every_entry_in_order() {
         let mut idx = HdcAssociativeIndex::new();
-        idx.observe_event(ArtifactId(1), "a", "alpha beta", false);
-        idx.observe_event(ArtifactId(2), "b", "alpha gamma", false);
-        assert_eq!(idx.token_frequency("alpha"), Some(2));
-        assert_eq!(idx.token_frequency("GAMMA"), Some(1));
-        assert_eq!(idx.token_frequency("delta"), Some(0));
+        idx.observe_event(ArtifactId(1), "Read:a.rs", "alpha beta", false);
+        idx.observe_event(ArtifactId(2), "Bash:ls", "alpha gamma", false);
+        assert_eq!(idx.subjects().collect::<Vec<_>>(), ["Read:a.rs", "Bash:ls"]);
         assert_eq!(idx.entry_count(), 2);
     }
 }

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later AND AGPL-3.0-or-later
 
 //! What icx adds to every user prompt (v1.5.0, ADR-0010 owner decision): at most one recall
-//! line, only for a hit that shares a word with the prompt, and no graph lines. Other events keep
-//! the full tail slot.
+//! line, only for a hit whose subject shares a distinctive word with the prompt, and no graph
+//! lines. Other events keep the full tail slot.
 
 use icx_adapters::{ClaudeCodeAdapter, InfinityContextMmu};
 use icx_core::AgentKind;
@@ -47,6 +47,48 @@ fn a_prompt_gets_at_most_one_recall_line_and_no_graph_lines() {
 }
 
 #[test]
+fn several_matching_hits_still_give_one_line() {
+    let mut m = mmu();
+    // Each word is in exactly one subject, so up to three hits match.
+    let tail = m.build_prompt_tail_slot(AgentKind::ClaudeCode, "compare crate1 crate2 crate3");
+    assert_eq!(recall_lines(&tail).len(), 1, "{tail}");
+    assert!(!tail.contains("PPR_GRAPH"), "{tail}");
+}
+
+#[test]
+fn a_word_in_many_subjects_does_not_count() {
+    let mut m = mmu();
+    // "cargo", "test" and "package" are in 30 of 31 subjects, over the cap of 3.
+    let tail = m.build_prompt_tail_slot(AgentKind::ClaudeCode, "run cargo package again");
+    assert!(recall_lines(&tail).is_empty(), "{tail}");
+}
+
+#[test]
+fn a_capitalized_stop_word_does_not_count() {
+    let mut m = mmu();
+    m.ingest_payload(AgentKind::ClaudeCode, "Bash:echo what", "what\n", false);
+    // "What" is a stop word whatever its case (review of #101).
+    let tail = m.build_prompt_tail_slot(AgentKind::ClaudeCode, "What now, Then?");
+    assert!(recall_lines(&tail).is_empty(), "{tail}");
+}
+
+#[test]
+fn fused_ranking_checks_every_candidate_like_legacy() {
+    let mut legacy = mmu();
+    let mut fused = mmu();
+    fused.set_lexical_index(true);
+    let mut shown = 0;
+    for i in 0..30 {
+        let q = format!("did crate{i} tests pass");
+        let a = legacy.build_prompt_tail_slot(AgentKind::ClaudeCode, &q);
+        let b = fused.build_prompt_tail_slot(AgentKind::ClaudeCode, &q);
+        assert_eq!(recall_lines(&a), recall_lines(&b), "{q}");
+        shown += recall_lines(&a).len();
+    }
+    assert!(shown > 0);
+}
+
+#[test]
 fn the_recall_line_needs_a_shared_word() {
     let mut m = mmu();
     // A distinctive word of the subject (`Read:src/redactor.rs`): shown.
@@ -56,10 +98,10 @@ fn the_recall_line_needs_a_shared_word() {
     assert!(lines[0].contains("redactor"), "{tail}");
     // No word in common (stop words and short words do not count): nothing shown.
     let none = m.build_prompt_tail_slot(AgentKind::ClaudeCode, "what is it now and then?");
-    assert_eq!(recall_lines(&none), Vec::<&str>::new(), "{none}");
+    assert!(recall_lines(&none).is_empty(), "{none}");
     // A word only in the output text, not the subject, does not count.
     let text_only = m.build_prompt_tail_slot(AgentKind::ClaudeCode, "where is redact_secrets");
-    assert_eq!(recall_lines(&text_only), Vec::<&str>::new(), "{text_only}");
+    assert!(recall_lines(&text_only).is_empty(), "{text_only}");
 }
 
 #[test]
@@ -80,7 +122,11 @@ fn the_prompt_hook_uses_the_prompt_slot_and_session_start_keeps_the_full_one() {
         "{ctx}"
     );
     let start = ClaudeCodeAdapter::handle_hook("SessionStart", "{}", &mut m).unwrap();
-    assert!(start.contains("ICX:TAIL_SLOT"), "{start}");
+    // The full slot: recall with no word rule, and graph lines.
+    assert!(
+        !recall_lines(&start).is_empty() || start.contains("PPR_GRAPH"),
+        "{start}"
+    );
 }
 
 /// Measurement (run with `ICX_MEASURE_WORKSPACE=<workspace dir> ICX_MEASURE_PROMPTS=<prompt set
@@ -101,6 +147,9 @@ fn measure_prompt_recall_lines() {
     m.load_workspace_dir(std::path::Path::new(&dir)).unwrap();
     let (mut n, mut unfiltered, mut shipped, mut unfiltered_hit, mut shipped_hit) = (0, 0, 0, 0, 0);
     for line in std::fs::read_to_string(&set).unwrap().lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
         let case: serde_json::Value = serde_json::from_str(line).unwrap();
         let q = case["query"].as_str().unwrap_or_default();
         let relevant: Vec<String> = case["relevant"]
