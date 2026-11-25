@@ -68,16 +68,20 @@ fn measure_stage1_recall_by_corpus_size() {
                     let t = rng.below(n);
                     // Three distinct positions of the target's words (sampled without
                     // replacement, review of #97).
-                    let mut pos: Vec<usize> = Vec::with_capacity(3);
-                    while pos.len() < 3 {
-                        let p = 2 + rng.below(22);
-                        if !pos.contains(&p) {
-                            pos.push(p);
+                    // Three distinct words of the target (review of #97: distinct positions
+                    // can still repeat a word).
+                    let mut picked: Vec<usize> = Vec::with_capacity(3);
+                    let mut tries = 0;
+                    while picked.len() < 3 && tries < 1000 {
+                        let w = words[t][2 + rng.below(22)];
+                        if !picked.contains(&w) {
+                            picked.push(w);
                         }
+                        tries += 1;
                     }
-                    let q: Vec<String> = pos.iter().map(|&p| format!("w{}", words[t][p])).collect();
+                    let q: Vec<String> = picked.iter().map(|w| format!("w{w}")).collect();
                     let query = q.join(" ");
-                    let qw: Vec<usize> = q.iter().map(|w| w[1..].parse().unwrap()).collect();
+                    let qw = picked.clone();
                     ties += words
                         .iter()
                         .filter(|d| qw.iter().all(|x| d.contains(x)))

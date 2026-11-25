@@ -705,6 +705,9 @@ impl HdcAssociativeIndex {
         words: usize,
         target: usize,
     ) -> (bool, usize) {
+        if top_k == 0 || self.entries.is_empty() {
+            return (false, 0);
+        }
         let q_hv = Hypervector::encode_text(query_text);
         let q_tokens = Self::query_tokens(query_text);
         let q_postings = self.query_postings(&q_tokens);
@@ -751,6 +754,12 @@ impl HdcAssociativeIndex {
         let Some(last) = self.entries.len().checked_sub(1) else {
             return 0;
         };
+        // Entry `i` is trajectory step `i`; the latest entry holds the current coordinates.
+        debug_assert_eq!(
+            self.entries[last].fractal_coord,
+            self.current_trajectory(),
+            "index entries and trajectory steps are out of step"
+        );
         let bound = self
             .current_trajectory()
             .verified_suffix_depth(&self.entries[idx].fractal_coord) as usize;
@@ -843,7 +852,11 @@ impl HdcAssociativeIndex {
                 .zip(&self.entries[idx].hv.words[..width])
                 .map(|(a, b)| (a ^ b).count_ones())
                 .sum();
-            let sim1024 = (width as u32 * 64).saturating_sub(ham1024);
+            // Scaled to the 1,024-bit range, so a measured width changes only the width and not
+            // the weight of this term against the others (review of #97). At the shipped width
+            // the factor is 1.
+            let sim1024 =
+                (width as u32 * 64).saturating_sub(ham1024) * PRESCREEN_WORDS as u32 / width as u32;
             let content = Self::content_hits(s, q_tokens) as u32;
             let raw_bloom_hits = (q_bloom32 & s.subj_bloom32).count_ones();
             let subj_density = s.subj_bloom32.count_ones().max(2);
@@ -1303,5 +1316,26 @@ mod tests {
         for query in ["w1 w2 w3", "Bash:run", "w499"] {
             assert_eq!(candidate_count(&idx, query, 5), 60, "{query}");
         }
+    }
+
+    #[test]
+    fn measurement_hooks_agree_with_the_production_paths() {
+        let (idx, _) = synthetic_corpus(300, 500, 5);
+        let q = "w1 w2 w3";
+        let prod: Vec<_> = idx
+            .query_associative(q, 5)
+            .into_iter()
+            .map(|h| h.artifact_id)
+            .collect();
+        let hook: Vec<_> = idx
+            .measure_query(q, 5, PRESCREEN_WORDS)
+            .into_iter()
+            .map(|h| h.artifact_id)
+            .collect();
+        assert_eq!(prod, hook);
+        let (_, n) = idx.measure_prescreen(q, 5, PRESCREEN_WORDS, 0);
+        assert_eq!(n, candidate_count(&idx, q, 5));
+        assert_eq!(idx.measure_prescreen(q, 0, PRESCREEN_WORDS, 0), (false, 0));
+        assert_eq!(idx.measure_suffix_claims().1, 0, "no event repeats");
     }
 }

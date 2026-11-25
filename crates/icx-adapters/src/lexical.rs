@@ -221,18 +221,26 @@ fn split_identifier(word: &str) -> Vec<&str> {
 /// literal, so no query text is read as FTS5 syntax. `None` when the query has no words.
 #[must_use]
 pub fn words_query(query: &str) -> Option<String> {
-    let mut seen = std::collections::BTreeSet::new();
-    let terms: Vec<String> = query
+    let words: Vec<&str> = query
         .split(|c: char| !(c.is_alphanumeric() || c == '_'))
         .filter(|w| !w.is_empty())
-        .flat_map(|w| {
-            let parts = split_identifier(w);
-            let mut all = vec![w.to_lowercase()];
-            if parts.len() > 1 || parts.first().is_some_and(|p| *p != w) {
-                all.extend(parts.into_iter().map(str::to_lowercase));
-            }
-            all
-        })
+        .collect();
+    // Every whole word first, then identifier parts in the remaining budget, so long compound
+    // identifiers cannot crowd out later words (review of #97).
+    let parts = words.iter().flat_map(|w| {
+        let p = split_identifier(w);
+        if p.len() > 1 || p.first().is_some_and(|x| x != w) {
+            p
+        } else {
+            Vec::new()
+        }
+    });
+    let mut seen = std::collections::BTreeSet::new();
+    let terms: Vec<String> = words
+        .iter()
+        .copied()
+        .chain(parts)
+        .map(str::to_lowercase)
         .filter(|w| seen.insert(w.clone()))
         .take(MAX_QUERY_TERMS)
         .map(|w| format!("\"{}\"", w.replace('"', "\"\"")))
@@ -366,8 +374,8 @@ mod tests {
         );
         assert_eq!(words_query("!!! ..."), None);
         assert_eq!(
-            words_query("parseHttp"),
-            Some("\"parsehttp\" OR \"parse\" OR \"http\"".into())
+            words_query("parseHttp later"),
+            Some("\"parsehttp\" OR \"later\" OR \"parse\" OR \"http\"".into())
         );
         let long = (0..100)
             .map(|i| format!("w{i}"))

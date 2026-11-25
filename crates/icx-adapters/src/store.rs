@@ -198,6 +198,9 @@ pub(crate) fn open_read_only(dir: &Path) -> Result<Connection, IcxError> {
     .map_err(db_err)?;
     conn.busy_timeout(std::time::Duration::from_secs(5))
         .map_err(db_err)?;
+    // A read-only open of a WAL store can create `-shm` with the process umask; reset it to 0600
+    // like every other open (review of #97).
+    tighten_store_file_modes(dir)?;
     Ok(conn)
 }
 
@@ -435,11 +438,17 @@ pub(crate) fn save<'c>(
     // After a rewrite every row is "new"; the index is then rebuilt in backfill batches like any
     // other unindexed artifact, so one save never indexes a whole store (review of #97).
     let lexical_new: &[ArtifactId] = if rewritten { &[] } else { &new_artifacts };
-    let lexical_added = if derived.lexical {
-        index_lexical(&tx, &chunks, &artifacts, lexical_new, persisted)
-    } else {
-        Vec::new()
-    };
+    // The set of indexed ids after this save; applied to `persisted` only once the transaction
+    // commits, like every other persisted-id record (review of #97). `None`: unknown, re-read.
+    let lexical_after = derived.lexical.then(|| {
+        index_lexical(
+            &tx,
+            &chunks,
+            &artifacts,
+            lexical_new,
+            persisted.lexical.as_ref(),
+        )
+    });
     let next_gen = on_disk.saturating_add(1);
     let cfg = serde_json::to_vec(&derived.chunk_config).map_err(db_err)?;
     let mut upsert = tx
@@ -494,44 +503,42 @@ pub(crate) fn save<'c>(
     persisted.chunks.extend(new_chunks);
     persisted.artifacts.extend(new_artifacts);
     persisted.emitted.extend(new_emitted);
-    if let Some(set) = persisted.lexical.as_mut() {
-        set.extend(lexical_added);
+    if let Some(after) = lexical_after {
+        persisted.lexical = after;
     }
     Ok(next_gen)
 }
 
 /// Adds the new artifacts, and up to [`crate::lexical::BACKFILL_BATCH`] older ones not yet
-/// indexed, to the lexical index; returns the ids added (applied to `persisted` after commit).
-/// Optional derived state: any failure rolls back only the index work, is reported on stderr,
-/// and never fails the save.
+/// indexed, to the lexical index. Returns the set of indexed ids afterwards, or `None` when it
+/// is unknown (the caller re-reads it on the next save). `known` is the caller's record, `None`
+/// when not yet read. Optional derived state: any failure rolls back only the index work, is
+/// reported on stderr, and never fails the save.
 fn index_lexical(
     tx: &rusqlite::Transaction<'_>,
     chunks: &[(ArtifactId, &Blake3Digest, &[u8])],
     artifacts: &[&StoredArtifact],
     new_artifacts: &[ArtifactId],
-    persisted: &mut PersistedIds,
-) -> Vec<ArtifactId> {
+    known: Option<&BTreeSet<ArtifactId>>,
+) -> Option<BTreeSet<ArtifactId>> {
     if let Err(e) = tx.execute_batch("SAVEPOINT lexical") {
         eprintln!("icx: lexical index skipped: {e}");
-        return Vec::new();
+        return None;
     }
-    match index_lexical_rows(tx, chunks, artifacts, new_artifacts, persisted) {
-        Ok(added) => {
+    match index_lexical_rows(tx, chunks, artifacts, new_artifacts, known) {
+        Ok(after) => {
             if let Err(e) = tx.execute_batch("RELEASE lexical") {
-                // Undo the index rows too, so the record of indexed ids stays true.
+                // Undo the index rows too, so no record claims them.
                 let _ = tx.execute_batch("ROLLBACK TO lexical; RELEASE lexical");
-                persisted.lexical = None;
                 eprintln!("icx: lexical index skipped: {e}");
-                return Vec::new();
+                return None;
             }
-            added
+            Some(after)
         }
         Err(e) => {
             let _ = tx.execute_batch("ROLLBACK TO lexical; RELEASE lexical");
-            // What the store holds is unknown again; it is read on the next save.
-            persisted.lexical = None;
             eprintln!("icx: lexical index skipped: {e}");
-            Vec::new()
+            None
         }
     }
 }
@@ -541,47 +548,48 @@ fn index_lexical_rows(
     chunks: &[(ArtifactId, &Blake3Digest, &[u8])],
     artifacts: &[&StoredArtifact],
     new_artifacts: &[ArtifactId],
-    persisted: &mut PersistedIds,
-) -> Result<Vec<ArtifactId>, IcxError> {
-    {
-        if crate::lexical::ensure_tables(tx)? {
-            persisted.lexical = Some(BTreeSet::new());
-        }
-        if persisted.lexical.is_none() {
-            persisted.lexical = Some(crate::lexical::indexed_ids(tx)?);
-        }
-        let indexed = persisted.lexical.as_ref().map_or(&EMPTY_IDS, |s| s);
-        let new: BTreeSet<ArtifactId> = new_artifacts.iter().copied().collect();
-        let bytes: std::collections::HashMap<ArtifactId, &[u8]> =
-            chunks.iter().map(|&(id, _, b)| (id, b)).collect();
-        let mut backfill = 0usize;
-        let mut added = Vec::new();
-        for art in artifacts {
-            if indexed.contains(&art.id) {
-                continue;
+    known: Option<&BTreeSet<ArtifactId>>,
+) -> Result<BTreeSet<ArtifactId>, IcxError> {
+    let mut indexed = if crate::lexical::ensure_tables(tx)? {
+        BTreeSet::new()
+    } else if let Some(k) = known {
+        k.clone()
+    } else {
+        crate::lexical::indexed_ids(tx)?
+    };
+    let new: BTreeSet<ArtifactId> = new_artifacts.iter().copied().collect();
+    // Choose what to index first, so a save with nothing to index builds no chunk map.
+    let mut backfill = 0usize;
+    let todo: Vec<&StoredArtifact> = artifacts
+        .iter()
+        .copied()
+        .filter(|art| !indexed.contains(&art.id))
+        .filter(|art| {
+            if new.contains(&art.id) {
+                return true;
             }
-            if !new.contains(&art.id) {
-                if backfill >= crate::lexical::BACKFILL_BATCH {
-                    continue;
-                }
-                backfill += 1;
-            }
-            let mut text =
-                Vec::with_capacity(art.total_bytes.min(crate::lexical::MAX_INDEXED_BYTES));
-            for c in &art.chunk_ids {
-                if text.len() >= crate::lexical::MAX_INDEXED_BYTES {
-                    break;
-                }
-                text.extend_from_slice(bytes.get(c).copied().unwrap_or_default());
-            }
-            crate::lexical::insert(tx, art.id, &String::from_utf8_lossy(&text))?;
-            added.push(art.id);
-        }
-        Ok(added)
+            backfill += 1;
+            backfill <= crate::lexical::BACKFILL_BATCH
+        })
+        .collect();
+    if todo.is_empty() {
+        return Ok(indexed);
     }
+    let bytes: std::collections::HashMap<ArtifactId, &[u8]> =
+        chunks.iter().map(|&(id, _, b)| (id, b)).collect();
+    for art in todo {
+        let mut text = Vec::with_capacity(art.total_bytes.min(crate::lexical::MAX_INDEXED_BYTES));
+        for c in &art.chunk_ids {
+            if text.len() >= crate::lexical::MAX_INDEXED_BYTES {
+                break;
+            }
+            text.extend_from_slice(bytes.get(c).copied().unwrap_or_default());
+        }
+        crate::lexical::insert(tx, art.id, &String::from_utf8_lossy(&text))?;
+        indexed.insert(art.id);
+    }
+    Ok(indexed)
 }
-
-static EMPTY_IDS: BTreeSet<ArtifactId> = BTreeSet::new();
 
 /// Drops the lexical tables inside their own savepoint; a failure (a view under the name, a
 /// corrupt table) is reported on stderr and never fails the save.

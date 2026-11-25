@@ -53,7 +53,7 @@ trees resolved in a scratch crate, upstream sources):
   (v1.1.0). It was measured at 1k, 10k and 100k (`docs/numbers.md`, v1.5.0 measurements):
   stage-1 recall is 100% for rare-word queries at every size and 98.5% for common-word queries at
   100k (corrected after the review of #97: 100% for both once query words are sampled without
-  replacement). A 2,048-bit prescreen gave identical recall and was about 1.6x slower at 100k. Hypothesis rejected;
+  replacement). A 2,048-bit prescreen gave identical recall and was about 1.7x slower at 100k. Hypothesis rejected;
   the width is unchanged, and the ticket closes with the measurement.
 - **T-71-004:** measured before the fix over 20,000 events: 3 distinct and 66 similar events
   (0.33%) were false one-step suffixes, all from colliding 16-bit corners. None of the nonzero

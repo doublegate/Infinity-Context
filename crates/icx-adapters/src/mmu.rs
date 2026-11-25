@@ -185,9 +185,9 @@ impl InfinityContextMmu {
             .collect()
     }
 
-    /// Artifacts whose text contains `needle` (at least 3 characters), at most `limit`, sorted
-    /// by artifact id: trigram candidates from the lexical index, each confirmed against its
-    /// stored text. At most `max(64, 8 * limit)` candidates are read from the CAS.
+    /// Artifacts whose text contains `needle` (at least 3 characters): the first `limit`
+    /// confirmed trigram candidates, sorted by artifact id. Each candidate is confirmed against
+    /// its stored text; at most `max(64, 8 * limit)` are read, and reading stops at `limit`.
     #[must_use]
     pub fn substring_matches(&self, needle: &str, limit: usize) -> Vec<ArtifactId> {
         if !self.lexical_index || limit == 0 {
@@ -203,6 +203,7 @@ impl InfinityContextMmu {
             return Vec::new();
         }
         // Candidates are a superset; scan a bounded number of them.
+        // Stop reading the CAS once `limit` candidates are confirmed (review of #97).
         let mut found: Vec<ArtifactId> =
             crate::lexical::trigram_candidates(&conn, needle, limit.saturating_mul(8).max(64))
                 .unwrap_or_default()
@@ -212,9 +213,9 @@ impl InfinityContextMmu {
                         .deref_bytes(*id)
                         .is_ok_and(|b| String::from_utf8_lossy(&b).contains(needle))
                 })
+                .take(limit)
                 .collect();
         found.sort_unstable();
-        found.truncate(limit);
         found
     }
 

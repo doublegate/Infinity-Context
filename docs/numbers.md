@@ -96,31 +96,32 @@ time is `query_associative` alone. Both widths are measured by one command:
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 1024 bits | 1000 | 50000 | 200 | 128 | 1.0 | 100.0% | 100.0% | 100.0% | 0.17 ms |
 | 1024 bits | 1000 | 500 | 200 | 219 | 1.1 | 100.0% | 95.0% | 100.0% | 0.20 ms |
-| 1024 bits | 10000 | 50000 | 200 | 413 | 1.0 | 100.0% | 100.0% | 100.0% | 1.16 ms |
-| 1024 bits | 10000 | 500 | 200 | 714 | 2.0 | 100.0% | 72.0% | 100.0% | 1.11 ms |
-| 1024 bits | 100000 | 50000 | 200 | 1403 | 1.0 | 100.0% | 100.0% | 100.0% | 16.58 ms |
-| 1024 bits | 100000 | 500 | 200 | 1265 | 12.3 | 100.0% | 14.5% | 55.5% | 17.59 ms |
-| 2048 bits | 1000 | 50000 | 200 | 128 | 1.0 | 100.0% | 100.0% | 100.0% | 0.20 ms |
-| 2048 bits | 1000 | 500 | 200 | 211 | 1.1 | 100.0% | 95.0% | 100.0% | 0.21 ms |
-| 2048 bits | 10000 | 50000 | 200 | 409 | 1.0 | 100.0% | 100.0% | 100.0% | 1.52 ms |
-| 2048 bits | 10000 | 500 | 200 | 712 | 2.0 | 100.0% | 72.0% | 100.0% | 1.54 ms |
-| 2048 bits | 100000 | 50000 | 200 | 1396 | 1.0 | 100.0% | 100.0% | 100.0% | 27.75 ms |
-| 2048 bits | 100000 | 500 | 200 | 1265 | 12.3 | 100.0% | 14.5% | 55.5% | 27.99 ms |
+| 1024 bits | 10000 | 50000 | 200 | 413 | 1.0 | 100.0% | 100.0% | 100.0% | 1.12 ms |
+| 1024 bits | 10000 | 500 | 200 | 714 | 1.9 | 100.0% | 69.0% | 100.0% | 1.08 ms |
+| 1024 bits | 100000 | 50000 | 200 | 1403 | 1.0 | 100.0% | 100.0% | 100.0% | 15.63 ms |
+| 1024 bits | 100000 | 500 | 200 | 1265 | 10.1 | 100.0% | 15.0% | 55.5% | 15.24 ms |
+| 2048 bits | 1000 | 50000 | 200 | 128 | 1.0 | 100.0% | 100.0% | 100.0% | 0.17 ms |
+| 2048 bits | 1000 | 500 | 200 | 219 | 1.1 | 100.0% | 95.0% | 100.0% | 0.21 ms |
+| 2048 bits | 10000 | 50000 | 200 | 412 | 1.0 | 100.0% | 100.0% | 100.0% | 1.20 ms |
+| 2048 bits | 10000 | 500 | 200 | 713 | 1.9 | 100.0% | 69.0% | 100.0% | 1.09 ms |
+| 2048 bits | 100000 | 50000 | 200 | 1402 | 1.0 | 100.0% | 100.0% | 100.0% | 26.75 ms |
+| 2048 bits | 100000 | 500 | 200 | 1265 | 10.1 | 100.0% | 15.0% | 55.5% | 26.80 ms |
 
 - **1,024-bit prescreen (shipped since v1.1.0):** the target reaches exact scoring in every
   query, at every size, for rare and common words alike.
-- **2,048 bits:** identical recall in every row, never faster, and about 1.6 times slower at 100k
-  (28 ms against 17 ms; each measurement run alone, since timings on a shared desktop vary by tens
-  of percent). The hypothesis that a wider
+- **2,048 bits** (its score scaled to the 1,024-bit range, so only the width differs): identical
+  recall in every row, and about 1.7 times slower at 100k (26.8 ms against 15.6 ms; the
+  measurement run alone, since timings on a shared desktop vary by tens of percent). The hypothesis that a wider
   prescreen recovers dropped candidates is rejected, and the width stays 1,024 bits.
-- **The loss with common words is ranking, not the prescreen:** at 100k, about 12 artifacts hold
-  all three query words, so recall@1 cannot be much above 1/12 by these words alone; 14.5% is
+- **The loss with common words is ranking, not the prescreen:** at 100k, about 10 artifacts hold
+  all three query words, so recall@1 cannot be much above 1/10 by these words alone; 15.0% is
   above that. Lexical ranking (BM25, T-71-001) and fusion (T-71-002) are measured against this
   on the Sprint 2 evaluation set.
-- **Query time** grows with n: about 0.2 ms at 1k, 1.1 ms at 10k and 17 ms at 100k.
+- **Query time** grows with n: about 0.2 ms at 1k, 1.1 ms at 10k and 15–16 ms at 100k.
 - **Corrections (review of #97):** a first version timed the stage-1 inspection and the
-  ambiguity count with the query, and sampled query words with replacement (so some queries had
-  two distinct words); it reported about twice these times and lower recall for common words.
+  ambiguity count with the query, sampled query words with replacement (so some queries had two
+  distinct words), and did not scale the 2,048-bit score; it reported about twice these times and
+  lower recall for common words.
 
 **ICX-AUD-052 measurement (T-71-004):** over 20,000 events with no repeats, the coordinates alone
 claimed a shared history for 3 distinct and 66 similar earlier events; the confirmed suffix
@@ -149,8 +150,10 @@ does, without `optimize` or `VACUUM`. Reproduce on any store with
 - **Corrections (review of #97):** the first figures (3.0 and 3.7 MB) came from a Python probe that
   numbered rows 0, 1, 2…, left the identifier-parts column empty and compacted the tables, so they
   did not describe the shipped index.
-- Trigram candidates are confirmed against the artifact's text, so a substring hit also reads the
-  candidates from the CAS (at most `max(64, 8 * limit)`).
+- These timings reuse one open connection. Through the MMU (`lexical_matches`,
+  `substring_matches`) each call also opens the store read-only and checks the table version, and
+  a substring hit reads its candidates from the CAS until `limit` are confirmed (at most
+  `max(64, 8 * limit)`).
 
 ## 3. Constants and Test-Asserted Bounds
 
