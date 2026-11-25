@@ -52,14 +52,13 @@ impl CodexAdapter {
         let response = match event_name {
             "SessionStart" | "session-start" => {
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::Codex, "session_start", 3);
-                let resume = mmu
-                    .take_resume_packet(AgentKind::Codex, crate::mmu::RESUME_PACKET_MAX_BYTES)
-                    .map_or_else(String::new, |p| format!("\n{p}"));
+                let prefix = format!("{ICX_AHTL_LEGEND}\n{tail}");
+                let resume = codex_resume(mmu, &prefix);
                 json!({
                     "continue": true,
                     "hookSpecificOutput": {
                         "hookEventName": "SessionStart",
-                        "additionalContext": codex_inline_context(format!("{ICX_AHTL_LEGEND}\n{tail}{resume}"))
+                        "additionalContext": codex_inline_context(format!("{prefix}{resume}"))
                     },
                     "stopReason": null,
                     "suppressOutput": false,
@@ -74,9 +73,7 @@ impl CodexAdapter {
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::Codex, prompt, 4);
                 // Codex has no hook that changes the summary; the first hook after compaction
                 // that carries context delivers the resume packet (T-73-002).
-                let resume = mmu
-                    .take_resume_packet(AgentKind::Codex, crate::mmu::RESUME_PACKET_MAX_BYTES)
-                    .map_or_else(String::new, |p| format!("\n{p}"));
+                let resume = codex_resume(mmu, &tail);
                 json!({
                     "continue": true,
                     "hookSpecificOutput": {
@@ -222,6 +219,17 @@ impl CodexAdapter {
 /// and spills anything larger to a file, leaving the model only a preview (T-62-006; Codex
 /// `codex-rs/hooks/src/output_spill.rs` and `utils/string/src/truncate.rs` at `rust-v0.171.0`).
 pub const CODEX_INLINE_CONTEXT_MAX_BYTES: usize = 2_500 * 4;
+
+/// The pending resume packet, sized to what `prefix` leaves of the Codex context bound, so the
+/// whole reply is never replaced by the over-limit diagnostic (review of #99). Empty when none
+/// is pending or none fits; a packet that does not fit stays pending.
+fn codex_resume(mmu: &mut InfinityContextMmu, prefix: &str) -> String {
+    let room = CODEX_INLINE_CONTEXT_MAX_BYTES
+        .saturating_sub(prefix.len() + 1)
+        .min(crate::mmu::RESUME_PACKET_MAX_BYTES);
+    mmu.take_resume_packet(AgentKind::Codex, room)
+        .map_or_else(String::new, |p| format!("\n{p}"))
+}
 
 /// Keeps a Codex `additionalContext` value within [`CODEX_INLINE_CONTEXT_MAX_BYTES`]. The tail
 /// slot is already far smaller; this pins the bound at the reply. Over the bound, the context is

@@ -144,7 +144,11 @@ impl McpPagerServer {
                         "properties": {
                             "op": { "type": "string", "enum": ["fold", "xagent"] },
                             "q": { "type": "string" },
-                            "type": { "type": "string", "enum": FOLD_TYPES }
+                            "type": {
+                                "type": "string",
+                                "enum": FOLD_TYPES,
+                                "description": "Only when closing a fold: what the folded context was (subtask: finished subtask; build_log: build or test output; superseded: replaced by later work; exploration: a dead end; other)."
+                            }
                         }
                     }
                 }
@@ -573,6 +577,12 @@ impl McpPagerServer {
             "fold" => {
                 let summary = args.get("q").and_then(Value::as_str).unwrap_or("completed");
                 if let Some(label) = summary.strip_prefix("begin:") {
+                    if args.get("type").is_some_and(|t| !t.is_null()) {
+                        return (
+                            "ERR: type applies when closing a fold, not to begin:".to_owned(),
+                            true,
+                        );
+                    }
                     if mmu.dag.active_branch_depth() >= MAX_FOLD_DEPTH {
                         return (
                             format!(
@@ -593,12 +603,10 @@ impl McpPagerServer {
                         Some(Value::String(t)) if FOLD_TYPES.contains(&t.as_str()) => {
                             Some(t.as_str())
                         }
-                        Some(other) => {
+                        // The value is not echoed (review of #99: it was unbounded).
+                        Some(_) => {
                             return (
-                                format!(
-                                    "ERR: fold type {other} is not one of {}",
-                                    FOLD_TYPES.join(", ")
-                                ),
+                                format!("ERR: fold type must be one of {}", FOLD_TYPES.join(", ")),
                                 true,
                             );
                         }

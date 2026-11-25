@@ -1078,9 +1078,8 @@ impl HermesAdapter {
                 let room = HERMES_MAX_TAIL_CHARS
                     .saturating_sub(tail.chars().count() + 1)
                     .min(crate::mmu::RESUME_PACKET_MAX_BYTES);
-                if let Some(packet) = mmu.take_resume_packet(AgentKind::Hermes, room)
-                    && !packet.is_empty()
-                {
+                // A packet that does not fit stays pending (review of #99).
+                if let Some(packet) = mmu.take_resume_packet(AgentKind::Hermes, room) {
                     tail.push('\n');
                     tail.push_str(&packet);
                 }

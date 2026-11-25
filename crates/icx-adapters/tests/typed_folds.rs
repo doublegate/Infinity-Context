@@ -66,6 +66,21 @@ fn unknown_fold_types_are_refused_and_untyped_folds_are_unchanged() {
     let refused =
         McpPagerServer::execute_icx_op(&json!({"op": "fold", "q": "done", "type": 3}), &mut mmu);
     assert!(refused.starts_with("ERR"), "{refused}");
+    // The refused value is not echoed.
+    let long = "z".repeat(5_000);
+    let refused =
+        McpPagerServer::execute_icx_op(&json!({"op": "fold", "q": "done", "type": long}), &mut mmu);
+    assert!(
+        refused.starts_with("ERR") && refused.len() < 200,
+        "{refused}"
+    );
+    // A type on begin: is refused and opens nothing.
+    let refused = McpPagerServer::execute_icx_op(
+        &json!({"op": "fold", "q": "begin:y", "type": "subtask"}),
+        &mut mmu,
+    );
+    assert!(refused.starts_with("ERR"), "{refused}");
+    assert_eq!(mmu.dag.active_branch_depth(), 1);
     let plain = McpPagerServer::execute_icx_op(&json!({"op": "fold", "q": "done"}), &mut mmu);
     let expanded =
         McpPagerServer::execute_icx_op(&json!({"op": "expand", "id": fold_id(&plain)}), &mut mmu);

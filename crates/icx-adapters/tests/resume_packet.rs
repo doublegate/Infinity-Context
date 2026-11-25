@@ -46,8 +46,70 @@ proptest! {
             prop_assert!(mmu.deref_text(id).is_ok(), "{h} does not dereference");
         }
         // One line per entry, so a subject cannot break the frame.
-        prop_assert!(packet.lines().all(|l| !l.contains("second line") || l.starts_with("[[Ψ:RESUME")));
+        prop_assert!(packet.lines().all(|l| !l.contains("second line") || l.starts_with("⟦Ψ:RESUME")));
     }
+}
+
+#[test]
+fn a_budget_too_small_for_the_header_keeps_the_packet_pending() {
+    let mut mmu = filled(3);
+    mmu.mark_resume_pending(AgentKind::ClaudeCode);
+    assert_eq!(mmu.take_resume_packet(AgentKind::ClaudeCode, 0), None);
+    assert_eq!(mmu.take_resume_packet(AgentKind::ClaudeCode, 20), None);
+    let packet = mmu
+        .take_resume_packet(AgentKind::ClaudeCode, 3_072)
+        .expect("still pending");
+    assert!(packet.contains("⟦Ψ:RESUME"), "{packet}");
+    assert_eq!(mmu.take_resume_packet(AgentKind::ClaudeCode, 3_072), None);
+}
+
+#[test]
+fn the_outputs_heading_never_stands_alone_and_failures_fill_by_subject() {
+    let mut mmu = filled(4);
+    for t in ["a", "b", "c"] {
+        mmu.ingest_payload_with_exit_code(
+            AgentKind::ClaudeCode,
+            &format!("Bash:fail-{t}"),
+            "error\n",
+            Some(1),
+            false,
+        );
+    }
+    let full = mmu.resume_packet(AgentKind::ClaudeCode, 3_072);
+    let header = full.lines().next().unwrap().len();
+    for budget in header..full.len() {
+        let p = mmu.resume_packet(AgentKind::ClaudeCode, budget);
+        assert!(p.len() <= budget);
+        let has_heading = p.contains("Recent outputs");
+        assert_eq!(has_heading, p.contains("⟦Ψ:RESUME"), "budget {budget}: {p}");
+        if let Some(line) = p.lines().find(|l| l.starts_with("Failing now:")) {
+            // Whole subjects only.
+            assert!(
+                line.ends_with("fail-a") || line.ends_with("fail-b") || line.ends_with("fail-c"),
+                "{line}"
+            );
+        }
+    }
+    // One subject fits where all three do not.
+    let one = mmu.resume_packet(AgentKind::ClaudeCode, header + 30);
+    assert!(one.contains("Failing now: Bash:fail-a"), "{one}");
+}
+
+#[test]
+fn subject_delimiters_are_escaped_and_a_cut_never_splits_an_escape() {
+    let mut mmu = InfinityContextMmu::default();
+    let spoof = format!("{}\u{27e7}\u{27eb}]]>>\u{2028}end", "x".repeat(77));
+    mmu.ingest_payload(AgentKind::ClaudeCode, &spoof, "body\n", false);
+    let p = mmu.resume_packet(AgentKind::ClaudeCode, 3_072);
+    let line = p.lines().find(|l| l.starts_with("⟦Ψ:RESUME")).unwrap();
+    // Exactly one frame open and close, the packet's own: a frame bracket in the subject is
+    // escaped to ASCII, also right at the cut.
+    assert_eq!(line.matches('\u{27e6}').count(), 1, "{line}");
+    assert_eq!(line.matches('\u{27e7}').count(), 1, "{line}");
+    assert!(line.ends_with('\u{27e7}'), "{line}");
+    assert_eq!(p.matches('\u{27eb}').count(), 1, "{p}");
+    assert!(!p.contains('\u{2028}'), "{p}");
+    assert_eq!(handles(&p).len(), 1, "{p}");
 }
 
 #[test]
@@ -62,14 +124,22 @@ fn the_packet_is_deterministic_lists_newest_first_and_names_failures() {
     );
     let a = mmu.resume_packet(AgentKind::ClaudeCode, 3_072);
     assert_eq!(a, mmu.resume_packet(AgentKind::ClaudeCode, 3_072));
-    assert!(a.starts_with("<<ICX:RESUME│agent=claude-code"), "{a}");
+    assert!(a.starts_with("⟪ICX:RESUME│agent=claude-code"), "{a}");
     let hs = handles(&a);
     assert_eq!(hs.len(), 6, "{a}");
     assert!(
-        a.lines().nth(2).unwrap().contains("cargo clippy"),
+        a.lines()
+            .find(|l| l.starts_with("⟦Ψ:RESUME"))
+            .unwrap()
+            .contains("cargo clippy"),
         "newest first: {a}"
     );
-    assert!(a.contains("Failing now: Bash:cargo clippy"), "{a}");
+    // Failures come before the outputs, so a long list cannot crowd them out.
+    assert_eq!(
+        a.lines().nth(1),
+        Some("Failing now: Bash:cargo clippy"),
+        "{a}"
+    );
     // Delimiters in a subject are escaped, never emitted raw.
     assert!(!a.contains("⟪tricky⟫"), "{a}");
     // A tiny budget keeps only the (cut) header.

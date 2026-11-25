@@ -192,21 +192,25 @@ since hooks are separate processes). The next hook that carries context delivers
 off.
 
 ```text
-<<ICX:RESUME│agent=<agent>│epochs=<sealed>│cas_artifacts=<n>>>
-Recent outputs, newest first (dereference a handle with the icx tool):
-[[Ψ:RESUME⊢subj=<subject, one line, at most 80 characters>↦#icx:<16 hex>]]
-...                                   (at most 12, each a distinct artifact in the CAS)
+⟪ICX:RESUME│agent=<agent>│epochs=<sealed>│cas_artifacts=<n>⟫
 Failing now: <subject>; <subject>     (active `status = FAIL` graph edges, at most 8, sorted)
 Open fold branches: <n> (close with icx_write fold)
+Recent outputs, newest first (dereference a handle with the icx tool):
+⟦Ψ:RESUME⊢subj=<subject, one line, at most 80 characters>↦#icx:<16 hex>⟧
+...                                   (at most 12, each a distinct artifact in the CAS)
 ```
 
 - **Bounded:** at most `RESUME_PACKET_MAX_BYTES` (3,072) bytes, or less where the agent's channel
-  is smaller (Hermes: what its 8,000-character reply leaves after the tail slot). Lines that do
-  not fit are left out, newest outputs first kept; a budget smaller than the header gets the
-  header cut to the budget.
+  is smaller: what the tail slot leaves of Claude Code's 8,000-character and Codex's 10,000-byte
+  context bounds, and of Hermes's 8,000-character reply. Failures and open folds come first, so
+  recent outputs cannot crowd them out; what does not fit is left out a whole subject or line at
+  a time, newest outputs kept first, and the outputs heading appears only with an output under
+  it. When the budget cannot hold the whole header, nothing is delivered and the packet stays
+  pending for the next hook (review of #99).
 - **Deterministic:** the same store state gives the same packet.
-- **Every handle dereferences;** subjects have control characters replaced and AHTL delimiters
-  escaped, so a subject cannot break the frame (property test,
+- **Every handle dereferences;** subjects have control characters and Unicode line separators
+  replaced, are cut to 80 characters, and then have AHTL frame brackets escaped (cut first, so an
+  escape is never split), so a subject cannot break the frame (property test,
   `crates/icx-adapters/tests/resume_packet.rs`).
 - **Why recency:** the v1.5.0 evaluation found the output an agent needs is almost always the
   most recent one (ADR-0010), so the packet lists recent outputs rather than recall hits.

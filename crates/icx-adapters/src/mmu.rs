@@ -173,8 +173,12 @@ impl InfinityContextMmu {
             wall_clock: false,
             switches: Switches {
                 lexical_index: crate::lexical::enabled(),
-                resume_packets: std::env::var("ICX_RESUME_PACKET")
-                    .map_or(true, |v| !matches!(v.trim(), "0" | "off" | "false" | "no")),
+                resume_packets: std::env::var("ICX_RESUME_PACKET").map_or(true, |v| {
+                    !matches!(
+                        v.trim().to_ascii_lowercase().as_str(),
+                        "0" | "off" | "false" | "no"
+                    )
+                }),
             },
         }
     }
@@ -196,27 +200,39 @@ impl InfinityContextMmu {
     }
 
     /// The resume packet for `agent`, once per compaction: `Some` only when one is pending, which
-    /// it then no longer is.
+    /// it then no longer is. When `budget` cannot hold even the whole header, nothing is
+    /// delivered and the packet stays pending for the next hook (review of #99: a cut header was
+    /// delivered, or an empty one dropped, and the pending packet lost either way).
     pub fn take_resume_packet(&mut self, agent: AgentKind, budget: usize) -> Option<String> {
-        if !self.switches.resume_packets || !self.pending_resume.remove(&(agent as u8)) {
+        if !self.switches.resume_packets
+            || !self.pending_resume.contains(&(agent as u8))
+            || self.resume_header(agent).len() > budget
+        {
             return None;
         }
+        self.pending_resume.remove(&(agent as u8));
         Some(self.resume_packet(agent, budget))
     }
 
-    /// What an agent needs after its context was compacted (T-73-001), deterministically and
-    /// within `budget` bytes: the most recent outputs with their handles, newest first (recency
-    /// was the strongest signal in the v1.5.0 evaluation), subjects currently failing, and the
-    /// number of open fold branches. Every handle names an artifact in the CAS. Lines that do not
-    /// fit are left out, newest kept first; the header alone is cut to the budget.
-    #[must_use]
-    pub fn resume_packet(&self, agent: AgentKind, budget: usize) -> String {
-        let header = format!(
-            "<<ICX:RESUME│agent={}│epochs={}│cas_artifacts={}>>",
+    fn resume_header(&self, agent: AgentKind) -> String {
+        format!(
+            "⟪ICX:RESUME│agent={}│epochs={}│cas_artifacts={}⟫",
             agent.as_str(),
             self.epochs.sealed_epoch_count(),
             self.cas.artifact_count()
-        );
+        )
+    }
+
+    /// What an agent needs after its context was compacted (T-73-001), deterministically and
+    /// within `budget` bytes: subjects currently failing, the number of open fold branches, and
+    /// the most recent outputs with their handles, newest first (recency was the strongest
+    /// signal in the v1.5.0 evaluation). Failures and folds come first, so a long list of
+    /// outputs cannot crowd them out (review of #99). Every handle names an artifact in the CAS.
+    /// What does not fit is left out, whole subjects and lines at a time; the header alone is
+    /// cut to the budget.
+    #[must_use]
+    pub fn resume_packet(&self, agent: AgentKind, budget: usize) -> String {
+        let header = self.resume_header(agent);
         if header.len() >= budget {
             return header[..header.floor_char_boundary(budget)].to_owned();
         }
@@ -230,41 +246,24 @@ impl InfinityContextMmu {
                 false
             }
         };
+        // Cut before escaping, so an escape sequence is never split (review of #99).
         let one_line = |s: &str| -> String {
             let flat: String = s
                 .chars()
-                .map(|c| if c.is_control() { ' ' } else { c })
+                .map(|c| {
+                    if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}') {
+                        ' '
+                    } else {
+                        c
+                    }
+                })
                 .collect();
-            let flat = SecretRedactor::escape_ahtl_delimiters(flat.trim());
+            let flat = flat.trim();
             match flat.char_indices().nth(MAX_RESUME_SUBJECT_CHARS) {
-                Some((i, _)) => format!("{}…", &flat[..i]),
-                None => flat,
+                Some((i, _)) => format!("{}…", SecretRedactor::escape_ahtl_delimiters(&flat[..i])),
+                None => SecretRedactor::escape_ahtl_delimiters(flat),
             }
         };
-        let mut seen = BTreeSet::new();
-        let recent: Vec<(ArtifactId, &str)> = self
-            .hdc_events
-            .iter()
-            .rev()
-            .filter(|(id, ..)| self.cas.get_meta(*id).is_some() && seen.insert(*id))
-            .take(MAX_RESUME_HANDLES)
-            .map(|(id, subject, ..)| (*id, subject.as_str()))
-            .collect();
-        if !recent.is_empty()
-            && push(
-                &mut out,
-                "Recent outputs, newest first (dereference a handle with the icx tool):",
-            )
-        {
-            for (id, subject) in recent {
-                if !push(
-                    &mut out,
-                    &format!("[[Ψ:RESUME⊢subj={}↦{id}]]", one_line(subject)),
-                ) {
-                    break;
-                }
-            }
-        }
         let mut failing: Vec<String> = self
             .graph
             .query_relation("status", None)
@@ -275,8 +274,21 @@ impl InfinityContextMmu {
         failing.sort();
         failing.dedup();
         failing.truncate(MAX_RESUME_FAILURES);
-        if !failing.is_empty() {
-            push(&mut out, &format!("Failing now: {}", failing.join("; ")));
+        // As many failing subjects as fit, not all or none.
+        let mut line = String::new();
+        for subject in &failing {
+            let next = if line.is_empty() {
+                format!("Failing now: {subject}")
+            } else {
+                format!("{line}; {subject}")
+            };
+            if out.len() + 1 + next.len() > budget {
+                break;
+            }
+            line = next;
+        }
+        if !line.is_empty() {
+            push(&mut out, &line);
         }
         let open = self.dag.active_branch_depth();
         if open > 0 {
@@ -284,6 +296,31 @@ impl InfinityContextMmu {
                 &mut out,
                 &format!("Open fold branches: {open} (close with icx_write fold)"),
             );
+        }
+        let mut seen = BTreeSet::new();
+        let recent: Vec<(ArtifactId, &str)> = self
+            .hdc_events
+            .iter()
+            .rev()
+            .filter(|(id, ..)| self.cas.get_meta(*id).is_some() && seen.insert(*id))
+            .take(MAX_RESUME_HANDLES)
+            .map(|(id, subject, ..)| (*id, subject.as_str()))
+            .collect();
+        let heading = "Recent outputs, newest first (dereference a handle with the icx tool):";
+        let lines: Vec<String> = recent
+            .into_iter()
+            .map(|(id, subject)| format!("⟦Ψ:RESUME⊢subj={}↦{id}⟧", one_line(subject)))
+            .collect();
+        // The heading only with at least one output under it (review of #99).
+        if let Some(first) = lines.first()
+            && out.len() + 2 + heading.len() + first.len() <= budget
+        {
+            push(&mut out, heading);
+            for line in &lines {
+                if !push(&mut out, line) {
+                    break;
+                }
+            }
         }
         out
     }
