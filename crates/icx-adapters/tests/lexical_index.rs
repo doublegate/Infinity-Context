@@ -162,3 +162,28 @@ fn rows_the_sealed_cas_does_not_hold_are_ignored() {
     assert_eq!(mmu.lexical_matches("genuine", 5).len(), 1);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_broken_index_never_fails_a_save() {
+    let dir = workspace("broken");
+    let mut mmu = InfinityContextMmu::default();
+    mmu.set_lexical_index(false);
+    mmu.ingest_payload(AgentKind::Codex, "log", "first save\n", false);
+    mmu.save_workspace_dir(&dir).unwrap();
+    // An ordinary table under the index's name makes every index write fail.
+    db(&dir)
+        .execute_batch("CREATE TABLE lex_words (x INTEGER);")
+        .unwrap();
+    mmu.set_lexical_index(true);
+    let id = mmu
+        .ingest_payload(AgentKind::Codex, "log", "second save survives\n", false)
+        .artifact_id;
+    mmu.save_workspace_dir(&dir).unwrap();
+    // The save committed: a fresh load sees the new artifact.
+    let mut fresh = InfinityContextMmu::default();
+    fresh.load_workspace_dir(&dir).unwrap();
+    assert_eq!(fresh.deref_text(id).unwrap(), "second save survives\n");
+    // And nothing was half-written into the index.
+    assert_eq!(mmu.lexical_matches("survives", 5), []);
+    let _ = std::fs::remove_dir_all(&dir);
+}
