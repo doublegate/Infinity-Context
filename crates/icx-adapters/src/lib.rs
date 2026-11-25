@@ -7,6 +7,7 @@ pub mod claude;
 pub mod codex;
 pub mod codex_ingest;
 pub mod cursor;
+pub mod eval;
 pub mod gemini;
 pub mod hermes;
 pub mod lexical;

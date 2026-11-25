@@ -122,6 +122,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
         }
         "doctor" => run_doctor(tail),
         "benchmark" => run_benchmark(tail),
+        "eval-recall" => run_eval_recall(tail),
         _ => {
             print_help();
             Ok(())
@@ -234,6 +235,10 @@ Subcommands:",
       carry the install token (base URL http://HOST:PORT/t/<token> or header x-icx-token)
   proxy-transform [--provider <anthropic|openai|gemini>] [--dir <PATH>]
       Transform an outbound Anthropic (`/v1/messages`), OpenAI (`/v1/chat/completions`, `/v1/responses`), or Gemini (`/v1beta/models/*`) JSON request
+  eval-recall [--set <FILE> [--split <train|heldout|all>] [--dir <PATH>] | --synthetic <N> [--vocab <V>]
+              [--queries <Q>]] [--seed <S>] [--ranker <legacy|bm25|rrf|all>] [--commit <SHA>] [--out <FILE>]
+      Score recall rankers by recall@1/5/10 and MRR@10 on a JSON Lines query set over a workspace
+      (read only; the lexical index is built in memory), or on a seeded synthetic set
   encode-ahtl <FILE> [--dir <PATH>] [--profile <a|b>]
       Compress a source file, diff, or build log into an AHTL Holographic Packet + BLAKE3 handle
   decode-ahtl <AHTL_STRING>
@@ -630,6 +635,98 @@ fn set_option_once<T>(
 fn parse_dir_flag(args: &[String]) -> Option<&str> {
     let i = args.iter().position(|a| a == "--dir")?;
     flag_value_at(args, i, "icx").ok()
+}
+
+/// `icx eval-recall` (T-72-002): prints a JSON report (and writes it to `--out`), with one score
+/// row per ranker plus the set, seed and commit, so results can feed `docs/numbers.md`.
+fn run_eval_recall(args: &[String]) -> Result<(), String> {
+    use icx_adapters::eval;
+    const CMD: &str = "icx eval-recall";
+    let (mut set, mut split, mut dir, mut synthetic) = (None, None, None, None);
+    let (mut vocab, mut queries, mut seed, mut ranker, mut commit, mut out) =
+        (None, None, None, None, None, None);
+    let mut i = 0;
+    while i < args.len() {
+        let flag = args[i].as_str();
+        let value = flag_value_at(args, i, CMD)?.to_owned();
+        let num = |v: &str| {
+            v.parse::<u64>()
+                .map_err(|_| format!("{CMD} error: {flag} needs a number, got {v:?}"))
+        };
+        match flag {
+            "--set" => set_option_once(&mut set, CMD, flag, value)?,
+            "--split" => set_option_once(&mut split, CMD, flag, value)?,
+            "--dir" => set_option_once(&mut dir, CMD, flag, value)?,
+            "--synthetic" => set_option_once(&mut synthetic, CMD, flag, num(&value)?)?,
+            "--vocab" => set_option_once(&mut vocab, CMD, flag, num(&value)?)?,
+            "--queries" => set_option_once(&mut queries, CMD, flag, num(&value)?)?,
+            "--seed" => set_option_once(&mut seed, CMD, flag, num(&value)?)?,
+            "--ranker" => set_option_once(&mut ranker, CMD, flag, value)?,
+            "--commit" => set_option_once(&mut commit, CMD, flag, value)?,
+            "--out" => set_option_once(&mut out, CMD, flag, value)?,
+            _ => return Err(format!("{CMD} error: unknown option {flag}")),
+        }
+        i += 2;
+    }
+    let rankers: Vec<eval::Ranker> = match ranker.as_deref().unwrap_or("all") {
+        "all" => eval::Ranker::ALL.to_vec(),
+        r => vec![
+            eval::Ranker::parse(r).ok_or_else(|| format!("{CMD} error: unknown ranker {r:?}"))?,
+        ],
+    };
+    let seed = seed.unwrap_or(1);
+    let to_usize = |v: u64| usize::try_from(v).unwrap_or(usize::MAX);
+    let (mmu, cases, source) = match (set, synthetic) {
+        (Some(_), Some(_)) => {
+            return Err(format!("{CMD} error: give --set or --synthetic, not both"));
+        }
+        (None, None) => return Err(format!("{CMD} error: give --set <FILE> or --synthetic <N>")),
+        (None, Some(n)) => {
+            let n = to_usize(n).clamp(1, 1_000_000);
+            let (mmu, cases) = eval::synthetic(
+                n,
+                to_usize(vocab.unwrap_or(50_000)).max(1),
+                to_usize(queries.unwrap_or(200)).max(1),
+                seed,
+            );
+            (mmu, cases, format!("synthetic:{n}"))
+        }
+        (Some(path), None) => {
+            let text = std::fs::read_to_string(&path)
+                .map_err(|e| format!("{CMD} error: reading {path}: {e}"))?;
+            let cases = eval::read_cases(&text, split.as_deref().unwrap_or("heldout"))
+                .map_err(|e| format!("{CMD} error: {e}"))?;
+            let mut mmu = workspace_mmu();
+            let ws_dir = resolve_workspace_dir(dir.as_deref());
+            if !matches!(workspace_state(&ws_dir, false), WsState::Ready) {
+                return Err(format!(
+                    "{CMD} error: no ready workspace at {}",
+                    ws_dir.display()
+                ));
+            }
+            mmu.load_workspace_dir(&ws_dir)
+                .map_err(|e| format!("{CMD} error: loading {}: {e}", ws_dir.display()))?;
+            (mmu, cases, "set".to_owned())
+        }
+    };
+    let scores = eval::run(&mmu, &cases, &rankers).map_err(|e| format!("{CMD} error: {e}"))?;
+    let report = serde_json::json!({
+        "icx_version": env!("CARGO_PKG_VERSION"),
+        "commit": commit.unwrap_or_else(|| "unknown".to_owned()),
+        "source": source,
+        "split": split.unwrap_or_else(|| "heldout".to_owned()),
+        "seed": seed,
+        "queries": cases.len(),
+        "artifacts": mmu.cas.artifact_count(),
+        "results": scores,
+    });
+    let text = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
+    if let Some(path) = out {
+        std::fs::write(&path, format!("{text}\n"))
+            .map_err(|e| format!("{CMD} error: writing {path}: {e}"))?;
+    }
+    println!("{text}");
+    Ok(())
 }
 
 fn run_init(args: &[String]) -> Result<(), String> {
