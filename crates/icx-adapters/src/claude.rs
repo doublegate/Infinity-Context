@@ -61,6 +61,19 @@ pub fn claude_bounded_context(text: &str) -> String {
     out
 }
 
+/// The pending resume packet, sized to what `prefix` leaves of [`CLAUDE_CONTEXT_MAX_CHARS`]
+/// (less room for a truncation marker), so bounding never drops its lines (review of #99).
+/// Bytes are at least UTF-16 units, so the byte budget is conservative. Empty when none is
+/// pending or none fits; a packet that does not fit stays pending.
+fn claude_resume(mmu: &mut InfinityContextMmu, session: Option<&str>, prefix: &str) -> String {
+    const MARKER_ROOM: usize = 64;
+    let room = CLAUDE_CONTEXT_MAX_CHARS
+        .saturating_sub(prefix.len() + 1 + MARKER_ROOM)
+        .min(crate::mmu::RESUME_PACKET_MAX_BYTES);
+    mmu.take_resume_packet_for(AgentKind::ClaudeCode, session, room)
+        .map_or_else(String::new, |p| format!("\n{p}"))
+}
+
 /// `hookSpecificOutput` carrying bounded `additionalContext` for `event`. Claude Code drops the
 /// context when `hookEventName` does not name the event that ran, so it is always set.
 fn context_reply(event: &str, context: &str) -> Value {
@@ -107,7 +120,10 @@ impl ClaudeCodeAdapter {
         let response = match event_name {
             "SessionStart" | "session-start" => {
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, "session_init", 3);
-                context_reply("SessionStart", &format!("{ICX_AHTL_LEGEND}\n{tail}"))
+                // After a compaction (`source: "compact"`), the resume packet (T-73-002).
+                let prefix = format!("{ICX_AHTL_LEGEND}\n{tail}");
+                let resume = claude_resume(mmu, crate::mmu::hook_session_id(&payload), &prefix);
+                context_reply("SessionStart", &format!("{prefix}{resume}"))
             }
             "UserPromptSubmit" | "user-prompt-submit" => {
                 let prompt = payload
@@ -115,7 +131,9 @@ impl ClaudeCodeAdapter {
                     .and_then(Value::as_str)
                     .unwrap_or("user_query");
                 let tail = mmu.build_prompt_tail_slot(AgentKind::ClaudeCode, prompt);
-                context_reply("UserPromptSubmit", &tail)
+                // A compaction with no `SessionStart` after it is resumed at the next prompt.
+                let resume = claude_resume(mmu, crate::mmu::hook_session_id(&payload), &tail);
+                context_reply("UserPromptSubmit", &format!("{tail}{resume}"))
             }
             "PreToolUse" | "pre-tool-use" => {
                 // `permissionDecision` / `updatedInput` are output-only fields; the input never
@@ -225,6 +243,10 @@ impl ClaudeCodeAdapter {
             }
             "PreCompact" | "pre-compact" => {
                 let _ = mmu.force_rollover_and_sync_dag_root();
+                mmu.mark_resume_pending_for(
+                    AgentKind::ClaudeCode,
+                    crate::mmu::hook_session_id(&payload),
+                );
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, "pre_compact", 5);
                 // Plain stdout is used verbatim as the compaction instructions (< 10,000 chars).
                 return Ok(compaction_instructions(&tail));
@@ -244,6 +266,10 @@ impl ClaudeCodeAdapter {
                     );
                 }
                 let _ = mmu.force_rollover_and_sync_dag_root();
+                mmu.mark_resume_pending_for(
+                    AgentKind::ClaudeCode,
+                    crate::mmu::hook_session_id(&payload),
+                );
                 json!({})
             }
             "SessionEnd" | "session-end" => {

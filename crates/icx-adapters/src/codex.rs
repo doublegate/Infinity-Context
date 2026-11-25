@@ -52,11 +52,13 @@ impl CodexAdapter {
         let response = match event_name {
             "SessionStart" | "session-start" => {
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::Codex, "session_start", 3);
+                let prefix = format!("{ICX_AHTL_LEGEND}\n{tail}");
+                let resume = codex_resume(mmu, crate::mmu::hook_session_id(&payload), &prefix);
                 json!({
                     "continue": true,
                     "hookSpecificOutput": {
                         "hookEventName": "SessionStart",
-                        "additionalContext": codex_inline_context(format!("{ICX_AHTL_LEGEND}\n{tail}"))
+                        "additionalContext": codex_inline_context(format!("{prefix}{resume}"))
                     },
                     "stopReason": null,
                     "suppressOutput": false,
@@ -69,11 +71,14 @@ impl CodexAdapter {
                     .and_then(Value::as_str)
                     .unwrap_or("codex_query");
                 let tail = mmu.build_prompt_tail_slot(AgentKind::Codex, prompt);
+                // Codex has no hook that changes the summary; the first hook after compaction
+                // that carries context delivers the resume packet (T-73-002).
+                let resume = codex_resume(mmu, crate::mmu::hook_session_id(&payload), &tail);
                 json!({
                     "continue": true,
                     "hookSpecificOutput": {
                         "hookEventName": "UserPromptSubmit",
-                        "additionalContext": codex_inline_context(tail)
+                        "additionalContext": codex_inline_context(format!("{tail}{resume}"))
                     },
                     "stopReason": null,
                     "suppressOutput": false,
@@ -175,6 +180,10 @@ impl CodexAdapter {
             }
             "PreCompact" | "pre-compact" | "PostCompact" | "post-compact" => {
                 let _ = mmu.force_rollover_and_sync_dag_root();
+                mmu.mark_resume_pending_for(
+                    AgentKind::Codex,
+                    crate::mmu::hook_session_id(&payload),
+                );
                 let win = mmu.assemble_prompt_window(AgentKind::Codex, "compact_checkpoint");
                 json!({
                     "continue": true,
@@ -213,6 +222,17 @@ impl CodexAdapter {
 /// and spills anything larger to a file, leaving the model only a preview (T-62-006; Codex
 /// `codex-rs/hooks/src/output_spill.rs` and `utils/string/src/truncate.rs` at `rust-v0.171.0`).
 pub const CODEX_INLINE_CONTEXT_MAX_BYTES: usize = 2_500 * 4;
+
+/// The pending resume packet, sized to what `prefix` leaves of the Codex context bound, so the
+/// whole reply is never replaced by the over-limit diagnostic (review of #99). Empty when none
+/// is pending or none fits; a packet that does not fit stays pending.
+fn codex_resume(mmu: &mut InfinityContextMmu, session: Option<&str>, prefix: &str) -> String {
+    let room = CODEX_INLINE_CONTEXT_MAX_BYTES
+        .saturating_sub(prefix.len() + 1)
+        .min(crate::mmu::RESUME_PACKET_MAX_BYTES);
+    mmu.take_resume_packet_for(AgentKind::Codex, session, room)
+        .map_or_else(String::new, |p| format!("\n{p}"))
+}
 
 /// Keeps a Codex `additionalContext` value within [`CODEX_INLINE_CONTEXT_MAX_BYTES`]. The tail
 /// slot is already far smaller; this pins the bound at the reply. Over the bound, the context is
