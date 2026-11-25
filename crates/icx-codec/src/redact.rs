@@ -70,13 +70,18 @@ impl SecretRedactor {
                 && (p.backslash || p.brackets > 0 || p.plain)
             {
                 if body.trim().is_empty() {
+                    // A blank line ends a backslash continuation (review of #103).
+                    if p.backslash {
+                        pending_value = None;
+                    }
                     out.push_str(body);
                     out.push_str(ending);
                     continue;
                 }
                 if p.plain {
                     let indent = body.len() - body.trim_start().len();
-                    if indent > p.indent {
+                    p.lines += 1;
+                    if indent > p.indent && p.lines <= MAX_KEY_BLOCK_LINES {
                         out.push_str(&Self::redact_bare_value_line(body));
                         out.push_str(ending);
                         continue;
@@ -89,7 +94,8 @@ impl SecretRedactor {
                         // so a second pass sees the value close again. The rest of the line is
                         // classified like any other line (security review: it was written
                         // verbatim, so a secret after the bracket survived).
-                        if let Some(at) = closing_bracket_at(body, p.brackets) {
+                        let scan = scan_value(body, p.brackets, p.bracket_quote);
+                        if let Some(at) = scan.close {
                             let (inside, after) = body.split_at(at);
                             if inside.trim().is_empty() {
                                 out.push_str(inside);
@@ -100,14 +106,25 @@ impl SecretRedactor {
                             out.push_str(&after[..close_len]);
                             body = &after[close_len..];
                             pending_value = None;
+                            // What follows the bracket is still the value unless it ends the
+                            // statement or is a comment (`) + "part2"`; review of #103).
+                            let t = body.trim_start();
+                            if !(t.is_empty()
+                                || t.starts_with(['#', ';', ',', ')', ']', '}'])
+                                || t.starts_with("//")
+                                || t.starts_with("[REDACTED:"))
+                            {
+                                out.push_str(&body[..body.len() - t.len()]);
+                                out.push_str("[REDACTED:SECRET]");
+                                body = "";
+                            }
                             if body.is_empty() {
                                 out.push_str(ending);
                                 continue;
                             }
                         } else {
-                            let depth = isize::try_from(p.brackets).unwrap_or(isize::MAX)
-                                + bracket_delta(body);
-                            p.brackets = usize::try_from(depth.max(1)).unwrap_or(1);
+                            p.brackets = scan.depth.max(1);
+                            p.bracket_quote = scan.quote;
                             out.push_str(&Self::redact_bare_value_line(body));
                             if p.lines >= MAX_KEY_BLOCK_LINES {
                                 pending_value = None;
@@ -351,11 +368,15 @@ impl SecretRedactor {
                         if !key.is_empty() && Self::is_sensitive_key_name(key) {
                             // Only this assignment's own value: up to a `;` that starts the
                             // next statement (`token = 1; password = \"\"\"`).
-                            let rhs_full = line[i + 1..].trim();
+                            let rest = &line[i + 1..];
+                            let stmt_end = scan_value(rest, 0, None).stmt_end.unwrap_or(rest.len());
+                            let rhs_full = rest[..stmt_end].trim();
+                            // String prefixes (`r`, `b`, `f`, ...) and Rust raw-string hashes.
                             let rhs = rhs_full
                                 .trim_start_matches(|c: char| {
                                     matches!(c, 'r' | 'R' | 'b' | 'B' | 'u' | 'U' | 'f' | 'F')
                                 })
+                                .trim_start_matches('#')
                                 .trim_start();
                             let rhs = if rhs.starts_with(['"', '\'', '`']) {
                                 rhs
@@ -388,16 +409,19 @@ impl SecretRedactor {
                                     ..base
                                 });
                             }
-                            if let Some(q) = unterminated_quote(rhs) {
+                            // An open bracket, with any quote opened inside it carried along
+                            // (`f("` then lines then `")`).
+                            let scan = scan_value(rhs_full, 0, None);
+                            if scan.depth > 0 {
                                 return Some(PendingSecret {
-                                    quote: Some(q),
+                                    brackets: scan.depth,
+                                    bracket_quote: scan.quote,
                                     ..base
                                 });
                             }
-                            let depth = bracket_delta(rhs);
-                            if depth > 0 {
+                            if let Some(q) = unterminated_quote(rhs) {
                                 return Some(PendingSecret {
-                                    brackets: usize::try_from(depth).unwrap_or(0),
+                                    quote: Some(q),
                                     ..base
                                 });
                             }
@@ -1076,12 +1100,14 @@ impl SecretRedactor {
         if Self::normalized_key(key).contains("AUTHORIZATION") {
             let lead = out[val_start..].len() - out[val_start..].trim_start().len();
             let v_start = val_start + lead;
-            let lower = out[v_start..].to_ascii_lowercase();
             for (scheme, marker) in [
                 ("bearer ", "[REDACTED:BEARER]"),
                 ("basic ", "[REDACTED:BASIC_AUTH]"),
             ] {
-                if lower.starts_with(scheme) {
+                if out[v_start..]
+                    .get(..scheme.len())
+                    .is_some_and(|p| p.eq_ignore_ascii_case(scheme))
+                {
                     let from = v_start + scheme.len();
                     let rest = &out[from..];
                     let line_end = rest.find('\n').unwrap_or(rest.len());
@@ -1200,7 +1226,7 @@ impl SecretRedactor {
                         !(c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-' | '[' | ']'))
                     })
                     .unwrap_or(n.len());
-                (!config && n.starts_with('&')) || (name_len > 0 && n[name_len..].starts_with('='))
+                !config && (n.starts_with('&') || (name_len > 0 && n[name_len..].starts_with('=')))
             };
             // A lone carriage return inside a line is content (terminal overwrite), not its end.
             if ch == '\n'
@@ -1652,38 +1678,14 @@ impl SecretRedactor {
             || k.ends_with("OTP")
     }
 
-    /// `session_id`, `sessionId` and `<x>_session_id` where `<x>` names no credential
-    /// (ADR-0011 rule 6).
+    /// Exactly `session_id` / `sessionId`, as agent hook payloads name it (ADR-0011 rule 6;
+    /// red-team review of #103: `sso_session_id`, `admin_session_id` and `X-Session-Id` can be
+    /// credentials).
     fn is_session_id_key(key: &str) -> bool {
-        // Exactly `session_id` / `sessionId`, as agent hook payloads name it (red-team review
-        // of #103: `sso_session_id`, `admin_session_id` and `X-Session-Id` can be credentials).
-        let k = Self::normalized_key(key);
-        let prefix = if k == "SESSION_ID" || k == "SESSIONID" {
-            ""
-        } else {
-            return false;
-        };
-        // The prefix may name no credential at all (review of #103: `cookie_session_id`,
-        // `token_session_id`).
-        let parts = Self::key_parts(prefix);
-        !Self::has_credential_part(&parts)
-            && !Self::is_sensitive_key_name(prefix)
-            && !parts.iter().any(|p| {
-                [
-                    "TOKEN",
-                    "COOKIE",
-                    "PASSWORD",
-                    "PASSWD",
-                    "PASS",
-                    "SECRET",
-                    "KEY",
-                    "CREDENTIAL",
-                    "CREDENTIALS",
-                    "SIGNATURE",
-                    "NONCE",
-                ]
-                .contains(&p.as_str())
-            })
+        matches!(
+            Self::normalized_key(key).as_str(),
+            "SESSION_ID" | "SESSIONID"
+        )
     }
 
     fn unquoted(v: &str) -> &str {
@@ -2940,64 +2942,58 @@ struct PendingSecret {
     lines: usize,
     /// The open quote is a triple quote (`"""`, `'''`): only the same triple closes it.
     triple: bool,
+    /// A quote left open inside a bracketed value at the end of the last line.
+    bracket_quote: Option<char>,
 }
 
-/// The byte index of the bracket in `text` that brings `depth` open brackets back to zero,
-/// outside quotes, or `None` when the line leaves some open.
-fn closing_bracket_at(text: &str, depth: usize) -> Option<usize> {
-    let mut depth = isize::try_from(depth).unwrap_or(isize::MAX);
-    let mut quote: Option<char> = None;
+/// What one line contributes to a value that may span lines: the bracket that closes it (when
+/// `depth` brackets were open), the first statement-ending `;` at depth zero outside quotes, and
+/// the bracket depth and open quote at the end of the line. Quote state carries across lines, so
+/// a bracket inside a multi-line string is not structure (review of #103).
+#[derive(Clone, Copy, Debug)]
+struct ValueScan {
+    close: Option<usize>,
+    stmt_end: Option<usize>,
+    depth: usize,
+    quote: Option<char>,
+}
+
+fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
+    let mut out = ValueScan {
+        close: None,
+        stmt_end: None,
+        depth,
+        quote,
+    };
     let mut escaped = false;
     for (i, c) in text.char_indices() {
-        if let Some(q) = quote {
+        if let Some(q) = out.quote {
             if escaped {
                 escaped = false;
             } else if c == '\\' {
                 escaped = true;
             } else if c == q {
-                quote = None;
+                out.quote = None;
             }
             continue;
         }
         match c {
-            '"' | '\'' | '`' => quote = Some(c),
-            '(' | '[' | '{' => depth += 1,
+            '"' | '\'' | '`' => out.quote = Some(c),
+            '(' | '[' | '{' => out.depth += 1,
             ')' | ']' | '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(i);
+                if out.depth > 0 {
+                    out.depth -= 1;
+                    if out.depth == 0 && depth > 0 && out.close.is_none() {
+                        out.close = Some(i);
+                        return out;
+                    }
                 }
             }
+            ';' if out.depth == 0 && out.stmt_end.is_none() => out.stmt_end = Some(i),
             _ => {}
         }
     }
-    None
-}
-
-/// Brackets opened minus closed in `text`, outside quotes.
-fn bracket_delta(text: &str) -> isize {
-    let mut depth = 0isize;
-    let mut quote: Option<char> = None;
-    let mut escaped = false;
-    for c in text.chars() {
-        if let Some(q) = quote {
-            if escaped {
-                escaped = false;
-            } else if c == '\\' {
-                escaped = true;
-            } else if c == q {
-                quote = None;
-            }
-            continue;
-        }
-        match c {
-            '"' | '\'' | '`' => quote = Some(c),
-            '(' | '[' | '{' => depth += 1,
-            ')' | ']' | '}' => depth -= 1,
-            _ => {}
-        }
-    }
-    depth
+    out
 }
 
 /// If `value` starts a single- or double-quoted scalar that does not close within it, returns

@@ -308,3 +308,74 @@ fn review_round_tail_and_continuation_cases() {
         ("DBPASS=123456\n", &["123456"], &[]),
     ]);
 }
+
+/// Antigravity review of 43c006c: statement scoping, quote state across bracketed lines, the
+/// tail after a closing bracket, and the plain and backslash continuation limits.
+#[test]
+fn review_round_statement_and_bracket_cases() {
+    check(&[
+        // Each assignment inspects only its own statement.
+        (
+            "token = None; password = \"\"\"\\\nrrss\nqqzz\n\"\"\"\nnext = 1\n",
+            &["rrss", "qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "token = None; password = \"line1\\\nrrss\nqqzz\"\nnext = 1\n",
+            &["rrss", "qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "let token = None; foo(\n  normal_arg,\n)\n",
+            &[],
+            &["normal_arg"],
+        ),
+        // A bracket inside a string spanning lines is not structure.
+        (
+            "password = (\n  \"line1\n  line2)\n  qqzz\"\n)\nnext = 1\n",
+            &["line1", "line2", "qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "password = (\"line1\nline2)\nqqzz\")\nnext = 1\n",
+            &["line1", "line2", "qqzz"],
+            &["next = 1"],
+        ),
+        // A value continuing after its closing bracket stays hidden.
+        (
+            "api_key = (\n  \"rrss\"\n) + \"qqzz\"\nnext = 1\n",
+            &["rrss", "qqzz"],
+            &["next = 1"],
+        ),
+        // A quote opened inside the bracket closes before the bracket does: no runaway.
+        (
+            "password = f(\"\n  qqzz\n\")\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        // Rust raw strings.
+        (
+            "password = r#\"\nqqzz\n\"#\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        // A blank line ends a backslash continuation.
+        ("PASSWORD=qq\\\n\nvisible\n", &[], &["visible"]),
+        // In config text `&name=` is part of the value.
+        ("password: abc&def=qqzzqqzz\n", &["qqzz", "def"], &[]),
+    ]);
+}
+
+#[test]
+fn a_plain_scalar_continuation_stops_after_the_cap() {
+    let mut text = String::from("token: qqzz\n");
+    for i in 0..250 {
+        text.push_str(&format!("  line{i}\n"));
+    }
+    let clean = once(&text);
+    assert!(
+        !clean.contains("qqzz") && !clean.contains("line0\n"),
+        "{clean:.200}"
+    );
+    assert!(clean.contains("line249"), "the cap ends the continuation");
+}

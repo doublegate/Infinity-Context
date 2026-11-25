@@ -48,7 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   only as constant paths.
 
   On the 19-line corpus, over-redacted bytes went from 183 to 43 with no missed secret
-  (`docs/numbers.md`). 306 red-team inputs are pinned as a regression suite. The shapes still
+  (`docs/numbers.md`). 272 distinct red-team inputs are pinned as a regression suite, each checked for its placeholder. The shapes still
   leaking, all of them older gaps, are tracked for v1.5.1 (#104). Already-stored content is not
   changed.
 

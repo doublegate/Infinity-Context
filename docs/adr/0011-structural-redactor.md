@@ -118,7 +118,8 @@ changes, each with tests:
     (`token_type`, `password_file`, `secret_name`);
   - `Authorization`, a bare `auth`, `pw`, and a lower- or mixed-case `pwd` count (not the shell's
     `PWD`);
-  - `Authorization: Bearer` / `Basic` is left to the auth-scheme detector.
+  - `Authorization: Bearer` / `Basic` keeps the scheme word and hides the token, whatever its
+    length.
 - **Unquoted values** run to the end of the line, not to the first space (passphrases, YAML plain
   scalars, INI values). They end before a comment, a shell `|`, `&&` or `;`, or the next query
   parameter. CLI flag values still end at whitespace.

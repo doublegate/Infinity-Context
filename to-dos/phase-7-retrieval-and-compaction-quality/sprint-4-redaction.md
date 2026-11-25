@@ -61,7 +61,7 @@ Re-check before the sprint starts:
   run follows the red-team pass.
 - **Red-team pass** (independent agent, code and ADR only, 2026-11-25): about 330 inputs. It found
   3 regressions and 9 groups of older leaks. The regressions and the 4 High groups are fixed in
-  #103 (ADR-0011 amendments), and 306 inputs are pinned in
+  #103 (ADR-0011 amendments), and 272 distinct inputs, each with a placeholder the test checks, are pinned in
   `crates/icx-codec/tests/fixtures/redteam-v150-clean.json`. 67 still-leaking inputs (the Medium
   groups and the by-design cases) are tracked for v1.5.1 (#104). A 300,000-line fuzz found no
   non-idempotent output. Corpus after the fixes: 0 missed, 43 over-redacted bytes. A second review

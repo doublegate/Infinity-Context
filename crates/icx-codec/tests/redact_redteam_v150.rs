@@ -12,8 +12,16 @@ use icx_codec::SecretRedactor;
 fn red_team_inputs_stay_hidden_and_idempotent() {
     let cases: Vec<String> =
         serde_json::from_str(include_str!("fixtures/redteam-v150-clean.json")).unwrap();
-    assert!(cases.len() > 300, "{}", cases.len());
+    assert!(cases.len() > 250, "{}", cases.len());
+    let mut seen = std::collections::HashSet::new();
     for case in &cases {
+        // Every case must carry a placeholder the assertion can find, and appear once
+        // (review of #103: cases without one passed without being checked).
+        assert!(
+            case.contains("qqzz") || case.contains("aaaa-aaaa"),
+            "unchecked case: {case:?}"
+        );
+        assert!(seen.insert(case.as_str()), "duplicate case: {case:?}");
         let once = SecretRedactor::redact(case);
         assert!(
             !once.contains("qqzz") && !once.contains("aaaa-aaaa"),
