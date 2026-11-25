@@ -671,7 +671,9 @@ fn a_parent_dir_path_never_becomes_a_hook_command() {
     let cwd = h.join("cwd");
     fs::create_dir_all(&bin).unwrap();
     fs::create_dir_all(&cwd).unwrap();
-    fs::copy(env!("CARGO_BIN_EXE_icx"), bin.join("icx")).unwrap();
+    // A link, not a copy: executing a just-written copy races with other tests' forks, which
+    // can hold its write handle open (ETXTBSY, seen in CI on #97).
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_icx"), bin.join("icx")).unwrap();
     let o = Command::new("../bin/icx")
         .args(["install", "--agent", "codex", "--dry-run"])
         .current_dir(&cwd)
@@ -690,7 +692,13 @@ fn a_parent_dir_path_never_becomes_a_hook_command() {
         .to_owned();
     let cmd = line.split('"').nth(3).unwrap_or("");
     assert!(cmd.starts_with('/') && !cmd.contains(".."), "{line}");
-    assert!(cmd.contains("/bin/icx hook"), "{line}");
+    // The hook runs this very binary, by a path that stays valid.
+    let bin_path = cmd.split(" hook ").next().unwrap();
+    assert_eq!(
+        fs::canonicalize(bin_path).unwrap(),
+        fs::canonicalize(env!("CARGO_BIN_EXE_icx")).unwrap(),
+        "{line}"
+    );
 }
 
 #[cfg(unix)]
@@ -702,7 +710,9 @@ fn a_path_entry_with_a_parent_dir_is_skipped() {
     let bin = h.join("bin");
     fs::create_dir_all(&bin).unwrap();
     fs::create_dir_all(h.join("x")).unwrap();
-    fs::copy(env!("CARGO_BIN_EXE_icx"), bin.join("icx")).unwrap();
+    // A link, not a copy: executing a just-written copy races with other tests' forks, which
+    // can hold its write handle open (ETXTBSY, seen in CI on #97).
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_icx"), bin.join("icx")).unwrap();
     let o = Command::new("icx")
         .args(["install", "--agent", "codex", "--dry-run"])
         .env("PATH", h.join("x/../bin"))
