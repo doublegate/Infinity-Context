@@ -76,15 +76,31 @@ impl SecretRedactor {
                     pending_value = None;
                 } else {
                     p.lines += 1;
-                    let more = if p.brackets > 0 {
-                        let depth =
-                            isize::try_from(p.brackets).unwrap_or(isize::MAX) + bracket_delta(body);
-                        p.brackets = usize::try_from(depth.max(0)).unwrap_or(0);
-                        depth > 0
-                    } else {
-                        body.trim_end().ends_with('\\')
-                    };
-                    if !more || p.lines >= MAX_KEY_BLOCK_LINES {
+                    if p.brackets > 0 {
+                        // Hide up to the bracket that closes the value; keep that bracket and
+                        // what follows, so a second pass sees the value close again.
+                        if let Some(at) = closing_bracket_at(body, p.brackets) {
+                            let (inside, after) = body.split_at(at);
+                            if inside.trim().is_empty() {
+                                out.push_str(inside);
+                            } else {
+                                out.push_str(&Self::redact_bare_value_line(inside));
+                            }
+                            out.push_str(after);
+                            pending_value = None;
+                        } else {
+                            let depth = isize::try_from(p.brackets).unwrap_or(isize::MAX)
+                                + bracket_delta(body);
+                            p.brackets = usize::try_from(depth.max(1)).unwrap_or(1);
+                            out.push_str(&Self::redact_bare_value_line(body));
+                            if p.lines >= MAX_KEY_BLOCK_LINES {
+                                pending_value = None;
+                            }
+                        }
+                        out.push_str(ending);
+                        continue;
+                    }
+                    if !body.trim_end().ends_with('\\') || p.lines >= MAX_KEY_BLOCK_LINES {
                         pending_value = None;
                     }
                     out.push_str(&Self::redact_bare_value_line(body));
@@ -1119,6 +1135,10 @@ impl SecretRedactor {
             if idx < skip_to {
                 continue;
             }
+            // A lone carriage return inside a line is content (terminal overwrite), not its end.
+            if ch == '\r' && rest[idx + 1..].chars().next().is_some_and(|n| n != '\n') {
+                continue;
+            }
             // A backtick or an existing marker ends the token too, so a marker the literal pass
             // wrote is never cut in half (idempotence, v1.3.1).
             // `;` ends the value only before whitespace, and closing brackets only inside
@@ -1147,7 +1167,7 @@ impl SecretRedactor {
                         !(c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-' | '[' | ']'))
                     })
                     .unwrap_or(n.len());
-                n.starts_with('&') || (name_len > 0 && n[name_len..].starts_with('='))
+                (!config && n.starts_with('&')) || (name_len > 0 && n[name_len..].starts_with('='))
             };
             // A lone carriage return inside a line is content (terminal overwrite), not its end.
             if ch == '\n'
@@ -2866,6 +2886,38 @@ struct PendingSecret {
     brackets: usize,
     /// Lines hidden so far in the backslash and bracket modes (capped like key blocks).
     lines: usize,
+}
+
+/// The byte index of the bracket in `text` that brings `depth` open brackets back to zero,
+/// outside quotes, or `None` when the line leaves some open.
+fn closing_bracket_at(text: &str, depth: usize) -> Option<usize> {
+    let mut depth = isize::try_from(depth).unwrap_or(isize::MAX);
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (i, c) in text.char_indices() {
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == q {
+                quote = None;
+            }
+            continue;
+        }
+        match c {
+            '"' | '\'' | '`' => quote = Some(c),
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Brackets opened minus closed in `text`, outside quotes.
