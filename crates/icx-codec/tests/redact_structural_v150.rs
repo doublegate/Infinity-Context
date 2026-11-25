@@ -118,6 +118,9 @@ fn only_uuid_session_ids_stay() {
         assert_eq!(once(&line), line, "{line:?}");
     }
     for line in [
+        format!("cookie_session_id={uuid}\n"),
+        format!("token_session_id: {uuid}\n"),
+        format!("password_session_id = {uuid}\n"),
         format!("session_token: {uuid}\n"),
         format!("auth_session_id={uuid}\n"),
         "session_id: qqzzqqzzqqzz\n".to_owned(),
@@ -171,6 +174,21 @@ fn review_bypasses_stay_closed() {
         "PASSWORD=\"a\",rrssttuu\n",
         "password = rrss(ttuu)\n",
         "PASSWORD=$RRSSTTUU\n",
+        // Review of #103: a harmless value or literal glued to more text, exponents, a
+        // second assignment in the kept tail, an INI value ending in a short constant.
+        "api_key: 1234,rrssttuu\n",
+        "password: null,rrssttuu\n",
+        "token: true,rrssttuu\n",
+        "secret: \"\",rrssttuu\n",
+        "password: \"a\",rrssttuu\n",
+        "PASSWORD=null)rrssttuu\n",
+        "API_KEY=1234]rrssttuu\n",
+        "TOKEN=true}rrssttuu\n",
+        "PASSWORD=null;rrssttuu\n",
+        "PASSWORD=\"\";rrssttuu\n",
+        "API_KEY=48291038e9182736rrss\n",
+        "PASSWORD=\"qqzz\" TOKEN=rrssttuu # \"c\"\n",
+        "password = rrss.PASS\n",
     ] {
         let clean = once(line);
         assert!(!clean.contains("rrss"), "{line:?} -> {clean:?}");
@@ -226,6 +244,10 @@ const SHAPES: &[&str] = &[
     "{k}=\"a\"{s}",
     "{k}=${s}",
     "{k}=\"a\"#{s}",
+    "{k}: 1234,{s}",
+    "{k}=null;{s}",
+    "{k}=null){s}",
+    "{k}=\"a\" other_token={s} # \"c\"",
     "{k}=\"a\"/{s}",
     "{k} = {s}({s})",
     "{k} = {s}.{s}",

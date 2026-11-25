@@ -91,13 +91,10 @@ fn formatting_is_kept_and_invalid_json_falls_back() {
         once(pretty_one_line),
         "  { \"password\" : \"[REDACTED:CONFIG_SECRET]\" , \"user\" : \"octo\" }  "
     );
-    // Not valid JSON (trailing comma): the line rule applies, so the literal is hidden and the
-    // rest of the line from its next quote (ADR-0011 rule 3).
+    // Not valid JSON (trailing comma): the first-quote rule applies (a literal glued to `,"`
+    // does not end the value under ADR-0011).
     let broken = r#"{"password":"aaaa","user":"octo",}"#;
-    assert_eq!(
-        once(broken),
-        r#"{"password":"[REDACTED:CONFIG_SECRET]",[REDACTED:CONFIG_SECRET]"#
-    );
+    assert_eq!(once(broken), r#"{"password":[REDACTED:CONFIG_SECRET]"#);
     // An escaped (`\\u0077` = `w`) key is decoded before classification.
     assert!(!once(r#"{"password":"aaaa"}"#).contains("aaaa"));
 }
