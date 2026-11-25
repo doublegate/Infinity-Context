@@ -96,7 +96,8 @@ impl SecretRedactor {
                         // verbatim, so a secret after the bracket survived).
                         let scan = scan_value(body, p.brackets, p.bracket_quote);
                         let indent_of_key = p.indent;
-                        if let Some(at) = scan.close {
+                        p.sticky |= scan.ambiguous_quote;
+                        if let Some(at) = scan.close.filter(|_| !p.sticky) {
                             let (inside, after) = body.split_at(at);
                             if inside.trim().is_empty() {
                                 out.push_str(inside);
@@ -459,10 +460,11 @@ impl SecretRedactor {
                             // An open bracket, with any quote opened inside it carried along
                             // (`f("` then lines then `")`).
                             let scan = scan_value(rhs_full, 0, None);
-                            if scan.depth > 0 {
+                            if scan.depth > 0 || scan.ambiguous_quote {
                                 return Some(PendingSecret {
-                                    brackets: scan.depth,
+                                    brackets: scan.depth.max(1),
                                     bracket_quote: scan.quote,
+                                    sticky: scan.ambiguous_quote,
                                     ..base
                                 });
                             }
@@ -3073,6 +3075,9 @@ struct PendingSecret {
     triple: bool,
     /// A quote left open inside a bracketed value at the end of the last line.
     bracket_quote: Option<char>,
+    /// The value may be inside a string (a quote after a glued `//`): no closer ends it before
+    /// the line cap.
+    sticky: bool,
 }
 
 /// A line continued by a trailing backslash: an odd number of them (`\\\\` is an escaped one).
@@ -3098,6 +3103,8 @@ struct ValueScan {
     quote: Option<char>,
     /// Where the quote still open at the end of the text was opened on this line.
     quote_at: Option<usize>,
+    /// A quote character after a glued `//`: the rest may or may not be a string.
+    ambiguous_quote: bool,
 }
 
 fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
@@ -3107,6 +3114,7 @@ fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
         depth,
         quote,
         quote_at: None,
+        ambiguous_quote: false,
     };
     let mut escaped = false;
     let mut ambiguous = false;
@@ -3127,9 +3135,11 @@ fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
         match c {
             // A Rust lifetime (`&'static`, `<'a>`) is not a quote.
             '\'' if before.is_some_and(|b| matches!(b, '&' | '<')) => {}
-            // After a glued `//` a quote character may be an apostrophe in a comment; it must
-            // not hide a later opener, so it does not open a quote (security review of #103).
-            '"' | '\'' | '`' if ambiguous => {}
+            // After a glued `//` a quote character may be an apostrophe in a comment or open a
+            // real string. It does not open a quote (which could hide a later opener), but it
+            // marks the value as possibly quoted, which keeps it pending until the line cap
+            // (security review of #103).
+            '"' | '\'' | '`' if ambiguous => out.ambiguous_quote = true,
             '"' | '\'' | '`' => {
                 out.quote = Some(c);
                 out.quote_at = Some(i);

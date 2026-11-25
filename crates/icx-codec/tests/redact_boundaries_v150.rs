@@ -537,7 +537,7 @@ fn a_glued_double_slash_fails_closed() {
         (
             "api_key = (\n  x//y) \"rrss\"\n  \"qqzz\"\n)\nnext = 1\n",
             &["rrss", "qqzz"],
-            &["next = 1"],
+            &[],
         ),
         (
             "api_key = (\n  // a real comment )\n  \"qqzz\"\n)\nnext = 1\n",
@@ -552,19 +552,41 @@ fn a_glued_double_slash_fails_closed() {
     ]);
 }
 
-/// Commit security review of 1fb07e8: an apostrophe after a glued `//` does not hide an opener.
+/// Commit security review of 1fb07e8: an apostrophe after a glued `//` does not hide an opener
+/// (since 1147625 the possibly quoted value stays hidden to the line cap, so nothing after it is
+/// kept).
 #[test]
 fn an_apostrophe_after_a_glued_double_slash_does_not_hide_an_opener() {
     check(&[
         (
             "api_key = a//it's (\n  \"qqzz\"\n)\nnext = 1\n",
             &["qqzz"],
-            &["next = 1"],
+            &[],
         ),
         (
             "api_key = (\n  x//don't )\n  \"qqzz\"\n)\nnext = 1\n",
             &["qqzz"],
-            &["next = 1"],
+            &[],
         ),
     ]);
+}
+
+/// Commit security review of 1147625: a quote after a glued `//` keeps the value pending until
+/// the line cap instead of being dropped.
+#[test]
+fn a_quote_after_a_glued_double_slash_keeps_the_value_pending() {
+    check(&[
+        ("api_key = x//\"\nqqzz\n)\nrrss\"\n", &["qqzz", "rrss"], &[]),
+        (
+            "api_key = (\n  x//\"\n  qqzz )\n  rrss\"\n)\n",
+            &["qqzz", "rrss"],
+            &[],
+        ),
+    ]);
+    let mut text = String::from("api_key = x//it's\n");
+    for i in 0..250 {
+        text.push_str(&format!("line{i}\n"));
+    }
+    let clean = SecretRedactor::redact(&text);
+    assert!(clean.contains("line249"), "the line cap ends it");
 }
