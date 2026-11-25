@@ -51,7 +51,20 @@ Re-check before the sprint starts:
 - **First field run of `icx rescan`:** 169 of 4,694 artifacts on this project's workspace, all
   stored by versions before v1.3.1. The current redactor is idempotent on all of them (a second
   pass changes nothing), and its rules are unchanged from v1.4.1, which confirms that the
-  findings are older content and not a regression. A second review
+  findings are older content and not a regression.
+- **T-74-004 mutation runs** (cargo-mutants 27.1.0, scoped with `--in-diff` to the Sprint 4
+  changes in `redact.rs`, 301 mutants each; the whole file has 1,527, and the last full run is the
+  2026-11-20 figure in ICX-AUD-039). First run, at 6803144: 222 caught and 7 timeouts of 298
+  viable (76.8%), 69 missed, nearly all in the new helpers, which were tested only through whole
+  lines. After the direct helper tests (a420a31): 274 caught and 7 timeouts (94.3%), 17 missed,
+  mostly index arithmetic in `redact_value_by_shape`, which the #103 fixes then rewrote. A final
+  run follows the red-team pass.
+- **Red-team pass** (independent agent, code and ADR only, 2026-11-25): about 330 inputs. It found
+  3 regressions and 9 groups of older leaks. The regressions and the 4 High groups are fixed in
+  #103 (ADR-0011 amendments), and 306 inputs are pinned in
+  `crates/icx-codec/tests/fixtures/redteam-v150-clean.json`. 67 still-leaking inputs (the Medium
+  groups and the by-design cases) are tracked for v1.5.1 (#104). A 300,000-line fuzz found no
+  non-idempotent output. Corpus after the fixes: 0 missed, 43 over-redacted bytes. A second review
   (on 5a5f1c9) found three more, also closed with tests: `#`, `/` or `,` glued to a literal in
   shell text (`PASSWORD="a"#b`), a bare call such as `abc(def)` taken for code, and upper-case
   `$NAME` values without an `_` taken for references.

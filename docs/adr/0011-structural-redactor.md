@@ -91,6 +91,46 @@ proven harmless or is a single literal with a harmless tail; otherwise keep the 
 8. **Unknown text** keeps the value-independent detectors (vendor tokens, JWTs, URL userinfo,
    high entropy), which run over every line, including the parts rules 2 and 3 keep.
 
+## Amendments after the red-team pass (2026-11-25)
+
+Five rounds of automated review and an independent red-team pass on PR #103 found leak paths in
+the first implementation and older gaps it exposed. By owner decision, the regressions and the
+High groups are fixed in v1.5.0, and the remaining shapes are tracked for v1.5.1 (#104). The
+changes, each with tests:
+
+- **Rule 6, session ids:** a UUID stays only in a strictly parsed JSON member named exactly
+  `session_id` or `sessionId`, as in agent hook payloads. Header, env and prefixed session ids
+  stay hidden.
+- **Rule 2, code references:** spaces around `=` alone are weak evidence, since INI and
+  properties files have them too. On such a line only a constant path (`settings.SECRET_KEY`) is
+  kept. A binding keyword, a type annotation or a trailing `;` is strong evidence and keeps calls
+  and paths with identifier-only arguments.
+- **Rule 3, the rest of the line:** after a literal, the rest stays only when it is a comment,
+  structure, the next assignment (`BAR=2`, `user: bob`) or the next CLI flag. A bare word
+  (`"a" b`, `'a' if x else b`) is part of the value to an INI parser, so it is hidden.
+- **Value boundaries:** in config text (YAML, JSON-ish) `;` is part of a value. A harmless value
+  followed by whitespace ends only at a comment, the end of the line, or a shell separator outside
+  config text.
+- **Key names:**
+  - camelCase and PascalCase are split into words (`accessToken`, `APIKey`);
+  - glued and qualified spellings match (`PGPASSWORD`, `SECRETKEY`, `password_value`,
+    `api_key_value`, `API_KEY_2`), unless a following part names something that is not a secret
+    (`token_type`, `password_file`, `secret_name`);
+  - `Authorization`, a bare `auth`, `pw`, and a lower- or mixed-case `pwd` count (not the shell's
+    `PWD`);
+  - `Authorization: Bearer` / `Basic` is left to the auth-scheme detector.
+- **Unquoted values** run to the end of the line, not to the first space (passphrases, YAML plain
+  scalars, INI values). They end before a comment, a shell `|`, `&&` or `;`, or the next query
+  parameter. CLI flag values still end at whitespace.
+- **Multi-line values:**
+  - after `=`: an empty right-hand side, an unterminated quote, a triple quote or a backtick, a
+    trailing backslash, and an unclosed bracket;
+  - a YAML plain scalar continued on more-indented lines.
+- **Kept by design and recorded in #104:**
+  - text after a comment start;
+  - values under keys that are not sensitive (`OTHER=` after a secret);
+  - JSON `sessionId` UUIDs.
+
 ## Consequences
 
 - The #90 lines keep their non-secret values, and a real secret costs only its own bytes, plus a

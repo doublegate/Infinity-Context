@@ -197,7 +197,10 @@ These limits also apply to the v1.2.0 candidate.
    ids, and quote-free references in code (`settings.SECRET_KEY`). A secret written in one of
    those shapes, such as a numeric API key of 10 digits or fewer, is stored. Every kept span is
    quote-free or a literal that is itself replaced, and the vendor, JWT and entropy detectors
-   still run over it.
+   still run over it. An independent red-team pass on v1.5.0 left a set of older shapes
+   still leaking, tracked for v1.5.1 (#104): CLI short flags and argv arrays, Unicode
+   separators, XML, Kubernetes and other name/value pairs, tokens inside URLs and query strings,
+   and `=>` and subscript assignments.
 
 ---
 

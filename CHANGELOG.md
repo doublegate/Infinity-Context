@@ -36,8 +36,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   only its literal, replaced inside its quotes, and the rest of the line stays when it holds no
   quote, so comments and later JSON fields survive. Code-shaped values keep the v1.3.1 rule
   (#29), and a quote later on the line is still hidden from that quote on. Lines of JSON members
-  without braces are redacted structurally. On the 19-line corpus, over-redacted bytes went from
-  183 to 24 with no missed secret (`docs/numbers.md`). Already-stored content is not changed.
+  without braces are redacted structurally.
+
+  After an independent red-team pass, the redactor also hides:
+  - camelCase and glued keys (`accessToken`, `PGPASSWORD`, `password_value`, `Pwd=`);
+  - unquoted values with spaces (`password: correct horse staple`);
+  - multi-line values after `=` (dotenv quoted, triple-quoted, backslash-continued or bracketed
+    values) and YAML plain scalars continued on indented lines.
+
+  It keeps session UUIDs only in JSON hook payloads, and keeps code references on INI-like lines
+  only as constant paths.
+
+  On the 19-line corpus, over-redacted bytes went from 183 to 43 with no missed secret
+  (`docs/numbers.md`). 306 red-team inputs are pinned as a regression suite. The shapes still
+  leaking, all of them older gaps, are tracked for v1.5.1 (#104). Already-stored content is not
+  changed.
 
 - What icx adds to every user prompt (Claude Code, Codex, Gemini CLI, Muse, OpenCode, agy): at
   most one recall line, shown only when the hit's subject (command or file path, not the tool prefix)

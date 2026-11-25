@@ -57,6 +57,41 @@ impl SecretRedactor {
                     continue;
                 }
             }
+            // Backslash, bracket and plain-scalar continuations (red-team review of #103).
+            if let Some(p) = pending_value.as_mut()
+                && (p.backslash || p.brackets > 0 || p.plain)
+            {
+                if body.trim().is_empty() {
+                    out.push_str(body);
+                    out.push_str(ending);
+                    continue;
+                }
+                if p.plain {
+                    let indent = body.len() - body.trim_start().len();
+                    if indent > p.indent {
+                        out.push_str(&Self::redact_bare_value_line(body));
+                        out.push_str(ending);
+                        continue;
+                    }
+                    pending_value = None;
+                } else {
+                    p.lines += 1;
+                    let more = if p.brackets > 0 {
+                        let depth =
+                            isize::try_from(p.brackets).unwrap_or(isize::MAX) + bracket_delta(body);
+                        p.brackets = usize::try_from(depth.max(0)).unwrap_or(0);
+                        depth > 0
+                    } else {
+                        body.trim_end().ends_with('\\')
+                    };
+                    if !more || p.lines >= MAX_KEY_BLOCK_LINES {
+                        pending_value = None;
+                    }
+                    out.push_str(&Self::redact_bare_value_line(body));
+                    out.push_str(ending);
+                    continue;
+                }
+            }
             if let Some(pending) = pending_value.as_mut() {
                 let indent = body.len() - body.trim_start().len();
                 if body.trim().is_empty() {
@@ -155,7 +190,9 @@ impl SecretRedactor {
             } else {
                 normalized
             };
-            if let Some(pending) = Self::sensitive_continuation(body) {
+            if let Some(pending) =
+                Self::sensitive_continuation(body).or_else(|| Self::assignment_continuation(body))
+            {
                 pending_value = Some(pending);
             }
             out.push_str(&redacted);
@@ -242,6 +279,97 @@ impl SecretRedactor {
     /// (`"password":` / `password:`).
     /// Only a line that *is* the key (optionally after `{`, `,` or a YAML `- `) arms the
     /// continuation, so prose such as `error: missing signing key:` never does (PR #20 review).
+    /// A sensitive `KEY=value` / `key = value` assignment whose value goes on past its line
+    /// (red-team review of #103): nothing after `=` (the value is on the next line), an
+    /// unterminated quote, triple quote or backtick, a trailing backslash, or an unclosed
+    /// bracket.
+    fn assignment_continuation(line: &str) -> Option<PendingSecret> {
+        let b = line.as_bytes();
+        let mut quote: Option<u8> = None;
+        let mut i = 0;
+        while i < b.len() {
+            let c = b[i];
+            if let Some(q) = quote {
+                if c == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if c == q {
+                    quote = None;
+                }
+                i += 1;
+                continue;
+            }
+            match c {
+                b'"' | b'\'' | b'`' => quote = Some(c),
+                b'=' => {
+                    let prev = if i > 0 { b[i - 1] } else { 0 };
+                    let next = b.get(i + 1).copied().unwrap_or(0);
+                    if !matches!(prev, b'=' | b'!' | b'<' | b'>') && !matches!(next, b'=' | b'>') {
+                        let head = line[..i].trim_end_matches([' ', '\t']);
+                        let key_start = head
+                            .rfind(|c: char| {
+                                !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+                            })
+                            .map_or(0, |k| {
+                                k + head[k..].chars().next().map_or(1, char::len_utf8)
+                            });
+                        let key = &head[key_start..];
+                        if !key.is_empty() && Self::is_sensitive_key_name(key) {
+                            let rhs = line[i + 1..].trim();
+                            let base = PendingSecret {
+                                indent: line.len() - line.trim_start().len(),
+                                ..PendingSecret::default()
+                            };
+                            if rhs.is_empty() {
+                                return Some(base);
+                            }
+                            if rhs.ends_with('\\') {
+                                return Some(PendingSecret {
+                                    backslash: true,
+                                    ..base
+                                });
+                            }
+                            for t in ["\"\"\"", "'''"] {
+                                if let Some(r) = rhs.strip_prefix(t)
+                                    && !r.contains(t)
+                                {
+                                    return Some(PendingSecret {
+                                        quote: Some(t.as_bytes()[0]),
+                                        ..base
+                                    });
+                                }
+                            }
+                            if rhs.starts_with('`') && !rhs[1..].contains('`') {
+                                return Some(PendingSecret {
+                                    quote: Some(b'`'),
+                                    ..base
+                                });
+                            }
+                            if let Some(q) = unterminated_quote(rhs) {
+                                return Some(PendingSecret {
+                                    quote: Some(q),
+                                    ..base
+                                });
+                            }
+                            let depth = bracket_delta(rhs);
+                            if depth > 0 {
+                                return Some(PendingSecret {
+                                    brackets: usize::try_from(depth).unwrap_or(0),
+                                    ..base
+                                });
+                            }
+                            return None;
+                        }
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        None
+    }
+
     fn sensitive_continuation(line: &str) -> Option<PendingSecret> {
         let declaration = Self::declaration(line);
         let colon = Self::scan_unquoted(declaration).1?;
@@ -255,7 +383,13 @@ impl SecretRedactor {
         let block = yaml_block_header(header) && properties.next().is_none();
         // A quoted scalar that does not close on this line continues on the next ones.
         let quote = unterminated_quote(suffix);
-        if !suffix.is_empty() && !block && quote.is_none() {
+        // A plain scalar continues on lines indented past the key (red-team review of #103:
+        // `password: true` then an indented secret line).
+        let plain = !suffix.is_empty()
+            && !block
+            && quote.is_none()
+            && !suffix.starts_with(['{', '[', '"', '\'', '`', '|', '>', '#']);
+        if !suffix.is_empty() && !block && quote.is_none() && !plain {
             return None;
         }
         let head = head.trim();
@@ -294,6 +428,8 @@ impl SecretRedactor {
                 block,
                 scalar_indent,
                 quote,
+                plain,
+                ..PendingSecret::default()
             },
         )
     }
@@ -430,7 +566,11 @@ impl SecretRedactor {
             .trim_start_matches("export ")
             .trim_start_matches('-')
             .trim_matches(|c: char| c == '"' || c == '\'');
-        let key_upper = trimmed.to_ascii_uppercase().replace('-', "_");
+        // camelCase and PascalCase split into words (`accessToken`, `APIKey`; red-team review
+        // of #103), so they match like their snake_case spellings.
+        let key_upper = Self::split_camel(trimmed)
+            .to_ascii_uppercase()
+            .replace('-', "_");
         if Self::is_token_count_key(&key_upper) {
             return false;
         }
@@ -474,10 +614,152 @@ impl SecretRedactor {
         };
         // Plural collection keys (`api_keys`, `tokens`, `passwords`) hold the same secrets.
         // `PASS` is excluded: its plural `PASSES` is ordinary prose/config (`max_passes`).
-        matches(&key_upper)
-            || key_upper
-                .strip_suffix('S')
-                .is_some_and(|singular| !singular.ends_with("PASS") && matches(singular))
+        let suffix_match = |k: &str| {
+            matches(k)
+                || k.strip_suffix('S')
+                    .is_some_and(|singular| !singular.ends_with("PASS") && matches(singular))
+        };
+        if suffix_match(&key_upper) {
+            return true;
+        }
+        // A numbered key (`API_KEY_2`, `token1`) is the same key.
+        let base = key_upper
+            .trim_end_matches(|c: char| c.is_ascii_digit())
+            .trim_end_matches('_');
+        if base != key_upper && !base.is_empty() && suffix_match(base) {
+            return true;
+        }
+        Self::is_qualified_secret_key(trimmed, base)
+    }
+
+    /// Credential words glued to a prefix (`PGPASSWORD`, `AUTHTOKEN`, `SECRETKEY`) or followed by
+    /// a qualifier (`password_value`, `secret_old`, `api_key_confirmation`), unless what follows
+    /// names something that is not a secret (`token_type`, `password_file`, `secret_name`); and
+    /// `Authorization`, a bare `auth`, and a mixed- or lower-case `pwd` (connection strings), not
+    /// the shell's `PWD` (red-team review of #103).
+    fn is_qualified_secret_key(original: &str, upper: &str) -> bool {
+        const WORDS: &[&str] = &[
+            "PASSWORD",
+            "PASSWD",
+            "PASSPHRASE",
+            "SECRET",
+            "TOKEN",
+            "APIKEY",
+            "SECRETKEY",
+            "PRIVATEKEY",
+            "ACCESSKEY",
+            "CREDENTIAL",
+            "CREDENTIALS",
+            "DBPASS",
+            "PW",
+        ];
+        const NOT_SECRET: &[&str] = &[
+            "FILE",
+            "FILES",
+            "PATH",
+            "DIR",
+            "URL",
+            "URI",
+            "ENDPOINT",
+            "HOST",
+            "PORT",
+            "LENGTH",
+            "LEN",
+            "MIN",
+            "MAX",
+            "COUNT",
+            "NUM",
+            "TYPE",
+            "TYPES",
+            "NAME",
+            "NAMES",
+            "POLICY",
+            "ENABLED",
+            "DISABLED",
+            "REQUIRED",
+            "HINT",
+            "LABEL",
+            "FIELD",
+            "PROMPT",
+            "TTL",
+            "EXPIRY",
+            "EXPIRES",
+            "EXPIRATION",
+            "LIFETIME",
+            "HEADER",
+            "PARAM",
+            "PREFIX",
+            "FORMAT",
+            "ALGORITHM",
+            "ALG",
+            "SIZE",
+            "LIMIT",
+            "KIND",
+            "MODE",
+            "REGEX",
+            "PATTERN",
+            "PROVIDER",
+            "ROTATION",
+            "LOCATION",
+            "ENV",
+            "VAR",
+            "VARIABLE",
+            "STORE",
+            "MANAGER",
+            "SOURCE",
+            "VERSION",
+            "STATUS",
+            "USAGE",
+            "USED",
+            "LEFT",
+            "REMAINING",
+            "BUDGET",
+            "ESTIMATE",
+        ];
+        let parts: Vec<&str> = upper.split('_').filter(|p| !p.is_empty()).collect();
+        if parts.contains(&"AUTHORIZATION") || upper == "AUTH" {
+            return true;
+        }
+        if parts.contains(&"PWD") && original.bytes().any(|b| b.is_ascii_lowercase()) {
+            return true;
+        }
+        let word = |p: &str| {
+            WORDS
+                .iter()
+                .any(|w| p == *w || (p.len() > w.len() && p.ends_with(w) && w.len() >= 5))
+        };
+        (0..parts.len()).any(|i| {
+            // One part (`PGPASSWORD`), or two joined (`API`+`KEY`, `ACCESS`+`KEY`).
+            let rest = if word(parts[i]) {
+                &parts[i + 1..]
+            } else if i + 1 < parts.len() && word(&format!("{}{}", parts[i], parts[i + 1])) {
+                &parts[i + 2..]
+            } else {
+                return false;
+            };
+            rest.iter().all(|r| !NOT_SECRET.contains(r))
+        })
+    }
+
+    /// `accessToken` -> `access_Token`, `APIKey` -> `API_Key`: word boundaries of camelCase and
+    /// PascalCase as `_`.
+    fn split_camel(key: &str) -> String {
+        let chars: Vec<char> = key.chars().collect();
+        let mut out = String::with_capacity(key.len() + 4);
+        for (i, &c) in chars.iter().enumerate() {
+            if i > 0 && c.is_ascii_uppercase() {
+                let prev = chars[i - 1];
+                let next_lower = chars.get(i + 1).is_some_and(char::is_ascii_lowercase);
+                if prev.is_ascii_lowercase()
+                    || prev.is_ascii_digit()
+                    || (prev.is_ascii_uppercase() && next_lower)
+                {
+                    out.push('_');
+                }
+            }
+            out.push(c);
+        }
+        out
     }
 
     /// Upper-case `_`/`-`-separated parts of a key (`--max-tokens` -> `MAX`, `TOKENS`).
@@ -729,13 +1011,24 @@ impl SecretRedactor {
         replacement: &str,
         stop_at_comma: bool,
         key: &str,
-        code_context: bool,
+        code_context: u8,
     ) -> Option<usize> {
         // A comma ends a value only inside brackets opened before the key (a call, a flow
         // mapping or sequence); in a YAML block scalar or an env file it is part of the value
         // (review of #103: `api_key: 1234,secret` hid only `1234`).
         let line_start = out[..val_start].rfind('\n').map_or(0, |i| i + 1);
+        // The colon pass (YAML, JSON-ish, config text) is the one that asks to stop at commas;
+        // in that text `;` is part of a value, not a shell separator (red-team review of #103).
+        let config = stop_at_comma;
         let stop_at_comma = stop_at_comma && Self::open_brackets(&out[line_start..val_start]) > 0;
+        // `Authorization: Bearer <t>` / `Basic <t>` is left to the auth-scheme detector, which
+        // hides the token and keeps the scheme; any other authorization value is hidden here.
+        if Self::normalized_key(key).contains("AUTHORIZATION") {
+            let v = out[val_start..].trim_start().to_ascii_lowercase();
+            if v.starts_with("bearer ") || v.starts_with("basic ") {
+                return None;
+            }
+        }
         // ADR-0011: a value that is never a secret is kept, and a value that opens with one
         // literal loses only that literal (and a quoted tail).
         if let Some(end) = Self::redact_value_by_shape(
@@ -745,6 +1038,7 @@ impl SecretRedactor {
             stop_at_comma,
             key,
             code_context,
+            config,
         ) {
             return Some(end);
         }
@@ -798,6 +1092,7 @@ impl SecretRedactor {
         }
         let rest = &out[val_start..];
         let mut val_len = rest.len();
+        let cli = replacement == "[REDACTED:CLI_SECRET]";
         for (idx, ch) in rest.char_indices() {
             // A backtick or an existing marker ends the token too, so a marker the literal pass
             // wrote is never cut in half (idempotence, v1.3.1).
@@ -805,9 +1100,35 @@ impl SecretRedactor {
             // brackets: in an env file `null;secret` and `null)secret` are one value (review
             // of #103).
             let after = rest[idx + ch.len_utf8()..].chars().next();
-            if ch.is_whitespace()
-                || matches!(ch, '"' | '\'' | '`' | '&' | '|')
-                || (ch == ';' && after.is_none_or(char::is_whitespace))
+            // An unquoted value runs to the end of the line, not to its first space: a YAML
+            // plain scalar, an INI or env value and a passphrase hold spaces (red-team review of
+            // #103: `password: correct horse staple` kept two words). It ends before a comment,
+            // a shell `|`, `&&` or `;`, the next query parameter (`&name=`), and line ends. A
+            // CLI flag value is one argument, so it still ends at whitespace.
+            let ws_ends = || {
+                let next = rest[idx..].trim_start_matches([' ', '\t']);
+                next.is_empty()
+                    || next.starts_with(['\n', '\r', '#'])
+                    || (!config && next.starts_with(['|', ';']))
+                    || next.starts_with("//")
+                    || (!config && next.starts_with("&&"))
+            };
+            let query_param = || {
+                let n = &rest[idx + 1..];
+                let name_len = n
+                    .find(|c: char| {
+                        !(c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-' | '[' | ']'))
+                    })
+                    .unwrap_or(n.len());
+                n.starts_with('&') || (name_len > 0 && n[name_len..].starts_with('='))
+            };
+            // A lone carriage return inside a line is content (terminal overwrite), not its end.
+            if ch == '\n'
+                || (ch == '\r' && after.is_none_or(|n| n == '\n'))
+                || (ch.is_whitespace() && (cli || ws_ends()))
+                || matches!(ch, '"' | '\'' | '`')
+                || (ch == '&' && query_param())
+                || (!config && ch == ';' && after.is_none_or(char::is_whitespace))
                 || (stop_at_comma
                     && matches!(ch, ',' | ')' | ']' | '}')
                     && after.is_none_or(|n| {
@@ -850,7 +1171,8 @@ impl SecretRedactor {
         replacement: &str,
         stop_at_comma: bool,
         key: &str,
-        code_context: bool,
+        code_context: u8,
+        config: bool,
     ) -> Option<usize> {
         let rest = out.get(val_start..)?;
         let line_end = rest.find('\n').unwrap_or(rest.len());
@@ -871,8 +1193,8 @@ impl SecretRedactor {
         let harmless_end =
             Self::value_extent(line, stop_at_comma || open_before > 0).and_then(|end| {
                 let v = line[..end].trim_end();
-                (Self::is_harmless_value(v, key, code_context)
-                    && Self::ends_value(&line[v.len()..], open_before))
+                (Self::is_harmless_value(v, key, code_context, false)
+                    && Self::ends_value(&line[v.len()..], open_before, config, true))
                 .then_some(v.len())
             });
         let (cursor, tail_len) = if let Some(end) = harmless_end {
@@ -883,13 +1205,41 @@ impl SecretRedactor {
             // word, so the tail is part of the secret and the #29 rule hides the whole value
             // (security review). Commas and closing brackets end it only in structured text
             // (`stop_at_comma`); a comment needs whitespace before it.
-            if !Self::ends_value(&line[close + 1..], open_before) {
+            if !Self::ends_value(&line[close + 1..], open_before, config, false) {
                 return None;
             }
             let mut cursor = val_start + close + 1;
             if !Self::is_redaction_marker(&line[open + 1..close]) {
                 out.replace_range(val_start + open + 1..val_start + close, replacement);
                 cursor = val_start + open + 1 + replacement.len() + 1;
+            }
+            // The rest after a literal stays only when it is a comment or structure; a bare
+            // word (`"a" b`, `'a' if x else b`) is part of the value to an INI or properties
+            // parser (red-team review of #103), so it is hidden.
+            let tail = &out[cursor..cursor + line_len - (close + 1)];
+            let t = tail.trim_start();
+            // The next assignment (`BAR=2`, `user: bob`) is not part of the value: it stays and
+            // is scanned in its turn.
+            let name_len = t
+                .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')))
+                .unwrap_or(t.len());
+            let next_assignment = (name_len > 0
+                && t.as_bytes()[0].is_ascii_alphabetic()
+                && t[name_len..].starts_with(['=', ':']))
+                // The next CLI flag is the next argument.
+                || t.strip_prefix("--")
+                    .is_some_and(|r| r.starts_with(|c: char| c.is_ascii_alphabetic()));
+            if !(t.is_empty()
+                || t.starts_with('#')
+                || t.starts_with("//")
+                || t.starts_with([',', ')', ']', '}'])
+                || (!config && t.starts_with(';'))
+                || next_assignment)
+            {
+                let from = cursor + (tail.len() - t.len());
+                let to = cursor + tail.len();
+                out.replace_range(from..to, replacement);
+                return Some(cursor);
             }
             (cursor, line_len - (close + 1))
         };
@@ -914,7 +1264,7 @@ impl SecretRedactor {
     /// `;` followed by whitespace; inside brackets opened before the key, also `,` or a closing
     /// bracket followed by nothing, whitespace or more structure. `null;x`, `"a"#x`,
     /// `1234,x` and `null)x` are one shell word or scalar, so they do not.
-    fn ends_value(after: &str, open_before: usize) -> bool {
+    fn ends_value(after: &str, open_before: usize, config: bool, strict: bool) -> bool {
         let mut chars = after.chars();
         let Some(c) = chars.next() else {
             return true;
@@ -923,8 +1273,19 @@ impl SecretRedactor {
             next.is_none_or(|n| n.is_whitespace() || matches!(n, ',' | ';' | ')' | ']' | '}'))
         };
         match c {
-            c if c.is_whitespace() => true,
-            ';' => chars.next().is_none_or(char::is_whitespace),
+            // After whitespace, only a comment, the end, or (outside config text) a shell
+            // separator ends the value; `null ;x` in YAML is one scalar (red-team review of #103).
+            // (The literal path, `strict = false`, judges the rest itself with its tail rule.)
+            c if c.is_whitespace() && !strict => true,
+            c if c.is_whitespace() => {
+                let t = after.trim_start();
+                t.is_empty()
+                    || t.starts_with('#')
+                    || t.starts_with("//")
+                    || (!config && (t.starts_with([';', '|']) || t.starts_with("&&")))
+                    || (open_before > 0 && t.starts_with([',', ')', ']', '}']))
+            }
+            ';' if !config => chars.next().is_none_or(char::is_whitespace),
             ',' | ')' | ']' | '}' if open_before > 0 => then_ok(chars.next()),
             _ => false,
         }
@@ -1008,8 +1369,13 @@ impl SecretRedactor {
         Some((open, close))
     }
 
-    /// ADR-0011 rule 2: a whole value that is never a secret.
-    fn is_harmless_value(v: &str, key: &str, code_context: bool) -> bool {
+    /// ADR-0011 rule 2: a whole value that is never a secret. `code` is how sure the caller is
+    /// that the line is code (`CODE_NONE`, `CODE_WEAK`: spaces around `=`, which INI and
+    /// properties files have too, `CODE_STRONG`: a binding keyword, a type annotation or a
+    /// trailing `;`). `json` is a strictly parsed JSON member, the only place an agent's session
+    /// UUID is kept (red-team review of #103: `X-Session-Id: <uuid>` and prefixed session ids
+    /// can be credentials).
+    fn is_harmless_value(v: &str, key: &str, code: u8, json: bool) -> bool {
         if v.is_empty() {
             return false;
         }
@@ -1027,10 +1393,29 @@ impl SecretRedactor {
         if let Some(digits) = Self::number_digits(v) {
             return digits <= 10 && !Self::is_passcode_key(key);
         }
-        (Self::is_session_id_key(key) && Self::is_uuid(Self::unquoted(v)))
+        (json && Self::is_session_id_key(key) && Self::is_uuid(Self::unquoted(v)))
             || Self::is_env_lookup(v)
             || Self::is_variable_reference(v)
-            || (code_context && Self::is_code_reference(v) && Self::looks_like_code(v))
+            || (code >= CODE_STRONG && Self::is_code_reference(v) && Self::looks_like_code(v))
+            || (code == CODE_WEAK && Self::is_constant_path(v))
+    }
+
+    /// `settings.SECRET_KEY`: a quote-free dotted path ending in an upper-snake constant, the one
+    /// reference kept on a line that is only weakly code (spaces around `=`).
+    fn is_constant_path(v: &str) -> bool {
+        let segments: Vec<&str> = v.split('.').collect();
+        segments.len() >= 2
+            && segments.iter().all(|s| {
+                s.as_bytes()
+                    .first()
+                    .is_some_and(|c| c.is_ascii_alphabetic() || *c == b'_')
+                    && s.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+            })
+            && segments.last().is_some_and(|s| {
+                s.contains('_')
+                    && s.bytes()
+                        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
+            })
     }
 
     /// A reference shape that INI, properties and env files do not produce, since spaces around
@@ -1134,12 +1519,14 @@ impl SecretRedactor {
 
     /// The key as the sensitivity rules see it, upper case with `-` as `_`.
     fn normalized_key(key: &str) -> String {
-        key.trim()
-            .trim_start_matches("export ")
-            .trim_start_matches('-')
-            .trim_matches(|c: char| c == '"' || c == '\'')
-            .to_ascii_uppercase()
-            .replace('-', "_")
+        Self::split_camel(
+            key.trim()
+                .trim_start_matches("export ")
+                .trim_start_matches('-')
+                .trim_matches(|c: char| c == '"' || c == '\''),
+        )
+        .to_ascii_uppercase()
+        .replace('-', "_")
     }
 
     /// Password, passphrase, PIN, OTP, passcode and verification-code keys, whose numbers stay
@@ -1167,14 +1554,11 @@ impl SecretRedactor {
     /// `session_id`, `sessionId` and `<x>_session_id` where `<x>` names no credential
     /// (ADR-0011 rule 6).
     fn is_session_id_key(key: &str) -> bool {
+        // Exactly `session_id` / `sessionId`, as agent hook payloads name it (red-team review
+        // of #103: `sso_session_id`, `admin_session_id` and `X-Session-Id` can be credentials).
         let k = Self::normalized_key(key);
         let prefix = if k == "SESSION_ID" || k == "SESSIONID" {
             ""
-        } else if let Some(p) = k
-            .strip_suffix("_SESSION_ID")
-            .or_else(|| k.strip_suffix("_SESSIONID"))
-        {
-            p
         } else {
             return false;
         };
@@ -1342,22 +1726,17 @@ impl SecretRedactor {
                 let Some(end) = end else {
                     return false;
                 };
-                // Arguments are identifiers and simple punctuation, never free text.
-                if !s[1..end].bytes().all(|c| {
-                    c.is_ascii_alphanumeric()
-                        || matches!(
-                            c,
-                            b'_' | b'.'
-                                | b','
-                                | b' '
-                                | b':'
-                                | b'&'
-                                | b'*'
-                                | b'('
-                                | b')'
-                                | b'['
-                                | b']'
-                        )
+                // Arguments are comma-separated identifiers and simple punctuation, never free
+                // text: no space inside an argument (red-team review of #103:
+                // `cfg.api(secret words)`).
+                if !s[1..end].split(',').all(|arg| {
+                    arg.trim().bytes().all(|c| {
+                        c.is_ascii_alphanumeric()
+                            || matches!(
+                                c,
+                                b'_' | b'.' | b':' | b'&' | b'*' | b'(' | b')' | b'[' | b']'
+                            )
+                    })
                 }) {
                     return false;
                 }
@@ -1439,14 +1818,25 @@ impl SecretRedactor {
                 } else {
                     "[REDACTED:ENV_SECRET]"
                 };
-                // Code, not an env file: spaces around `=` or a binding keyword.
-                let code_context = Self::is_code_binding(&out[..key_start])
-                    || (eq_idx > 0
-                        && out.as_bytes()[eq_idx - 1].is_ascii_whitespace()
-                        && out
-                            .as_bytes()
-                            .get(eq_idx + 1)
-                            .is_some_and(u8::is_ascii_whitespace));
+                // How sure we are this is code: a binding keyword or a trailing `;` is strong;
+                // spaces around `=` are weak, since INI and properties files have them too
+                // (red-team review of #103).
+                let spaced = eq_idx > 0
+                    && out.as_bytes()[eq_idx - 1].is_ascii_whitespace()
+                    && out
+                        .as_bytes()
+                        .get(eq_idx + 1)
+                        .is_some_and(u8::is_ascii_whitespace);
+                let line_end = out[eq_idx..].find('\n').map_or(out.len(), |i| eq_idx + i);
+                let code_context = if Self::is_code_binding(&out[..key_start])
+                    || (spaced && out[..line_end].trim_end().ends_with(';'))
+                {
+                    CODE_STRONG
+                } else if spaced {
+                    CODE_WEAK
+                } else {
+                    CODE_NONE
+                };
                 let key = key_name.to_owned();
                 if let Some(next_pos) = Self::redact_value_span(
                     &mut out,
@@ -1602,7 +1992,7 @@ impl SecretRedactor {
                             "[REDACTED:CONFIG_SECRET]",
                             true,
                             &key,
-                            true,
+                            CODE_STRONG,
                         )
                     {
                         search_pos = next_pos;
@@ -1618,7 +2008,7 @@ impl SecretRedactor {
                             "[REDACTED:CONFIG_SECRET]",
                             true,
                             &key,
-                            false,
+                            CODE_NONE,
                         )
                     {
                         search_pos = next_pos;
@@ -1633,7 +2023,7 @@ impl SecretRedactor {
                     "[REDACTED:CONFIG_SECRET]",
                     true,
                     &key,
-                    false,
+                    CODE_NONE,
                 ) {
                     search_pos = next_pos;
                     continue;
@@ -1918,7 +2308,7 @@ impl SecretRedactor {
                         "[REDACTED:CLI_SECRET]",
                         false,
                         &key,
-                        false,
+                        CODE_NONE,
                     ) {
                         search_pos = next_pos;
                         continue;
@@ -2430,13 +2820,47 @@ impl ContinuationLine {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 struct PendingSecret {
     indent: usize,
     block: bool,
     scalar_indent: Option<usize>,
     /// Quote character of a quoted scalar that is still open at the end of the key's line.
     quote: Option<u8>,
+    /// A YAML plain scalar: only lines indented past the key continue it.
+    plain: bool,
+    /// A value continued with a trailing backslash.
+    backslash: bool,
+    /// Brackets the value left open (`api_key = (`, `token = [`).
+    brackets: usize,
+    /// Lines hidden so far in the backslash and bracket modes (capped like key blocks).
+    lines: usize,
+}
+
+/// Brackets opened minus closed in `text`, outside quotes.
+fn bracket_delta(text: &str) -> isize {
+    let mut depth = 0isize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for c in text.chars() {
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == q {
+                quote = None;
+            }
+            continue;
+        }
+        match c {
+            '"' | '\'' | '`' => quote = Some(c),
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            _ => {}
+        }
+    }
+    depth
 }
 
 /// If `value` starts a single- or double-quoted scalar that does not close within it, returns
@@ -2649,6 +3073,11 @@ fn json_escape(text: &str) -> String {
 
 /// Deepest JSON nesting the structural redactor accepts; deeper lines use the line rules.
 const MAX_JSON_DEPTH: usize = 128;
+
+/// How sure a caller is that a line is code (see `SecretRedactor::is_harmless_value`).
+const CODE_NONE: u8 = 0;
+const CODE_WEAK: u8 = 1;
+const CODE_STRONG: u8 = 2;
 
 /// A strict RFC 8259 scanner over one line that records redaction edits as byte ranges.
 struct JsonScan<'a> {
@@ -2883,7 +3312,7 @@ impl JsonScan<'_> {
             // session UUID) stays (ADR-0011 rule 2); an undecodable key never qualifies.
             let harmless = key_text.as_deref().is_some_and(|k| {
                 std::str::from_utf8(&self.s[value_start..value_end])
-                    .is_ok_and(|v| SecretRedactor::is_harmless_value(v, k, false))
+                    .is_ok_and(|v| SecretRedactor::is_harmless_value(v, k, CODE_NONE, true))
             });
             if sensitive && !check && !harmless {
                 const MARKER: &str = "\"[REDACTED:CONFIG_SECRET]\"";
@@ -3179,16 +3608,14 @@ path: C:\\Users\\dev\\file.rs root={high_entropy_hex}
         for k in ["api_key", "token", "auth_tokens", "spin_rate", "session_id"] {
             assert!(!R::is_passcode_key(k), "{k}");
         }
-        for k in [
-            "session_id",
-            "sessionId",
-            "SESSIONID",
-            "claude_session_id",
-            "agent-session-id",
-        ] {
+        for k in ["session_id", "sessionId", "SESSIONID", "SESSION_ID"] {
             assert!(R::is_session_id_key(k), "{k}");
         }
+        // Prefixed ids can be credentials (red-team review of #103).
         for k in [
+            "claude_session_id",
+            "agent-session-id",
+            "sso_session_id",
             "session_token",
             "auth_session_id",
             "api_session_id",
@@ -3304,13 +3731,19 @@ path: C:\\Users\\dev\\file.rs root={high_entropy_hex}
                 "password = \"[REDACTED:ENV_SECRET]\"  # c\n",
             ),
             ("password = 'abc'\n", "password = '[REDACTED:ENV_SECRET]'\n"),
+            // A bare tail after a literal is part of the value to an INI parser (red-team);
+            // a following assignment is not.
             (
                 "password = \"abc\" + x\n",
-                "password = \"[REDACTED:ENV_SECRET]\" + x\n",
+                "password = \"[REDACTED:ENV_SECRET]\" [REDACTED:ENV_SECRET]\n",
+            ),
+            (
+                "password = \"abc\" next=1\n",
+                "password = \"[REDACTED:ENV_SECRET]\" next=1\n",
             ),
             (
                 "password = \"abc\" + \"d\"\n",
-                "password = \"[REDACTED:ENV_SECRET]\" + [REDACTED:ENV_SECRET]\n",
+                "password = \"[REDACTED:ENV_SECRET]\" [REDACTED:ENV_SECRET]\n",
             ),
             (
                 // Code holding a literal takes the #29 rule: hidden from its start.
@@ -3324,7 +3757,11 @@ path: C:\\Users\\dev\\file.rs root={high_entropy_hex}
             ),
             (
                 "password = \"[REDACTED:ENV_SECRET]\" x\n",
-                "password = \"[REDACTED:ENV_SECRET]\" x\n",
+                "password = \"[REDACTED:ENV_SECRET]\" [REDACTED:ENV_SECRET]\n",
+            ),
+            (
+                "password = \"[REDACTED:ENV_SECRET]\" [REDACTED:ENV_SECRET]\n",
+                "password = \"[REDACTED:ENV_SECRET]\" [REDACTED:ENV_SECRET]\n",
             ),
             // Outside brackets a comma is part of a YAML scalar, so the #29 rule applies.
             (

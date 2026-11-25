@@ -33,7 +33,7 @@ fn non_secret_values_under_sensitive_keys_stay() {
         "token = \"\"\n",
         "\"api_key\": null,\n",
         "secret_key = settings.SECRET_KEY\n",
-        "session_token = get_token(user)\n",
+        "let session_token = get_token(user);\n",
         "token: true\n",
         "max_tokens: 4096\n",
         "let api_key = config.api_key.clone();\n",
@@ -57,9 +57,14 @@ fn a_secret_loses_only_its_literal() {
             "password = \"qqzzqqzz\"  # keep this comment\n",
             "password = \"[REDACTED:ENV_SECRET]\"  # keep this comment\n",
         ),
+        // A bare-word tail is part of an INI value, so it is hidden (red-team review of #103).
         (
             "client_secret = 'qqzzqqzz' if prod else None\n",
-            "client_secret = '[REDACTED:ENV_SECRET]' if prod else None\n",
+            "client_secret = '[REDACTED:ENV_SECRET]' [REDACTED:ENV_SECRET]\n",
+        ),
+        (
+            "PASSWORD=\"qqzzqqzz\" BAR=2\n",
+            "PASSWORD=\"[REDACTED:ENV_SECRET]\" BAR=2\n",
         ),
         (
             "export GITHUB_TOKEN=\"qqzzqqzz\"\n",
@@ -106,18 +111,24 @@ fn json_field_lists_keep_their_other_fields() {
     );
 }
 
-/// ADR-0011 rule 6: an agent session UUID stays; anything else under a session key does not.
+/// ADR-0011 rule 6: an agent session UUID stays in a JSON member named exactly `session_id` or
+/// `sessionId` (hook payloads); anything else under a session key does not (red-team review of
+/// #103: header, env and prefixed session ids can be credentials).
 #[test]
 fn only_uuid_session_ids_stay() {
     let uuid = "8f2c1e9a-3b4d-4c5e-9f60-718293a4b5c6";
     for line in [
-        format!("session_id: {uuid}\n"),
         format!("\"sessionId\": \"{uuid}\"\n"),
-        format!("claude_session_id={uuid}\n"),
+        format!("{{\"session_id\": \"{uuid}\", \"cwd\": \"/x\"}}\n"),
     ] {
         assert_eq!(once(&line), line, "{line:?}");
     }
     for line in [
+        format!("session_id: {uuid}\n"),
+        format!("SESSION_ID={uuid}\n"),
+        format!("claude_session_id={uuid}\n"),
+        format!("X-Session-Id: {uuid}\n"),
+        format!("{{\"sso_session_id\": \"{uuid}\"}}\n"),
         format!("cookie_session_id={uuid}\n"),
         format!("token_session_id: {uuid}\n"),
         format!("password_session_id = {uuid}\n"),
@@ -196,15 +207,16 @@ fn review_bypasses_stay_closed() {
         let clean = once(line);
         assert!(!clean.contains("rrss"), "{line:?} -> {clean:?}");
     }
-    // Strong code signals still keep a reference visible.
+    // Strong code signals (a binding keyword or a trailing `;`) still keep a reference visible;
+    // spaces around `=` alone keep only a constant path (red-team review of #103).
     for line in [
-        "token = self.token\n",
-        "api_key = config.api_key\n",
+        "let token = self.token;\n",
+        "api_key = config.api_key;\n",
         "secret_key = settings.SECRET_KEY\n",
-        "token = load_token(path)\n",
+        "const token = load_token(path);\n",
         "password = $DB_PASSWORD\n",
-        "token = getToken(user)\n",
-        "api_key = os.getenv(KEY_NAME)\n",
+        "let token = getToken(user);\n",
+        "let api_key = os.getenv(KEY_NAME);\n",
     ] {
         assert_eq!(once(line), line, "{line:?}");
     }
@@ -300,7 +312,7 @@ const CORPUS: &[(&str, &[&str])] = &[
     ("token = \"\"", &[]),
     ("\"api_key\": null,", &[]),
     ("secret_key = settings.SECRET_KEY", &[]),
-    ("session_token = get_token(user)", &[]),
+    ("let session_token = get_token(user);", &[]),
     ("token: true", &[]),
     ("max_tokens: 4096", &[]),
     ("let api_key = config.api_key.clone();", &[]),
