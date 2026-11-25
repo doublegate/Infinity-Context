@@ -149,8 +149,8 @@ jobs:
       # Runs whenever this job does, including script-only changes (review of #91).
       - name: Python lint (Hermes plugins, fixture sanitizer)
         run: |
-          pipx run ruff==0.17.6 check integrations/hermes scripts/sanitize-hook-fixtures.py
-          pipx run ruff==0.17.6 format --check integrations/hermes scripts/sanitize-hook-fixtures.py
+          pipx run ruff==0.17.6 check integrations/hermes scripts/sanitize-hook-fixtures.py scripts/build-recall-eval-set.py
+          pipx run ruff==0.17.6 format --check integrations/hermes scripts/sanitize-hook-fixtures.py scripts/build-recall-eval-set.py
       - name: Run benchmark & SLO gate
         if: env.RUST == 'true'
         run: cargo run --release --locked -p icx-cli -- benchmark

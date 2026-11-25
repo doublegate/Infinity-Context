@@ -23,6 +23,10 @@ static WORKSPACE_IO_LOCK: Mutex<()> = Mutex::new(());
 /// Recall entries weaker than this on similarity, fractal suffix and combined score are not
 /// shown (v1.3.2).
 const MIN_RECALL_SIMILARITY: f32 = 0.10;
+/// Recall depths the fused line uses: HDC hits per prompt (the tail slot's `top_k` at a prompt)
+/// and lexical matches (T-71-002).
+pub const FUSED_HDC_DEPTH: usize = 4;
+pub const FUSED_LEXICAL_DEPTH: usize = 20;
 
 /// Default inline byte threshold above which tool outputs are virtualized into AHTL Holographic Stubs.
 pub const DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES: usize = 512;
@@ -88,7 +92,7 @@ pub struct InfinityContextMmu {
     agent_read_cursors: BTreeMap<u8, u64>,
     redacted_artifacts: BTreeSet<ArtifactId>,
     subagent_branches: BTreeMap<String, Vec<SubagentStep>>,
-    hdc_events: Vec<HdcEventRecord>,
+    pub(crate) hdc_events: Vec<HdcEventRecord>,
     indexed_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     reordered_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     agent_occurrences: BTreeMap<u8, BTreeMap<usize, IndexedOccurrenceRecord>>,
@@ -149,6 +153,56 @@ impl InfinityContextMmu {
             wall_clock: false,
             lexical_index: crate::lexical::enabled(),
         }
+    }
+
+    /// The best recall hit when HDC hits and BM25 matches are fused by reciprocal rank
+    /// (`ICX_RECALL_RANKING=rrf`, T-71-002). A hit that only BM25 found carries its stored
+    /// subject, no HDC similarity, and a combined score at the display threshold, so it is shown
+    /// as lexical evidence. `None` when neither ranker finds anything.
+    fn fused_recall_hit(&self, query: &str, hdc_hits: &[AssociativeHit]) -> Option<AssociativeHit> {
+        let lexical: Vec<ArtifactId> = self
+            .lexical_matches(query, FUSED_LEXICAL_DEPTH)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        let top = *Self::fused_ranking(hdc_hits, &lexical).first()?;
+        if let Some(hit) = hdc_hits.iter().find(|h| h.artifact_id == top) {
+            let mut hit = hit.clone();
+            // Lexical agreement is evidence enough to show it.
+            if lexical.contains(&top) {
+                hit.combined_score = hit.combined_score.max(MIN_RECALL_SIMILARITY);
+            }
+            return Some(hit);
+        }
+        Some(AssociativeHit {
+            artifact_id: top,
+            subject: self
+                .hdc_index
+                .subject_of(top)
+                .unwrap_or("artifact")
+                .to_owned(),
+            hdc_similarity: 0.0,
+            shared_fractal_suffix: 0,
+            combined_score: MIN_RECALL_SIMILARITY,
+        })
+    }
+
+    /// The fused order `ICX_RECALL_RANKING=rrf` uses (T-71-002), shared by recall and by the
+    /// evaluation harness so the harness measures exactly what ships (review of #98): HDC hits
+    /// that would be shown (a hit too weak to display can never win and hide a lexical match),
+    /// fused with the lexical matches by reciprocal rank.
+    #[must_use]
+    pub fn fused_ranking(hdc_hits: &[AssociativeHit], lexical: &[ArtifactId]) -> Vec<ArtifactId> {
+        let shown: Vec<ArtifactId> = hdc_hits
+            .iter()
+            .filter(|h| {
+                h.hdc_similarity >= MIN_RECALL_SIMILARITY
+                    || h.shared_fractal_suffix > 0
+                    || h.combined_score >= MIN_RECALL_SIMILARITY
+            })
+            .map(|h| h.artifact_id)
+            .collect();
+        crate::lexical::rrf(&[shown, lexical.to_vec()], crate::lexical::RRF_K)
     }
 
     /// Turns maintenance of the lexical index on or off (default: `ICX_RECALL_RANKING=rrf`).
@@ -906,7 +960,14 @@ impl InfinityContextMmu {
         // Reserve useful recall before consuming space with sibling events. A large public
         // subject can fall back to a complete handle frame instead of dropping all recall.
         let hdc_hits: Vec<AssociativeHit> = self.hdc_index.query_associative(query, top_k);
-        if let Some(hit) = hdc_hits.first() {
+        // `legacy` (the default) shows the best HDC hit; with `ICX_RECALL_RANKING=rrf` the HDC
+        // hits are fused with BM25 matches by reciprocal rank (T-71-002).
+        let best = if self.lexical_index {
+            self.fused_recall_hit(query, &hdc_hits)
+        } else {
+            hdc_hits.first().cloned()
+        };
+        if let Some(hit) = best.as_ref() {
             Self::append_tail_recall(&mut lines, &mut used, limit, hit);
         }
 
@@ -1934,5 +1995,62 @@ mod recall_floor_tests {
         assert!(shown(&hit(0.03, 0, 0.9)));
         // A shared fractal suffix is a signal of its own.
         assert!(shown(&hit(0.03, 2, 0.03)));
+    }
+
+    #[test]
+    fn fused_recall_shows_a_lexical_only_hit_and_weak_hdc_hits_do_not_win() {
+        let dir = std::env::temp_dir().join(format!("icx-fused-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut mmu = InfinityContextMmu::default();
+        mmu.set_lexical_index(true);
+        let target = mmu
+            .ingest_payload(
+                AgentKind::Codex,
+                "Read:net.rs",
+                "fn parseHttpRequest() {}\n",
+                false,
+            )
+            .artifact_id;
+        mmu.ingest_payload(AgentKind::Codex, "log", "unrelated words here\n", false);
+        mmu.save_workspace_dir(&dir).unwrap();
+        // No HDC hits at all: the BM25 match is shown, labelled with its stored subject.
+        let hit = mmu.fused_recall_hit("request", &[]).expect("lexical hit");
+        assert_eq!(hit.artifact_id, target);
+        assert_eq!(hit.subject, "Read:net.rs");
+        assert!(hit.combined_score >= MIN_RECALL_SIMILARITY);
+        // A weak HDC hit (below every display threshold) cannot outrank it.
+        let weak = AssociativeHit {
+            artifact_id: ArtifactId(1),
+            subject: "weak".into(),
+            hdc_similarity: 0.0,
+            shared_fractal_suffix: 0,
+            combined_score: 0.0,
+        };
+        assert_eq!(
+            mmu.fused_recall_hit("request", std::slice::from_ref(&weak))
+                .map(|h| h.artifact_id),
+            Some(target)
+        );
+        // A shown HDC hit that BM25 also finds is lifted to the display threshold.
+        let agreed = AssociativeHit {
+            artifact_id: target,
+            subject: "Read:net.rs".into(),
+            hdc_similarity: 0.5,
+            shared_fractal_suffix: 0,
+            combined_score: 0.0,
+        };
+        let h = mmu.fused_recall_hit("request", &[agreed]).unwrap();
+        assert!(h.combined_score >= MIN_RECALL_SIMILARITY);
+        // Nothing found by either: no hit.
+        assert!(mmu.fused_recall_hit("zzzz", &[]).is_none());
+        // Off: substring queries answer nothing; on, they confirm against the text.
+        assert_eq!(mmu.substring_matches("parseHttp", 5), vec![target]);
+        mmu.set_lexical_index(false);
+        assert_eq!(
+            mmu.substring_matches("parseHttp", 5),
+            Vec::<ArtifactId>::new()
+        );
+        assert_eq!(mmu.lexical_matches("request", 5).len(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

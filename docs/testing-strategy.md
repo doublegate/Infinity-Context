@@ -111,7 +111,21 @@ All CI jobs use the pinned `1.100.0` toolchain and SHA-pinned actions
 - **Not covered by live runs in v1.4.0:** Hermes, Gemini CLI and Cursor tool calls (deferred to
   v1.5.0, #89); their tests follow the documented contracts.
 
-## 3. v1.2.0 qualification additions
+## 3. v1.5.0 additions: retrieval evaluation and measurements
+
+- `icx eval-recall` scores the `legacy`, `bm25`, `rrf` and `recent` rankers by recall@1/5/10 and
+  MRR@10, on a seeded synthetic set or a JSON Lines set over a workspace (read only; the lexical
+  index is built in memory). Each query ranks only artifacts that existed when it was asked, and
+  `--min-age` keeps cases whose answer was already old. Unit tests pin the metric definitions,
+  determinism for a seed, the time cutoff and the case filters.
+- Real-session sets are built by `scripts/build-recall-eval-set.py`, which writes only under the
+  gitignored `eval/private/`. Only aggregate scores are committed (`docs/numbers.md`, ADR-0010).
+- Ignored measurement tests reproduce the published v1.5.0 figures:
+  `cargo test --release -p icx-hdc --test measurements -- --ignored --nocapture` (prescreen,
+  fractal suffix) and `ICX_MEASURE_STORE=<store> cargo test --release -p icx-adapters --test
+  lexical_index measure -- --ignored --nocapture` (lexical index).
+
+## 4. v1.2.0 qualification additions
 
 New integration fixtures cover YAML scalar and redaction counterexamples, Profile A framing,
 independent numerical vectors, snapshot corruption and 03→04 upgrades, exact lexical candidates,

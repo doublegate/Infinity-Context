@@ -329,6 +329,33 @@ pub fn trigram_candidates(
     Ok(out)
 }
 
+/// The usual reciprocal-rank-fusion constant (Cormack, Clarke and Büttcher, SIGIR 2009).
+pub const RRF_K: f64 = 60.0;
+
+/// Reciprocal rank fusion of ranked lists (T-71-002): each item scores the sum of
+/// `1 / (k + rank)` over the lists it appears in, ranks counted from 1, and a repeat within a
+/// list counts only at its best rank. Equal scores are ordered by artifact id, so the result is
+/// deterministic.
+#[must_use]
+pub fn rrf(lists: &[Vec<ArtifactId>], k: f64) -> Vec<ArtifactId> {
+    let mut score: std::collections::BTreeMap<ArtifactId, f64> = std::collections::BTreeMap::new();
+    for list in lists {
+        let mut seen = std::collections::BTreeSet::new();
+        // Ranks count distinct items only, so a repeat never pushes later items down (review of
+        // #98).
+        let mut rank = 0usize;
+        for id in list {
+            if seen.insert(*id) {
+                rank += 1;
+                *score.entry(*id).or_insert(0.0) += 1.0 / (k + rank as f64);
+            }
+        }
+    }
+    let mut out: Vec<(ArtifactId, f64)> = score.into_iter().collect();
+    out.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+    out.into_iter().map(|(id, _)| id).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -477,5 +504,22 @@ mod tests {
         c.execute_batch("DROP TABLE lex_trigrams").unwrap();
         assert!(ensure_tables(&c).unwrap(), "a partial set is rebuilt");
         assert!(tables_exist(&c).unwrap());
+    }
+
+    #[test]
+    fn rrf_rewards_agreement_and_breaks_ties_by_id() {
+        let a = ArtifactId(1);
+        let b = ArtifactId(2);
+        let c = ArtifactId(3);
+        // `b` is second in both lists, so it beats items that are first in only one.
+        assert_eq!(rrf(&[vec![a, b], vec![c, b]], RRF_K), [b, a, c]);
+        // A repeat within a list counts once and does not push later items down: `c` is second
+        // in the first list despite the repeats, so it ties `b` (first in the other list after a
+        // repeat is skipped) and wins the tie by id only when its score is equal.
+        assert_eq!(rrf(&[vec![a, a, a], vec![b]], RRF_K), [a, b]);
+        assert_eq!(rrf(&[vec![a, a, c], vec![b, c]], RRF_K), [c, a, b]);
+        // Equal scores: by id.
+        assert_eq!(rrf(&[vec![c], vec![a]], RRF_K), [a, c]);
+        assert_eq!(rrf(&[], RRF_K), []);
     }
 }

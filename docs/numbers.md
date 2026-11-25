@@ -155,6 +155,34 @@ does, without `optimize` or `VACUUM`. Reproduce on any store with
   a substring hit reads its candidates from the CAS until `limit` are confirmed (at most
   `max(64, 8 * limit)`).
 
+**v1.5.0 measurements: recall evaluation (2026-11-24, `icx eval-recall`, T-72-001..004):**
+
+Real-session cases: a `deref` or `slice` of a handle the agent got from a stub; the query is the
+agent's note before the call or the user's prompt that started the turn; each query ranks only
+artifacts that existed when it was asked. Queries and judgements are private
+(`eval/private/`, built by `scripts/build-recall-eval-set.py`); these are aggregates.
+
+| Agent notes (this project, held-out half, 372 queries) | legacy | BM25 | RRF | newest first |
+| :--- | ---: | ---: | ---: | ---: |
+| recall@1 | 0.0% | 2.2% | 0.3% | 83.3% |
+| recall@10 | 2.4% | 12.6% | 11.6% | 99.2% |
+
+- **RRF is the shipped fusion** (`InfinityContextMmu::fused_ranking`: the first 4 displayable HDC
+  hits with the first 20 BM25 matches). A first version fused 50 unfiltered HDC hits and reported
+  5.4% recall@10 (corrected in the review of #98).
+- **Fresh answers dominate:** across all six projects with at least 40 dereferences (1,676 note
+  cases), 7 had 20 or more newer artifacts between the answer and the query. The table therefore
+  measures fetching what was just produced, not long-range recall, and cannot decide a default
+  (ADR-0010).
+- **Prompts as queries:** timed at the prompt, when automatic recall runs, 313 of 316 prompt
+  cases had answers that did not exist yet (the agent produced them during the turn). Only 3
+  cases could have been answered by recall at all, too few to score.
+- **Every indexed artifact was dated** from a graph edge in each workspace measured; an undated
+  one would take the next dated time (an upper bound, so the cutoff fails closed).
+- **Synthetic sets** (`icx eval-recall --synthetic <n> --vocab <v>`, seed 7, 200 queries): with a
+  50,000-word vocabulary every ranker has recall@1 of 100% at 1k and 10k artifacts; with 500
+  words at 10k, recall@1 is 59.0% (legacy), 56.5% (BM25) and 58.5% (RRF).
+
 ## 3. Constants and Test-Asserted Bounds
 
 ### Handles, hashing and storage

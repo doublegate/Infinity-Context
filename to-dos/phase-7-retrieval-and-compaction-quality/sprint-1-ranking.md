@@ -115,11 +115,15 @@ training split only.
 
 **Acceptance Criteria:**
 
-- [ ] RRF with k = 60 by default (research gate, 2026-11-23); per-list weights and a per-source
+- [x] RRF with k = 60 by default (research gate, 2026-11-23); per-list weights and a per-source
   cap only if Sprint 2's evaluation set shows a gain.
-- [ ] Fusion is deterministic for equal scores (stable tie-break by handle).
-- [ ] `legacy` output is byte-identical to v1.4.0.
-- [ ] recall@k and MRR for each ranker and for RRF measured and published in `docs/numbers.md`.
+- [x] Fusion is deterministic for equal scores (stable tie-break by handle).
+- [x] `legacy` output is byte-identical to v1.4.0.
+- [x] recall@k and MRR for each ranker and for RRF measured and published in `docs/numbers.md`.
+
+**Result (2026-11-25):** wired into the injected recall line behind `ICX_RECALL_RANKING=rrf`
+(`lexical::rrf`, ties by artifact id; tests pin determinism and that the off path is unchanged).
+Measured in `docs/numbers.md`; the default stays `legacy` (ADR-0010).
 
 **Dependencies:** T-71-001, T-72-002
 

@@ -108,3 +108,7 @@ ref-docs/agent-internals/private/
 **/decompiled/
 **/disassembly/
 *.strings.txt
+
+# Retrieval evaluation data built from real sessions (T-72-001): queries, judgements and any
+# artifact text stay local; only aggregate scores are committed (owner decision, 2026-11-24).
+eval/private/
