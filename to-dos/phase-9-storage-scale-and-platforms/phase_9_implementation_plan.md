@@ -8,10 +8,12 @@ performance remeasurement so it can include aarch64.
 
 ## Ordered Approach
 
-1. **Sprint 9.1 — Storage (T-91-001 to T-91-004).**
+1. **Sprint 9.1 — Storage (T-91-001 to T-91-005).**
    - Measure save time and lock wait on a field-sized workspace first, then add incremental saves
      of derived state, zstd compression in the CAS, the line/trigram index for `grep_cold`, and
      lock-contention reduction for parallel agents.
+   - Last, `icx rescan --apply` (T-91-005, #102), after the save and CAS formats it rewrites
+     have settled: a bottom-up DAG remap, an alias table for old handles, and `VACUUM`.
 2. **Sprint 9.2 — Compatibility (T-92-001 to T-92-003).**
    - `icx export --format <v>` and documented downgrade paths, then detection of a newer snapshot
      format by an already-running MCP server, which tells the user to reconnect.
@@ -25,6 +27,9 @@ performance remeasurement so it can include aarch64.
 
 ## Risks
 
+- **Re-redaction loses or breaks history.** Mitigation: dry-run by default, explicit confirmation,
+  a kept snapshot, an alias table so existing handles resolve, and full integrity checks before
+  the swap commits (T-91-005).
 - **Format changes break older readers.** Mitigation: every new on-disk format bumps its magic,
   fails closed in older binaries, and has an export path (T-92-001).
 - **Compression or indexing cost exceeds its saving.** Mitigation: each is measured on the field

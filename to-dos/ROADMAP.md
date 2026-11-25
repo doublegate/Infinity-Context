@@ -109,8 +109,8 @@ only basis for a cache-hit claim. Also:
 
 Goal: storage, compatibility and platforms. This includes:
 
-- incremental saves and zstd in the content store, a trigram index for `grep`, and less lock
-  contention;
+- incremental saves and zstd in the content store, a trigram index for `grep`, less lock
+  contention, and `icx rescan --apply` to re-redact a stored workspace (#102);
 - downgrade and export paths;
 - aarch64 Linux, macOS and Windows builds;
 - the open strict benchmarks.
@@ -118,7 +118,7 @@ Goal: storage, compatibility and platforms. This includes:
 - [Overview](phase-9-storage-scale-and-platforms/overview.md) ·
   [Implementation plan](phase-9-storage-scale-and-platforms/phase_9_implementation_plan.md) ·
   [v1.7.0 milestone](https://github.com/doublegate/Infinity-Context/milestone/4)
-  - [Sprint 1 — Storage](phase-9-storage-scale-and-platforms/sprint-1-storage.md) (4 tickets) · [#53](https://github.com/doublegate/Infinity-Context/issues/53)
+  - [Sprint 1 — Storage](phase-9-storage-scale-and-platforms/sprint-1-storage.md) (5 tickets) · [#53](https://github.com/doublegate/Infinity-Context/issues/53)
   - [Sprint 2 — Compatibility](phase-9-storage-scale-and-platforms/sprint-2-compatibility.md) (3 tickets) · [#54](https://github.com/doublegate/Infinity-Context/issues/54)
   - [Sprint 3 — Platforms](phase-9-storage-scale-and-platforms/sprint-3-platforms.md) (6 tickets) · [#55](https://github.com/doublegate/Infinity-Context/issues/55)
   - [Sprint 4 — Performance](phase-9-storage-scale-and-platforms/sprint-4-performance.md) (5 tickets) · [#56](https://github.com/doublegate/Infinity-Context/issues/56)

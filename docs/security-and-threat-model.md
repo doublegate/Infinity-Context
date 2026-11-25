@@ -158,7 +158,10 @@ These limits also apply to the v1.2.0 candidate.
    sensitive key names and high-entropy tokens. A secret in an unrecognized format, a
    low-entropy password with no sensitive key nearby, or a secret split across unusual
    structure can be stored in the CAS and shown to a model. Do not rely on `icx` as the only
-   control keeping secrets out of agent context.
+   control keeping secrets out of agent context. Content is redacted once, when it is stored, so
+   a store written by an older version keeps what that version missed; since v1.5.0
+   `icx rescan` reports such content (counts and handles, never values). Re-redacting it in
+   place is planned for v1.7.0 (#102).
 2. **The redactor can also over-redact.** High-entropy non-secrets (hashes, identifiers) may be
    removed. Such artifacts are marked redacted; dereferencing returns the redacted bytes, not the
    original. Since v1.5.0 (ADR-0011) a sensitive assignment loses its value rather than the rest

@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `icx rescan` (T-74-001): runs the current redactor over every stored artifact and indexed
+  subject and reports, as JSON, how many it would change, the markers it would add by kind, the
+  bytes affected and up to `--limit` (default 50) artifact handles; never the text or the
+  values. It writes nothing. Re-redacting a stored workspace (`--apply`) is planned for v1.7.0
+  (#102). On this project's 4,694-artifact workspace it ran in 1.9 s and found 169 artifacts,
+  stored by versions before v1.3.1, that today's rules would hide further.
+
 ### Changed
 
 - Redaction keeps what is not secret (ADR-0011, T-74-003, #90). After a sensitive key, a value

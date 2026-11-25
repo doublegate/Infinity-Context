@@ -40,6 +40,9 @@ fn non_secret_values_under_sensitive_keys_stay() {
         "password = $DB_PASSWORD\n",
         "TOKEN=${GITHUB_TOKEN}\n",
         "token = env::var(\"GITHUB_TOKEN\")\n",
+        // Seen through v1.4.1 stubs while reading this repository's source (2026-11-25).
+        "let mut total_raw_tokens = 0;\n",
+        "let mut saw_pass = false;\n",
         "{\"api_key\": null, \"token\": \"\", \"session_id\": \"8f2c1e9a-3b4d-4c5e-9f60-718293a4b5c6\"}\n",
     ] {
         assert_eq!(once(line), line, "{line:?}");

@@ -42,7 +42,16 @@ Re-check before the sprint starts:
 - **Security review of the first implementation** (automated, on c93a5e3) found three bypasses,
   closed with tests in `redact_structural_v150.rs` (`review_bypasses_stay_closed`): a literal
   glued to more text (`PASSWORD="ab"cd` is one shell word), `$`-prefixed passwords taken for
-  variables, and INI values (`password = my.dog.rex`) taken for code references. A second review
+  variables, and INI values (`password = my.dog.rex`) taken for code references.
+- **T-74-001 reference map** (2026-11-25): artifact ids are content hashes, and a changed artifact
+  cascades through the Merkle-DAG `Turn`/`ToolArtifact` digests, branches, L3/L4 epochs and the bus
+  root. Derived copies of the text sit in packets, frames, graph entities, HDC postings, FTS5 bodies
+  and bus slots. Old handles in transcripts stop resolving without an alias table, and deleted rows
+  stay in SQLite free pages until `VACUUM`. Full map in #102; owner decision: report only in v1.5.0.
+- **First field run of `icx rescan`:** 169 of 4,694 artifacts on this project's workspace, all
+  stored by versions before v1.3.1. The current redactor is idempotent on all of them (a second
+  pass changes nothing), and its rules are unchanged from v1.4.1, which confirms that the
+  findings are older content and not a regression. A second review
   (on 5a5f1c9) found three more, also closed with tests: `#`, `/` or `,` glued to a literal in
   shell text (`PASSWORD="a"#b`), a bare call such as `abc(def)` taken for code, and upper-case
   `$NAME` values without an `_` taken for references.
@@ -52,18 +61,19 @@ Re-check before the sprint starts:
 ### T-74-001 — `icx rescan` with a dry-run default
 
 **Description:** Add `icx rescan` that runs the current redactor over stored artifacts and
-reports what it would redact. With explicit confirmation it re-redacts by writing new CAS
-objects and updating references, never by editing objects in place.
+reports what it would redact. Owner decision (2026-11-25): v1.5.0 ships the report only; the
+re-redaction step is T-91-005 in v1.7.0 (#102), because the store is content-addressed throughout
+(see the research notes).
 
 **Research:** Confirm how stored objects are referenced (DAG, graph, snapshots), so a
 re-redaction leaves no dangling or unredacted reference.
 
 **Acceptance Criteria:**
 
-- [ ] Dry-run is the default and writes nothing (tested).
-- [ ] Report lists counts per detector and artifact handles, never the secret values.
-- [ ] Re-redaction is atomic per workspace and leaves a backup or the prior snapshot.
-- [ ] Merkle integrity verified after re-redaction.
+- [x] Dry-run is the default and writes nothing (tested): v1.5.0 reports only, and `--apply` is
+  refused with a pointer to #102.
+- [x] Report lists counts per detector and artifact handles, never the secret values (tested).
+- [ ] Re-redaction (atomic, with a snapshot, Merkle integrity verified) moved to T-91-005 (#102).
 
 **Dependencies:** None
 
