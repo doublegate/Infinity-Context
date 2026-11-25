@@ -1001,24 +1001,34 @@ impl InfinityContextMmu {
 
         // Reserve useful recall before consuming space with sibling events. A large public
         // subject can fall back to a complete handle frame instead of dropping all recall.
-        let hdc_hits: Vec<AssociativeHit> = self.hdc_index.query_associative(query, top_k);
+        // A prompt with no distinctive word gets no recall line, so it skips the HDC query.
+        let words = if prompt_only {
+            self.prompt_words(query)
+        } else {
+            BTreeSet::new()
+        };
+        let hdc_hits: Vec<AssociativeHit> = if prompt_only && words.is_empty() {
+            Vec::new()
+        } else {
+            self.hdc_index.query_associative(query, top_k)
+        };
         // `legacy` (the default) shows the best HDC hit; with `ICX_RECALL_RANKING=rrf` the HDC
         // hits are fused with BM25 matches by reciprocal rank (T-71-002).
         let best = if prompt_only {
-            // The first candidate, in ranking order, whose subject shares a word with the
-            // prompt (review of #101: with fusion on, every candidate is checked, not one).
-            let words = self.prompt_words(query);
+            // The first candidate, in ranking order, that would be shown and whose subject
+            // shares a word with the prompt (review of #101: every fused candidate is checked,
+            // and one too weak to show cannot hide a later one that would be).
+            let qualifies = |h: &AssociativeHit| {
+                Self::displayable(h) && self.has_stored_subject(h) && Self::shares_a_word(h, &words)
+            };
             if words.is_empty() {
                 None
             } else if self.lexical_index {
                 self.fused_recall_hits(query, &hdc_hits, PROMPT_RECALL_CANDIDATES)
                     .into_iter()
-                    .find(|h| Self::shares_a_word(h, &words))
+                    .find(|h| qualifies(h))
             } else {
-                hdc_hits
-                    .iter()
-                    .find(|h| Self::shares_a_word(h, &words))
-                    .cloned()
+                hdc_hits.iter().find(|h| qualifies(h)).cloned()
             }
         } else if self.lexical_index {
             self.fused_recall_hit(query, &hdc_hits)
@@ -1150,25 +1160,34 @@ impl InfinityContextMmu {
     /// counted over output bodies, a module name common in diffs could never match its own
     /// `Read:` subject), with the same tokenizer.
     fn prompt_words(&self, prompt: &str) -> BTreeSet<String> {
-        let mut df: BTreeMap<String, usize> = Self::words_of(prompt)
+        let df: BTreeMap<String, usize> = Self::words_of(prompt)
             .filter(|w| w.chars().count() >= 3 && !Self::is_ppr_stop_word(w))
             .map(|w| (w, 0))
             .collect();
         if df.is_empty() {
             return BTreeSet::new();
         }
-        for subject in self.hdc_index.subjects() {
-            let words: BTreeSet<String> = Self::words_of(subject).collect();
-            for w in &words {
-                if let Some(count) = df.get_mut(w) {
+        // (count, index of the last subject counted), so a word repeated in one subject counts
+        // once, with no per-subject set (review of #101).
+        let mut counts: BTreeMap<String, (usize, usize)> =
+            df.into_keys().map(|w| (w, (0, usize::MAX))).collect();
+        for (i, subject) in self.hdc_index.subjects().enumerate() {
+            for w in Self::words_of(subject) {
+                if let Some((count, last)) = counts.get_mut(&w)
+                    && *last != i
+                {
                     *count += 1;
+                    *last = i;
                 }
             }
         }
+        // The floor of 3 lets a small, early store match; a word in every one of 3 subjects
+        // then still counts, a deliberate trade-off (review of #101).
         let cap =
             (self.hdc_index.entry_count() / PROMPT_WORD_SHARE_DIVISOR).max(PROMPT_WORD_MIN_CAP);
-        df.into_iter()
-            .filter(|&(_, count)| count > 0 && count <= cap)
+        counts
+            .into_iter()
+            .filter(|&(_, (count, _))| count > 0 && count <= cap)
             .map(|(w, _)| w)
             .collect()
     }
@@ -1176,7 +1195,7 @@ impl InfinityContextMmu {
     /// Whether `hit`'s subject (its command, file path or tool name) contains one of `words` as
     /// a whole word. The output text is not searched: a long output almost always holds some
     /// prompt word, so a text match filtered almost nothing (measured on 118 real prompts: a
-    /// line for 113 with rare words in the text, for 1 with the subject; owner decision).
+    /// line for 113 with rare words in the text, for 2 with the subject; owner decision).
     fn shares_a_word(hit: &AssociativeHit, words: &BTreeSet<String>) -> bool {
         Self::words_of(&hit.subject).any(|w| words.contains(&w))
     }
@@ -1197,19 +1216,29 @@ impl InfinityContextMmu {
         }
     }
 
+    /// Whether a recall hit is strong enough to show. A hit that is weak on every signal is
+    /// noise in the agent's context (v1.3.2: 6% of injected recall lines in the field had
+    /// sim < 0.1). Exact-identifier (lexical) hits carry a combined score and are kept.
+    fn displayable(hit: &AssociativeHit) -> bool {
+        hit.hdc_similarity >= MIN_RECALL_SIMILARITY
+            || hit.shared_fractal_suffix > 0
+            || hit.combined_score >= MIN_RECALL_SIMILARITY
+    }
+
+    /// Whether `hit` carries the subject stored for it, not the `artifact` placeholder a
+    /// lexical-only hit gets when the index has no entry (review of #101: the placeholder
+    /// could match a prompt that says "artifact").
+    fn has_stored_subject(&self, hit: &AssociativeHit) -> bool {
+        self.hdc_index.subject_of(hit.artifact_id).is_some()
+    }
+
     fn append_tail_recall(
         lines: &mut Vec<String>,
         used: &mut usize,
         limit: usize,
         hit: &AssociativeHit,
     ) {
-        // A hit that is weak on every signal is noise in the agent's context (v1.3.2: 6% of
-        // injected recall lines in the field had sim < 0.1). Exact-identifier (lexical) hits
-        // carry a combined score and are kept.
-        if hit.hdc_similarity < MIN_RECALL_SIMILARITY
-            && hit.shared_fractal_suffix == 0
-            && hit.combined_score < MIN_RECALL_SIMILARITY
-        {
+        if !Self::displayable(hit) {
             return;
         }
         if !Self::append_tail_line(

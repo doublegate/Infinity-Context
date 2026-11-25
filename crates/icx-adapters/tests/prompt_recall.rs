@@ -73,6 +73,44 @@ fn a_capitalized_stop_word_does_not_count() {
 }
 
 #[test]
+fn a_candidate_too_weak_to_show_does_not_hide_one_that_would_be() {
+    let mut m = InfinityContextMmu::default();
+    // Unrelated text gives the first subject almost no HDC similarity to the prompt.
+    m.ingest_payload(AgentKind::ClaudeCode, "Bash:zzqx", "\u{1}\n", false);
+    m.ingest_payload(
+        AgentKind::ClaudeCode,
+        "Read:src/zzqx_parser.rs",
+        "fn zzqx_parser() { parse the zzqx stream }\n",
+        false,
+    );
+    for i in 0..4 {
+        m.ingest_payload(
+            AgentKind::ClaudeCode,
+            &format!("Bash:echo filler{i}"),
+            "filler\n",
+            false,
+        );
+    }
+    let tail = m.build_prompt_tail_slot(AgentKind::ClaudeCode, "zzqx parser stream");
+    let lines = recall_lines(&tail);
+    assert_eq!(lines.len(), 1, "{tail}");
+    assert!(lines[0].contains("zzqx"), "{tail}");
+}
+
+#[test]
+fn the_prompt_slot_keeps_cross_agent_activity() {
+    let mut m = mmu();
+    m.ingest_payload(
+        AgentKind::Codex,
+        "Bash:cargo build --release",
+        "Finished release\n",
+        false,
+    );
+    let tail = m.build_prompt_tail_slot(AgentKind::ClaudeCode, "what now");
+    assert!(tail.contains("codex"), "sibling activity is kept: {tail}");
+}
+
+#[test]
 fn fused_ranking_checks_every_candidate_like_legacy() {
     let mut legacy = mmu();
     let mut fused = mmu();

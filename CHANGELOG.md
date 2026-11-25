@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   most one recall line, shown only when the hit's subject (command, file path or tool name)
   shares a distinctive word with the prompt, and no graph lines; before, up to about eight
   recall and graph lines, mostly unrelated (ADR-0010). A word is distinctive when at most 2%
-  of indexed subjects hold it. On 118 real prompts the line now appears twice, once for the
+  of indexed subjects hold it (at least 3 in a small store). On 118 real prompts the line now appears twice, once for the
   output the turn used; matching the output text instead showed a line for 113. Cross-agent activity is unchanged;
   `SessionStart`, compaction and the agent's own `recall` keep the full slot.
 

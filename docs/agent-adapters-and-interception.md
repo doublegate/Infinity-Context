@@ -77,7 +77,7 @@ writes the text to a file and the model sees a preview. Every icx reply stays wi
      ```
 
 2. **`UserPromptSubmit`:**
-   - Reads `prompt`, builds the prompt tail slot (unseen sibling bus frames, and at most one recall line, for an HDC hit whose subject shares a distinctive word with the prompt; v1.5.0, ADR-0010), and returns it in `hookSpecificOutput.additionalContext`.
+   - Reads `prompt`, builds the prompt tail slot (unseen sibling bus frames, and at most one recall line, for a recall hit whose subject shares a distinctive word with the prompt; v1.5.0, ADR-0010), and returns it in `hookSpecificOutput.additionalContext`.
 3. **`PostToolUse` (in-flight tool output virtualization):**
    - Reads `tool_name`, `tool_input`, and `tool_response`. If the output is at or above `tool_virtualize_threshold` (default 512 bytes):
      1. Redacts secrets via `SecretRedactor`.
