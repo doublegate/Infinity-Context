@@ -409,6 +409,14 @@ fn review_round_assignment_tails_keys_and_continuations() {
         ("token_savings = \"12 percent\"\n", &[], &["12 percent"]),
         ("secret_redactor = \"structural\"\n", &[], &["structural"]),
         ("token_stream = \"lexer\"\n", &[], &["lexer"]),
+        // Qualified keys stay sensitive unless the qualifier names a non-secret attribute
+        // (security review of #103: an allowlist failed open).
+        ("PASSWORD_ADMIN=qqzz\n", &["qqzz"], &[]),
+        ("API_KEY_PROD=qqzz\n", &["qqzz"], &[]),
+        ("TOKEN_GITHUB=qqzz\n", &["qqzz"], &[]),
+        ("DB_PASSWORD_PROD=qqzz\n", &["qqzz"], &[]),
+        ("password_value = \"qqzz\"\n", &["qqzz"], &[]),
+        ("token_type = \"bearer\"\n", &[], &["bearer"]),
         // Type-annotated and lifetime-annotated assignments continue.
         (
             "api_key: str = \"\"\"\nqqzz\n\"\"\"\nnext = 1\n",
