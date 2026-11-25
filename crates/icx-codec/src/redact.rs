@@ -1349,6 +1349,24 @@ impl SecretRedactor {
         (k > 0 && rest.as_bytes().get(k) == Some(&b']')).then_some("[REDACTED:".len() + k + 1)
     }
 
+    /// The length of the run of complete markers `s` starts with, with spaces between them
+    /// when `spaced` (config text).
+    pub(crate) fn marker_run(s: &str, spaced: bool) -> usize {
+        let mut at = 0;
+        loop {
+            let rest = &s[at..];
+            let gap = if spaced {
+                rest.len() - rest.trim_start_matches([' ', '\t']).len()
+            } else {
+                0
+            };
+            match Self::marker_len(&rest[gap..]) {
+                Some(n) => at += gap + n,
+                None => return at,
+            }
+        }
+    }
+
     /// Whether `s` starts with a complete marker.
     pub(crate) fn starts_with_marker(s: &str) -> bool {
         Self::marker_len(s).is_some()
@@ -1504,17 +1522,18 @@ impl SecretRedactor {
                     .find('\n')
                     .map_or(out.len(), |k| val_start + k);
                 let line = out[val_start..line_end].trim_end_matches('\r');
-                // A complete marker only; anything else is an ordinary value (review of #106).
-                let close = Self::marker_len(line)? - 1;
-                let tail = &line[close + 1..];
+                // Complete markers only, and all of a leading run of them (`[REDACTED:X]
+                // [REDACTED:Y]secret`; review of #106); anything else is an ordinary value.
+                Self::marker_len(line)?;
+                let run = Self::marker_run(line, config);
+                let tail = &line[run..];
                 let t = tail.trim_start();
                 let glued = !tail.is_empty() && !tail.starts_with([' ', '\t']);
                 let structural = t.is_empty()
-                    || Self::starts_with_marker(t)
                     || t.starts_with(['#', ';', ',', ')', ']', '}', '&', '|', '\\'])
                     || t.starts_with("//");
                 if !structural && (glued || config) {
-                    let from = val_start + close + 1 + (tail.len() - t.len());
+                    let from = val_start + run + (tail.len() - t.len());
                     let to = val_start + line.len();
                     out.replace_range(from..to, replacement);
                     return Some(from + replacement.len());
@@ -1642,11 +1661,12 @@ impl SecretRedactor {
         }
         // A value that starts with a marker and goes on (`[REDACTED:X]secret`, planted or
         // left by an earlier pass) loses the rest too (#104); markers only stay as they are.
-        if let Some(close) = Self::marker_len(value).map(|n| n - 1) {
-            let tail = &value[close + 1..];
+        if Self::starts_with_marker(value) {
+            let run = Self::marker_run(value, true);
+            let tail = &value[run..];
             let t = tail.trim_start();
-            if !t.is_empty() && !Self::starts_with_marker(t) {
-                let from = val_start + close + 1 + (tail.len() - t.len());
+            if !t.is_empty() {
+                let from = val_start + run + (tail.len() - t.len());
                 out.replace_range(from..val_start + val_len, replacement);
                 return Some(from + replacement.len());
             }

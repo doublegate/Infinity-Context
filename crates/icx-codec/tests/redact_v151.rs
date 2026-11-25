@@ -614,3 +614,82 @@ fn an_unclosed_quoted_password_runs_to_the_segment_end() {
         ("docker login -p 'my qqzz; echo ok\n", &["qqzz"], &[]),
     ]);
 }
+
+/// Antigravity round on 8caa434 (23:01 UTC).
+#[test]
+fn review_round_on_8caa434() {
+    check(&[
+        // Runs of planted markers, and a marker in the middle of a value.
+        ("password=[REDACTED:X][REDACTED:Y]qqzz\n", &["qqzz"], &[]),
+        ("password: [REDACTED:X] [REDACTED:Y] qqzz\n", &["qqzz"], &[]),
+        ("password=foo[REDACTED:X]qqzz\n", &["foo", "qqzz"], &[]),
+        // XML: exact closing tag; a stray `<word` does not swallow the next tag.
+        (
+            "<secret><secret_id>1</secret_id>qqzz</secret>\n",
+            &["qqzz"],
+            &[],
+        ),
+        ("<pw>a</pw2>qqzz</pw>\n", &["qqzz"], &[]),
+        ("a <b && <password>qqzz</password>\n", &["qqzz"], &[]),
+        // CLI: each tool class on its own; quoted binaries; shell splitting.
+        (
+            concat!("sshpass -p qqzz cur", "l -u admin:rrss https://x\n"),
+            &["qqzz", "rrss"],
+            &[],
+        ),
+        (
+            concat!("cur", "l failed, retrying sshpass -p qqzz ssh host\n"),
+            &["qqzz"],
+            &["ssh host"],
+        ),
+        (
+            "\"/usr/bin/docker\" login -p qqzz registry\n",
+            &["qqzz"],
+            &["registry"],
+        ),
+        (
+            "'docker' login -p qqzz registry\n",
+            &["qqzz"],
+            &["registry"],
+        ),
+        ("echo 'foo\\'; set -x PASSWORD qqzz\n", &["qqzz"], &[]),
+        (
+            "echo -qqzz | docker login --password-stdin\n",
+            &["qqzz"],
+            &[],
+        ),
+        (
+            "echo -n qqzz | docker login --password-stdin\n",
+            &["qqzz"],
+            &["echo -n"],
+        ),
+        // YAML: block scalar and nested siblings before `name:`; quoted items; key column.
+        (
+            "- value: |\n    qqzz\n  name: DB_PASSWORD\n",
+            &["qqzz"],
+            &["name: DB_PASSWORD"],
+        ),
+        (
+            "- value: qqzz\n  meta:\n    env: prod\n  name: DB_PASSWORD\n",
+            &["qqzz"],
+            &["env: prod"],
+        ),
+        (
+            "tokens:\n  - \"a: qqzz\"\nnext: 1\n",
+            &["qqzz"],
+            &["next: 1"],
+        ),
+        (
+            "- tokens:\n  - qqzz\n  name: public\n",
+            &["qqzz"],
+            &["name: public"],
+        ),
+        // URLs with hash routers.
+        (
+            "https://h/#/callback?code=qqzz&state=1\n",
+            &["qqzz"],
+            &["state=1"],
+        ),
+        ("https://h/#/auth?sig=qqzz\n", &["qqzz"], &[]),
+    ]);
+}

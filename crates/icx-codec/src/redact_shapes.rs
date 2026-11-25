@@ -235,6 +235,11 @@ fn xml_elements(line: &str) -> String {
             break;
         };
         let gt = name_end + gt_rel;
+        // A `>` past another `<` belongs to a later tag (`a <b && <password>…`).
+        if s[name_end..gt].contains('<') {
+            pos = open + 1;
+            continue;
+        }
         if s[..gt].ends_with('/') || !R::is_sensitive_key_name(&name) {
             pos = gt + 1;
             continue;
@@ -242,11 +247,24 @@ fn xml_elements(line: &str) -> String {
         let close_tag = format!("</{name}");
         // The element must close on this line: text without markup structure is stored
         // byte-exact (ICX-AUD-021), so `<pw00>(` alone is not a value.
-        let Some(close_rel) = s[gt + 1..].find(&close_tag) else {
+        // The closing tag names exactly this element (`</secret>`, not `</secret_id>`).
+        let mut close = None;
+        let mut from = gt + 1;
+        while let Some(rel) = s[from..].find(&close_tag) {
+            let at = from + rel;
+            if matches!(
+                s.as_bytes().get(at + close_tag.len()),
+                Some(b'>' | b' ' | b'\t')
+            ) {
+                close = Some(at);
+                break;
+            }
+            from = at + close_tag.len();
+        }
+        let Some(close) = close else {
             pos = gt + 1;
             continue;
         };
-        let close = gt + 1 + close_rel;
         pos = hide(&mut s, gt + 1, close, MARK) + close_tag.len();
     }
     s
@@ -552,6 +570,13 @@ fn subscript_and_arrow(line: &str) -> String {
 
 /// The shell segments of a line: byte ranges split at `;`, `&&`, `||` and `|` outside quotes.
 fn segments(s: &str) -> Vec<(usize, usize)> {
+    split_segments(s, true).unwrap_or_else(|| split_segments(s, false).unwrap_or_default())
+}
+
+/// [`segments`] with or without quote tracking; `None` when a quote is left open, so the caller
+/// can split without quotes instead (review of #106). A backslash escapes the next byte outside
+/// single quotes only, as in a POSIX shell.
+fn split_segments(s: &str, quotes: bool) -> Option<Vec<(usize, usize)>> {
     let b = s.as_bytes();
     let mut out = Vec::new();
     let mut start = 0;
@@ -560,14 +585,17 @@ fn segments(s: &str) -> Vec<(usize, usize)> {
     while i < b.len() {
         let c = b[i];
         if let Some(q) = quote {
-            if c == b'\\' {
+            if c == b'\\' && q == b'"' {
                 i += 2;
                 continue;
             }
             if c == q {
                 quote = None;
             }
-        } else if matches!(c, b'"' | b'\'') {
+        } else if c == b'\\' {
+            i += 2;
+            continue;
+        } else if quotes && matches!(c, b'"' | b'\'') {
             quote = Some(c);
         } else if c == b';' || c == b'|' || (c == b'&' && b.get(i + 1) == Some(&b'&')) {
             out.push((start, i));
@@ -577,8 +605,11 @@ fn segments(s: &str) -> Vec<(usize, usize)> {
         }
         i += 1;
     }
-    out.push((start, b.len()));
-    out
+    if quote.is_some() {
+        return None;
+    }
+    out.push((start.min(b.len()), b.len()));
+    Some(out)
 }
 
 /// Whitespace-separated words of `s[a..z]`, a quoted part counting as one word: `(start, end)`,
@@ -703,11 +734,24 @@ fn cli_shapes(line: &str) -> String {
             w.get(k)
                 .map(|&(x, y)| s[x..y].trim_matches(|c| c == '"' || c == '\''))
         };
-        let tool = w.iter().find_map(|&(x, y)| password_tool(&s[x..y]));
+        // Each tool class on its own: one tool on the line does not mask another (review of
+        // #106: `sshpass -p a curl -u u:b`).
+        let tools: Vec<&str> = w
+            .iter()
+            .filter_map(|&(x, y)| password_tool(&s[x..y]))
+            .collect();
+        let sshpass = tools.contains(&"sshpass");
+        let curl = tools.contains(&"curl");
+        let mysql = tools
+            .iter()
+            .any(|t| t.starts_with("mysql") || t.starts_with("mariadb"));
         let login = w.iter().any(|&(x, y)| &s[x..y] == "login")
             && w.iter().any(|&(x, y)| {
                 matches!(
-                    s[x..y].trim_start_matches('"').rsplit('/').next(),
+                    s[x..y]
+                        .trim_matches(|c| c == '"' || c == '\'')
+                        .rsplit('/')
+                        .next(),
                     Some("docker" | "podman" | "nerdctl" | "buildah" | "skopeo" | "helm")
                 )
             });
@@ -727,7 +771,7 @@ fn cli_shapes(line: &str) -> String {
                 targets.push((nx, ny));
             }
             // `-p` for sshpass and registry logins.
-            if (tool == Some("sshpass") || login) && tok.starts_with("-p") {
+            if (sshpass || login) && tok.starts_with("-p") {
                 if tok == "-p" {
                     if let Some((nx, ny)) = next {
                         targets.push((nx, ny));
@@ -737,20 +781,17 @@ fn cli_shapes(line: &str) -> String {
                 }
             }
             // Glued `-psecret` for MySQL/MariaDB clients.
-            if matches!(tool, Some(t) if t.starts_with("mysql") || t.starts_with("mariadb"))
-                && tok.starts_with("-p")
-                && tok.len() > 2
-            {
+            if mysql && tok.starts_with("-p") && tok.len() > 2 {
                 targets.push((x + 2, y));
             }
             // curl user:password.
-            if tool == Some("curl") && matches!(tok, "-u" | "--user" | "-U" | "--proxy-user") {
+            if curl && matches!(tok, "-u" | "--user" | "-U" | "--proxy-user") {
                 if let Some((nx, ny)) = next
                     && let Some(c) = s[nx..ny].find(':')
                 {
                     targets.push((nx + c + 1, ny));
                 }
-            } else if tool == Some("curl")
+            } else if curl
                 && let Some(p) = ["--user=", "--proxy-user=", "-u", "-U"]
                     .into_iter()
                     .find(|p| tok.starts_with(p) && tok.len() > p.len())
@@ -776,7 +817,13 @@ fn cli_shapes(line: &str) -> String {
                 .is_some_and(|&(na, nz)| s[na..nz].contains("--password-stdin"))
             && w.len() > 1
         {
-            let first = w.iter().skip(1).find(|&&(x, _)| s.as_bytes()[x] != b'-');
+            // Skip only echo/printf option flags (`-n`, `-e`); `-secret` is the secret.
+            let first = w.iter().skip(1).find(|&&(x, y)| {
+                let t = &s[x..y];
+                !(t.len() > 1
+                    && t.starts_with('-')
+                    && t[1..].bytes().all(|c| matches!(c, b'n' | b'e' | b'E')))
+            });
             if let Some(&(fx, _)) = first {
                 targets.push((fx, s[..z].trim_end().len()));
             }
@@ -887,7 +934,7 @@ fn url_shapes(line: &str) -> String {
             let mut i = q + 1;
             while i < url_end {
                 let end = s[i..url_end]
-                    .find(['&', '#', ';'])
+                    .find(['&', '#', ';', '?'])
                     .map_or(url_end, |k| i + k);
                 if let Some(eq) = s[i..end].find('=') {
                     params.push((i, i + eq, end));
@@ -1039,7 +1086,8 @@ pub(crate) fn redact_yaml_pairs(text: String) -> String {
             let body = lines[j].trim_end_matches(['\r', '\n']);
             let value = body.get(v..).unwrap_or("").trim();
             if value.starts_with(['|', '>']) {
-                let base = indent_of(lines[j]);
+                // The key's column, not the line's indent (`- value: |` sits at column 2).
+                let base = yaml_member(lines[j]).map_or(indent_of(lines[j]), |m| m.0);
                 for (k, l) in lines.iter().enumerate().skip(j + 1).take(200) {
                     if !l.trim().is_empty() && indent_of(l) <= base {
                         break;
@@ -1069,10 +1117,17 @@ pub(crate) fn redact_yaml_pairs(text: String) -> String {
                 if skippable(lines[j]) {
                     continue;
                 }
+                // Deeper lines (nested lists, block bodies) are skipped, not boundaries.
                 let Some((c2, k2, v2)) = yaml_member(lines[j]) else {
+                    if indent_of(lines[j]) > col {
+                        continue;
+                    }
                     break;
                 };
-                if c2 < col || (c2 == col && lines[j].trim_start().starts_with("- ")) {
+                if c2 > col {
+                    continue;
+                }
+                if c2 < col || lines[j].trim_start().starts_with("- ") {
                     break;
                 }
                 if c2 == col && k2.eq_ignore_ascii_case("value") {
@@ -1086,9 +1141,15 @@ pub(crate) fn redact_yaml_pairs(text: String) -> String {
                         continue;
                     }
                     let Some((c2, k2, v2)) = yaml_member(lines[j]) else {
+                        if indent_of(lines[j]) > col {
+                            continue;
+                        }
                         break;
                     };
-                    if c2 != col {
+                    if c2 > col {
+                        continue;
+                    }
+                    if c2 < col {
                         break;
                     }
                     if k2.eq_ignore_ascii_case("value") {
@@ -1106,7 +1167,8 @@ pub(crate) fn redact_yaml_pairs(text: String) -> String {
         // allows) and `value:` members below it are hidden. Other mapping members keep their
         // own per-key judgement (`username: alice` under `credentials:` stays).
         if value.is_empty() && R::is_sensitive_key_name(key) {
-            let base = indent_of(lines[i]);
+            // The key's column (`- tokens:` sits at column 2), so siblings are not children.
+            let base = col;
             for (n, j) in (i + 1..lines.len()).enumerate() {
                 let l = lines[j];
                 if skippable(l) {
@@ -1122,7 +1184,12 @@ pub(crate) fn redact_yaml_pairs(text: String) -> String {
                 if indent_of(l) < base || (indent_of(l) == base && !item) || n >= 200 {
                     break;
                 }
-                if let Some((_, k2, v2)) = yaml_member(l) {
+                // A quoted item is a scalar even when it holds `: ` (`- "a: secret"`).
+                let quoted_item = l
+                    .trim_start()
+                    .strip_prefix("- ")
+                    .is_some_and(|r| r.trim_start().starts_with(['"', '\'']));
+                if !quoted_item && let Some((_, k2, v2)) = yaml_member(l) {
                     if k2.eq_ignore_ascii_case("value") {
                         hide_member(&mut changed, j, v2);
                     }
