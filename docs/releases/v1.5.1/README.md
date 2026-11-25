@@ -72,7 +72,18 @@ on a second pass.
   the redactor's own placeholder examples. The 19-line corpus is unchanged: 0 missed secrets and
   43 over-redacted bytes.
 - **Speed:** the in-memory hook median is 323 µs against 308 µs for v1.5.0, the median of three
-  runs on the same host. All benchmark gates pass.
+  runs on the same host. All benchmark gates pass. Redacting larger text costs more, measured as
+  the median of 15 release-build runs on the same host, twice:
+
+  | Input | v1.5.0 | v1.5.1 |
+  | --- | --- | --- |
+  | 69 KB of documentation text | 5.4 ms | 7.5 ms |
+  | the same text with no-break spaces | 5.4 ms | 15.2 ms |
+  | 248 KB single-line JSON array | 190 ms | 290 ms |
+
+  Text with Unicode look-alikes is redacted twice, as written and normalised, which is what closes
+  the look-alike bypass. Limiting the second pass to the affected lines is tracked in
+  [#108](https://github.com/doublegate/Infinity-Context/issues/108).
 
 ## Upgrading
 
@@ -82,7 +93,7 @@ redaction. `icx rescan` reports what v1.5.1 would hide in it.
 
 ## Verification
 
-- **Tests:** 661 workspace tests pass, 0 fail, and 8 are ignored by design. The 6 OpenCode and
+- **Tests:** 663 workspace tests pass, 0 fail, and 8 are ignored by design. The 6 OpenCode and
   27 Hermes plugin tests are unchanged.
 - **Coverage:** 95.59% of lines at v1.5.0, 95.57% now (empty `HOME`, as in CI). The new
   `redact_shapes.rs` is at 95.56%.

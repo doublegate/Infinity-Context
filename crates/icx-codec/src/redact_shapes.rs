@@ -323,6 +323,17 @@ fn xml_attribute_pairs(line: &str) -> String {
             break;
         };
         let gt = open + gt_rel;
+        // A tag starts `<` + a letter, and a `>` past another `<` belongs to a later tag, as for
+        // elements (review of #106: `x < y; <add key=… value=…/>`).
+        if !s
+            .as_bytes()
+            .get(open + 1)
+            .is_some_and(u8::is_ascii_alphabetic)
+            || s[open + 1..gt].contains('<')
+        {
+            pos = open + 1;
+            continue;
+        }
         let tag = s[open..gt].to_owned();
         let attrs = tag_attributes(&tag);
         let named_sensitive = attrs.iter().any(|(n, a, z)| {
@@ -363,50 +374,68 @@ fn json_name_value_pairs(line: &str) -> String {
     let mut targets: Vec<(usize, usize, &str)> = Vec::new();
     // Object members: a `value` member's string value, when a `name` or `key` member of the
     // same object (not a nested one) has a sensitive string value (review of #106).
-    for t in tokens
+    // One pass collects the objects with a sensitive `name`/`key`, so a large single-line
+    // array stays linear (review of #106).
+    let named_objects: std::collections::HashSet<usize> = tokens
         .iter()
-        .filter(|t| t.key && t.text(&s).eq_ignore_ascii_case("value"))
-    {
-        let Some((va, vz)) = t.value else { continue };
-        let named = tokens.iter().any(|k| {
+        .filter(|k| {
             k.key
-                && k.object == t.object
-                && matches!(k.text(&s).to_ascii_lowercase().as_str(), "name" | "key")
+                && (k.text(&s).eq_ignore_ascii_case("name")
+                    || k.text(&s).eq_ignore_ascii_case("key"))
                 && k.value
                     .is_some_and(|(xa, xz)| R::is_sensitive_key_name(&s[xa..xz]))
-        });
-        if named {
-            targets.push((va, vz, MARK));
+        })
+        .map(|k| k.object)
+        .collect();
+    if !named_objects.is_empty() {
+        for t in tokens
+            .iter()
+            .filter(|t| t.key && t.text(&s).eq_ignore_ascii_case("value"))
+        {
+            if let Some((va, vz)) = t.value
+                && named_objects.contains(&t.object)
+            {
+                targets.push((va, vz, MARK));
+            }
         }
     }
     // Argv arrays get the same per-tool rules as a command line (review of #106): a value after
     // a sensitive long flag (not `--password-stdin`); `-p` and glued `-pX` for sshpass and
     // registry logins; glued `-pX` for MySQL/MariaDB; curl `-u user:pass` and glued forms.
     let elements: Vec<&JsonToken> = tokens.iter().filter(|t| !t.key && !t.is_value).collect();
+    // Which tools each array names, in one pass (review of #106: per-element rescans were
+    // quadratic on large single-line arrays).
+    let mut array_tools: std::collections::HashMap<usize, ArrayTools> =
+        std::collections::HashMap::new();
+    for e in &elements {
+        if e.array == 0 {
+            continue;
+        }
+        let base = e.text(&s).rsplit('/').next().unwrap_or("");
+        let t = array_tools.entry(e.array).or_default();
+        match base {
+            "sshpass" => t.sshpass = true,
+            "login" => t.login_word = true,
+            "docker" | "podman" | "nerdctl" | "buildah" | "skopeo" | "helm" => t.registry = true,
+            "curl" => t.curl = true,
+            b if b.starts_with("mysql") || b.starts_with("mariadb") => t.mysql = true,
+            _ => {}
+        }
+    }
     for (idx, f) in elements.iter().enumerate() {
         if f.array == 0 {
+            continue;
+        }
+        let flag = f.text(&s);
+        if !flag.starts_with('-') {
             continue;
         }
         let next = elements
             .get(idx + 1)
             .filter(|v| v.array == f.array && s[f.end + 1..v.start - 1].trim() == ",");
-        let base = |e: &&JsonToken| e.text(&s).rsplit('/').next().unwrap_or("").to_owned();
-        let in_array = |names: &[&str]| {
-            elements
-                .iter()
-                .any(|e| e.array == f.array && names.contains(&base(e).as_str()))
-        };
-        let sshpass = in_array(&["sshpass"]);
-        let login = in_array(&["login"])
-            && in_array(&["docker", "podman", "nerdctl", "buildah", "skopeo", "helm"]);
-        let mysql = elements.iter().any(|e| {
-            e.array == f.array && {
-                let b = base(e);
-                b.starts_with("mysql") || b.starts_with("mariadb")
-            }
-        });
-        let curl = in_array(&["curl"]);
-        let flag = f.text(&s);
+        let t = array_tools.get(&f.array).copied().unwrap_or_default();
+        let (sshpass, mysql, curl) = (t.sshpass, t.mysql, t.curl);
+        let login = t.login_word && t.registry;
         if let Some(v) = next
             && flag.starts_with("--")
             && !flag.contains('=')
@@ -443,6 +472,17 @@ fn json_name_value_pairs(line: &str) -> String {
         hide(&mut s, a, z, m);
     }
     s
+}
+
+/// The password-taking tools an argv array names.
+#[derive(Clone, Copy, Default)]
+#[allow(clippy::struct_excessive_bools)] // independent tool flags, read together
+struct ArrayTools {
+    sshpass: bool,
+    login_word: bool,
+    registry: bool,
+    curl: bool,
+    mysql: bool,
 }
 
 /// One JSON string on a line: its content range, whether it is an object key (followed by
@@ -947,7 +987,11 @@ fn url_shapes(line: &str) -> String {
     while let Some(rel) = s[pos..].find("://") {
         let auth_start = pos + rel + 3;
         let url_end = s[auth_start..]
-            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | '`'))
+            .find(|c: char| {
+                // A backslash ends it too: in JSON text it escapes the closing quote, and it
+                // never belongs to a URL (review of #106).
+                c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | '`' | '\\')
+            })
             .map_or(s.len(), |k| auth_start + k);
         // Userinfo is the connection-URL pass's: it hides `user:password@` and token-shaped
         // userinfo, and keeps plain user names (`https://alice@host`) by design.

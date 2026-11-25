@@ -746,3 +746,53 @@ fn review_round_on_4926f27() {
         ),
     ]);
 }
+
+/// Antigravity round on dd8a79d (23:47 UTC).
+#[test]
+fn review_round_on_dd8a79d() {
+    // JSON stays valid JSON when a URL value holds an escaped quote.
+    for line in [
+        "{\"url\": \"https://h/cb?sig=qqzz\\\"more\"}\n",
+        "{\"url\": \"https://h/cb?sig=\\\"qqzz\\\"\"}\n",
+    ] {
+        let out = icx_codec::SecretRedactor::redact(line);
+        assert!(
+            serde_json::from_str::<serde_json::Value>(out.trim()).is_ok(),
+            "invalid JSON from {line:?}: {out:?}"
+        );
+    }
+    check(&[
+        (
+            "{\"url\": \"https://h/cb?sig=qqzz\\\"more\"}\n",
+            &["qqzz"],
+            &[],
+        ),
+        // XML attributes: a stray `<` does not swallow the tag, nor merge two tags.
+        (
+            "warn: x < y; <add key=\"Password\" value=\"qqzz\"/>\n",
+            &["qqzz"],
+            &[],
+        ),
+        (
+            "a < b key=\"Password\" <div value=\"public\">\n",
+            &[],
+            &["public"],
+        ),
+    ]);
+}
+
+/// Large single-line JSON arrays stay linear (review of #106).
+#[test]
+fn large_single_line_json_arrays_stay_fast() {
+    let items: Vec<String> = (0..10_000).map(|i| format!("\"item-{i}\"")).collect();
+    let line = format!("[{}]\n", items.join(","));
+    let objs: Vec<String> = (0..5_000)
+        .map(|i| format!("{{\"name\":\"HOST{i}\",\"value\":\"v{i}\"}}"))
+        .collect();
+    let line2 = format!("[{}]\n", objs.join(","));
+    let t = std::time::Instant::now();
+    assert_eq!(icx_codec::SecretRedactor::redact(&line), line);
+    assert_eq!(icx_codec::SecretRedactor::redact(&line2), line2);
+    let ms = t.elapsed().as_millis();
+    assert!(ms < 2_000, "{ms} ms");
+}
