@@ -191,16 +191,17 @@ These limits also apply to the v1.2.0 candidate.
 10. **Dereference integrity is relative to the store.** BLAKE3 verification proves that bytes
     match what was stored, not that what was stored matches the original tool output (see items 1
     and 2).
-11. **What v1.5.0 deliberately keeps visible.** Under a sensitive key, ADR-0011 keeps `null`,
+11. **What v1.5.x deliberately keeps visible.** Under a sensitive key, ADR-0011 keeps `null`,
    booleans, empty strings, numbers of at most 10 digits (not under password, PIN, OTP or
    verification-code keys), variable references, upper-snake environment lookups, UUID session
    ids, and quote-free references in code (`settings.SECRET_KEY`). A secret written in one of
    those shapes, such as a numeric API key of 10 digits or fewer, is stored. Every kept span is
    quote-free or a literal that is itself replaced, and the vendor, JWT and entropy detectors
-   still run over it. An independent red-team pass on v1.5.0 left a set of older shapes
-   still leaking, tracked for v1.5.1 (#104): CLI short flags and argv arrays, Unicode
-   separators, XML, Kubernetes and other name/value pairs, tokens inside URLs and query strings,
-   and `=>` and subscript assignments.
+   still run over it. v1.5.1 (#104) closed the older shapes the v1.5.0 red-team pass found. It
+   kept these visible by design (reasons in ADR-0011): prose after a sensitive word, comment
+   text after a value, values under keys that are not sensitive, `-p` without a
+   password-taking tool, plain user names in URLs, a bare `key` member, and a literal `\n` in
+   an unquoted value. A secret written in one of those shapes is stored.
 
 ---
 

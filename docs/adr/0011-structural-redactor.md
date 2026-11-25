@@ -132,6 +132,71 @@ changes, each with tests:
   - values under keys that are not sensitive (`OTHER=` after a secret);
   - JSON `sessionId` UUIDs.
 
+## Amendments in v1.5.1 (#104, 2026-11-25)
+
+Issue #104 listed 82 inputs from the red-team pass that still leaked in v1.5.0, and in v1.4.1. The
+owner chose the scope:
+
+- **Prose:** only shell forms count as a key without `=` or `:`. Prose stays.
+- **PIN and OTP:** `pin` and `otp` values are hidden when they are plain numbers of 4 to 10
+  digits.
+- **By design:** the cases above stay visible.
+
+Added, each with a test in `crates/icx-codec/tests/redact_v151.rs`:
+
+- **Markup and pairs:**
+  - an XML element named by a sensitive key (`<password>…</password>`); a generic such as
+    `Option<SecretString>` is not an element;
+  - a tag's `value` attribute when its `key`, `name` or `id` attribute names a sensitive key;
+  - JSON `name`/`key` plus `value` pairs;
+  - Kubernetes-style YAML `name:` plus `value:` siblings, and list items and `value:` members
+    under a sensitive block key. Other members keep their own per-key judgement.
+- **Assignments without `=` between key and value:** subscripts (`obj["password"] = "…"`), `=>`
+  pairs, and shell `set`/`set -x`/`setenv`. Only a quoted literal value is hidden; code on the
+  right, and a command or variable substitution, stay.
+- **CLI:**
+  - a value that starts with `-` after a sensitive long flag;
+  - `-p` only for `sshpass` and registry `login`, and glued `-pX` only for the MySQL and MariaDB
+    clients (`-p` is a port almost everywhere else);
+  - `curl -u user:pass`;
+  - the input of `--password-stdin`;
+  - JSON argv arrays.
+- **URLs:** credential query and fragment parameters (signatures, OAuth `code`,
+  `access_token`), and webhook keys, whose URL is the credential.
+- **Unicode:** look-alikes are normalised to ASCII before redaction: no-break and other spaces,
+  zero-width characters, the soft hyphen, and full-width forms. A line that redaction does not
+  change keeps its original bytes.
+- **Markers:** text glued to a marker at the start of a value is part of the value.
+- **Multi-line values:**
+  - escaped and interior triple quotes;
+  - a quote at the start of the value;
+  - prefixed and tagged literals;
+  - unspaced and empty-RHS annotations;
+  - a stray apostrophe before the `=`, handled by a quote-blind second scan, only when the
+    line ends inside an apostrophe.
+
+**Idempotence.** Line redaction runs to a fixed point, at most four rounds, because the line
+passes pair quotes by position. Whether a line opens a multi-line value is decided on the
+original line or else on the emitted one, so a quote that redaction removed cannot change the
+decision on a second pass.
+
+**Kept by design**, with the reason for each:
+
+- prose (`password reset flow`), and an INI `[password]` section header;
+- `-p x` and `["-p", "x"]` with no password-taking tool named (usually a port);
+- `--password=a b`, where the shell splits `b` into its own argument;
+- a plain user name in a URL (`https://alice@host`); token-shaped userinfo is hidden;
+- a bare `key` member;
+- a literal `\n` inside an unquoted value. In hook payloads this is almost always a JSON-escaped
+  newline, so what follows it is the next command.
+
+**Measured:**
+
+- #104 inputs: 25 of 82 still leak, all of them in the by-design list.
+- Repository corpus (588 secret-free files): no line outside `redact.rs`'s own examples is newly
+  hidden.
+- 19-line corpus: 43 over-redacted bytes, unchanged.
+
 ## Consequences
 
 - The #90 lines keep their non-secret values, and a real secret costs only its own bytes, plus a

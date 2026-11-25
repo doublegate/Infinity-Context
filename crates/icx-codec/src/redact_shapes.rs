@@ -17,17 +17,45 @@ const MARK_URL: &str = "[REDACTED:URL_SECRET]";
 
 /// Runs every v1.5.1 line shape over `line`.
 pub(crate) fn redact_line_shapes(line: &str) -> String {
-    if line.is_empty() {
-        return String::new();
+    // Each pass needs a trigger character; most lines have none, and skip all of them.
+    let has = |c: char| line.contains(c);
+    let mut s = line.to_owned();
+    if has('<') {
+        s = xml_attribute_pairs(&xml_elements(&s));
     }
-    let mut s = xml_elements(line);
-    s = xml_attribute_pairs(&s);
-    s = json_name_value_pairs(&s);
-    s = subscript_and_arrow(&s);
-    s = shell_set(&s);
-    s = cli_shapes(&s);
-    s = url_shapes(&s);
-    pin_values(&s)
+    if has('"') {
+        s = json_name_value_pairs(&s);
+    }
+    if has('[') || line.contains("=>") {
+        s = subscript_and_arrow(&s);
+    }
+    if line.contains("set") {
+        s = shell_set(&s);
+    }
+    if has('-') || line.contains("<<<") {
+        s = cli_shapes(&s);
+    }
+    if line.contains("://") {
+        s = url_shapes(&s);
+    }
+    if may_hold_pin(line) {
+        s = pin_values(&s);
+    }
+    s
+}
+
+/// A cheap pre-check for [`pin_values`]: a `pin` or `otp` spelling and a digit.
+fn may_hold_pin(line: &str) -> bool {
+    let b = line.as_bytes();
+    b.iter().any(u8::is_ascii_digit)
+        && b.windows(3).any(|w| {
+            let w = [
+                w[0].to_ascii_lowercase(),
+                w[1].to_ascii_lowercase(),
+                w[2].to_ascii_lowercase(),
+            ];
+            &w == b"pin" || &w == b"otp"
+        })
 }
 
 /// The byte index just after the last character of `s` matching `pred` (0 when none), on a
@@ -49,7 +77,29 @@ fn inside_marker(s: &str, at: usize) -> bool {
 /// The v1.5.1 shapes that keep a JSON line valid JSON: they only replace string contents or
 /// quote what they insert.
 pub(crate) fn redact_json_shapes(line: &str) -> String {
-    pin_values(&url_shapes(&json_name_value_pairs(line)))
+    let mut s = json_name_value_pairs(line);
+    if line.contains("://") {
+        s = url_shapes(&s);
+    }
+    if may_hold_pin(line) {
+        s = pin_values(&s);
+    }
+    s
+}
+
+/// Sorted ranges with overlapping or nested ones merged, latest start first, ready to replace
+/// right to left (security review of v1.5.1: a nested range used to keep the outer one's edge).
+fn merged_desc<T: Copy>(mut ranges: Vec<(usize, usize, T)>) -> Vec<(usize, usize, T)> {
+    ranges.sort_by_key(|r| (r.0, std::cmp::Reverse(r.1)));
+    let mut out: Vec<(usize, usize, T)> = Vec::with_capacity(ranges.len());
+    for r in ranges {
+        match out.last_mut() {
+            Some(last) if r.0 < last.1 => last.1 = last.1.max(r.1),
+            _ => out.push(r),
+        }
+    }
+    out.reverse();
+    out
 }
 
 /// Replaces `s[start..end]` with `marker` unless it is empty or already a marker.
@@ -302,9 +352,7 @@ fn json_name_value_pairs(line: &str) -> String {
             targets.push((va, vz, MARK_CLI));
         }
     }
-    targets.sort_by_key(|t| std::cmp::Reverse(t.0));
-    targets.dedup_by_key(|t| t.0);
-    for (a, z, m) in targets {
+    for (a, z, m) in merged_desc(targets) {
         hide(&mut s, a, z, m);
     }
     s
@@ -572,9 +620,8 @@ fn cli_shapes(line: &str) -> String {
             }
         }
     }
-    targets.sort_by_key(|t| std::cmp::Reverse(t.0));
-    targets.dedup_by_key(|t| t.0);
-    for (x, y) in targets {
+    let targets = merged_desc(targets.into_iter().map(|(x, y)| (x, y, ())).collect());
+    for (x, y, ()) in targets {
         // Keep surrounding quotes of a quoted argument.
         let (mut x, mut y) = (x, y);
         let b = s.as_bytes();
@@ -770,13 +817,18 @@ fn hide_yaml_value(line: &str, v: usize) -> String {
 /// - a sensitive key with an empty value and more-indented children (`tokens:` followed by a
 ///   list): plain list items and `value:` members below it are hidden, up to the key-block
 ///   limit. Other mapping members keep their own per-key judgement.
-pub(crate) fn redact_yaml_pairs(text: &str) -> String {
+pub(crate) fn redact_yaml_pairs(text: String) -> String {
     if !text.contains(':') || !text.contains('\n') {
-        return text.to_owned();
+        return text;
     }
     let lines: Vec<&str> = text.split_inclusive('\n').collect();
-    let mut out: Vec<String> = lines.iter().map(|l| (*l).to_owned()).collect();
+    // Only changed lines are copied; an unchanged text is returned as it is.
+    let mut changed: std::collections::BTreeMap<usize, String> = std::collections::BTreeMap::new();
     for i in 0..lines.len() {
+        // Only a `key:` line can open either shape.
+        if !lines[i].contains(':') {
+            continue;
+        }
         let Some((col, key, v)) = yaml_member(lines[i]) else {
             continue;
         };
@@ -799,7 +851,7 @@ pub(crate) fn redact_yaml_pairs(text: &str) -> String {
                     break;
                 }
                 if c2 == col && k2.eq_ignore_ascii_case("value") {
-                    out[j] = hide_yaml_value(&out[j], v2);
+                    changed.insert(j, hide_yaml_value(lines[j], v2));
                     break;
                 }
             }
@@ -819,15 +871,22 @@ pub(crate) fn redact_yaml_pairs(text: &str) -> String {
                 // `credentials:` stays); a `value:` member and a plain list item are the secret.
                 if let Some((_, k2, v2)) = yaml_member(l) {
                     if k2.eq_ignore_ascii_case("value") {
-                        out[j] = hide_yaml_value(&out[j], v2);
+                        changed.insert(j, hide_yaml_value(lines[j], v2));
                     }
                 } else if let Some(item) = l.trim_start().strip_prefix("- ") {
                     let v2 =
                         l.len() - l.trim_start().len() + 2 + (item.len() - item.trim_start().len());
-                    out[j] = hide_yaml_value(&out[j], v2);
+                    changed.insert(j, hide_yaml_value(lines[j], v2));
                 }
             }
         }
     }
-    out.concat()
+    if changed.is_empty() {
+        return text;
+    }
+    let mut out = String::with_capacity(text.len());
+    for (k, line) in lines.iter().enumerate() {
+        out.push_str(changed.get(&k).map_or(*line, String::as_str));
+    }
+    out
 }

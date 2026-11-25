@@ -38,26 +38,23 @@ impl SecretRedactor {
             // Line structure changed (a key block folded): keep the redacted text whole.
             return redacted;
         }
-        // Redacting the original as it is keeps its look-alikes where that hides the same.
+        // Redacting the original as it is keeps its look-alikes where that hides the same, and
+        // anything only that pass hides is hidden too (security review of v1.5.1).
         let plain = Self::redact_text(input);
         let plain_lines: Vec<&str> = plain.split_inclusive('\n').collect();
-        let aligned = plain_lines.len() == originals.len();
+        if plain_lines.len() != originals.len() {
+            return redacted;
+        }
         let mut out = String::with_capacity(input.len());
-        for (i, ((orig, norm), red)) in originals
-            .iter()
-            .zip(&norm_lines)
-            .zip(&red_lines)
-            .enumerate()
-        {
-            let same_as_plain = aligned
-                && plain_lines[i]
-                    .chars()
-                    .filter_map(Self::normalize_char)
-                    .eq(red.chars());
-            out.push_str(if norm == red {
-                orig
-            } else if same_as_plain {
-                plain_lines[i]
+        // Per line: the original pass's line when the normalised pass hides nothing there, or
+        // the same as the original pass (look-alikes kept); otherwise the normalised pass's.
+        for ((plain_line, norm), red) in plain_lines.iter().zip(&norm_lines).zip(&red_lines) {
+            let same_as_plain = plain_line
+                .chars()
+                .filter_map(Self::normalize_char)
+                .eq(red.chars());
+            out.push_str(if norm == red || same_as_plain {
+                plain_line
             } else {
                 red
             });
@@ -87,7 +84,7 @@ impl SecretRedactor {
     }
 
     fn redact_text(input: &str) -> String {
-        crate::redact_shapes::redact_yaml_pairs(&Self::redact_lines(input))
+        crate::redact_shapes::redact_yaml_pairs(Self::redact_lines(input))
     }
 
     fn redact_lines(input: &str) -> String {
@@ -376,7 +373,9 @@ impl SecretRedactor {
                     .or_else(|| Self::sensitive_continuation(line))
                     .or_else(|| Self::assignment_continuation(line))
             };
-            if let Some(pending) = arm(body).or_else(|| arm(&redacted)) {
+            if let Some(pending) =
+                arm(body).or_else(|| (redacted != body).then(|| arm(&redacted)).flatten())
+            {
                 pending_value = Some(pending);
             }
             out.push_str(&redacted);
@@ -569,10 +568,19 @@ impl SecretRedactor {
                                 .stmt_end
                                 .unwrap_or(rest.len());
                             let rhs_full = rest[..stmt_end].trim();
-                            // A value an earlier pass already redacted does not arm: the marker
-                            // may have taken a closing bracket or quote with it, and a second
-                            // pass must decide like the first (idempotence).
-                            if rhs_full.contains("[REDACTED:") {
+                            // A value the value-span rule already hid to the end of its line ends
+                            // with one of its markers, which may have taken a closing bracket or
+                            // quote with it: such a value does not arm, so a second pass decides
+                            // like the first (idempotence). A planted or other marker, or text
+                            // after one, still arms (security review of v1.5.1).
+                            if [
+                                "[REDACTED:ENV_SECRET]",
+                                "[REDACTED:CONFIG_SECRET]",
+                                "[REDACTED:CLI_SECRET]",
+                            ]
+                            .iter()
+                            .any(|m| rhs_full.ends_with(m))
+                            {
                                 i += 1;
                                 continue;
                             }

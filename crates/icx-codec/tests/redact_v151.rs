@@ -392,3 +392,25 @@ fn fuzz_found_inputs_are_idempotent() {
         once(input);
     }
 }
+
+/// Commit security review of 5e9acbb.
+#[test]
+fn security_review_planted_markers_overlaps_and_lookalike_passes() {
+    check(&[
+        // A planted marker does not stop a multi-line value from arming.
+        (
+            "password = [REDACTED:X] \"\"\"\nqqzz\n\"\"\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "api_key = [REDACTED:X] (\n  \"qqzz\"\n)\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        // Nested targets on one word are merged, so none of it stays.
+        ("mysql --password -pqqzz db\n", &["qqzz", "-pq"], &["db"]),
+        // A look-alike line that only the original pass hides is still hidden.
+        ("token\u{00A0}x API_KEY=qqzz\n", &["qqzz"], &[]),
+    ]);
+}
