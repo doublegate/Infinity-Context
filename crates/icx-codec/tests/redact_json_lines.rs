@@ -91,7 +91,8 @@ fn formatting_is_kept_and_invalid_json_falls_back() {
         once(pretty_one_line),
         "  { \"password\" : \"[REDACTED:CONFIG_SECRET]\" , \"user\" : \"octo\" }  "
     );
-    // Not valid JSON (trailing comma): the first-quote rule applies.
+    // Not valid JSON (trailing comma): the first-quote rule applies (a literal glued to `,"`
+    // does not end the value under ADR-0011).
     let broken = r#"{"password":"aaaa","user":"octo",}"#;
     assert_eq!(once(broken), r#"{"password":[REDACTED:CONFIG_SECRET]"#);
     // An escaped (`\\u0077` = `w`) key is decoded before classification.
@@ -109,6 +110,8 @@ mod properties {
     use proptest::prelude::*;
 
     /// A JSON value; the values of sensitive keys are always `"qqzz..."` / `9191...` placeholders.
+    /// The numeric one has 16 digits: shorter numbers under non-passcode keys are kept by design
+    /// (ADR-0011 rule 2), and 16 or more digits may be a numeric token.
     fn json(depth: u32) -> BoxedStrategy<String> {
         let leaf = prop_oneof![
             "[a-z ]{0,8}".prop_map(|s| format!("\"{s}\"")),
@@ -120,7 +123,10 @@ mod properties {
             return leaf.boxed();
         }
         // Generated names use `[a-p]`, so they can never spell the `qqzz` secret marker.
-        let secret = prop_oneof![Just("\"qqzzqqzz\"".to_owned()), Just("91919191".to_owned())];
+        let secret = prop_oneof![
+            Just("\"qqzzqqzz\"".to_owned()),
+            Just("9191919191919191".to_owned())
+        ];
         let member = prop_oneof![
             ("[a-p]{1,6}", json(depth - 1)).prop_map(|(k, v)| format!("\"{k}\":{v}")),
             (
@@ -201,10 +207,12 @@ fn invalid_json_falls_back_and_edge_cases_parse() {
     ] {
         let clean = once(broken);
         assert!(!clean.contains("aaaa"), "{broken} -> {clean}");
-        assert!(
-            !clean.contains(r#""password":"[REDACTED:CONFIG_SECRET]""#),
-            "took the JSON path: {clean}"
-        );
+        // Off the JSON path, nothing after the hidden value keeps a quote: a later literal is
+        // always hidden (#29, ADR-0011 rule 3).
+        let after = clean
+            .split_once(r#"[REDACTED:CONFIG_SECRET]""#)
+            .map_or("", |(_, a)| a);
+        assert!(!after.contains('"'), "a later quote survived: {clean}");
     }
     // Nesting deeper than the limit falls back too.
     let deep = format!(

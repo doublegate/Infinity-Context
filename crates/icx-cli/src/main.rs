@@ -123,6 +123,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
         "doctor" => run_doctor(tail),
         "benchmark" => run_benchmark(tail),
         "eval-recall" => run_eval_recall(tail),
+        "rescan" => run_rescan(tail),
         _ => {
             print_help();
             Ok(())
@@ -242,6 +243,10 @@ Subcommands:",
       (read only; the lexical index is built in memory), or on a seeded synthetic set. Each query
       ranks only artifacts that existed when it was asked; --min-age keeps the cases whose answer
       had at least N newer artifacts by then
+  rescan [--dir <PATH>] [--limit <N>]
+      Report what the current redactor would hide in content stored under older rules: counts per
+      detector, bytes and subjects affected, and up to N (default 50) artifact handles; never the
+      text. Report only; re-redacting a stored workspace is planned for v1.7.0 (#102)
   encode-ahtl <FILE> [--dir <PATH>] [--profile <a|b>]
       Compress a source file, diff, or build log into an AHTL Holographic Packet + BLAKE3 handle
   decode-ahtl <AHTL_STRING>
@@ -638,6 +643,55 @@ fn set_option_once<T>(
 fn parse_dir_flag(args: &[String]) -> Option<&str> {
     let i = args.iter().position(|a| a == "--dir")?;
     flag_value_at(args, i, "icx").ok()
+}
+
+/// `icx rescan` (v1.5.0, T-74-001): prints a JSON report of what the current redactor would hide
+/// in the stored workspace, and writes nothing (owner decision; `--apply` is #102).
+fn run_rescan(args: &[String]) -> Result<(), String> {
+    const CMD: &str = "icx rescan";
+    let (mut dir, mut limit) = (None, None);
+    let mut i = 0;
+    while i < args.len() {
+        let flag = args[i].as_str();
+        if flag == "--apply" {
+            return Err(format!(
+                "{CMD} error: --apply is not available in this version; v1.5.0 reports only. \
+                 Re-redacting a stored workspace is planned for v1.7.0 (#102)"
+            ));
+        }
+        // The flag is checked before its value, so `--bogus` alone says "unknown option".
+        if !matches!(flag, "--dir" | "--limit") {
+            return Err(format!("{CMD} error: unknown option {flag}"));
+        }
+        let value = flag_value_at(args, i, CMD)?.to_owned();
+        match flag {
+            "--dir" => set_option_once(&mut dir, CMD, flag, value)?,
+            "--limit" => {
+                let n = value
+                    .parse::<usize>()
+                    .map_err(|_| format!("{CMD} error: --limit needs a number, got {value:?}"))?;
+                set_option_once(&mut limit, CMD, flag, n)?;
+            }
+            // Unknown flags were refused above.
+            _ => unreachable!("flag checked against --dir and --limit"),
+        }
+        i += 2;
+    }
+    let ws_dir = resolve_workspace_dir(dir.as_deref());
+    if !matches!(workspace_state(&ws_dir, false), WsState::Ready) {
+        return Err(format!(
+            "{CMD} error: no ready workspace at {}",
+            ws_dir.display()
+        ));
+    }
+    let mut mmu = workspace_mmu();
+    mmu.load_workspace_dir(&ws_dir)
+        .map_err(|e| format!("{CMD} error: loading {}: {e}", ws_dir.display()))?;
+    let report = icx_adapters::rescan::rescan(&mmu, limit.unwrap_or(50));
+    let json = serde_json::to_string_pretty(&report)
+        .map_err(|e| format!("{CMD} error: encoding the report: {e}"))?;
+    println!("{json}");
+    Ok(())
 }
 
 /// `icx eval-recall` (T-72-002): prints a JSON report (and writes it to `--out`), with one score

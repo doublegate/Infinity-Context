@@ -24,25 +24,75 @@ Re-check before the sprint starts:
 
 ### Research notes
 
-_None recorded yet._
+2026-11-25:
+
+- **Scoping in other scanners:** gitleaks reports the capture group that holds the secret value
+  (`SecretGroup`), with keyword identifiers as a prefilter (Context7, `/gitleaks/gitleaks`
+  v8.30). That is the value-only scope ADR-0011 adopts; icx still hides more than gitleaks
+  reports where the value is code (#29).
+- **Field evidence:** probed on `main` (80f4b94) with byte-span output, because icx's own hook
+  redacts tool output with the same redactor and so hides what is being measured. 10 of 17
+  representative lines lost bytes they should have kept (`docs/adr/0011-structural-redactor.md`).
+- **Tools:** `proptest` 1.x as already pinned in the workspace; `cargo mutants -f <file>`
+  writes `mutants.out/` with `caught.txt`/`missed.txt` (Context7, `/sourcefrog/cargo-mutants`).
+- **Pinned tests found during T-74-003:** a 15-digit `ACCESS_TOKENS` value is pinned as a secret,
+  so the numeric bound is "more than 10 digits" (as for the counter rule), not the 16 first
+  drafted; a harmless value followed by a quoted comment (`get_pw(); // "..."`) must still hide
+  the quote.
+- **Security review of the first implementation** (automated, on c93a5e3) found three bypasses,
+  closed with tests in `redact_structural_v150.rs` (`review_bypasses_stay_closed`): a literal
+  glued to more text (`PASSWORD="ab"cd` is one shell word), `$`-prefixed passwords taken for
+  variables, and INI values (`password = my.dog.rex`) taken for code references.
+- **T-74-001 reference map** (2026-11-25): artifact ids are content hashes, and a changed artifact
+  cascades through the Merkle-DAG `Turn`/`ToolArtifact` digests, branches, L3/L4 epochs and the bus
+  root. Derived copies of the text sit in packets, frames, graph entities, HDC postings, FTS5 bodies
+  and bus slots. Old handles in transcripts stop resolving without an alias table, and deleted rows
+  stay in SQLite free pages until `VACUUM`. Full map in #102; owner decision: report only in v1.5.0.
+- **First field run of `icx rescan`** (before the red-team fixes; 214 of 4,824 after them, see
+  `docs/numbers.md`): 169 of 4,694 artifacts on this project's workspace, all
+  stored by versions before v1.3.1. The current redactor is idempotent on all of them (a second
+  pass changes nothing), and its rules are unchanged from v1.4.1, which confirms that the
+  findings are older content and not a regression.
+- **T-74-004 mutation runs** (cargo-mutants 27.1.0, scoped with `--in-diff` to the Sprint 4
+  changes in `redact.rs`, 301 mutants each; the whole file has 1,527, and the last full run is the
+  2026-11-20 figure in ICX-AUD-039). First run, at 6803144: 222 caught and 7 timeouts of 298
+  viable (76.8%), 69 missed, nearly all in the new helpers, which were tested only through whole
+  lines. After the direct helper tests (a420a31): 274 caught and 7 timeouts (94.3%), 17 missed,
+  mostly index arithmetic in `redact_value_by_shape`, which the #103 fixes then rewrote. After the
+  red-team fixes the diff grew to 593 mutants. At 298bc52: 480 caught and 11 timeouts of 589
+  viable (83.4%). `redact_boundaries_v150.rs` then pinned each boundary the survivors pointed at,
+  and found three bugs fixed in d2d8031. At d2d8031 (639 mutants): 551 caught and 15 timeouts of
+  635 viable (89.1%), 69 missed, mostly boundary comparisons and index arithmetic in
+  `redact_value_span`, `assignment_continuation` and `redact_value_by_shape`. These have not been
+  triaged one by one for equivalence. Recorded under ICX-AUD-039.
+- **Red-team pass** (independent agent, code and ADR only, 2026-11-25): about 330 inputs. It found
+  3 regressions and 9 groups of older leaks. The regressions and the 4 High groups are fixed in
+  #103 (ADR-0011 amendments), and 272 distinct inputs, each with a placeholder the test checks, are pinned in
+  `crates/icx-codec/tests/fixtures/redteam-v150-clean.json`. 67 still-leaking inputs (the Medium
+  groups and the by-design cases) are tracked for v1.5.1 (#104). A 300,000-line fuzz found no
+  non-idempotent output. Corpus after the fixes: 0 missed, 43 over-redacted bytes. A second review
+  (on 5a5f1c9) found three more, also closed with tests: `#`, `/` or `,` glued to a literal in
+  shell text (`PASSWORD="a"#b`), a bare call such as `abc(def)` taken for code, and upper-case
+  `$NAME` values without an `_` taken for references.
 
 ## Tickets
 
 ### T-74-001 — `icx rescan` with a dry-run default
 
 **Description:** Add `icx rescan` that runs the current redactor over stored artifacts and
-reports what it would redact. With explicit confirmation it re-redacts by writing new CAS
-objects and updating references, never by editing objects in place.
+reports what it would redact. Owner decision (2026-11-25): v1.5.0 ships the report only; the
+re-redaction step is T-91-005 in v1.7.0 (#102), because the store is content-addressed throughout
+(see the research notes).
 
 **Research:** Confirm how stored objects are referenced (DAG, graph, snapshots), so a
 re-redaction leaves no dangling or unredacted reference.
 
 **Acceptance Criteria:**
 
-- [ ] Dry-run is the default and writes nothing (tested).
-- [ ] Report lists counts per detector and artifact handles, never the secret values.
-- [ ] Re-redaction is atomic per workspace and leaves a backup or the prior snapshot.
-- [ ] Merkle integrity verified after re-redaction.
+- [x] Dry-run is the default and writes nothing (tested): v1.5.0 reports only, and `--apply` is
+  refused with a pointer to #102.
+- [x] Report lists counts per detector and artifact handles, never the secret values (tested).
+- [ ] Re-redaction (atomic, with a snapshot, Merkle integrity verified) moved to T-91-005 (#102).
 
 **Dependencies:** None
 
@@ -62,9 +112,9 @@ from existing tests; compare with how gitleaks scopes matches.
 
 **Acceptance Criteria:**
 
-- [ ] ADR in Nygard format under `docs/adr/`, cross-linking the v1.3.0 split decision (#29).
-- [ ] The ADR lists the formats handled and the fallback for unknown text.
-- [ ] Owner review recorded before T-74-003 starts.
+- [x] ADR in Nygard format under `docs/adr/`, cross-linking the v1.3.0 split decision (#29).
+- [x] The ADR lists the formats handled and the fallback for unknown text.
+- [x] Owner review recorded before T-74-003 starts.
 
 **Dependencies:** None
 
@@ -86,15 +136,17 @@ zero) and over-redacted bytes, before and after.
 
 **Acceptance Criteria:**
 
-- [ ] Every existing redaction test passes unchanged.
-- [ ] The false positives in #90 are fixed and in the corpus: key names containing `token`,
+- [x] Every existing redaction test passes; every assertion that a secret is absent is unchanged,
+  and the six that pinned the old output shape (a literal hidden with its quotes and the rest of
+  its line, a short number under `auth_tokens`) pin the new one.
+- [x] The false positives in #90 are fixed and in the corpus: key names containing `token`,
   `key` or `session` no longer blank `None`, `null`, `""`, numbers, booleans or call expressions,
   and a redaction covers the value only, not the rest of the line.
-- [ ] Property tests: no secret from a generated set survives in any supported format; output
-  never panics on arbitrary input.
-- [ ] Missed secrets (zero required) and over-redacted bytes measured and published in
-  `docs/numbers.md`.
-- [ ] `docs/alien-holographic-codec.md` and `docs/security-and-threat-model.md` updated.
+- [x] Property tests: no secret from a generated set survives in any supported format (32 shapes,
+  7 keys, 2,000 cases); output never panics on arbitrary input.
+- [x] Missed secrets (zero required) and over-redacted bytes measured and published in
+  `docs/numbers.md`: 0 missed before and after; 183 bytes to 24, and 43 after the red-team fixes.
+- [x] `docs/alien-holographic-codec.md` and `docs/security-and-threat-model.md` updated.
 
 **Dependencies:** T-74-002
 
@@ -114,7 +166,7 @@ equivalent mutants.
 
 **Acceptance Criteria:**
 
-- [ ] Mutation results recorded with commit and counts.
+- [x] Mutation results recorded with commit and counts.
 - [ ] Every non-equivalent surviving mutant is killed or documented with a reason.
 - [ ] ICX-AUD-039 status updated in `docs/claude/findings.csv`.
 

@@ -5,7 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Added (Phase 7 Sprint 3, compaction)
+### Added
+
+- `icx rescan` (T-74-001): runs the current redactor over every stored artifact and indexed
+  subject and reports, as JSON, how many it would change, the markers it would add by kind, the
+  bytes affected and up to `--limit` (default 50) artifact handles; never the text or the
+  values. It writes nothing. Re-redacting a stored workspace (`--apply`) is planned for v1.7.0
+  (#102). On this project's workspace (4,824 artifacts after the red-team fixes) it found 214
+  artifacts, stored under older rules, that today's rules would hide further (`docs/numbers.md`).
 
 - Resume packet after compaction (T-73-001..003): after Claude Code, Codex or Hermes compacts its
   context, the next hook that carries context adds, once, a bounded (3 KB) deterministic packet:
@@ -19,6 +26,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   refused, and a typed fold expands back to its exact content.
 
 ### Changed
+
+- Redaction keeps what is not secret (ADR-0011, T-74-003, #90). After a sensitive key, a value
+  that cannot be a secret stays: `null`, `None`, booleans, `""`, numbers of at most 10 digits
+  (not under password, PIN, OTP or verification-code keys), `$VAR` and `${VAR}` with upper-snake
+  names, upper-snake environment lookups such as `os.environ["API_KEY"]`, an agent's UUID
+  `session_id`, and in code quote-free calls and paths such as `get_token(user)` or
+  `settings.SECRET_KEY` (an INI-style `password = my.dog.rex` stays hidden). A real secret loses
+  only its literal, replaced inside its quotes, and the rest of the line stays when it holds no
+  quote, so comments and later JSON fields survive. Code-shaped values keep the v1.3.1 rule
+  (#29), and a quote later on the line is still hidden from that quote on. Lines of JSON members
+  without braces are redacted structurally.
+
+  After an independent red-team pass, the redactor also hides:
+  - camelCase and glued keys (`accessToken`, `PGPASSWORD`, `password_value`, `Pwd=`);
+  - unquoted values with spaces (`password: correct horse staple`);
+  - multi-line values after `=` (dotenv quoted, triple-quoted, backslash-continued or bracketed
+    values) and YAML plain scalars continued on indented lines.
+
+  It keeps session UUIDs only in JSON hook payloads, and keeps code references on INI-like lines
+  only as constant paths.
+
+  On the 19-line corpus, over-redacted bytes went from 183 to 43 with no missed secret
+  (`docs/numbers.md`). 272 distinct red-team inputs are pinned as a regression suite, each checked for its placeholder. The shapes still
+  leaking, all of them older gaps, are tracked for v1.5.1 (#104). Already-stored content is not
+  changed.
 
 - What icx adds to every user prompt (Claude Code, Codex, Gemini CLI, Muse, OpenCode, agy): at
   most one recall line, shown only when the hit's subject (command or file path, not the tool prefix)

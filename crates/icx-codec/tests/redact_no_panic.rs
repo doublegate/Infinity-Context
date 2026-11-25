@@ -14,9 +14,16 @@ fn trailing_backslash_inside_a_wrapped_literal_does_not_panic() {
     }
 }
 
+/// A backslash at the end of a line inside a string continues the string onto the next line
+/// (Python, Rust, shell), so since v1.5.0 (red-team review of #103) that line is hidden as part of
+/// the value; the v1.2.2 point of this test, no panic, still holds.
 #[test]
-fn escaped_newline_does_not_extend_a_wrapped_literal_past_its_line() {
+fn escaped_newline_continues_a_wrapped_literal_without_panicking() {
     let clean = SecretRedactor::redact("api_key = Some(\"abc\\\npublic: ok\n");
+    assert!(!clean.contains("abc"), "{clean:?}");
+    assert!(!clean.contains("public: ok"), "{clean:?}");
+    // A line after a complete value is untouched.
+    let clean = SecretRedactor::redact("api_key = Some(\"abc\")\npublic: ok\n");
     assert!(clean.contains("public: ok"), "{clean:?}");
 }
 

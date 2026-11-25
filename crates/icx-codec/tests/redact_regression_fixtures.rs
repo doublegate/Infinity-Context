@@ -107,7 +107,8 @@ fn adjacent_sendgrid_credentials_are_removed_on_the_first_pass() {
 #[test]
 fn quoted_inline_values_cannot_turn_prose_into_pending_secret_headers() {
     // Since v1.3.1 (#29) everything from the value's first quote to the end of the line is one
-    // marker; the next line is still not taken for a pending secret header.
+    // marker (a literal glued to more text keeps that rule under ADR-0011); the next line is
+    // still not taken for a pending secret header.
     let input = "TOKEN:' '_TOKEN:\n:";
     assert_eq!(
         SecretRedactor::redact(input),

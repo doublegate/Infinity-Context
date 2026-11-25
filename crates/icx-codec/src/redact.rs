@@ -38,7 +38,15 @@ impl SecretRedactor {
                     continue;
                 }
                 let content_start = body.len() - body.trim_start().len();
-                let Some(close) = closing_quote(&body.as_bytes()[content_start..], q) else {
+                let triple = pending_value.as_ref().is_some_and(|p| p.triple);
+                let close = if triple {
+                    let closer = [q; 3];
+                    let closer = std::str::from_utf8(&closer).unwrap_or("\"\"\"");
+                    body[content_start..].find(closer).map(|i| i + 2)
+                } else {
+                    closing_quote(&body.as_bytes()[content_start..], q)
+                };
+                let Some(close) = close else {
                     out.push_str(&Self::redact_bare_value_line(body));
                     out.push_str(ending);
                     continue;
@@ -55,6 +63,122 @@ impl SecretRedactor {
                 if body.is_empty() {
                     out.push_str(ending);
                     continue;
+                }
+            }
+            // Backslash, bracket and plain-scalar continuations (red-team review of #103).
+            if let Some(p) = pending_value.as_mut()
+                && (p.backslash || p.brackets > 0 || p.plain)
+            {
+                if body.trim().is_empty() {
+                    // A blank line ends a backslash continuation (review of #103).
+                    if p.backslash {
+                        pending_value = None;
+                    }
+                    out.push_str(body);
+                    out.push_str(ending);
+                    continue;
+                }
+                if p.plain {
+                    let indent = body.len() - body.trim_start().len();
+                    p.lines += 1;
+                    if indent > p.indent && p.lines <= MAX_KEY_BLOCK_LINES {
+                        out.push_str(&Self::redact_bare_value_line(body));
+                        out.push_str(ending);
+                        continue;
+                    }
+                    pending_value = None;
+                } else {
+                    p.lines += 1;
+                    if p.brackets > 0 {
+                        // Hide up to the bracket that closes the value and keep that bracket,
+                        // so a second pass sees the value close again. The rest of the line is
+                        // classified like any other line (security review: it was written
+                        // verbatim, so a secret after the bracket survived).
+                        let scan = scan_value(body, p.brackets, p.bracket_quote);
+                        let indent_of_key = p.indent;
+                        p.sticky |= scan.ambiguous_quote;
+                        if let Some(at) = scan.close.filter(|_| !p.sticky) {
+                            let (inside, after) = body.split_at(at);
+                            if inside.trim().is_empty() {
+                                out.push_str(inside);
+                            } else {
+                                out.push_str(&Self::redact_bare_value_line(inside));
+                            }
+                            let close_len = after.chars().next().map_or(1, char::len_utf8);
+                            out.push_str(&after[..close_len]);
+                            body = &after[close_len..];
+                            pending_value = None;
+                            // What follows the bracket is still the value unless it ends the
+                            // statement or is a comment (`) + "part2"`; review of #103).
+                            let t = body.trim_start();
+                            if !(t.is_empty()
+                                || t.starts_with(['#', ';', ',', ')', ']', '}'])
+                                || t.starts_with("//")
+                                || t.starts_with("[REDACTED:"))
+                            {
+                                out.push_str(&body[..body.len() - t.len()]);
+                                out.push_str("[REDACTED:SECRET]");
+                                // The tail may open the next part of the value (`) + (`,
+                                // `) + \`; review of #103).
+                                let tail = scan_value(t, 0, None);
+                                if tail.depth > 0 || tail.ambiguous_quote {
+                                    // A possibly quoted tail stays pending to the line cap, as
+                                    // on a first line (security review of #103).
+                                    pending_value = Some(PendingSecret {
+                                        indent: indent_of_key,
+                                        brackets: tail.depth.max(1),
+                                        bracket_quote: tail.quote,
+                                        sticky: tail.ambiguous_quote,
+                                        ..PendingSecret::default()
+                                    });
+                                } else if let Some(q) =
+                                    tail.quote.and_then(|q| u8::try_from(q).ok())
+                                {
+                                    // `) + """` or `` ) + ` ``: the tail opens a string.
+                                    let rb = t.as_bytes();
+                                    let at = tail.quote_at.unwrap_or(0);
+                                    let start = if at >= 2 && rb[at - 1] == q && rb[at - 2] == q {
+                                        at - 2
+                                    } else {
+                                        at
+                                    };
+                                    pending_value = Some(PendingSecret {
+                                        indent: indent_of_key,
+                                        quote: Some(q),
+                                        triple: start != at,
+                                        ..PendingSecret::default()
+                                    });
+                                } else if ends_with_continuation(t) {
+                                    pending_value = Some(PendingSecret {
+                                        indent: indent_of_key,
+                                        backslash: true,
+                                        ..PendingSecret::default()
+                                    });
+                                }
+                                body = "";
+                            }
+                            if body.is_empty() {
+                                out.push_str(ending);
+                                continue;
+                            }
+                        } else {
+                            p.brackets = scan.depth.max(1);
+                            p.bracket_quote = scan.quote;
+                            out.push_str(&Self::redact_bare_value_line(body));
+                            if p.lines >= MAX_KEY_BLOCK_LINES {
+                                pending_value = None;
+                            }
+                            out.push_str(ending);
+                            continue;
+                        }
+                    } else {
+                        if !ends_with_continuation(body) || p.lines >= MAX_KEY_BLOCK_LINES {
+                            pending_value = None;
+                        }
+                        out.push_str(&Self::redact_bare_value_line(body));
+                        out.push_str(ending);
+                        continue;
+                    }
                 }
             }
             if let Some(pending) = pending_value.as_mut() {
@@ -109,7 +233,8 @@ impl SecretRedactor {
                 // PEM/PGP banners, no quote between BEGIN and END), so the structural path sees
                 // the whole block and no block state is owed to the following lines.
                 && key_blocks_within_strings(body)
-                && let Some(json) = Self::redact_json_line(body)
+                && let Some(json) =
+                    Self::redact_json_line(body).or_else(|| Self::redact_json_fields(body))
             {
                 out.push_str(&json);
                 out.push_str(ending);
@@ -154,7 +279,14 @@ impl SecretRedactor {
             } else {
                 normalized
             };
-            if let Some(pending) = Self::sensitive_continuation(body) {
+            // A definite multi-line `=` value (`api_key: str = """`) wins over the YAML reading
+            // of the same line (review of #103).
+            let assigned = Self::assignment_continuation(body)
+                .filter(|p| p.quote.is_some() || p.brackets > 0 || p.backslash);
+            if let Some(pending) = assigned
+                .or_else(|| Self::sensitive_continuation(body))
+                .or_else(|| Self::assignment_continuation(body))
+            {
                 pending_value = Some(pending);
             }
             out.push_str(&redacted);
@@ -199,6 +331,27 @@ impl SecretRedactor {
         out[check_end..].trim().is_empty().then_some(out)
     }
 
+    /// A line that is a list of JSON object members without its braces (`"k": v, "k2": v2`, with
+    /// an optional trailing comma), as in a pretty-printed object or a log fragment, redacted
+    /// structurally like a whole object: only sensitive values are hidden (ADR-0011 rule 5).
+    /// `None` unless the members parse strictly.
+    fn redact_json_fields(line: &str) -> Option<String> {
+        let start = line.len() - line.trim_start().len();
+        let end = line.trim_end().len();
+        if start >= end || !line[start..].starts_with('"') {
+            return None;
+        }
+        let inner_end = if line[..end].ends_with(',') {
+            end - 1
+        } else {
+            end
+        };
+        let wrapped = format!("{{{}}}", &line[start..inner_end]);
+        let json = Self::redact_json_line(&wrapped)?;
+        let inner = json.strip_prefix('{')?.strip_suffix('}')?;
+        Some(format!("{}{inner}{}", &line[..start], &line[inner_end..]))
+    }
+
     /// Redacts BEGIN..END private-key spans that start and end on the same line (e.g. a key
     /// embedded in a JSON string with `\n` escapes). Returns `None` if the line has none.
     fn redact_inline_key_blocks(line: &str) -> Option<String> {
@@ -220,6 +373,173 @@ impl SecretRedactor {
     /// (`"password":` / `password:`).
     /// Only a line that *is* the key (optionally after `{`, `,` or a YAML `- `) arms the
     /// continuation, so prose such as `error: missing signing key:` never does (PR #20 review).
+    /// A sensitive `KEY=value` / `key = value` assignment whose value goes on past its line
+    /// (red-team review of #103): nothing after `=` (the value is on the next line), an
+    /// unterminated quote, triple quote or backtick, a trailing backslash, or an unclosed
+    /// bracket.
+    fn assignment_continuation(line: &str) -> Option<PendingSecret> {
+        let b = line.as_bytes();
+        let mut quote: Option<u8> = None;
+        let mut i = 0;
+        while i < b.len() {
+            let c = b[i];
+            if let Some(q) = quote {
+                if c == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if c == q {
+                    quote = None;
+                }
+                i += 1;
+                continue;
+            }
+            match c {
+                b'\'' if i > 0 && matches!(b[i - 1], b'&' | b'<') => {}
+                b'"' | b'\'' | b'`' => quote = Some(c),
+                b'=' => {
+                    let prev = if i > 0 { b[i - 1] } else { 0 };
+                    let next = b.get(i + 1).copied().unwrap_or(0);
+                    if !matches!(prev, b'=' | b'!' | b'<' | b'>') && !matches!(next, b'=' | b'>') {
+                        // `password := ...` (Go, Python walrus): the colon belongs to the operator.
+                        let head = line[..i]
+                            .trim_end_matches([' ', '\t'])
+                            .trim_end_matches(':')
+                            .trim_end_matches([' ', '\t']);
+                        let key_start = head
+                            .rfind(|c: char| {
+                                !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+                            })
+                            .map_or(0, |k| {
+                                k + head[k..].chars().next().map_or(1, char::len_utf8)
+                            });
+                        let mut key = &head[key_start..];
+                        // `api_key: str = ...`, `const password: string = ...`: the name is
+                        // before the annotation's colon (review of #103).
+                        // `api_key: str = ...`, `let a: u8, api_key: &str = ...`: a name before
+                        // any annotation colon (not `::`) may be the key (review of #103).
+                        if !Self::is_sensitive_key_name(key) && line[..i].ends_with([' ', '\t']) {
+                            let hb = head.as_bytes();
+                            for c in (0..hb.len()).filter(|&k| {
+                                hb[k] == b':'
+                                    && hb.get(k + 1) != Some(&b':')
+                                    && (k == 0 || hb[k - 1] != b':')
+                            }) {
+                                let name = head[..c].trim_end();
+                                let start = name
+                                    .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                                    .map_or(0, |k| {
+                                        k + name[k..].chars().next().map_or(1, char::len_utf8)
+                                    });
+                                if Self::is_sensitive_key_name(&name[start..]) {
+                                    key = &name[start..];
+                                    break;
+                                }
+                            }
+                        }
+                        if !key.is_empty() && Self::is_sensitive_key_name(key) {
+                            // Only this assignment's own value: up to a `;` that starts the
+                            // next statement (`token = 1; password = \"\"\"`).
+                            let rest = &line[i + 1..];
+                            let stmt_end = scan_value(rest, 0, None).stmt_end.unwrap_or(rest.len());
+                            let rhs_full = rest[..stmt_end].trim();
+                            // String prefixes (`r`, `b`, `f`, ...) and Rust raw-string hashes.
+                            let rhs = rhs_full
+                                .trim_start_matches(|c: char| {
+                                    matches!(c, 'r' | 'R' | 'b' | 'B' | 'u' | 'U' | 'f' | 'F')
+                                })
+                                .trim_start_matches('#')
+                                .trim_start();
+                            let rhs = if rhs.starts_with(['"', '\'', '`']) {
+                                rhs
+                            } else {
+                                rhs_full
+                            };
+                            let base = PendingSecret {
+                                indent: line.len() - line.trim_start().len(),
+                                ..PendingSecret::default()
+                            };
+                            if rhs.is_empty() {
+                                return Some(base);
+                            }
+                            // Quotes and brackets first: a backslash inside them does not end
+                            // the value on the next line (review of #103).
+                            for t in ["\"\"\"", "'''"] {
+                                if let Some(r) = rhs.strip_prefix(t)
+                                    && !r.contains(t)
+                                {
+                                    return Some(PendingSecret {
+                                        quote: Some(t.as_bytes()[0]),
+                                        triple: true,
+                                        ..base
+                                    });
+                                }
+                            }
+                            if rhs.starts_with('`') && !rhs[1..].contains('`') {
+                                return Some(PendingSecret {
+                                    quote: Some(b'`'),
+                                    ..base
+                                });
+                            }
+                            // An open bracket, with any quote opened inside it carried along
+                            // (`f("` then lines then `")`).
+                            let scan = scan_value(rhs_full, 0, None);
+                            if scan.depth > 0 || scan.ambiguous_quote {
+                                return Some(PendingSecret {
+                                    brackets: scan.depth.max(1),
+                                    bracket_quote: scan.quote,
+                                    sticky: scan.ambiguous_quote,
+                                    ..base
+                                });
+                            }
+                            if let Some(q) = unterminated_quote(rhs) {
+                                return Some(PendingSecret {
+                                    quote: Some(q),
+                                    ..base
+                                });
+                            }
+                            // A quote opened later in the value (`"a" + "`, `prefix + """`),
+                            // after an operator or space so an apostrophe does not count.
+                            if let (Some(q), Some(at)) = (scan.quote, scan.quote_at)
+                                && let Ok(q) = u8::try_from(q)
+                                && let rb = rhs_full.as_bytes()
+                                // The scanner reads `"""` as `""` then `"`: step back to the
+                                // triple's first quote.
+                                && let start = if at >= 2 && rb[at - 1] == q && rb[at - 2] == q {
+                                    at - 2
+                                } else {
+                                    at
+                                }
+                                && rhs_full[..start]
+                                    .chars()
+                                    .next_back()
+                                    .is_some_and(|b| b.is_whitespace() || "+(=,[{".contains(b))
+                            {
+                                let triple = start != at;
+                                return Some(PendingSecret {
+                                    quote: Some(q),
+                                    triple,
+                                    ..base
+                                });
+                            }
+                            if ends_with_continuation(rhs) {
+                                return Some(PendingSecret {
+                                    backslash: true,
+                                    ..base
+                                });
+                            }
+                            // This value ends on its line; a later sensitive assignment on the
+                            // same line may still continue (review of #103).
+                        }
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        None
+    }
+
     fn sensitive_continuation(line: &str) -> Option<PendingSecret> {
         let declaration = Self::declaration(line);
         let colon = Self::scan_unquoted(declaration).1?;
@@ -233,7 +553,13 @@ impl SecretRedactor {
         let block = yaml_block_header(header) && properties.next().is_none();
         // A quoted scalar that does not close on this line continues on the next ones.
         let quote = unterminated_quote(suffix);
-        if !suffix.is_empty() && !block && quote.is_none() {
+        // A plain scalar continues on lines indented past the key (red-team review of #103:
+        // `password: true` then an indented secret line).
+        let plain = !suffix.is_empty()
+            && !block
+            && quote.is_none()
+            && !suffix.starts_with(['{', '[', '"', '\'', '`', '|', '>', '#']);
+        if !suffix.is_empty() && !block && quote.is_none() && !plain {
             return None;
         }
         let head = head.trim();
@@ -272,6 +598,8 @@ impl SecretRedactor {
                 block,
                 scalar_indent,
                 quote,
+                plain,
+                ..PendingSecret::default()
             },
         )
     }
@@ -408,7 +736,11 @@ impl SecretRedactor {
             .trim_start_matches("export ")
             .trim_start_matches('-')
             .trim_matches(|c: char| c == '"' || c == '\'');
-        let key_upper = trimmed.to_ascii_uppercase().replace('-', "_");
+        // camelCase and PascalCase split into words (`accessToken`, `APIKey`; red-team review
+        // of #103), so they match like their snake_case spellings.
+        let key_upper = Self::split_camel(trimmed)
+            .to_ascii_uppercase()
+            .replace('-', "_");
         if Self::is_token_count_key(&key_upper) {
             return false;
         }
@@ -452,16 +784,185 @@ impl SecretRedactor {
         };
         // Plural collection keys (`api_keys`, `tokens`, `passwords`) hold the same secrets.
         // `PASS` is excluded: its plural `PASSES` is ordinary prose/config (`max_passes`).
-        matches(&key_upper)
-            || key_upper
-                .strip_suffix('S')
-                .is_some_and(|singular| !singular.ends_with("PASS") && matches(singular))
+        let suffix_match = |k: &str| {
+            matches(k)
+                || k.strip_suffix('S')
+                    .is_some_and(|singular| !singular.ends_with("PASS") && matches(singular))
+        };
+        if suffix_match(&key_upper) {
+            return true;
+        }
+        // A numbered key (`API_KEY_2`, `token1`) is the same key.
+        let base = key_upper
+            .trim_end_matches(|c: char| c.is_ascii_digit())
+            .trim_end_matches('_');
+        if base != key_upper && !base.is_empty() && suffix_match(base) {
+            return true;
+        }
+        Self::is_qualified_secret_key(trimmed, base)
+    }
+
+    /// Credential words glued to a prefix (`PGPASSWORD`, `AUTHTOKEN`, `SECRETKEY`) or followed by
+    /// a qualifier (`password_value`, `secret_old`, `api_key_confirmation`), unless what follows
+    /// names something that is not a secret (`token_type`, `password_file`, `secret_name`); and
+    /// `Authorization`, a bare `auth`, and a mixed- or lower-case `pwd` (connection strings), not
+    /// the shell's `PWD` (red-team review of #103).
+    fn is_qualified_secret_key(original: &str, upper: &str) -> bool {
+        const WORDS: &[&str] = &[
+            "PASSWORD",
+            "PASSWD",
+            "PASSPHRASE",
+            "SECRET",
+            "TOKEN",
+            "APIKEY",
+            "SECRETKEY",
+            "PRIVATEKEY",
+            "ACCESSKEY",
+            "CREDENTIAL",
+            "CREDENTIALS",
+            "DBPASS",
+            "PW",
+            "PWD",
+        ];
+        // What follows a credential word when the key names something about the credential
+        // rather than the credential (`token_type`, `password_file`, `token_savings`). Anything
+        // else still counts as the credential (`password_admin`, `api_key_prod`): the list fails
+        // closed (security review of #103).
+        const NOT_SECRET: &[&str] = &[
+            "FILE",
+            "FILES",
+            "PATH",
+            "DIR",
+            "URL",
+            "URI",
+            "ENDPOINT",
+            "HOST",
+            "PORT",
+            "LENGTH",
+            "LEN",
+            "MIN",
+            "MAX",
+            "COUNT",
+            "NUM",
+            "TYPE",
+            "TYPES",
+            "NAME",
+            "NAMES",
+            "POLICY",
+            "ENABLED",
+            "DISABLED",
+            "REQUIRED",
+            "HINT",
+            "LABEL",
+            "FIELD",
+            "PROMPT",
+            "TTL",
+            "EXPIRY",
+            "EXPIRES",
+            "EXPIRATION",
+            "LIFETIME",
+            "HEADER",
+            "PARAM",
+            "PREFIX",
+            "FORMAT",
+            "ALGORITHM",
+            "ALG",
+            "SIZE",
+            "LIMIT",
+            "KIND",
+            "MODE",
+            "REGEX",
+            "PATTERN",
+            "PROVIDER",
+            "ROTATION",
+            "LOCATION",
+            "ENV",
+            "VAR",
+            "VARIABLE",
+            "STORE",
+            "MANAGER",
+            "SOURCE",
+            "VERSION",
+            "STATUS",
+            "USAGE",
+            "USED",
+            "LEFT",
+            "REMAINING",
+            "BUDGET",
+            "ESTIMATE",
+            "STREAM",
+            "STREAMS",
+            "REDACTOR",
+            "REDACTION",
+            "SAVINGS",
+            "SAVED",
+            "CACHE",
+            "LATTICE",
+            "COUNTER",
+            "BUCKET",
+            "RATE",
+            "WINDOW",
+            "BUFFER",
+            "POOL",
+            "INDEX",
+            "LIST",
+            "MAP",
+            "IDS",
+        ];
+        // Dotted keys (`headers.authorization`, `db.pwd`) split like snake_case ones.
+        let parts: Vec<&str> = upper.split(['_', '.']).filter(|p| !p.is_empty()).collect();
+        if parts.contains(&"AUTHORIZATION")
+            || (parts.last() == Some(&"AUTH") && (parts.len() == 1 || upper.contains('.')))
+        {
+            return true;
+        }
+        // The shell's `PWD` is a path; `MYSQL_PWD` and a lower-case `pwd` are passwords.
+        if upper == "PWD" && !original.bytes().any(|b| b.is_ascii_lowercase()) {
+            return false;
+        }
+        let word = |p: &str| {
+            WORDS
+                .iter()
+                .any(|w| p == *w || (p.len() > w.len() && p.ends_with(w) && w.len() >= 5))
+        };
+        (0..parts.len()).any(|i| {
+            // One part (`PGPASSWORD`), or two joined (`API`+`KEY`, `ACCESS`+`KEY`).
+            let rest = if word(parts[i]) {
+                &parts[i + 1..]
+            } else if i + 1 < parts.len() && word(&format!("{}{}", parts[i], parts[i + 1])) {
+                &parts[i + 2..]
+            } else {
+                return false;
+            };
+            rest.iter().all(|r| !NOT_SECRET.contains(r))
+        })
+    }
+
+    /// `accessToken` -> `access_Token`, `APIKey` -> `API_Key`: word boundaries of camelCase and
+    /// PascalCase as `_`.
+    fn split_camel(key: &str) -> String {
+        let chars: Vec<char> = key.chars().collect();
+        let mut out = String::with_capacity(key.len() + 4);
+        for (i, &c) in chars.iter().enumerate() {
+            if i > 0 && c.is_ascii_uppercase() {
+                let prev = chars[i - 1];
+                let next_lower = chars.get(i + 1).is_some_and(char::is_ascii_lowercase);
+                if prev.is_ascii_lowercase()
+                    || prev.is_ascii_digit()
+                    || (prev.is_ascii_uppercase() && next_lower)
+                {
+                    out.push('_');
+                }
+            }
+            out.push(c);
+        }
+        out
     }
 
     /// Upper-case `_`/`-`-separated parts of a key (`--max-tokens` -> `MAX`, `TOKENS`).
     fn key_parts(key: &str) -> Vec<String> {
         key.to_ascii_uppercase()
-            .split(['_', '-'])
+            .split(['_', '-', '.'])
             .filter(|p| !p.is_empty())
             .map(str::to_owned)
             .collect()
@@ -706,9 +1207,72 @@ impl SecretRedactor {
         val_start: usize,
         replacement: &str,
         stop_at_comma: bool,
+        key: &str,
+        code_context: u8,
     ) -> Option<usize> {
-        // A value with any quote is hidden from its first quote to the end of the line (v1.3.1,
-        // #29, owner decision on PR #31).
+        // A comma ends a value only inside brackets opened before the key (a call, a flow
+        // mapping or sequence); in a YAML block scalar or an env file it is part of the value
+        // (review of #103: `api_key: 1234,secret` hid only `1234`).
+        let line_start = out[..val_start].rfind('\n').map_or(0, |i| i + 1);
+        // The colon pass (YAML, JSON-ish, config text) is the one that asks to stop at commas;
+        // in that text `;` is part of a value, not a shell separator (red-team review of #103).
+        // A type-annotated code assignment (`let api_key: Option<String> = None;`) comes through
+        // the same pass but is code, not config text (review of #103).
+        let line_text = out[line_start..].split('\n').next().unwrap_or("").trim();
+        // Only a binding keyword marks an annotated value as code: a trailing `;` also ends
+        // connection strings and other config values (review of #103).
+        let is_code_line = [
+            "let ", "const ", "var ", "val ", "final ", "static ", "pub ", "def ", "fn ",
+        ]
+        .iter()
+        .any(|k| line_text.starts_with(k));
+        let config = stop_at_comma && !(code_context >= CODE_STRONG && is_code_line);
+        let stop_at_comma = stop_at_comma && Self::open_brackets(&out[line_start..val_start]) > 0;
+        // `Authorization: Bearer <t>` / `Basic <t>`: the scheme stays and the rest of the line is
+        // hidden here with the scheme's own marker, whatever the token's length (security
+        // review: the auth-scheme detector skips short tokens).
+        if Self::normalized_key(key).contains("AUTHORIZATION") {
+            let lead =
+                out[val_start..].len() - out[val_start..].trim_start_matches([' ', '\t']).len();
+            let v_start = val_start + lead;
+            for (scheme, marker) in [
+                ("bearer ", "[REDACTED:BEARER]"),
+                ("basic ", "[REDACTED:BASIC_AUTH]"),
+            ] {
+                if out[v_start..]
+                    .get(..scheme.len())
+                    .is_some_and(|p| p.eq_ignore_ascii_case(scheme))
+                {
+                    let from = v_start + scheme.len();
+                    let rest = &out[from..];
+                    let line_end = rest.find('\n').unwrap_or(rest.len());
+                    let line = rest[..line_end].trim_end_matches('\r');
+                    let token_start = line.len() - line.trim_start().len();
+                    let token = line[token_start..].trim_end();
+                    if token.is_empty() || Self::is_redaction_marker(token) {
+                        return Some(from + line.len());
+                    }
+                    let (a, b) = (from + token_start, from + token_start + token.len());
+                    out.replace_range(a..b, marker);
+                    return Some(a + marker.len());
+                }
+            }
+        }
+        // ADR-0011: a value that is never a secret is kept, and a value that opens with one
+        // literal loses only that literal (and a quoted tail).
+        if let Some(end) = Self::redact_value_by_shape(
+            out,
+            val_start,
+            replacement,
+            stop_at_comma,
+            key,
+            code_context,
+            config,
+        ) {
+            return Some(end);
+        }
+        // Any other value with a quote is hidden from its first quote to the end of the line
+        // (v1.3.1, #29, owner decision on PR #31).
         if let Some(end) = Self::redact_from_first_quote(out, val_start, replacement) {
             return Some(end);
         }
@@ -757,16 +1321,73 @@ impl SecretRedactor {
         }
         let rest = &out[val_start..];
         let mut val_len = rest.len();
+        let cli = replacement == "[REDACTED:CLI_SECRET]";
+        // A whitespace run is judged once and then skipped, so a long run costs linear time
+        // (security review: re-scanning the run at every space was quadratic).
+        let mut skip_to = 0usize;
         for (idx, ch) in rest.char_indices() {
+            if idx < skip_to {
+                continue;
+            }
+            // A lone carriage return inside a line is content (terminal overwrite), not its end.
+            if ch == '\r' && rest[idx + 1..].chars().next().is_some_and(|n| n != '\n') {
+                continue;
+            }
             // A backtick or an existing marker ends the token too, so a marker the literal pass
             // wrote is never cut in half (idempotence, v1.3.1).
-            if ch.is_whitespace()
-                || matches!(ch, '"' | '\'' | '`' | ';' | '&' | '|' | ')' | ']' | '}')
-                || (stop_at_comma && ch == ',')
+            // `;` ends the value only before whitespace, and closing brackets only inside
+            // brackets: in an env file `null;secret` and `null)secret` are one value (review
+            // of #103).
+            let after = rest[idx + ch.len_utf8()..].chars().next();
+            // An unquoted value runs to the end of the line, not to its first space: a YAML
+            // plain scalar, an INI or env value and a passphrase hold spaces (red-team review of
+            // #103: `password: correct horse staple` kept two words). It ends before a comment,
+            // a shell `|`, `&&` or `;`, the next query parameter (`&name=`), and line ends. A
+            // CLI flag value is one argument, so it still ends at whitespace.
+            let ws_run_end =
+                || idx + (rest[idx..].len() - rest[idx..].trim_start_matches([' ', '\t']).len());
+            let ws_ends = || {
+                let next = &rest[ws_run_end()..];
+                let semicolon_ends = next
+                    .strip_prefix(';')
+                    .is_some_and(|r| r.chars().next().is_none_or(char::is_whitespace));
+                next.is_empty()
+                    || next.starts_with(['\n', '#'])
+                    || next.starts_with("\r\n")
+                    || next == "\r"
+                    || (!config && (next.starts_with('|') || semicolon_ends))
+                    || next.starts_with("//")
+                    || (!config && next.starts_with("&&"))
+            };
+            let query_param = || {
+                let n = &rest[idx + 1..];
+                let name_len = n
+                    .find(|c: char| {
+                        !(c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-' | '[' | ']'))
+                    })
+                    .unwrap_or(n.len());
+                !config && (n.starts_with('&') || (name_len > 0 && n[name_len..].starts_with('=')))
+            };
+            // A lone carriage return inside a line is content (terminal overwrite), not its end.
+            if ch == '\n'
+                || (ch == '\r' && after.is_none_or(|n| n == '\n'))
+                || (ch.is_whitespace() && (cli || ws_ends()))
+                || matches!(ch, '"' | '\'' | '`')
+                || (ch == '&' && query_param())
+                || (!config && ch == ';' && after.is_none_or(char::is_whitespace))
+                || (stop_at_comma
+                    && matches!(ch, ',' | ')' | ']' | '}')
+                    && after.is_none_or(|n| {
+                        n.is_whitespace() || matches!(n, ',' | ';' | ')' | ']' | '}')
+                    }))
                 || (idx > 0 && rest[idx..].starts_with("[REDACTED:"))
             {
                 val_len = idx;
                 break;
+            }
+            if ch == ' ' || ch == '\t' {
+                skip_to = ws_run_end();
+                continue;
             }
             if ch == '\\' {
                 let after_slash = &rest[idx + 1..];
@@ -786,6 +1407,619 @@ impl SecretRedactor {
             return Some(val_start + replacement.len());
         }
         None
+    }
+
+    /// ADR-0011 rules 1 to 3 for the value at `val_start` (the rest of its line), returning where
+    /// scanning continues. A value that is never a secret stays; a value that opens with one
+    /// quoted literal has that literal's contents replaced. Either way the rest of the line stays
+    /// when it holds no quote, and is hidden from its first quote to the end of the line when it
+    /// does (a later literal may be a second secret, #29). `None`: neither shape, so the #29 rule
+    /// applies.
+    fn redact_value_by_shape(
+        out: &mut String,
+        val_start: usize,
+        replacement: &str,
+        stop_at_comma: bool,
+        key: &str,
+        code_context: u8,
+        config: bool,
+    ) -> Option<usize> {
+        let rest = out.get(val_start..)?;
+        let line_end = rest.find('\n').unwrap_or(rest.len());
+        let line = rest[..line_end].trim_end_matches('\r');
+        let line_len = line.len();
+        if line.is_empty() || line.starts_with("[REDACTED:") {
+            return None;
+        }
+        // Brackets opened before the key (a call, a flow mapping or sequence): only inside them do
+        // `,` and closing brackets separate values (review of #103: in a YAML block scalar,
+        // `api_key: 1234,secret` is one value).
+        let line_start = out[..val_start].rfind('\n').map_or(0, |i| i + 1);
+        let open_before = Self::open_brackets(&out[line_start..val_start]);
+        // The kept span ends at `cursor`; the rest of the line (`tail_len` bytes from there)
+        // follows the #29 rule for any quote it holds: a later quote is always hidden.
+        // Inside brackets a comma may end a harmless value whatever the caller's rule, since
+        // `ends_value` then also requires a real boundary after it.
+        let harmless_end =
+            Self::value_extent(line, stop_at_comma || open_before > 0).and_then(|end| {
+                let v = line[..end].trim_end();
+                (Self::is_harmless_value(v, key, code_context, false)
+                    && Self::ends_value(&line[v.len()..], open_before, config, true))
+                .then_some(v.len())
+            });
+        let (cursor, tail_len) = if let Some(end) = harmless_end {
+            (val_start + end, line_len - end)
+        } else {
+            let (open, close) = Self::leading_literal(line)?;
+            // The literal must end the value token: `"abc"def`, `"a"#b` and `"a"/b` are one shell
+            // word, so the tail is part of the secret and the #29 rule hides the whole value
+            // (security review). Commas and closing brackets end it only in structured text
+            // (`stop_at_comma`); a comment needs whitespace before it.
+            if !Self::ends_value(&line[close + 1..], open_before, config, false) {
+                return None;
+            }
+            let mut cursor = val_start + close + 1;
+            if !Self::is_redaction_marker(&line[open + 1..close]) {
+                out.replace_range(val_start + open + 1..val_start + close, replacement);
+                cursor = val_start + open + 1 + replacement.len() + 1;
+            }
+            // The rest after a literal stays only when it is a comment or structure; a bare
+            // word (`"a" b`, `'a' if x else b`) is part of the value to an INI or properties
+            // parser (red-team review of #103), so it is hidden.
+            let tail = &out[cursor..cursor + line_len - (close + 1)];
+            let t = tail.trim_start();
+            // The next assignment (`BAR=2`, `user: bob`) is not part of the value: it stays and
+            // is scanned in its turn.
+            let name_len = t
+                .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')))
+                .unwrap_or(t.len());
+            // The next assignment of the same kind (`name:` in config text, `name=` elsewhere),
+            // or the next flag after a CLI flag (review of #103: `foo:x` on an `=` line and
+            // `--x` in config text are part of the value).
+            let sep = if config { ':' } else { '=' };
+            // A real assignment: `name=value` (not `==`, `=>` or a bare trailing `=`, as in
+            // Base64 padding), or `name: value` with the space YAML requires (review of #103).
+            let after_sep = t[name_len..].strip_prefix(sep);
+            let next_assignment = (name_len > 0
+                && t.as_bytes()[0].is_ascii_alphabetic()
+                && after_sep.is_some_and(|r| {
+                    if config {
+                        r.starts_with([' ', '\t'])
+                    } else {
+                        r.chars()
+                            .next()
+                            .is_some_and(|c| !c.is_whitespace() && !matches!(c, '=' | '>'))
+                    }
+                }))
+                || (key.trim_start().starts_with("--")
+                    && t.strip_prefix("--")
+                        .is_some_and(|r| r.starts_with(|c: char| c.is_ascii_alphabetic())));
+            if !(t.is_empty()
+                || t.starts_with('#')
+                || t.starts_with("//")
+                // Separators and closers count only inside brackets opened before the key.
+                || (open_before > 0 && t.starts_with([',', ')', ']', '}']))
+                // `;` ends a statement only before whitespace (`"abc" ;x` is one shell word with
+                // the value; review of #103).
+                || (!config
+                    && t.strip_prefix(';')
+                        .is_some_and(|r| r.chars().next().is_none_or(char::is_whitespace)))
+                || next_assignment)
+            {
+                let from = cursor + (tail.len() - t.len());
+                let to = cursor + tail.len();
+                out.replace_range(from..to, replacement);
+                return Some(cursor);
+            }
+            (cursor, line_len - (close + 1))
+        };
+        let tail = &out[cursor..cursor + tail_len];
+        if let Some(q) = tail.find(['"', '\'', '`']) {
+            let q = if q > 0 && tail.as_bytes()[q - 1] == b'\\' {
+                q - 1
+            } else {
+                q
+            };
+            let from = cursor + q;
+            if !Self::is_redaction_marker(&out[from..cursor + tail_len]) {
+                out.replace_range(from..cursor + tail_len, replacement);
+            }
+        }
+        // Scanning resumes at the kept tail, so a second assignment in it is still checked
+        // (review of #103: `PASSWORD="a" TOKEN=b # "c"` left `TOKEN=b` visible).
+        Some(cursor)
+    }
+
+    /// Whether `after` (the text right after a value) ends the value: nothing, whitespace, or a
+    /// `;` followed by whitespace; inside brackets opened before the key, also `,` or a closing
+    /// bracket followed by nothing, whitespace or more structure. `null;x`, `"a"#x`,
+    /// `1234,x` and `null)x` are one shell word or scalar, so they do not.
+    fn ends_value(after: &str, open_before: usize, config: bool, strict: bool) -> bool {
+        let mut chars = after.chars();
+        let Some(c) = chars.next() else {
+            return true;
+        };
+        let then_ok = |next: Option<char>| {
+            next.is_none_or(|n| n.is_whitespace() || matches!(n, ',' | ';' | ')' | ']' | '}'))
+        };
+        match c {
+            // After whitespace, only a comment, the end, or (outside config text) a shell
+            // separator ends the value; `null ;x` in YAML is one scalar (red-team review of #103).
+            // (The literal path, `strict = false`, judges the rest itself with its tail rule.)
+            c if c.is_whitespace() && !strict => true,
+            c if c.is_whitespace() => {
+                let t = after.trim_start();
+                t.is_empty()
+                    || t.starts_with('#')
+                    || t.starts_with("//")
+                    || (!config
+                        && (t.starts_with('|')
+                            || t.starts_with("&&")
+                            || t.strip_prefix(';')
+                                .is_some_and(|r| r.chars().next().is_none_or(char::is_whitespace))))
+                    || (open_before > 0 && t.starts_with([',', ')', ']', '}']))
+            }
+            ';' if !config => chars.next().is_none_or(char::is_whitespace),
+            ',' | ')' | ']' | '}' if open_before > 0 => then_ok(chars.next()),
+            _ => false,
+        }
+    }
+
+    /// Brackets left open in `prefix`, outside quotes (approximate: a stray quote ends the
+    /// count, which only makes `ends_value` stricter).
+    fn open_brackets(prefix: &str) -> usize {
+        let mut depth = 0usize;
+        let mut quote: Option<char> = None;
+        let mut escaped = false;
+        for c in prefix.chars() {
+            if let Some(q) = quote {
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == q {
+                    quote = None;
+                }
+                continue;
+            }
+            match c {
+                '"' | '\'' | '`' => quote = Some(c),
+                '(' | '[' | '{' => depth += 1,
+                ')' | ']' | '}' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+        if quote.is_some() { 0 } else { depth }
+    }
+
+    /// Where a value starting at the beginning of `line` ends (ADR-0011 rule 1): at the first
+    /// `;`, closing bracket, comment start (`#` or `//` after whitespace) or, with
+    /// `stop_at_comma`, `,`, outside quotes and brackets; the end of the line otherwise. `None`
+    /// for an unterminated quote or bracket.
+    fn value_extent(line: &str, stop_at_comma: bool) -> Option<usize> {
+        let b = line.as_bytes();
+        let mut depth = 0usize;
+        let mut i = 0usize;
+        while i < b.len() {
+            let c = b[i];
+            let after_space = i == 0 || b[i - 1].is_ascii_whitespace();
+            match c {
+                b'"' | b'\'' | b'`' => {
+                    i += 1 + closing_quote(&b[i + 1..], c)?;
+                }
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => {
+                    if depth == 0 {
+                        return Some(i);
+                    }
+                    depth -= 1;
+                }
+                b';' if depth == 0 => return Some(i),
+                b',' if depth == 0 && stop_at_comma => return Some(i),
+                b'#' if depth == 0 && after_space => return Some(i),
+                b'/' if depth == 0 && after_space && b.get(i + 1) == Some(&b'/') => {
+                    return Some(i);
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        (depth == 0).then_some(b.len())
+    }
+
+    /// The opening and closing quote of a literal that starts `line` (`"..."`, `'...'`, with an
+    /// optional `b`, `r`, `u` or `f` prefix of up to two letters). Backtick templates and
+    /// unterminated literals are not literals here.
+    fn leading_literal(line: &str) -> Option<(usize, usize)> {
+        let b = line.as_bytes();
+        let open = b.iter().take(3).position(|&c| c == b'"' || c == b'\'')?;
+        if !b[..open]
+            .iter()
+            .all(|c| matches!(c.to_ascii_lowercase(), b'b' | b'r' | b'u' | b'f'))
+        {
+            return None;
+        }
+        let close = open + 1 + closing_quote(&b[open + 1..], b[open])?;
+        Some((open, close))
+    }
+
+    /// ADR-0011 rule 2: a whole value that is never a secret. `code` is how sure the caller is
+    /// that the line is code (`CODE_NONE`, `CODE_WEAK`: spaces around `=`, which INI and
+    /// properties files have too, `CODE_STRONG`: a binding keyword, a type annotation or a
+    /// trailing `;`). `json` is a strictly parsed JSON member, the only place an agent's session
+    /// UUID is kept (red-team review of #103: `X-Session-Id: <uuid>` and prefixed session ids
+    /// can be credentials).
+    fn is_harmless_value(v: &str, key: &str, code: u8, json: bool) -> bool {
+        if v.is_empty() {
+            return false;
+        }
+        let lower = v.to_ascii_lowercase();
+        if matches!(
+            lower.as_str(),
+            "null" | "none" | "nil" | "undefined" | "true" | "false"
+        ) || v == "\"\""
+            || v == "''"
+        {
+            return true;
+        }
+        // More than 10 digits may be a numeric token, as for the counter rule
+        // (`is_counter_value`).
+        if let Some(digits) = Self::number_digits(v) {
+            return digits <= 10 && !Self::is_passcode_key(key);
+        }
+        (json && Self::is_session_id_key(key) && Self::is_uuid(Self::unquoted(v)))
+            || Self::is_env_lookup(v)
+            || Self::is_variable_reference(v)
+            || (code >= CODE_STRONG && Self::is_code_reference(v) && Self::looks_like_code(v))
+            || (code == CODE_WEAK && Self::is_constant_path(v))
+    }
+
+    /// `settings.SECRET_KEY`: a quote-free dotted path ending in an upper-snake constant, the one
+    /// reference kept on a line that is only weakly code (spaces around `=`).
+    fn is_constant_path(v: &str) -> bool {
+        let segments: Vec<&str> = v.split('.').collect();
+        segments.len() >= 2
+            && segments.iter().all(|s| {
+                s.as_bytes()
+                    .first()
+                    .is_some_and(|c| c.is_ascii_alphabetic() || *c == b'_')
+                    && s.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+            })
+            && segments.last().is_some_and(|s| {
+                s.contains('_')
+                    && s.bytes().any(|c| c.is_ascii_uppercase())
+                    && s.bytes()
+                        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
+            })
+    }
+
+    /// A reference shape that INI, properties and env files do not produce, since spaces around
+    /// `=` alone do not prove code (`password = my.dog.rex` is an INI value; security review): a
+    /// call or subscript, a last segment that is an upper-snake constant
+    /// (`settings.SECRET_KEY`), or a first segment that is a common code root (`self.token`,
+    /// `config.api_key`).
+    fn looks_like_code(v: &str) -> bool {
+        const ROOTS: &[&str] = &[
+            "self",
+            "this",
+            "cls",
+            "settings",
+            "config",
+            "cfg",
+            "conf",
+            "app",
+            "env",
+            "os",
+            "process",
+            "options",
+            "opts",
+            "args",
+            "params",
+            "ctx",
+            "context",
+            "secrets",
+            "credentials",
+            "creds",
+            "Settings",
+            "Config",
+            "std",
+        ];
+        let v = v.trim_start_matches(['&', '*']).trim_start_matches("mut ");
+        let v = v.strip_prefix("await ").unwrap_or(v);
+        // A call or subscript counts only when its head looks like code: a dotted or `::` path,
+        // a snake_case name with an `_`, or a camelCase name (`get_token(user)`,
+        // `os.getenv(K)`, `getToken(u)`); `abc(def)` could be an INI value (security review).
+        if let Some(open) = v.find(['(', '[']) {
+            let head = &v[..open];
+            let camel = head.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
+                && head.bytes().any(|c| c.is_ascii_uppercase());
+            if head.contains(['.', ':', '_']) || camel {
+                return true;
+            }
+        }
+        let segments: Vec<&str> = v
+            .split(['.', ':', '?', '-', '>'])
+            .filter(|s| !s.is_empty())
+            .collect();
+        // An upper-snake constant with an `_` (`SECRET_KEY`): `my.PASS` could be an INI value
+        // (review of #103).
+        let last_is_const = segments.len() > 1
+            && segments.last().is_some_and(|s| {
+                s.contains('_')
+                    && s.bytes().any(|c| c.is_ascii_uppercase())
+                    && s.bytes()
+                        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
+            });
+        last_is_const || segments.first().is_some_and(|s| ROOTS.contains(s))
+    }
+
+    /// The number of digits of a plain decimal number (`-12`, `3.5e-2`, `16_384`), or `None`.
+    fn number_digits(v: &str) -> Option<usize> {
+        let body = v.strip_prefix(['-', '+']).unwrap_or(v);
+        let (mantissa, exponent) = match body.find(['e', 'E']) {
+            Some(i) => (&body[..i], Some(&body[i + 1..])),
+            None => (body, None),
+        };
+        let mut digits = 0usize;
+        let mut dot = false;
+        let mut prev_digit = false;
+        for c in mantissa.chars() {
+            match c {
+                '0'..='9' => {
+                    digits += 1;
+                    prev_digit = true;
+                }
+                '_' if prev_digit => prev_digit = false,
+                '.' if !dot && prev_digit => {
+                    dot = true;
+                    prev_digit = false;
+                }
+                _ => return None,
+            }
+        }
+        if digits == 0 || !prev_digit {
+            return None;
+        }
+        // Exponent digits count too, and at most 3 are a number (review of #103:
+        // `48291038e9182736` is not one).
+        if let Some(e) = exponent {
+            let e = e.strip_prefix(['-', '+']).unwrap_or(e);
+            if e.is_empty() || e.len() > 3 || !e.bytes().all(|c| c.is_ascii_digit()) {
+                return None;
+            }
+            digits += e.len();
+        }
+        Some(digits)
+    }
+
+    /// The key as the sensitivity rules see it, upper case with `-` as `_`.
+    fn normalized_key(key: &str) -> String {
+        Self::split_camel(
+            key.trim()
+                .trim_start_matches("export ")
+                .trim_start_matches('-')
+                .trim_matches(|c: char| c == '"' || c == '\''),
+        )
+        .to_ascii_uppercase()
+        .replace('-', "_")
+    }
+
+    /// Password, passphrase, PIN, OTP, passcode and verification-code keys, whose numbers stay
+    /// hidden.
+    fn is_passcode_key(key: &str) -> bool {
+        // Numbered keys (`pin2`, `otp_2`) are the same keys (review of #103).
+        let full = Self::normalized_key(key);
+        let k = full
+            .trim_end_matches(|c: char| c.is_ascii_digit())
+            .trim_end_matches('_')
+            .to_owned();
+        if Self::key_parts(&k)
+            .iter()
+            .any(|p| matches!(p.as_str(), "PW" | "PWD" | "DBPASS"))
+            || k.ends_with("DBPASS")
+        {
+            return true;
+        }
+        [
+            "PASSWORD",
+            "PASSWD",
+            "PASSCODE",
+            "PASSPHRASE",
+            "TOTP",
+            "MFA",
+            "2FA",
+        ]
+        .iter()
+        .any(|p| k.contains(p))
+            || Self::key_parts(&k)
+                .iter()
+                .any(|p| matches!(p.as_str(), "PASS" | "PIN" | "CODE") || p.ends_with("OTP"))
+            || k.ends_with("PIN")
+            || k.ends_with("OTP")
+    }
+
+    /// Exactly `session_id` / `sessionId`, as agent hook payloads name it (ADR-0011 rule 6;
+    /// red-team review of #103: `sso_session_id`, `admin_session_id` and `X-Session-Id` can be
+    /// credentials).
+    fn is_session_id_key(key: &str) -> bool {
+        matches!(
+            Self::normalized_key(key).as_str(),
+            "SESSION_ID" | "SESSIONID"
+        )
+    }
+
+    fn unquoted(v: &str) -> &str {
+        let b = v.as_bytes();
+        if b.len() >= 2 && (b[0] == b'"' || b[0] == b'\'') && b[b.len() - 1] == b[0] {
+            &v[1..v.len() - 1]
+        } else {
+            v
+        }
+    }
+
+    /// `8-4-4-4-12` hex digits.
+    fn is_uuid(s: &str) -> bool {
+        s.len() == 36
+            && s.bytes().enumerate().all(|(i, c)| {
+                if matches!(i, 8 | 13 | 18 | 23) {
+                    c == b'-'
+                } else {
+                    c.is_ascii_hexdigit()
+                }
+            })
+    }
+
+    /// An environment lookup whose only literal is an upper-snake variable name and which ends
+    /// the value (`os.environ["API_KEY"]`, `env::var("API_KEY")`; ADR-0011 rule 2).
+    fn is_env_lookup(v: &str) -> bool {
+        const HEADS: &[&str] = &[
+            "os.environ[",
+            "os.environ.get(",
+            "os.getenv(",
+            "getenv(",
+            "process.env[",
+            "env::var(",
+            "std::env::var(",
+            "env::var_os(",
+            "std::env::var_os(",
+            "ENV[",
+            "ENV.fetch(",
+            "System.getenv(",
+            "Environment.GetEnvironmentVariable(",
+            "os.Getenv(",
+            "os.LookupEnv(",
+            "Deno.env.get(",
+        ];
+        HEADS.iter().any(|head| {
+            let Some(r) = v.strip_prefix(head) else {
+                return false;
+            };
+            let close = if head.ends_with('(') { ')' } else { ']' };
+            let Some(r) = r.strip_suffix(close) else {
+                return false;
+            };
+            let name = Self::unquoted(r);
+            name.len() + 2 == r.len()
+                && name.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
+                && name
+                    .bytes()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
+        })
+    }
+
+    /// `$NAME`, `${NAME}`, `%NAME%`, `$env:NAME`, with an upper-snake `NAME`: a password that
+    /// merely starts with `$` (`$ecretpw`) is not a reference (security review).
+    fn is_variable_reference(v: &str) -> bool {
+        // An `_` between letters is required (`$DB_PASSWORD`), so `$HUNTER2` is a literal
+        // (second security review).
+        let ident = |s: &str| {
+            s.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
+                && s.bytes()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
+                && s.trim_end_matches('_').contains('_')
+        };
+        v.strip_prefix("${")
+            .and_then(|r| r.strip_suffix('}'))
+            .is_some_and(ident)
+            || v.strip_prefix("$env:").is_some_and(ident)
+            || v.strip_prefix('$').is_some_and(ident)
+            || v.strip_prefix('%')
+                .and_then(|r| r.strip_suffix('%'))
+                .is_some_and(ident)
+    }
+
+    /// A quote-free reference in code: an identifier path with at least one `.`, `::`, `?.` or
+    /// `->` step, call or subscript (`settings.SECRET_KEY`, `get_token(user)`,
+    /// `config.api_key.clone()`). A bare identifier is not one: in config text it is a literal.
+    fn is_code_reference(v: &str) -> bool {
+        if v.contains(['"', '\'', '`']) {
+            return false;
+        }
+        let mut s = v;
+        for p in ["&mut ", "&", "*", "await "] {
+            if let Some(r) = s.strip_prefix(p) {
+                s = r;
+                break;
+            }
+        }
+        let ident_len = |s: &str| -> usize {
+            let b = s.as_bytes();
+            if !b
+                .first()
+                .is_some_and(|c| c.is_ascii_alphabetic() || *c == b'_')
+            {
+                return 0;
+            }
+            b.iter()
+                .take_while(|c| c.is_ascii_alphanumeric() || **c == b'_')
+                .count()
+        };
+        let n = ident_len(s);
+        if n == 0 {
+            return false;
+        }
+        s = &s[n..];
+        let mut steps = 0usize;
+        while !s.is_empty() {
+            if let Some(r) = [".", "::", "?.", "->"]
+                .iter()
+                .find_map(|sep| s.strip_prefix(sep))
+            {
+                let n = ident_len(r);
+                if n == 0 {
+                    return false;
+                }
+                s = &r[n..];
+            } else if s.starts_with(['(', '[']) {
+                let open = s.as_bytes()[0];
+                let close = if open == b'(' { b')' } else { b']' };
+                let mut depth = 0usize;
+                let mut end = None;
+                for (i, c) in s.bytes().enumerate() {
+                    if c == open {
+                        depth += 1;
+                    } else if c == close {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = Some(i);
+                            break;
+                        }
+                    }
+                }
+                let Some(end) = end else {
+                    return false;
+                };
+                // Arguments are comma-separated identifiers and simple punctuation, never free
+                // text: no space inside an argument (red-team review of #103:
+                // `cfg.api(secret words)`).
+                if !s[1..end].split(',').all(|arg| {
+                    arg.trim().bytes().all(|c| {
+                        c.is_ascii_alphanumeric()
+                            || matches!(
+                                c,
+                                b'_' | b'.' | b':' | b'&' | b'*' | b'(' | b')' | b'[' | b']'
+                            )
+                    })
+                }) {
+                    return false;
+                }
+                s = &s[end + 1..];
+            } else if let Some(r) = s.strip_prefix('?') {
+                // `?` (Rust) after a step, never a step of its own.
+                if steps == 0 {
+                    return false;
+                }
+                s = r;
+                continue;
+            } else if s.starts_with("!(") {
+                s = &s[1..];
+                continue;
+            } else {
+                return false;
+            }
+            steps += 1;
+        }
+        steps > 0
     }
 
     fn redact_env_assignments(line: &str) -> String {
@@ -847,9 +2081,34 @@ impl SecretRedactor {
                 } else {
                     "[REDACTED:ENV_SECRET]"
                 };
-                if let Some(next_pos) =
-                    Self::redact_value_span(&mut out, val_start, replacement, false)
+                // How sure we are this is code: a binding keyword or a trailing `;` is strong;
+                // spaces around `=` are weak, since INI and properties files have them too
+                // (red-team review of #103).
+                let spaced = eq_idx > 0
+                    && out.as_bytes()[eq_idx - 1].is_ascii_whitespace()
+                    && out
+                        .as_bytes()
+                        .get(eq_idx + 1)
+                        .is_some_and(u8::is_ascii_whitespace);
+                let line_end = out[eq_idx..].find('\n').map_or(out.len(), |i| eq_idx + i);
+                let code_context = if Self::is_code_binding(&out[..key_start])
+                    || (spaced && out[..line_end].trim_end().ends_with(';'))
                 {
+                    CODE_STRONG
+                } else if spaced {
+                    CODE_WEAK
+                } else {
+                    CODE_NONE
+                };
+                let key = key_name.to_owned();
+                if let Some(next_pos) = Self::redact_value_span(
+                    &mut out,
+                    val_start,
+                    replacement,
+                    false,
+                    &key,
+                    code_context,
+                ) {
                     search_pos = next_pos;
                     continue;
                 }
@@ -938,6 +2197,7 @@ impl SecretRedactor {
                 && Self::is_sensitive_key_name(key_name)
                 && !Self::is_token_quantity(key_name, &out[..key_start])
             {
+                let key = key_name.to_owned();
                 let mut val_start = colon_idx + 1;
                 while val_start < bytes.len()
                     && (bytes[val_start] == b' ' || bytes[val_start] == b'\t')
@@ -994,6 +2254,8 @@ impl SecretRedactor {
                             rhs_start,
                             "[REDACTED:CONFIG_SECRET]",
                             true,
+                            &key,
+                            CODE_STRONG,
                         )
                     {
                         search_pos = next_pos;
@@ -1008,6 +2270,8 @@ impl SecretRedactor {
                             val_start,
                             "[REDACTED:CONFIG_SECRET]",
                             true,
+                            &key,
+                            CODE_NONE,
                         )
                     {
                         search_pos = next_pos;
@@ -1016,9 +2280,14 @@ impl SecretRedactor {
                     search_pos = after.max(colon_idx + 1);
                     continue;
                 }
-                if let Some(next_pos) =
-                    Self::redact_value_span(&mut out, val_start, "[REDACTED:CONFIG_SECRET]", true)
-                {
+                if let Some(next_pos) = Self::redact_value_span(
+                    &mut out,
+                    val_start,
+                    "[REDACTED:CONFIG_SECRET]",
+                    true,
+                    &key,
+                    CODE_NONE,
+                ) {
                     search_pos = next_pos;
                     continue;
                 }
@@ -1295,9 +2564,15 @@ impl SecretRedactor {
                     val_start += 1;
                 }
                 if val_start < bytes.len() && bytes[val_start] != b'-' {
-                    if let Some(next_pos) =
-                        Self::redact_value_span(&mut out, val_start, "[REDACTED:CLI_SECRET]", false)
-                    {
+                    let key = flag_name.to_owned();
+                    if let Some(next_pos) = Self::redact_value_span(
+                        &mut out,
+                        val_start,
+                        "[REDACTED:CLI_SECRET]",
+                        false,
+                        &key,
+                        CODE_NONE,
+                    ) {
                         search_pos = next_pos;
                         continue;
                     }
@@ -1808,13 +3083,132 @@ impl ContinuationLine {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+// Each flag is one continuation mode of a pending value; they are independent and tested apart.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Clone, Copy, Debug, Default)]
 struct PendingSecret {
     indent: usize,
     block: bool,
     scalar_indent: Option<usize>,
     /// Quote character of a quoted scalar that is still open at the end of the key's line.
     quote: Option<u8>,
+    /// A YAML plain scalar: only lines indented past the key continue it.
+    plain: bool,
+    /// A value continued with a trailing backslash.
+    backslash: bool,
+    /// Brackets the value left open (`api_key = (`, `token = [`).
+    brackets: usize,
+    /// Lines hidden so far in the backslash and bracket modes (capped like key blocks).
+    lines: usize,
+    /// The open quote is a triple quote (`"""`, `'''`): only the same triple closes it.
+    triple: bool,
+    /// A quote left open inside a bracketed value at the end of the last line.
+    bracket_quote: Option<char>,
+    /// The value may be inside a string (a quote after a glued `//`): no closer ends it before
+    /// the line cap.
+    sticky: bool,
+}
+
+/// A line continued by a trailing backslash: an odd number of them (`\\\\` is an escaped one).
+fn ends_with_continuation(line: &str) -> bool {
+    line.trim_end()
+        .bytes()
+        .rev()
+        .take_while(|&b| b == b'\\')
+        .count()
+        % 2
+        == 1
+}
+
+/// What one line contributes to a value that may span lines: the bracket that closes it (when
+/// `depth` brackets were open), the first statement-ending `;` at depth zero outside quotes, and
+/// the bracket depth and open quote at the end of the line. Quote state carries across lines, so
+/// a bracket inside a multi-line string is not structure (review of #103).
+#[derive(Clone, Copy, Debug)]
+struct ValueScan {
+    close: Option<usize>,
+    stmt_end: Option<usize>,
+    depth: usize,
+    quote: Option<char>,
+    /// Where the quote still open at the end of the text was opened on this line.
+    quote_at: Option<usize>,
+    /// A quote character after a glued `//`: the rest may or may not be a string.
+    ambiguous_quote: bool,
+}
+
+fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
+    let mut out = ValueScan {
+        close: None,
+        stmt_end: None,
+        depth,
+        quote,
+        quote_at: None,
+        ambiguous_quote: false,
+    };
+    let mut escaped = false;
+    let mut ambiguous = false;
+    let mut prev: Option<char> = None;
+    for (i, c) in text.char_indices() {
+        let before = prev;
+        prev = Some(c);
+        if let Some(q) = out.quote {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == q {
+                out.quote = None;
+            }
+            continue;
+        }
+        match c {
+            // A Rust lifetime (`&'static`, `<'a>`) is not a quote.
+            '\'' if before.is_some_and(|b| matches!(b, '&' | '<')) => {}
+            // After a glued `//` a quote character may be an apostrophe in a comment or open a
+            // real string. It does not open a quote (which could hide a later opener), but it
+            // marks the value as possibly quoted, which keeps it pending until the line cap
+            // (security review of #103).
+            '"' | '\'' | '`' if ambiguous => out.ambiguous_quote = true,
+            '"' | '\'' | '`' => {
+                out.quote = Some(c);
+                out.quote_at = Some(i);
+            }
+            // A comment ends the structure on this line (review of #103: a `)` or `(` in a
+            // comment is not a bracket).
+            '#' if before.is_none_or(char::is_whitespace) => return out,
+            // A glued `#` (`"part1"#)`, `r#"`) may start a comment: like a glued `//`, it can
+            // keep a value open but never close it. No exemption, not even for raw strings:
+            // each one opened a parser differential (security review of #103), and a raw string
+            // in a multi-line sensitive value only costs over-redaction.
+            '#' => ambiguous = true,
+            // `//` after whitespace is a comment and ends the scan. A glued `//` that is not a
+            // URL scheme (`a//b`: floor division, or a comment) is ambiguous: openers and quotes
+            // after it still count, closers do not, so it can keep a value open but never close
+            // it or drop an opener (security review of #103).
+            '/' if before == Some('/')
+                && text[..i - 1]
+                    .chars()
+                    .next_back()
+                    .is_none_or(char::is_whitespace) =>
+            {
+                return out;
+            }
+            '/' if before == Some('/') && !text[..i - 1].ends_with(':') => ambiguous = true,
+            '(' | '[' | '{' => out.depth += 1,
+            ')' | ']' | '}' if !ambiguous => {
+                if out.depth > 0 {
+                    out.depth -= 1;
+                    if out.depth == 0 && depth > 0 && out.close.is_none() {
+                        out.close = Some(i);
+                        return out;
+                    }
+                }
+            }
+            ';' if out.depth == 0 && out.stmt_end.is_none() => out.stmt_end = Some(i),
+            _ => {}
+        }
+    }
+    out
 }
 
 /// If `value` starts a single- or double-quoted scalar that does not close within it, returns
@@ -2027,6 +3421,11 @@ fn json_escape(text: &str) -> String {
 
 /// Deepest JSON nesting the structural redactor accepts; deeper lines use the line rules.
 const MAX_JSON_DEPTH: usize = 128;
+
+/// How sure a caller is that a line is code (see `SecretRedactor::is_harmless_value`).
+const CODE_NONE: u8 = 0;
+const CODE_WEAK: u8 = 1;
+const CODE_STRONG: u8 = 2;
 
 /// A strict RFC 8259 scanner over one line that records redaction edits as byte ranges.
 struct JsonScan<'a> {
@@ -2257,7 +3656,13 @@ impl JsonScan<'_> {
                 depth + 1,
                 key_text.as_deref(),
             )?;
-            if sensitive && !check {
+            // A value that is never a secret (`null`, `true`, `""`, most numbers, an agent's
+            // session UUID) stays (ADR-0011 rule 2); an undecodable key never qualifies.
+            let harmless = key_text.as_deref().is_some_and(|k| {
+                std::str::from_utf8(&self.s[value_start..value_end])
+                    .is_ok_and(|v| SecretRedactor::is_harmless_value(v, k, CODE_NONE, true))
+            });
+            if sensitive && !check && !harmless {
                 const MARKER: &str = "\"[REDACTED:CONFIG_SECRET]\"";
                 if &self.s[value_start..value_end] != MARKER.as_bytes() {
                     self.edits.push((value_start, value_end, MARKER.to_owned()));
@@ -2411,8 +3816,10 @@ urls: postgres://localhost:5432/dev postgres://admin:p@ssw0rd!@prod.db:5432/main
         assert!(!clean_multi.contains("nested_tok_789"));
         assert!(clean_multi.contains("Apply basic configuration and nonbasic settings"));
         assert!(!clean_multi.contains("quoted_aws_secret"));
-        // Since v1.3.1 (#29) the rest of the line after the quoted value is hidden with it.
-        assert!(clean_multi.contains("FOO=1 AWS_SECRET_ACCESS_KEY=[REDACTED:ENV_SECRET]\n"));
+        // ADR-0011: only the literal is hidden; the quote-free rest of the line stays.
+        assert!(
+            clean_multi.contains("FOO=1 AWS_SECRET_ACCESS_KEY=\"[REDACTED:ENV_SECRET]\" BAR=2\n")
+        );
         assert!(!clean_multi.contains("p@ssw0rd!"));
         assert!(clean_multi.contains("postgres://localhost:5432/dev"));
         assert!(clean_multi.contains("postgres://admin:[REDACTED:URL_PASSWORD]@prod.db:5432/main"));
@@ -2445,7 +3852,10 @@ path: C:\\Users\\dev\\file.rs root={high_entropy_hex}
         assert!(!clean_edges.contains(",defghijkl"));
         // Since v1.3.1 (#29) everything from the first quoted value to the end of the line is one
         // marker, so the later flags on this line go with it.
-        assert!(clean_edges.contains("curl --api-key=[REDACTED:CLI_SECRET]\n"));
+        // ADR-0011: the first literal keeps its quotes; the rest from the next quote is hidden.
+        assert!(clean_edges.contains(
+            "curl --api-key=\"[REDACTED:CLI_SECRET]\" --private-key=[REDACTED:CLI_SECRET]\n"
+        ));
         for leaked in [
             "quoted_cli_secret_123",
             "priv_cli_456",
@@ -2458,5 +3868,308 @@ path: C:\\Users\\dev\\file.rs root={high_entropy_hex}
         assert!(clean_edges.contains("redis://token:[REDACTED:URL_PASSWORD]@host:6379"));
         assert!(clean_edges.contains(&format!("root={high_entropy_hex}")));
         assert!(clean_edges.contains("\"stdout\":\"\\n[REDACTED:HIGH_ENTROPY]\""));
+    }
+
+    // T-74-004: direct tests of the ADR-0011 helpers, so a changed boundary or operator is
+    // caught where it lives (mutation run on the Sprint 4 diff, 2026-11-25).
+    type R = SecretRedactor;
+
+    #[test]
+    fn value_extent_stops_at_structure_outside_quotes_and_brackets() {
+        assert_eq!(R::value_extent("abc", false), Some(3));
+        assert_eq!(R::value_extent("abc; x", false), Some(3));
+        assert_eq!(R::value_extent("a,b", false), Some(3));
+        assert_eq!(R::value_extent("a,b", true), Some(1));
+        assert_eq!(R::value_extent("f(a,b), c", true), Some(6));
+        assert_eq!(R::value_extent("a) x", false), Some(1));
+        assert_eq!(R::value_extent("[a];b", false), Some(3));
+        assert_eq!(R::value_extent("\"a;b\";c", false), Some(5));
+        assert_eq!(R::value_extent("'a)b' x", false), Some(7));
+        assert_eq!(R::value_extent("`a,b`,c", true), Some(5));
+        assert_eq!(R::value_extent("a # c", false), Some(2));
+        assert_eq!(R::value_extent("a#c", false), Some(3));
+        assert_eq!(R::value_extent("# c", false), Some(0));
+        assert_eq!(R::value_extent("a // c", false), Some(2));
+        assert_eq!(R::value_extent("http://x", false), Some(8));
+        assert_eq!(R::value_extent("a / b", false), Some(5));
+        assert_eq!(R::value_extent("(a # b) c", false), Some(9));
+        assert_eq!(R::value_extent("f(a; b)", false), Some(7));
+        assert_eq!(R::value_extent("\"open", false), None);
+        assert_eq!(R::value_extent("f(a", false), None);
+    }
+
+    #[test]
+    fn leading_literal_takes_short_prefixes_only() {
+        assert_eq!(R::leading_literal("\"ab\" x"), Some((0, 3)));
+        assert_eq!(R::leading_literal("'ab'"), Some((0, 3)));
+        assert_eq!(R::leading_literal("rb\"ab\""), Some((2, 5)));
+        // Single quotes close YAML-style (`''` escapes, a backslash does not), so a Python
+        // `'a\'b'` ends early; the glued remainder then sends the value to the #29 rule.
+        assert_eq!(R::leading_literal("f'a\\'b'"), Some((1, 4)));
+        assert_eq!(R::leading_literal("'a''b'"), Some((0, 5)));
+        assert_eq!(R::leading_literal("\"a\\\"b\""), Some((0, 5)));
+        assert!(!SecretRedactor::redact("password = 'qqzz\\'rrss'\n").contains("rrss"));
+        assert_eq!(R::leading_literal("xy\"ab\""), None);
+        assert_eq!(R::leading_literal("abc\"d\""), None);
+        assert_eq!(R::leading_literal("`ab`"), None);
+        assert_eq!(R::leading_literal("\"ab"), None);
+    }
+
+    #[test]
+    fn number_digits_reads_plain_decimals_only() {
+        assert_eq!(R::number_digits("0"), Some(1));
+        assert_eq!(R::number_digits("-12"), Some(2));
+        assert_eq!(R::number_digits("+7"), Some(1));
+        assert_eq!(R::number_digits("16_384"), Some(5));
+        assert_eq!(R::number_digits("3.25"), Some(3));
+        // Exponent digits count toward the bound (review of #103).
+        assert_eq!(R::number_digits("3.5e-2"), Some(3));
+        assert_eq!(R::number_digits("1E9"), Some(2));
+        assert_eq!(R::number_digits("1e1234"), None);
+        for bad in [
+            "", "-", "1.", ".5", "1..2", "1.2.3", "_1", "1_", "1__2", "1e", "1e+", "1ex", "0x10",
+            "12a", "e5",
+        ] {
+            assert_eq!(R::number_digits(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn key_classifiers() {
+        assert_eq!(R::normalized_key(" export \"api-key\" "), "API_KEY");
+        assert_eq!(R::normalized_key("--auth-token"), "AUTH_TOKEN");
+        for k in [
+            "password",
+            "db_passwd",
+            "PASSCODE",
+            "pass_phrase_x",
+            "user_pin",
+            "pin",
+            "otp",
+            "mfa_token",
+            "totp_seed",
+            "verification_code",
+            "x_pass",
+        ] {
+            assert!(R::is_passcode_key(k), "{k}");
+        }
+        for k in ["api_key", "token", "auth_tokens", "spin_rate", "session_id"] {
+            assert!(!R::is_passcode_key(k), "{k}");
+        }
+        for k in ["session_id", "sessionId", "SESSIONID", "SESSION_ID"] {
+            assert!(R::is_session_id_key(k), "{k}");
+        }
+        // Prefixed ids can be credentials (red-team review of #103).
+        for k in [
+            "claude_session_id",
+            "agent-session-id",
+            "sso_session_id",
+            "session_token",
+            "auth_session_id",
+            "api_session_id",
+            "session",
+            "sessions_id",
+        ] {
+            assert!(!R::is_session_id_key(k), "{k}");
+        }
+    }
+
+    #[test]
+    fn small_shape_helpers() {
+        assert_eq!(R::unquoted("\"ab\""), "ab");
+        assert_eq!(R::unquoted("'ab'"), "ab");
+        assert_eq!(R::unquoted("\"ab'"), "\"ab'");
+        assert_eq!(R::unquoted("\""), "\"");
+        assert_eq!(R::unquoted("ab"), "ab");
+        assert!(R::is_uuid("8f2c1e9a-3b4d-4c5e-9f60-718293a4b5c6"));
+        assert!(R::is_uuid("8F2C1E9A-3B4D-4C5E-9F60-718293A4B5C6"));
+        assert!(!R::is_uuid("8f2c1e9a-3b4d-4c5e-9f60-718293a4b5c"));
+        assert!(!R::is_uuid("8f2c1e9a3b4d-4c5e-9f60-718293a4b5c6x"));
+        assert!(!R::is_uuid("8f2c1e9a-3b4d-4c5e-9f60-718293a4b5cg"));
+        assert!(!R::is_uuid("8f2c1e9a-3b4d-4c5e-9f60_718293a4b5c6"));
+        for v in [
+            "$DB_PASSWORD",
+            "${GITHUB_TOKEN}",
+            "%APP_DATA%",
+            "$env:MY_KEY",
+            "$A_1",
+        ] {
+            assert!(R::is_variable_reference(v), "{v}");
+        }
+        for v in [
+            "$HUNTER2",
+            "$A_",
+            "${A_B",
+            "$db_password",
+            "%A_B",
+            "$",
+            "A_B",
+            "$_A",
+        ] {
+            assert!(!R::is_variable_reference(v), "{v}");
+        }
+        for v in [
+            "os.environ[\"API_KEY\"]",
+            "os.getenv('API_KEY')",
+            "env::var(\"GITHUB_TOKEN\")",
+            "ENV[\"X1\"]",
+        ] {
+            assert!(R::is_env_lookup(v), "{v}");
+        }
+        for v in [
+            "os.environ[\"api_key\"]",
+            "os.getenv(\"API_KEY\") or \"x\"",
+            "os.environ[\"API_KEY\")",
+            "foo(\"API_KEY\")",
+            "os.getenv(\"\")",
+            "os.getenv(\"A\"B\")",
+        ] {
+            assert!(!R::is_env_lookup(v), "{v}");
+        }
+    }
+
+    #[test]
+    fn code_references_and_code_shapes() {
+        for v in [
+            "a.b",
+            "a::b",
+            "a?.b",
+            "a->b",
+            "f(x)",
+            "a.b(c)",
+            "a[b]",
+            "a.b?",
+            "&a.b",
+            "&mut a.b",
+            "*a.b",
+            "await a.b",
+            "fmt!(x)",
+            "a.b(c, d).e",
+        ] {
+            assert!(R::is_code_reference(v), "{v}");
+        }
+        for v in [
+            "a", "a?", "a.", ".a", "a.b c", "f(\"x\")", "f(a!b)", "f(a", "1a.b", "a..b", "a.b)",
+            "a.1b",
+        ] {
+            assert!(!R::is_code_reference(v), "{v}");
+        }
+        for v in [
+            "self.token",
+            "config.api_key",
+            "settings.SECRET_KEY",
+            "get_token(u)",
+            "getToken(u)",
+            "os.getenv(K)",
+            "a::b(c)",
+            "x.API_KEY",
+        ] {
+            assert!(R::looks_like_code(v), "{v}");
+        }
+        for v in ["my.dog.rex", "abc(def)", "Secret(x)", "a.B", "my.dog.Rex"] {
+            assert!(!R::looks_like_code(v), "{v}");
+        }
+    }
+
+    #[test]
+    fn kept_tails_are_exact() {
+        for (line, expected) in [
+            (
+                "password = \"abc\"  # c\n",
+                "password = \"[REDACTED:ENV_SECRET]\"  # c\n",
+            ),
+            ("password = 'abc'\n", "password = '[REDACTED:ENV_SECRET]'\n"),
+            // A bare tail after a literal is part of the value to an INI parser (red-team);
+            // a following assignment is not.
+            (
+                "password = \"abc\" + x\n",
+                "password = \"[REDACTED:ENV_SECRET]\" [REDACTED:ENV_SECRET]\n",
+            ),
+            (
+                "password = \"abc\" next=1\n",
+                "password = \"[REDACTED:ENV_SECRET]\" next=1\n",
+            ),
+            (
+                "password = \"abc\" + \"d\"\n",
+                "password = \"[REDACTED:ENV_SECRET]\" [REDACTED:ENV_SECRET]\n",
+            ),
+            (
+                // Code holding a literal takes the #29 rule: hidden from its start.
+                "token = None or \"abc\"\n",
+                "token = [REDACTED:ENV_SECRET]\n",
+            ),
+            ("token = None\n", "token = None\n"),
+            (
+                "token = None # \"c\"\n",
+                "token = None # [REDACTED:ENV_SECRET]\n",
+            ),
+            (
+                "password = \"[REDACTED:ENV_SECRET]\" x\n",
+                "password = \"[REDACTED:ENV_SECRET]\" [REDACTED:ENV_SECRET]\n",
+            ),
+            (
+                "password = \"[REDACTED:ENV_SECRET]\" [REDACTED:ENV_SECRET]\n",
+                "password = \"[REDACTED:ENV_SECRET]\" [REDACTED:ENV_SECRET]\n",
+            ),
+            // Outside brackets a comma is part of a YAML scalar, so the #29 rule applies.
+            (
+                "token: \"abc\", next: 1\n",
+                "token: [REDACTED:CONFIG_SECRET]\n",
+            ),
+            ("f(token=None, x=1)\n", "f(token=None, x=1)\n"),
+            ("{token: null, x: 1}\n", "{token: null, x: 1}\n"),
+        ] {
+            assert_eq!(SecretRedactor::redact(line), expected, "{line:?}");
+        }
+    }
+
+    #[test]
+    fn env_code_context_needs_spaces_or_a_binding() {
+        assert_eq!(
+            SecretRedactor::redact("password = settings.SECRET_KEY\n"),
+            "password = settings.SECRET_KEY\n"
+        );
+        assert_eq!(
+            SecretRedactor::redact("let password=settings.SECRET_KEY;\n"),
+            "let password=settings.SECRET_KEY;\n"
+        );
+        for line in [
+            "password=settings.SECRET_KEY\n",
+            "password =settings.SECRET_KEY\n",
+            "password= settings.SECRET_KEY\n",
+        ] {
+            assert!(
+                !SecretRedactor::redact(line).contains("settings"),
+                "{line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn json_fields_need_a_leading_member() {
+        assert_eq!(SecretRedactor::redact_json_fields("   "), None);
+        assert_eq!(SecretRedactor::redact_json_fields(""), None);
+        assert_eq!(SecretRedactor::redact_json_fields("a: \"x\""), None);
+        assert_eq!(
+            SecretRedactor::redact_json_fields("  \"token\": \"x\", \"n\": 1,  "),
+            Some("  \"token\": \"[REDACTED:CONFIG_SECRET]\", \"n\": 1,  ".to_owned())
+        );
+        assert_eq!(
+            SecretRedactor::redact_json_fields("\"n\": 1"),
+            Some("\"n\": 1".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_cli_flag_without_a_value_is_left_alone() {
+        for line in ["run --token\n", "run --token\tother\n", "run --to x\n"] {
+            let clean = SecretRedactor::redact(line);
+            assert!(
+                !clean.contains("CLI_SECRET") || line.contains("--token\t"),
+                "{line:?} -> {clean:?}"
+            );
+        }
+        assert!(!SecretRedactor::redact("run --token abcdefgh\n").contains("abcdefgh"));
+        assert!(!SecretRedactor::redact("run --token\tabcdefgh\n").contains("abcdefgh"));
     }
 }

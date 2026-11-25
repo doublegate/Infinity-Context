@@ -2,8 +2,9 @@
 
 **Phase:** Phase 9 — Storage, Scale and Platforms  
 **Release:** v1.7.0  
-**Sprint Goal:** Make saves incremental, compress the CAS, index cold grep, and reduce lock
-contention between parallel agents, each change backed by a measurement.  
+**Sprint Goal:** Make saves incremental, compress the CAS, index cold grep, reduce lock
+contention between parallel agents, and re-redact a stored workspace (`icx rescan --apply`), each
+change backed by a measurement.  
 **Estimated Duration:** 2 weeks
 
 ## Research gate
@@ -107,6 +108,41 @@ record it and retarget the ticket.
 **Dependencies:** T-83-001  
 **Reference:** field finding (8 s PostToolUse outliers); plan Phase 9 Sprint 1  
 **Estimated Complexity:** L
+
+### T-91-005 — `icx rescan --apply`: re-redact a stored workspace
+
+**Description:** Extend the v1.5.0 report-only `icx rescan` (T-74-001) with an apply step that
+re-redacts stored content under the current redactor. It writes new CAS objects and remaps every
+reference rather than editing objects in place, keeps old handles resolvable, and removes the old
+bytes from the database file. Deferred from v1.5.0 by owner decision (2026-11-25); the full
+reference map is in #102.
+
+**Research:** Re-check the reference map recorded in #102 against the store after T-91-001 and
+T-91-002, which change how derived state and CAS bytes are saved. Hypothesis: a bottom-up DAG
+remap that reuses stored ordinals reproduces every non-redacted digest unchanged. Measurement: a
+remap over a field-sized workspace with no redaction changes leaves the DAG, epoch roots and seal
+identical.
+
+**Acceptance Criteria:**
+
+- [ ] Dry-run stays the default; `--apply` needs explicit confirmation and writes nothing
+  without it (tested).
+- [ ] The Merkle-DAG, sealed epochs, HDC index, graph, lexical index, occurrence records and
+  subagent steps are rebuilt or remapped, and derived text is re-sanitized, not only id-mapped.
+- [ ] Old `#icx:` handles resolve through an old-to-new alias table (or a tombstone naming the
+  re-redaction).
+- [ ] Re-redaction is atomic per workspace: the rebuild runs outside the workspace lock, and the
+  swap commits under it only if the generation is unchanged. A snapshot is kept, and its
+  path-bound seal is documented.
+- [ ] `verify_all_merkle_integrity_with_cas` passes afterwards. So do the new checks: epoch copies
+  match the DAG; graph provenance, HDC events, occurrences and subagent steps name stored
+  artifacts; and no artifact changes under `redact` again.
+- [ ] After `wal_checkpoint(TRUNCATE)` and `VACUUM`, no re-redacted secret remains in the
+  database or WAL bytes (tested by scanning the files); legacy v1.0.x JSON files are reported.
+
+**Dependencies:** T-74-001 (v1.5.0 report), T-91-001, T-91-002
+**Reference:** #102; T-74-001 research (2026-11-25)
+**Estimated Complexity:** XL
 
 ## Sprint exit
 

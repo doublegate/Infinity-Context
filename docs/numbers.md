@@ -215,7 +215,9 @@ after v1.5.0 is installed, and is not claimed until then.
 | Epoch header id | hex `u32`, 4 to 8 hex digits (`ep=000a` is 10) | `crates/icx-codec/src/ahtl.rs` |
 | Braille-256 sketch sizes | 8 bytes (Profile B) and 64 bytes (Profile A), one byte per glyph | `crates/icx-codec/src/braille.rs` |
 | Redactor tiers | 4 (Tier 0 delimiter escaping, Tier 1 key blocks, Tier 2 prefixes and assignments, Tier 3 entropy) | `crates/icx-codec/src/redact.rs` |
-| Entropy gate | Shannon character entropy above 4.35 bits/char | `crates/icx-codec/src/redact.rs:863` |
+| Entropy gate | Shannon character entropy above 4.35 bits/char | `crates/icx-codec/src/redact.rs` (`is_high_entropy_secret_candidate`) |
+| `icx rescan` on a field workspace (v1.5.0) | 4,694 artifacts in 1.9 s, 75 MB peak RSS: 169 affected (stored by versions before v1.3.1), 76 markers, 5 subjects; the store unchanged. After the red-team fixes: 214 of 4,824 affected, 303 markers (stricter key, value and multi-line rules) | `icx rescan --limit 0` on this project's workspace, 2026-11-25 |
+| Structural redactor corpus (v1.5.0, ADR-0011) | 19 lines, 590 bytes: missed secrets 0 before and after; bytes hidden that were not a secret 183 before (v1.4.1 rule), 24 with the first ADR-0011 rules, 43 after the red-team fixes (#103) | `crates/icx-codec/tests/redact_structural_v150.rs` (`measure_corpus`, ignored; before measured on `main` at 80f4b94) |
 | `FLAG_IS_REDACTED` | bit `1 << 7` of `ChannelBHologram` byte `B[7]` | `crates/icx-codec/src/braille.rs` |
 
 ### Hyperdimensional index and graph (`icx-hdc`, `icx-store`)

@@ -175,6 +175,8 @@ icx <SUBCOMMAND> [OPTIONS]
   encode-ahtl <FILE> [--dir <PATH>]   Store a file and print its AHTL packet + handle
   decode-ahtl <AHTL_STRING>           Parse and inspect an AHTL packet
   status [--dir <PATH>]               MMU status
+  rescan [--dir <PATH>] [--limit <N>] Report what the current redactor would hide in stored
+                                      content (counts and handles, never text); read only
   doctor [--dir <PATH>]               Inspect agent installations, the bus path and workspace integrity
   benchmark [--json]                   Synthetic in-process benchmark suite with strict SLO gates;
                                       JSON includes actual 1k/10k scans and build/fixture provenance

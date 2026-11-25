@@ -113,10 +113,41 @@ Tiers:
   scheme, CLI secret flags (`--api-key=`, `--token=`, `--password=`, `--secret=`), `Bearer` and
   `Basic` headers, and `.env`/JSON/YAML assignments to sensitive key names (including multi-line
   JSON/YAML values after a sensitive key) (ICX-AUD-015).
-  After a sensitive key, a value holding any quote is hidden from its first quote to the end of
-  the line; only a call head right before that quote stays visible (v1.3.1, #29). A line that is
-  one complete JSON object or array is redacted structurally instead: only the values of sensitive
-  keys are replaced, and other strings are redacted with their key as context.
+  After a sensitive key, how much is hidden depends on the value's shape (v1.5.0,
+  [ADR-0011](adr/0011-structural-redactor.md)):
+  - **Never a secret, kept:** `null`, `None`, `nil`, `undefined`, `true`, `false`, `""`, `''`;
+    numbers of at most 10 digits, except under password, PIN, OTP, passcode and verification-code
+    keys; `$VAR`, `${VAR}`, `%VAR%` with an upper-snake name; an environment lookup whose only literal is an upper-snake
+    name (`os.environ["API_KEY"]`, `env::var("API_KEY")`); a UUID in a strictly parsed JSON member
+    named exactly `session_id` or `sessionId`; and, in code, quote-free references. With a
+    binding keyword (`let`/`const`/`var`), a type annotation or a trailing `;`, that is a call,
+    subscript or dotted path that ends in a constant or starts at a code root (`get_token(user)`,
+    `settings.SECRET_KEY`, `self.token`). With spaces around `=` alone, which INI files also
+    have, it is only a constant path (`settings.SECRET_KEY`). A bare identifier or a value such
+    as `my.dog.rex` is a literal.
+  - **One literal** that ends the value token: its contents are replaced inside its own quotes
+    (`password = "[REDACTED:ENV_SECRET]"  # comment`).
+  - **After a literal,** the rest of the line stays only when it is a comment, structure inside
+    brackets opened before the key, the next assignment (`BAR=2`; `user: bob` in config text) or
+    the next flag after a CLI flag. Any other tail, such as a bare word, is part of the value and
+    is hidden. A later quote is still hidden from that quote on, since it may be a second secret.
+  - **An unquoted value** runs to the end of the line. It ends before a comment, and outside
+    config text before a shell `|`, `&&` or `;`, or the next query parameter. A CLI flag value
+    ends at whitespace.
+  - **Multi-line values** are hidden after `=`, as are YAML plain scalars continued on indented
+    lines (capped at the key-block limit):
+    - an empty right-hand side;
+    - an unterminated, triple or backtick quote;
+    - a trailing backslash (ended by a blank line);
+    - an unclosed bracket. Quote state carries across lines, and a tail that continues the
+      expression after the closing bracket is hidden.
+  - **Any other value holding a quote** (code: concatenation, ternaries, lambdas, chained calls)
+    keeps the v1.3.1 rule (#29): hidden from its first quote to the end of the line, with a call
+    head right before that quote visible.
+
+  A line that is one complete JSON object or array, or a list of JSON members without braces
+  (`"k": v, "k2": v2`), is redacted structurally: only sensitive values are replaced, other
+  strings are redacted with their key as context, and the values above stay.
 - **Tier 3 (entropy gate):** unprefixed high-entropy Base64 tokens ($|S| \ge 24$,
   $H(S) > 4.35$ bits/char) and hex assignment values ($|S| \ge 32$, $H(S) > 3.50$ bits/char).
 

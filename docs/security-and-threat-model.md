@@ -158,10 +158,14 @@ These limits also apply to the v1.2.0 candidate.
    sensitive key names and high-entropy tokens. A secret in an unrecognized format, a
    low-entropy password with no sensitive key nearby, or a secret split across unusual
    structure can be stored in the CAS and shown to a model. Do not rely on `icx` as the only
-   control keeping secrets out of agent context.
+   control keeping secrets out of agent context. Content is redacted once, when it is stored, so
+   a store written by an older version keeps what that version missed; since v1.5.0
+   `icx rescan` reports such content (counts and handles, never values). Re-redacting it in
+   place is planned for v1.7.0 (#102).
 2. **The redactor can also over-redact.** High-entropy non-secrets (hashes, identifiers) may be
    removed. Such artifacts are marked redacted; dereferencing returns the redacted bytes, not the
-   original.
+   original. Since v1.5.0 (ADR-0011) a sensitive assignment loses its value rather than the rest
+   of its line, and values that cannot be secrets stay (item 11).
 3. **Same-user processes are trusted.** Any process running as the user can read the install key,
    workspaces, bus file and daemon socket, and can therefore forge seals and store MACs. The seal
    and MAC defend against content shipped by repositories and against other users, not against
@@ -187,6 +191,16 @@ These limits also apply to the v1.2.0 candidate.
 10. **Dereference integrity is relative to the store.** BLAKE3 verification proves that bytes
     match what was stored, not that what was stored matches the original tool output (see items 1
     and 2).
+11. **What v1.5.0 deliberately keeps visible.** Under a sensitive key, ADR-0011 keeps `null`,
+   booleans, empty strings, numbers of at most 10 digits (not under password, PIN, OTP or
+   verification-code keys), variable references, upper-snake environment lookups, UUID session
+   ids, and quote-free references in code (`settings.SECRET_KEY`). A secret written in one of
+   those shapes, such as a numeric API key of 10 digits or fewer, is stored. Every kept span is
+   quote-free or a literal that is itself replaced, and the vendor, JWT and entropy detectors
+   still run over it. An independent red-team pass on v1.5.0 left a set of older shapes
+   still leaking, tracked for v1.5.1 (#104): CLI short flags and argv arrays, Unicode
+   separators, XML, Kubernetes and other name/value pairs, tokens inside URLs and query strings,
+   and `=>` and subscript assignments.
 
 ---
 

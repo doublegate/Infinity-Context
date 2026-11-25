@@ -13,6 +13,8 @@ tickets with remeasured, published numbers.
 
 - [ ] Saving derived state is incremental, CAS compression is on with a measured ratio, and
   `grep_cold` uses an index; each change is measured and published in `docs/numbers.md`.
+- [ ] `icx rescan --apply` re-redacts a stored workspace atomically, keeps old handles resolvable,
+  and leaves no re-redacted secret in the database file (#102).
 - [ ] `icx export --format <v>` writes a snapshot an older supported release can read, downgrade
   paths are documented, and an MCP server running against a newer snapshot format tells the user
   to reconnect instead of failing silently.
