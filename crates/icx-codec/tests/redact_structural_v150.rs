@@ -189,6 +189,9 @@ fn review_bypasses_stay_closed() {
         "API_KEY=48291038e9182736rrss\n",
         "PASSWORD=\"qqzz\" TOKEN=rrssttuu # \"c\"\n",
         "password = rrss.PASS\n",
+        // A comma inside brackets ends the value only before whitespace or structure.
+        "{token: abc,rrssttuu}\n",
+        "f(token=abc,rrssttuu)\n",
     ] {
         let clean = once(line);
         assert!(!clean.contains("rrss"), "{line:?} -> {clean:?}");

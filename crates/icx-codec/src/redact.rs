@@ -735,8 +735,7 @@ impl SecretRedactor {
         // mapping or sequence); in a YAML block scalar or an env file it is part of the value
         // (review of #103: `api_key: 1234,secret` hid only `1234`).
         let line_start = out[..val_start].rfind('\n').map_or(0, |i| i + 1);
-        let _ = stop_at_comma;
-        let stop_at_comma = Self::open_brackets(&out[line_start..val_start]) > 0;
+        let stop_at_comma = stop_at_comma && Self::open_brackets(&out[line_start..val_start]) > 0;
         // ADR-0011: a value that is never a secret is kept, and a value that opens with one
         // literal loses only that literal (and a quoted tail).
         if let Some(end) = Self::redact_value_by_shape(
@@ -809,7 +808,11 @@ impl SecretRedactor {
             if ch.is_whitespace()
                 || matches!(ch, '"' | '\'' | '`' | '&' | '|')
                 || (ch == ';' && after.is_none_or(char::is_whitespace))
-                || (stop_at_comma && matches!(ch, ',' | ')' | ']' | '}'))
+                || (stop_at_comma
+                    && matches!(ch, ',' | ')' | ']' | '}')
+                    && after.is_none_or(|n| {
+                        n.is_whitespace() || matches!(n, ',' | ';' | ')' | ']' | '}')
+                    }))
                 || (idx > 0 && rest[idx..].starts_with("[REDACTED:"))
             {
                 val_len = idx;
@@ -863,12 +866,15 @@ impl SecretRedactor {
         let open_before = Self::open_brackets(&out[line_start..val_start]);
         // The kept span ends at `cursor`; the rest of the line (`tail_len` bytes from there)
         // follows the #29 rule for any quote it holds: a later quote is always hidden.
-        let harmless_end = Self::value_extent(line, stop_at_comma).and_then(|end| {
-            let v = line[..end].trim_end();
-            (Self::is_harmless_value(v, key, code_context)
-                && Self::ends_value(&line[v.len()..], open_before))
-            .then_some(v.len())
-        });
+        // Inside brackets a comma may end a harmless value whatever the caller's rule, since
+        // `ends_value` then also requires a real boundary after it.
+        let harmless_end =
+            Self::value_extent(line, stop_at_comma || open_before > 0).and_then(|end| {
+                let v = line[..end].trim_end();
+                (Self::is_harmless_value(v, key, code_context)
+                    && Self::ends_value(&line[v.len()..], open_before))
+                .then_some(v.len())
+            });
         let (cursor, tail_len) = if let Some(end) = harmless_end {
             (val_start + end, line_len - end)
         } else {
