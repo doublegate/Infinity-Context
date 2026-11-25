@@ -21,7 +21,7 @@ of #98, which found that prompt cases had been timed at the dereference instead 
 - **Answers are almost always fresh.** Of 1,676 note cases, ranked newest-first, the needed
   output is first in 82–100% per project. Only 7 cases had 20 or more newer artifacts between the
   answer and the query. Widening from this project to all six did not change that.
-- **At prompt time the answer usually did not exist.** Of 316 prompt cases, 311 needed outputs
+- **At prompt time the answer usually did not exist.** Of 316 prompt cases, 313 needed outputs
   the agent produced later in the same turn. Automatic recall, which runs at the prompt, could
   have surfaced an existing answer in 3 cases.
 - **On the fresh-answer note cases** (this project, held-out half, 372 queries), recall@10 was
