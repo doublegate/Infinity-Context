@@ -672,7 +672,8 @@ fn run_rescan(args: &[String]) -> Result<(), String> {
                     .map_err(|_| format!("{CMD} error: --limit needs a number, got {value:?}"))?;
                 set_option_once(&mut limit, CMD, flag, n)?;
             }
-            other => return Err(format!("{CMD} error: unknown option {other}")),
+            // Unknown flags were refused above.
+            _ => unreachable!("flag checked against --dir and --limit"),
         }
         i += 2;
     }

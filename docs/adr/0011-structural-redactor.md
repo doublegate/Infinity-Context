@@ -141,7 +141,8 @@ changes, each with tests:
   change. The guard is that every kept span is either free of quotes or a literal that is itself
   replaced; the vendor, JWT and entropy detectors still run over all of it.
 - Measured (T-74-003, 19-line corpus in `redact_structural_v150.rs`): no missed secret before or
-  after; bytes hidden that were not part of a secret went from 183 to 24. Existing tests that
+  after; bytes hidden that were not part of a secret went from 183 to 24, and to 43 after the
+  red-team amendments below (`docs/numbers.md`). Existing tests that
   pinned the old output shape (a literal hidden with its quotes and the rest of its line) now pin
   the new one; every assertion that a secret is absent is unchanged.
 - Acceptance (T-74-003): every existing redaction test passes; the #29 bypass shapes

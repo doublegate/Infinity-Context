@@ -6,3 +6,4 @@
 # everyone who runs the test benefits from these saved cases.
 cc 2071888f8800ad5345d593748111db67b669534747cd548bf9cc39e606d7c874 # shrinks to key = "password", shape = "{k}=\"a\"#{s}", secret = "qqqqqqqq"
 cc 45b5112857d07de38bccbe73027703d5efa2bf7141e378544209b70f76634846 # shrinks to key = "password", shape = "{k}: 1234,{s}", secret = "qqqqqqqq"
+cc 5f8a7e565612f10191e6737fc194d686b5f5487dcbc5d37d1724a48746f61e11 # shrinks to text = " ℀:= "

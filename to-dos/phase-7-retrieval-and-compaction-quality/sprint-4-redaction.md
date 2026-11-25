@@ -48,7 +48,8 @@ Re-check before the sprint starts:
   root. Derived copies of the text sit in packets, frames, graph entities, HDC postings, FTS5 bodies
   and bus slots. Old handles in transcripts stop resolving without an alias table, and deleted rows
   stay in SQLite free pages until `VACUUM`. Full map in #102; owner decision: report only in v1.5.0.
-- **First field run of `icx rescan`:** 169 of 4,694 artifacts on this project's workspace, all
+- **First field run of `icx rescan`** (before the red-team fixes; 214 of 4,824 after them, see
+  `docs/numbers.md`): 169 of 4,694 artifacts on this project's workspace, all
   stored by versions before v1.3.1. The current redactor is idempotent on all of them (a second
   pass changes nothing), and its rules are unchanged from v1.4.1, which confirms that the
   findings are older content and not a regression.
@@ -57,8 +58,13 @@ Re-check before the sprint starts:
   2026-11-20 figure in ICX-AUD-039). First run, at 6803144: 222 caught and 7 timeouts of 298
   viable (76.8%), 69 missed, nearly all in the new helpers, which were tested only through whole
   lines. After the direct helper tests (a420a31): 274 caught and 7 timeouts (94.3%), 17 missed,
-  mostly index arithmetic in `redact_value_by_shape`, which the #103 fixes then rewrote. A final
-  run follows the red-team pass.
+  mostly index arithmetic in `redact_value_by_shape`, which the #103 fixes then rewrote. After the
+  red-team fixes the diff grew to 593 mutants. At 298bc52: 480 caught and 11 timeouts of 589
+  viable (83.4%). `redact_boundaries_v150.rs` then pinned each boundary the survivors pointed at,
+  and found three bugs fixed in d2d8031. At d2d8031 (639 mutants): 551 caught and 15 timeouts of
+  635 viable (89.1%), 69 missed, mostly boundary comparisons and index arithmetic in
+  `redact_value_span`, `assignment_continuation` and `redact_value_by_shape`. These have not been
+  triaged one by one for equivalence. Recorded under ICX-AUD-039.
 - **Red-team pass** (independent agent, code and ADR only, 2026-11-25): about 330 inputs. It found
   3 regressions and 9 groups of older leaks. The regressions and the 4 High groups are fixed in
   #103 (ADR-0011 amendments), and 272 distinct inputs, each with a placeholder the test checks, are pinned in
@@ -136,10 +142,10 @@ zero) and over-redacted bytes, before and after.
 - [x] The false positives in #90 are fixed and in the corpus: key names containing `token`,
   `key` or `session` no longer blank `None`, `null`, `""`, numbers, booleans or call expressions,
   and a redaction covers the value only, not the rest of the line.
-- [x] Property tests: no secret from a generated set survives in any supported format (27 shapes,
+- [x] Property tests: no secret from a generated set survives in any supported format (32 shapes,
   7 keys, 2,000 cases); output never panics on arbitrary input.
 - [x] Missed secrets (zero required) and over-redacted bytes measured and published in
-  `docs/numbers.md`: 0 missed before and after; 183 bytes to 24.
+  `docs/numbers.md`: 0 missed before and after; 183 bytes to 24, and 43 after the red-team fixes.
 - [x] `docs/alien-holographic-codec.md` and `docs/security-and-threat-model.md` updated.
 
 **Dependencies:** T-74-002
@@ -160,7 +166,7 @@ equivalent mutants.
 
 **Acceptance Criteria:**
 
-- [ ] Mutation results recorded with commit and counts.
+- [x] Mutation results recorded with commit and counts.
 - [ ] Every non-equivalent surviving mutant is killed or documented with a reason.
 - [ ] ICX-AUD-039 status updated in `docs/claude/findings.csv`.
 

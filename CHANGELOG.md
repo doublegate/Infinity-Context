@@ -11,8 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   subject and reports, as JSON, how many it would change, the markers it would add by kind, the
   bytes affected and up to `--limit` (default 50) artifact handles; never the text or the
   values. It writes nothing. Re-redacting a stored workspace (`--apply`) is planned for v1.7.0
-  (#102). On this project's 4,694-artifact workspace it ran in 1.9 s and found 169 artifacts,
-  stored by versions before v1.3.1, that today's rules would hide further.
+  (#102). On this project's workspace (4,824 artifacts after the red-team fixes) it found 214
+  artifacts, stored under older rules, that today's rules would hide further (`docs/numbers.md`).
 
 - Resume packet after compaction (T-73-001..003): after Claude Code, Codex or Hermes compacts its
   context, the next hook that carries context adds, once, a bounded (3 KB) deterministic packet:

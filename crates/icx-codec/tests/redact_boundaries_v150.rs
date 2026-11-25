@@ -82,7 +82,8 @@ fn harmless_values_end_only_at_real_boundaries() {
         ("password: null # rrss\n", &[], &["null", "# rrss"]),
         ("password: null // rrss\n", &[], &["null"]),
         ("password: null ;rrss\n", &["rrss"], &[]),
-        ("PASSWORD=null ;rrss\n", &[], &["null"]),
+        // ` ;x` is one shell word with the value, so nothing is kept (review of #103).
+        ("PASSWORD=null ;rrss\n", &["rrss"], &[]),
         // `null | x` is not one harmless value, so `null` is hidden too (safe direction).
         ("PASSWORD=null | x\n", &[], &["| x"]),
         ("f(token=None , x=1)\n", &[], &["None", "x=1"]),
@@ -378,4 +379,87 @@ fn a_plain_scalar_continuation_stops_after_the_cap() {
         "{clean:.200}"
     );
     assert!(clean.contains("line249"), "the cap ends the continuation");
+}
+
+/// Antigravity review of 2ef664e.
+#[test]
+fn review_round_assignment_tails_keys_and_continuations() {
+    check(&[
+        // A tail is a new assignment only with a real `name=value` or `name: value`.
+        ("password = \"abc\" qqzzqqzz==\n", &["qqzz"], &[]),
+        ("password = \"abc\" secret==qqzzqqzz\n", &["qqzz"], &[]),
+        ("password = \"abc\" rrss=>qqzz\n", &["qqzz"], &[]),
+        ("password: \"abc\" qqzzqqzz:rrss\n", &["qqzz", "rrss"], &[]),
+        ("PASSWORD=\"abc\" BAR=2\n", &["abc"], &["BAR=2"]),
+        // A lone carriage return after a space is still inside the value.
+        ("PASSWORD=qqzz \rrrss\n", &["qqzz", "rrss"], &[]),
+        // ` ;x` without a following space is part of the value.
+        ("PASSWORD=abc ;rrss\n", &["abc", "rrss"], &[]),
+        ("PASSWORD=null ;rrss\n", &["rrss"], &[]),
+        // Dotted keys and prefixed PWD variables.
+        ("headers.authorization = \"qqzz\"\n", &["qqzz"], &[]),
+        ("client.auth = \"qqzz\"\n", &["qqzz"], &[]),
+        ("db.pwd = \"qqzz\"\n", &["qqzz"], &[]),
+        ("self.pw = \"qqzz\"\n", &["qqzz"], &[]),
+        ("MYSQL_PWD=qqzz\n", &["qqzz"], &[]),
+        ("DB_PWD=qqzz\n", &["qqzz"], &[]),
+        ("db.pwd = 123456\n", &["123456"], &[]),
+        // The shell's PWD and keys about a token, not the token, stay.
+        ("PWD=/home/user/project\n", &[], &["/home/user/project"]),
+        ("token_savings = \"12 percent\"\n", &[], &["12 percent"]),
+        ("secret_redactor = \"structural\"\n", &[], &["structural"]),
+        ("token_stream = \"lexer\"\n", &[], &["lexer"]),
+        // Type-annotated and lifetime-annotated assignments continue.
+        (
+            "api_key: str = \"\"\"\nqqzz\n\"\"\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "const password: string = `\nqqzz\n`;\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "let api_key: &'static str = (\n  \"qqzz\"\n);\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        // A quote opened later in the value.
+        (
+            "password = \"a\" + \"\nqqzz\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "password = prefix + \"\nqqzz\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "password = \"a\" + \"\"\"\nqqzz\n\"\"\"\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        // Comments are not structure.
+        (
+            "password = (\n  \"qqzz\", # note )\n  \"rrss\"\n)\nnext = 1\n",
+            &["qqzz", "rrss"],
+            &["next = 1"],
+        ),
+        ("api_key = None  # see (todo\nvisible\n", &[], &["visible"]),
+        // A tail after the closing bracket that opens the next part.
+        (
+            "api_key = (\n  \"rrss\"\n) + (\n  \"qqzz\"\n)\nnext = 1\n",
+            &["rrss", "qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "api_key = (\n  \"rrss\"\n) + \\\n  \"qqzz\"\nnext = 1\n",
+            &["rrss", "qqzz"],
+            &["next = 1"],
+        ),
+        // An escaped backslash does not continue the line.
+        ("PASSWORD=qqzz\\\\\nvisible\n", &["qqzz"], &["visible"]),
+    ]);
 }

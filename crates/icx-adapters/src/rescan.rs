@@ -182,6 +182,26 @@ mod tests {
         assert!(report.handles_truncated);
     }
 
+    /// An indexed subject stored under an older rule counts in `subjects_affected`; a clean one
+    /// does not (review of #103).
+    #[test]
+    fn affected_subjects_are_counted() {
+        let mut mmu = InfinityContextMmu::default();
+        mmu.ingest_payload(icx_core::AgentKind::ClaudeCode, "Bash:ls", "a\nb\n", false);
+        let id = mmu.hdc_events[0].0;
+        mmu.hdc_events.push((
+            id,
+            "Bash:export API_KEY=qqzzqqzzqqzz".to_owned(),
+            None,
+            false,
+        ));
+        let report = rescan(&mmu, 50);
+        assert_eq!(report.subjects_affected, 1);
+        assert_eq!(report.unreadable, 0);
+        let json = serde_json::to_string(&report).unwrap();
+        assert!(!json.contains("qqzz"), "{json}");
+    }
+
     #[test]
     fn markers_are_counted_by_kind() {
         let m =
