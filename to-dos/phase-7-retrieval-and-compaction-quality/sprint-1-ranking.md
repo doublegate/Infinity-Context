@@ -60,6 +60,13 @@ trees resolved in a scratch crate, upstream sources):
   was therefore almost always zero, and when it was not, it rewarded a coincidence. After the
   fix it is nonzero only for exactly repeated event sequences.
 
+**2026-11-24, T-71-001 design (measured on a copy of a real 54 MB store):** contentless tables
+(3.0 MB words, 3.7 MB trigrams, against 12.9 MB and 13.6 MB with content copies); trigrams with
+`detail=none`, because that mode rejects phrase queries, so substrings are an AND of trigrams and
+each candidate is confirmed against the CAS text; built only with `ICX_RECALL_RANKING=rrf`
+(additive and off by default until T-72-004 decides); no schema version bump, so v1.4.x can still
+open the store.
+
 **Ticket changes:** T-71-001 uses SQLite FTS5 tables in the workspace store instead of a separate
 crate or snapshot index. T-71-002 starts from plain RRF at k = 60 and adds per-list weights and a
 per-source cap only if the evaluation set (Sprint 2) shows a gain.
@@ -77,11 +84,13 @@ synthetic set and then on the real-session set.
 
 **Acceptance Criteria:**
 
-- [ ] Index kept in SQLite FTS5 tables of the workspace store (a porter `unicode61` table for
+- [x] Index kept in SQLite FTS5 tables of the workspace store (a porter `unicode61` table for
   BM25, a `trigram` table for substrings), written at ingest; rebuildable from the CAS.
-- [ ] Tokenizer handles code identifiers (camelCase, snake_case, paths) with tests.
-- [ ] Ingest and query time measured and published in `docs/numbers.md`.
-- [ ] Store schema change versioned through a migration and documented.
+- [x] Tokenizer handles code identifiers (camelCase, snake_case, paths) with tests.
+- [x] Ingest and query time measured and published in `docs/numbers.md`.
+- [x] Store schema change versioned through a migration and documented. (Versioned by the
+  `lexical_index` meta key rather than the schema version, so a downgrade still opens the store;
+  `docs/data-model.md` §6.4.)
 
 **Dependencies:** None
 

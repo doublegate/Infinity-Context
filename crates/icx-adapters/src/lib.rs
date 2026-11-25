@@ -9,6 +9,7 @@ pub mod codex_ingest;
 pub mod cursor;
 pub mod gemini;
 pub mod hermes;
+pub mod lexical;
 pub mod mcp;
 pub mod mmu;
 pub mod muse;

@@ -107,6 +107,8 @@ pub struct InfinityContextMmu {
     /// When `true`, event times come from the wall clock (milliseconds since the Unix epoch,
     /// kept strictly monotonic); otherwise a deterministic logical counter (ICX-AUD-048).
     wall_clock: bool,
+    /// Whether saves maintain the lexical index (`ICX_RECALL_RANKING=rrf`, T-71-001).
+    lexical_index: bool,
 }
 
 impl Default for InfinityContextMmu {
@@ -145,7 +147,61 @@ impl InfinityContextMmu {
             reload_required: false,
             emitted_blocks: BTreeSet::new(),
             wall_clock: false,
+            lexical_index: crate::lexical::enabled(),
         }
+    }
+
+    /// Turns maintenance of the lexical index on or off (default: `ICX_RECALL_RANKING=rrf`).
+    pub fn set_lexical_index(&mut self, on: bool) {
+        self.lexical_index = on;
+    }
+
+    /// The `limit` best BM25 matches for `query` in this workspace's lexical index, best first,
+    /// as `(artifact, score)`. Empty when the index is off, not built, or the MMU mirrors no
+    /// store. Ids the in-memory CAS does not hold are dropped: the index is not sealed, so it
+    /// can name only artifacts the sealed store vouches for (T-71-001).
+    #[must_use]
+    pub fn lexical_matches(&self, query: &str, limit: usize) -> Vec<(ArtifactId, f64)> {
+        let Some((dir, _)) = self.loaded_generation.as_ref() else {
+            return Vec::new();
+        };
+        let Ok(conn) = crate::store::open_read_only(dir) else {
+            return Vec::new();
+        };
+        if !crate::lexical::tables_exist(&conn).unwrap_or(false) {
+            return Vec::new();
+        }
+        crate::lexical::search_words(&conn, query, limit)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(id, _)| self.cas.get_meta(*id).is_some())
+            .collect()
+    }
+
+    /// Artifacts whose text contains `needle` (at least 3 characters), at most `limit`, in id
+    /// order: trigram candidates from the lexical index, each confirmed against its stored text.
+    #[must_use]
+    pub fn substring_matches(&self, needle: &str, limit: usize) -> Vec<ArtifactId> {
+        let Some((dir, _)) = self.loaded_generation.as_ref() else {
+            return Vec::new();
+        };
+        let Ok(conn) = crate::store::open_read_only(dir) else {
+            return Vec::new();
+        };
+        if !crate::lexical::tables_exist(&conn).unwrap_or(false) {
+            return Vec::new();
+        }
+        // Candidates are a superset; scan a bounded number of them.
+        crate::lexical::trigram_candidates(&conn, needle, limit.saturating_mul(8).max(64))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|id| {
+                self.cas
+                    .deref_bytes(*id)
+                    .is_ok_and(|b| String::from_utf8_lossy(&b).contains(needle))
+            })
+            .take(limit)
+            .collect()
     }
 
     /// Returns `true` if `tool_name` refers to Infinity-Context's own MCP pager tool (`icx` /
@@ -1376,6 +1432,7 @@ impl InfinityContextMmu {
                 chunks: stored.chunks.iter().map(|(id, _, _)| *id).collect(),
                 artifacts: stored.artifacts.iter().map(|a| a.id).collect(),
                 emitted: stored.emitted.clone(),
+                lexical: None,
             };
             let new_cas = CasStore::from_parts(
                 stored.chunk_config.unwrap_or_default(),
@@ -1741,6 +1798,7 @@ impl InfinityContextMmu {
                 .store_seal_key
                 .as_ref()
                 .map(|k| (k, canonical_for_seal.as_path())),
+            lexical: self.lexical_index,
         };
         // The persisted-id cache describes the store it was loaded from or last saved to. A
         // different destination has none of those rows, so write everything (PR #20 review).

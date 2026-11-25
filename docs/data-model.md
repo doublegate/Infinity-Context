@@ -221,7 +221,7 @@ A workspace directory (mode `0700`, owned by the user) contains:
 
 | File | Purpose |
 | :--- | :--- |
-| `icx.sqlite3` (+ `-wal`, `-shm`) | The workspace store (SQLite, WAL journaling, `synchronous=NORMAL`, mode `0600`). |
+| `icx.sqlite3` (+ `-wal`, `-shm`) | The workspace store (SQLite, WAL journaling, `synchronous=FULL`, mode `0600`). |
 | `OWNER` | Owner seal: keyed BLAKE3 MAC of the canonical directory path under the install key. |
 | `.gitignore` | Always `*`. |
 | `cas_store.lock` | Advisory workspace lock taken by every writer. |
@@ -249,6 +249,7 @@ CREATE TABLE emitted   (digest BLOB PRIMARY KEY) WITHOUT ROWID;    -- BLAKE3 of 
 | `hdc_index` | HDC associative index, binary snapshot format `ICXHDC05`, including exact token postings. |
 | `hdc_index_events` | Number of events the snapshot covers. |
 | `seal` | Store MAC (§6.2). |
+| `lexical_index` | Version of the optional lexical tables (`1`), present only once they are built (§6.4). |
 
 `chunks`, `artifacts` and `emitted` rows are append-only (inserted once). Existing store, `-wal`
 and `-shm` files are reset to `0600` on open if their mode was widened. The derived state in `meta` is
@@ -285,3 +286,28 @@ default 32,768 / 4,096 / 4,096 policy. `utf8-bytes-upper-bound-v1` treats one UT
 of allowance, leaving 24,576 bytes for icx-managed prompt content under the default policy.
 Reservations outside this view remain the caller's responsibility. Selection changes never
 delete CAS/DAG history or reinterpret archived Q15 `fc` fields.
+
+### 6.4 Lexical Index (v1.5.0, optional)
+
+Built only while `ICX_RECALL_RANKING=rrf` is set (T-71-001; the ranking that uses it is T-71-002):
+
+```sql
+CREATE VIRTUAL TABLE lex_words USING fts5(body, parts,
+  tokenize = "porter unicode61 remove_diacritics 2 tokenchars '_'", content = '');
+CREATE VIRTUAL TABLE lex_trigrams USING fts5(body, tokenize = 'trigram', detail = none, content = '');
+```
+
+- **Rows:** one per artifact, `rowid` = the artifact id, holding its first 1 MiB of (redacted) text.
+  `parts` holds the parts of compound identifiers (`parseHttpRequest`: `parse http request`), so a
+  part finds the whole; `snake_case` words also stay whole in `body`.
+- **Contentless:** the text lives in the CAS, so the tables keep no copy. Trigram matches are a
+  candidate superset (`detail=none` keeps no positions) and each is confirmed against the
+  artifact's text before it is returned.
+- **Not sealed:** the tables are derived state outside `state_digest`. Every id they return must
+  name an artifact in the sealed CAS, or it is dropped.
+- **Maintenance:** new artifacts are indexed in the save transaction, inside a savepoint, so an
+  index failure never fails a save. When the index is turned on for an existing store, up to 2,000
+  older artifacts are added per save. When a save rewrites the CAS tables, the lexical tables are
+  dropped and rebuilt the same way.
+- **Compatibility:** the `schema` version stays `1`. Older builds ignore the tables; artifacts
+  they add are indexed by the next save with the index on.

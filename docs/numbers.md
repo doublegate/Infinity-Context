@@ -111,6 +111,21 @@ candidate set (prescreen survivors plus the postings union) that exact scoring s
 - **Query time** grows with n (one pass over the summaries plus exact scoring of the
   candidates): about 0.3 ms at 1k, 2–4 ms at 10k and 30–43 ms at 100k on this host.
 
+**v1.5.0 measurements: lexical index (2026-11-24, i9-10850K, SQLite 3.54.1, T-71-001):**
+
+Built from a copy of a real 54 MB workspace store holding 5,193 artifacts and 8.5 MB of text.
+
+| Table | Size | Insert per artifact | Query |
+| :--- | :--- | :--- | :--- |
+| `lex_words` (porter `unicode61`, contentless) | 3.0 MB | 0.03 ms | BM25 top 20: 0.11–0.81 ms median, 1.16 ms worst, over four 2–4 term queries |
+| `lex_trigrams` (`trigram`, `detail=none`, contentless) | 3.7 MB | 0.17 ms | candidates for a 5–9 character needle: 0.01–0.12 ms median, 0.32 ms worst |
+| Both, with content copies (rejected) | 12.9 MB and 13.6 MB | same | same |
+| Full-detail trigram, with content (rejected) | 30.6 MB | 0.21 ms | same |
+
+The contentless pair adds about 0.8 times the text (12% of this store). Trigram candidates are
+confirmed against the artifact's text, so the cost of a substring hit also includes reading the
+candidates from the CAS (at most 8 per result requested, and at least 64).
+
 ## 3. Constants and Test-Asserted Bounds
 
 ### Handles, hashing and storage
