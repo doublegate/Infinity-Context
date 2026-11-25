@@ -72,6 +72,15 @@ The inline size reduction depends on the input. In the built-in synthetic benchm
 
 ## Latest Release
 
+**v1.5.1** closes the redactor gaps the v1.5.0 red-team pass left open (#104):
+
+- markup and name/value pairs;
+- password-taking CLI tools, and signed or OAuth URLs;
+- Unicode look-alikes, PIN numbers, and the remaining multi-line shapes.
+
+Redacting stored text again now never changes it. See the
+[v1.5.1 release notes](docs/releases/v1.5.1/README.md).
+
 **v1.5.0** improves what icx keeps and what it hides. The redactor now hides only the secret
 value after a sensitive key, so code and logs stay readable. An independent red-team pass fixed the
 new rules' regressions and several older gaps (ADR-0011); the remaining older shapes are tracked

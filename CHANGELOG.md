@@ -5,6 +5,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-25
+
+### Fixed
+
+- The redactor shapes the v1.5.0 red-team pass left open (#104), each with a test
+  (`crates/icx-codec/tests/redact_v151.rs`):
+  - **Markup and pairs:**
+    - `<password>…</password>`, and `<add key="Password" value="…">`;
+    - JSON and Kubernetes `name`/`value` pairs, and list items under a sensitive block key
+      such as `tokens:`.
+  - **Assignments:** `obj["password"] = "…"`, `'password' => '…'`, and shell `set -x` and
+    `setenv` (quoted literals only; code on the right stays).
+  - **CLI:**
+    - `--password -x`, `sshpass -p`, `docker login -p`, glued `mysql -pX`;
+    - `curl -u user:pass` and `--password-stdin` input;
+    - JSON argv arrays.
+  - **URLs:** signature and OAuth parameters (`sig`, `X-Amz-Signature`, `code`,
+    `access_token`), and webhook URLs.
+  - **Unicode look-alikes:** no-break and zero-width characters, the soft hyphen, and full-width
+    `＝`/`：`/letters.
+  - **Markers:** text glued to a planted marker.
+  - **Multi-line values:** escaped and interior triple quotes, prefixed and tagged literals,
+    unspaced and empty annotations, and an apostrophe before the `=`.
+  - **PIN and OTP:** plain numbers of 4 to 10 digits under `pin`/`otp` keys.
+- Redaction is idempotent by construction: each line is redacted to a fixed point. 0 of 700,000
+  fuzzed lines change on a second pass.
+
+### Changed
+
+- **Kept visible by design**, by owner decision, recorded in ADR-0011 with the reasons:
+  - prose after a sensitive word, and comment text after a value;
+  - JSON `sessionId` UUIDs, and values under keys that are not sensitive;
+  - `-p` without a password-taking tool, and plain user names in URLs.
+- **Measured:**
+  - of the 82 #104 inputs, 25 still leak, all of them kept by design;
+  - on this repository's 588 source and doc files, nothing outside the redactor's own examples
+    is newly hidden;
+  - the 19-line corpus is unchanged (0 missed, 43 over-redacted bytes);
+  - the in-memory hook median is 323 µs (v1.5.0: 308 µs).
+
 ## [1.5.0] - 2026-11-25
 
 ### Added

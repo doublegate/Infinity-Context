@@ -13,7 +13,7 @@ members = [
 exclude = ["fuzz"]
 
 [workspace.package]
-version = "1.5.0"
+version = "1.5.1"
 edition = "2024"
 rust-version = "1.100"
 license = "GPL-3.0-or-later"
@@ -64,10 +64,10 @@ proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 # that --dry-run prints.
 toml_edit = "0.25.20"
 similar = { version = "3.2.1", default-features = false, features = ["text"] }
-icx-core = { path = "crates/icx-core", version = "1.5.0" }
-icx-hdc = { path = "crates/icx-hdc", version = "1.5.0" }
-icx-codec = { path = "crates/icx-codec", version = "1.5.0" }
-icx-store = { path = "crates/icx-store", version = "1.5.0" }
-icx-bus = { path = "crates/icx-bus", version = "1.5.0" }
-icx-adapters = { path = "crates/icx-adapters", version = "1.5.0" }
-icx-proxy = { path = "crates/icx-proxy", version = "1.5.0" }
+icx-core = { path = "crates/icx-core", version = "1.5.1" }
+icx-hdc = { path = "crates/icx-hdc", version = "1.5.1" }
+icx-codec = { path = "crates/icx-codec", version = "1.5.1" }
+icx-store = { path = "crates/icx-store", version = "1.5.1" }
+icx-bus = { path = "crates/icx-bus", version = "1.5.1" }
+icx-adapters = { path = "crates/icx-adapters", version = "1.5.1" }
+icx-proxy = { path = "crates/icx-proxy", version = "1.5.1" }
