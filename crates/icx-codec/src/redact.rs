@@ -121,11 +121,14 @@ impl SecretRedactor {
                                 // The tail may open the next part of the value (`) + (`,
                                 // `) + \`; review of #103).
                                 let tail = scan_value(t, 0, None);
-                                if tail.depth > 0 {
+                                if tail.depth > 0 || tail.ambiguous_quote {
+                                    // A possibly quoted tail stays pending to the line cap, as
+                                    // on a first line (security review of #103).
                                     pending_value = Some(PendingSecret {
                                         indent: indent_of_key,
-                                        brackets: tail.depth,
+                                        brackets: tail.depth.max(1),
                                         bracket_quote: tail.quote,
+                                        sticky: tail.ambiguous_quote,
                                         ..PendingSecret::default()
                                     });
                                 } else if let Some(q) =
@@ -3174,7 +3177,11 @@ fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
             '#' if before.is_none_or(char::is_whitespace) => return out,
             // A glued `#` (`"part1"#)`) may start a comment: like a glued `//`, it can keep a
             // value open but never close it (review of #103). `r#"` raw strings are excluded.
-            '#' if !before.is_some_and(|b| b == 'r' || b == '#') => ambiguous = true,
+            '#' if !(text[..i].trim_end_matches('#').ends_with('r')
+                && text[i..].trim_start_matches('#').starts_with('"')) =>
+            {
+                ambiguous = true;
+            }
             // `//` after whitespace is a comment and ends the scan. A glued `//` that is not a
             // URL scheme (`a//b`: floor division, or a comment) is ambiguous: openers and quotes
             // after it still count, closers do not, so it can keep a value open but never close

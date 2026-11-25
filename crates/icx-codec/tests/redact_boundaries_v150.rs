@@ -625,3 +625,22 @@ fn review_round_semicolon_tail_bracket_tail_glued_hash_and_walrus() {
         ),
     ]);
 }
+
+/// Commit security review of 0ca1946.
+#[test]
+fn hash_exemption_is_raw_strings_only_and_bracket_tails_stay_sticky() {
+    check(&[
+        ("api_key = (\n  var#)\n  \"qqzz\"\n)\n", &["qqzz"], &[]),
+        ("api_key = (\n  ##)\n  \"qqzz\"\n)\n", &["qqzz"], &[]),
+        (
+            "api_key = (\n  r#\"rrss\"#\n)\nnext = 1\n",
+            &["rrss"],
+            &["next = 1"],
+        ),
+        (
+            "api_key = (\n  \"rrss\"\n) + x//\"\nqqzz\n)\nzzqq\"\n",
+            &["rrss", "qqzz", "zzqq"],
+            &[],
+        ),
+    ]);
+}
