@@ -3175,13 +3175,11 @@ fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
             // A comment ends the structure on this line (review of #103: a `)` or `(` in a
             // comment is not a bracket).
             '#' if before.is_none_or(char::is_whitespace) => return out,
-            // A glued `#` (`"part1"#)`) may start a comment: like a glued `//`, it can keep a
-            // value open but never close it (review of #103). `r#"` raw strings are excluded.
-            '#' if !(text[..i].trim_end_matches('#').ends_with('r')
-                && text[i..].trim_start_matches('#').starts_with('"')) =>
-            {
-                ambiguous = true;
-            }
+            // A glued `#` (`"part1"#)`, `r#"`) may start a comment: like a glued `//`, it can
+            // keep a value open but never close it. No exemption, not even for raw strings:
+            // each one opened a parser differential (security review of #103), and a raw string
+            // in a multi-line sensitive value only costs over-redaction.
+            '#' => ambiguous = true,
             // `//` after whitespace is a comment and ends the scan. A glued `//` that is not a
             // URL scheme (`a//b`: floor division, or a comment) is ambiguous: openers and quotes
             // after it still count, closers do not, so it can keep a value open but never close

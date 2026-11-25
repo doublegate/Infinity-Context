@@ -356,9 +356,10 @@ fn review_round_statement_and_bracket_cases() {
         ),
         // Rust raw strings.
         (
+            // Raw strings are ambiguous (glued `#`) and stay hidden to the line cap.
             "password = r#\"\nqqzz\n\"#\nnext = 1\n",
-            &["qqzz"],
-            &["next = 1"],
+            &["qqzz", "next = 1"],
+            &[],
         ),
         // A blank line ends a backslash continuation.
         ("PASSWORD=qq\\\n\nvisible\n", &[], &["visible"]),
@@ -632,11 +633,18 @@ fn hash_exemption_is_raw_strings_only_and_bracket_tails_stay_sticky() {
     check(&[
         ("api_key = (\n  var#)\n  \"qqzz\"\n)\n", &["qqzz"], &[]),
         ("api_key = (\n  ##)\n  \"qqzz\"\n)\n", &["qqzz"], &[]),
+        // A raw string is ambiguous too: it stays hidden to the line cap (fails closed).
         (
             "api_key = (\n  r#\"rrss\"#\n)\nnext = 1\n",
-            &["rrss"],
-            &["next = 1"],
+            &["rrss", "next = 1"],
+            &[],
         ),
+        (
+            "api_key = (\n  var#\")\" )\n  \"qqzz\"\n)\n",
+            &["qqzz"],
+            &[],
+        ),
+        ("api_key = (\n  r#\"a\")\nqqzz\"#\n)\n", &["qqzz"], &[]),
         (
             "api_key = (\n  \"rrss\"\n) + x//\"\nqqzz\n)\nzzqq\"\n",
             &["rrss", "qqzz", "zzqq"],
