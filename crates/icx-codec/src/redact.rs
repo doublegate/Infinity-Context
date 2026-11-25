@@ -393,8 +393,13 @@ impl SecretRedactor {
                         // before the annotation's colon (review of #103).
                         if !Self::is_sensitive_key_name(key)
                             && line[..i].ends_with([' ', '\t'])
-                            && let Some(c) = head.rfind(':')
-                            && !head[..c].ends_with(':')
+                            // The annotation's colon: the first one that is not part of `::`
+                            // (`let api_key: std::string::String =`).
+                            && let Some(c) = head.char_indices().map(|(k, _)| k).find(|&k| {
+                                head.as_bytes()[k] == b':'
+                                    && head.as_bytes().get(k + 1) != Some(&b':')
+                                    && (k == 0 || head.as_bytes()[k - 1] != b':')
+                            })
                         {
                             let name = head[..c].trim_end();
                             let start = name
@@ -1182,7 +1187,9 @@ impl SecretRedactor {
         let line_start = out[..val_start].rfind('\n').map_or(0, |i| i + 1);
         // The colon pass (YAML, JSON-ish, config text) is the one that asks to stop at commas;
         // in that text `;` is part of a value, not a shell separator (red-team review of #103).
-        let config = stop_at_comma;
+        // A type-annotated code assignment (`let api_key: Option<String> = None;`) comes through
+        // the same pass but is code, not config text (review of #103).
+        let config = stop_at_comma && code_context < CODE_STRONG;
         let stop_at_comma = stop_at_comma && Self::open_brackets(&out[line_start..val_start]) > 0;
         // `Authorization: Bearer <t>` / `Basic <t>`: the scheme stays and the rest of the line is
         // hidden here with the scheme's own marker, whatever the token's length (security
@@ -3116,7 +3123,14 @@ fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
             // A comment ends the structure on this line (review of #103: a `)` or `(` in a
             // comment is not a bracket).
             '#' if before.is_none_or(char::is_whitespace) => return out,
-            '/' if before == Some('/') => return out,
+            '/' if before == Some('/')
+                && text[..i - 1]
+                    .chars()
+                    .next_back()
+                    .is_none_or(char::is_whitespace) =>
+            {
+                return out;
+            }
             '(' | '[' | '{' => out.depth += 1,
             ')' | ']' | '}' => {
                 if out.depth > 0 {

@@ -471,3 +471,27 @@ fn review_round_assignment_tails_keys_and_continuations() {
         ("PASSWORD=qqzz\\\\\nvisible\n", &["qqzz"], &["visible"]),
     ]);
 }
+
+/// Antigravity review of a5dc542 (the parts that are regressions from this PR).
+#[test]
+fn review_round_annotations_and_comment_markers() {
+    check(&[
+        (
+            "let api_key: std::string::String = (\n  \"qqzz\"\n);\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        ("let api_key: Option<String> = None;\n", &[], &["None;"]),
+        (
+            "const token: string = config.api_key;\n",
+            &[],
+            &["config.api_key;"],
+        ),
+        // `//` glued to text (a URL, `a//b`) is not a comment.
+        (
+            "api_key = (\n  http://x//y,\n  \"qqzz\"\n)\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+    ]);
+}
