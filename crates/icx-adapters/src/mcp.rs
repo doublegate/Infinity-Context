@@ -22,6 +22,10 @@ pub const WRITE_TOOL: &str = "icx_write";
 
 /// Maximum number of simultaneously open `fold begin:` branches (ICX-AUD-014).
 pub const MAX_FOLD_DEPTH: usize = 64;
+/// Kinds of context an agent can fold away by type (T-73-004, CWL/CAT/SWE-MeM eviction patterns):
+/// a finished subtask, a stale build log, a file read a later read superseded, an exploration
+/// that led nowhere, or anything else.
+pub const FOLD_TYPES: [&str; 5] = ["subtask", "build_log", "superseded", "exploration", "other"];
 /// Longest matched line a `grep` reply shows, in characters (the full line is one `slice` away).
 const GREP_LINE_CHARS: usize = 400;
 /// Largest `grep` reply, in bytes.
@@ -139,7 +143,12 @@ impl McpPagerServer {
                         "required": ["op", "q"],
                         "properties": {
                             "op": { "type": "string", "enum": ["fold", "xagent"] },
-                            "q": { "type": "string" }
+                            "q": { "type": "string" },
+                            "type": {
+                                "type": "string",
+                                "enum": FOLD_TYPES,
+                                "description": "Only when closing a fold: what the folded context was (subtask: finished subtask; build_log: build or test output; superseded: replaced by later work; exploration: a dead end; other)."
+                            }
                         }
                     }
                 }
@@ -568,6 +577,12 @@ impl McpPagerServer {
             "fold" => {
                 let summary = args.get("q").and_then(Value::as_str).unwrap_or("completed");
                 if let Some(label) = summary.strip_prefix("begin:") {
+                    if args.get("type").is_some_and(|t| !t.is_null()) {
+                        return (
+                            "ERR: type applies when closing a fold, not to begin:".to_owned(),
+                            true,
+                        );
+                    }
                     if mmu.dag.active_branch_depth() >= MAX_FOLD_DEPTH {
                         return (
                             format!(
@@ -580,8 +595,34 @@ impl McpPagerServer {
                     mmu.epochs.begin_branch(&mut mmu.dag, &clean_label);
                     (format!("⟪ICX:BRANCH_OPENED│{clean_label}⟫"), false)
                 } else {
-                    let clean_summary =
-                        InfinityContextMmu::sanitize_hook_label(summary, "completed");
+                    // A typed fold (T-73-004): what kind of context is being evicted, recorded
+                    // in the summary so a reader knows why it left the window. Untyped folds are
+                    // unchanged.
+                    let kind = match args.get("type") {
+                        None | Some(Value::Null) => None,
+                        Some(Value::String(t)) if FOLD_TYPES.contains(&t.as_str()) => {
+                            Some(t.as_str())
+                        }
+                        // The value is not echoed (review of #99: it was unbounded).
+                        Some(_) => {
+                            return (
+                                format!("ERR: fold type must be one of {}", FOLD_TYPES.join(", ")),
+                                true,
+                            );
+                        }
+                    };
+                    // The summary gets its default before the type prefix, so an empty typed
+                    // fold reads `[subtask] completed` (review of #99).
+                    let plain = InfinityContextMmu::sanitize_hook_label(summary, "completed");
+                    let clean_summary = kind.map_or_else(
+                        || plain.clone(),
+                        |k| {
+                            InfinityContextMmu::sanitize_hook_label(
+                                &format!("[{k}] {plain}"),
+                                "completed",
+                            )
+                        },
+                    );
                     match mmu.epochs.fold_branch(&mut mmu.dag, &clean_summary) {
                         Ok(bid) => {
                             mmu.sync_global_dag_root();
@@ -592,6 +633,12 @@ impl McpPagerServer {
                 }
             }
             "xagent" => {
+                if args.get("type").is_some_and(|t| !t.is_null()) {
+                    return (
+                        "ERR: type applies when closing a fold, not to xagent".to_owned(),
+                        true,
+                    );
+                }
                 if let Some(broadcast_q) = args
                     .get("q")
                     .and_then(Value::as_str)

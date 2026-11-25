@@ -190,7 +190,11 @@ tools (v1.4.0, ADR-0009), each estimated at under 180 tokens
     "required": ["op", "q"],
     "properties": {
       "op": { "type": "string", "enum": ["fold", "xagent"] },
-      "q": { "type": "string" }
+      "q": { "type": "string" },
+      "type": {
+        "type": "string",
+        "enum": ["subtask", "build_log", "superseded", "exploration", "other"]
+      }
     }
   }
 }
@@ -216,7 +220,18 @@ tools (v1.4.0, ADR-0009), each estimated at under 180 tokens
   `k` limits the result count. It advances the bus-delivery cursors, which is bookkeeping, so it
   stays on the read-only tool.
 - `fold` (`icx_write`): `q = "begin:<label>"` opens a sub-trajectory branch; `q = "<summary>"`
-  closes the innermost open branch into an `L2` folded node.
+  closes the innermost open branch into an `L2` folded node. When closing, an optional `type`
+  (v1.5.0, T-73-004) says what the folded context was, and the summary is stored as
+  `[<type>] <summary>`:
+  - `subtask`: a finished subtask;
+  - `build_log`: build or test output;
+  - `superseded`: work replaced by later work;
+  - `exploration`: a dead end;
+  - `other`: anything else.
+
+  Any other value, or a `type` on `begin:`, is refused with `isError: true`. An untyped fold is
+  unchanged. The prefix is free text, so a summary that itself begins `[subtask] ` reads the
+  same; the type is for the reader, not for machine dispatch.
 - `expand`: expands a folded branch.
 - `xagent`: polls the telepathy ring for the current workspace (`icx`), or publishes `q` to it
   (`icx_write`).
