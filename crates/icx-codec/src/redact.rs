@@ -853,11 +853,15 @@ impl SecretRedactor {
             (val_start + end, line_len - end)
         } else {
             let (open, close) = Self::leading_literal(line)?;
-            // The literal must end the value token: `"abc"def` is one shell word, so its tail
-            // is part of the secret and the #29 rule hides the whole value (security review).
+            // The literal must end the value token: `"abc"def`, `"a"#b` and `"a"/b` are one shell
+            // word, so the tail is part of the secret and the #29 rule hides the whole value
+            // (security review). Commas and closing brackets end it only in structured text
+            // (`stop_at_comma`); a comment needs whitespace before it.
             let next = line[close + 1..].chars().next();
             if !next.is_none_or(|c| {
-                c.is_whitespace() || matches!(c, ';' | ',' | ')' | ']' | '}' | '#' | '/')
+                c.is_whitespace()
+                    || c == ';'
+                    || (stop_at_comma && matches!(c, ',' | ')' | ']' | '}'))
             }) {
                 return None;
             }
@@ -993,8 +997,16 @@ impl SecretRedactor {
         ];
         let v = v.trim_start_matches(['&', '*']).trim_start_matches("mut ");
         let v = v.strip_prefix("await ").unwrap_or(v);
-        if v.contains(['(', '[']) {
-            return true;
+        // A call or subscript counts only when its head looks like code: a dotted or `::` path,
+        // a snake_case name with an `_`, or a camelCase name (`get_token(user)`,
+        // `os.getenv(K)`, `getToken(u)`); `abc(def)` could be an INI value (security review).
+        if let Some(open) = v.find(['(', '[']) {
+            let head = &v[..open];
+            let camel = head.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
+                && head.bytes().any(|c| c.is_ascii_uppercase());
+            if head.contains(['.', ':', '_']) || camel {
+                return true;
+            }
         }
         let segments: Vec<&str> = v
             .split(['.', ':', '?', '-', '>'])
@@ -1156,10 +1168,13 @@ impl SecretRedactor {
     /// `$NAME`, `${NAME}`, `%NAME%`, `$env:NAME`, with an upper-snake `NAME`: a password that
     /// merely starts with `$` (`$ecretpw`) is not a reference (security review).
     fn is_variable_reference(v: &str) -> bool {
+        // An `_` between letters is required (`$DB_PASSWORD`), so `$HUNTER2` is a literal
+        // (second security review).
         let ident = |s: &str| {
             s.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
                 && s.bytes()
                     .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
+                && s.trim_end_matches('_').contains('_')
         };
         v.strip_prefix("${")
             .and_then(|r| r.strip_suffix('}'))

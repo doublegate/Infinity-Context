@@ -162,6 +162,12 @@ fn review_bypasses_stay_closed() {
         "password = rrss.ttuu.vvww\n",
         "api_key = rrsstt?\n",
         "token = get(rrss ttuu!)\n",
+        // Second review: comment characters glued to a literal, plain calls, short `$NAME`s.
+        "PASSWORD=\"a\"#rrssttuu\n",
+        "PASSWORD=\"a\"/rrssttuu\n",
+        "PASSWORD=\"a\",rrssttuu\n",
+        "password = rrss(ttuu)\n",
+        "PASSWORD=$RRSSTTUU\n",
     ] {
         let clean = once(line);
         assert!(!clean.contains("rrss"), "{line:?} -> {clean:?}");
@@ -173,6 +179,8 @@ fn review_bypasses_stay_closed() {
         "secret_key = settings.SECRET_KEY\n",
         "token = load_token(path)\n",
         "password = $DB_PASSWORD\n",
+        "token = getToken(user)\n",
+        "api_key = os.getenv(KEY_NAME)\n",
     ] {
         assert_eq!(once(line), line, "{line:?}");
     }
@@ -214,6 +222,9 @@ const SHAPES: &[&str] = &[
     "{k} = None; other = \"{s}\"",
     "{k}=\"a\"{s}",
     "{k}=${s}",
+    "{k}=\"a\"#{s}",
+    "{k}=\"a\"/{s}",
+    "{k} = {s}({s})",
     "{k} = {s}.{s}",
 ];
 

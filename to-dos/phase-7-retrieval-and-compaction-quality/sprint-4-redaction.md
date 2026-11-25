@@ -42,7 +42,10 @@ Re-check before the sprint starts:
 - **Security review of the first implementation** (automated, on c93a5e3) found three bypasses,
   closed with tests in `redact_structural_v150.rs` (`review_bypasses_stay_closed`): a literal
   glued to more text (`PASSWORD="ab"cd` is one shell word), `$`-prefixed passwords taken for
-  variables, and INI values (`password = my.dog.rex`) taken for code references.
+  variables, and INI values (`password = my.dog.rex`) taken for code references. A second review
+  (on 5a5f1c9) found three more, also closed with tests: `#`, `/` or `,` glued to a literal in
+  shell text (`PASSWORD="a"#b`), a bare call such as `abc(def)` taken for code, and upper-case
+  `$NAME` values without an `_` taken for references.
 
 ## Tickets
 
