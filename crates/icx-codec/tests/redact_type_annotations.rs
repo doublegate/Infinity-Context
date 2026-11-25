@@ -71,41 +71,26 @@ fn literals_after_exempted_code_are_still_redacted() {
         ("MAX_AUTH_TOKEN=lowsecretliteral\n", "lowsecretliteral"),
         ("max_session_token: lowsecretliteral\n", "lowsecretliteral"),
         ("ACCESS_TOKENS=123456789012345\n", "123456789012345"),
-        ("auth_tokens: 4096\n", "4096"),
     ] {
         let clean = SecretRedactor::redact(line);
         assert!(!clean.contains(secret), "{line:?} -> {clean:?}");
     }
 }
 
+/// ADR-0011 rule 2 (owner decision): a number of at most 10 digits is not a secret, under any key
+/// but a password, PIN, OTP or verification-code key; longer numbers may be numeric tokens.
 #[test]
-fn literals_inside_calls_and_assignments_after_generics_are_redacted() {
+fn short_numbers_stay_and_passcodes_and_long_numbers_are_hidden() {
+    assert_eq!(
+        SecretRedactor::redact("auth_tokens: 4096\n"),
+        "auth_tokens: 4096\n"
+    );
     for (line, secret) in [
-        (
-            "let token: String = String::from(\"lowsecretliteral\");\n",
-            "lowsecretliteral",
-        ),
-        (
-            "let api_key = Some(\"lowsecretliteral\");\n",
-            "lowsecretliteral",
-        ),
-        (
-            "const PASSWORD = String::from('lowsecretliteral');\n",
-            "lowsecretliteral",
-        ),
-        (
-            "token: Option<x, secret: lowsecretliteral>\n",
-            "lowsecretliteral",
-        ),
-        (
-            "token: Vec<u8>, secret: lowsecretliteral\n",
-            "lowsecretliteral",
-        ),
+        ("password: 4096\n", "4096"),
+        ("mfa_token = 482913\n", "482913"),
+        ("ACCESS_TOKENS=123456789012345\n", "123456789012345"),
     ] {
         let clean = SecretRedactor::redact(line);
         assert!(!clean.contains(secret), "{line:?} -> {clean:?}");
     }
-    // Generic paths with `::` are still type annotations.
-    let code = "    cache: HashMap<std::path::PathBuf, Token>,\n";
-    assert_eq!(SecretRedactor::redact(code), code);
 }

@@ -113,10 +113,25 @@ Tiers:
   scheme, CLI secret flags (`--api-key=`, `--token=`, `--password=`, `--secret=`), `Bearer` and
   `Basic` headers, and `.env`/JSON/YAML assignments to sensitive key names (including multi-line
   JSON/YAML values after a sensitive key) (ICX-AUD-015).
-  After a sensitive key, a value holding any quote is hidden from its first quote to the end of
-  the line; only a call head right before that quote stays visible (v1.3.1, #29). A line that is
-  one complete JSON object or array is redacted structurally instead: only the values of sensitive
-  keys are replaced, and other strings are redacted with their key as context.
+  After a sensitive key, how much is hidden depends on the value's shape (v1.5.0,
+  [ADR-0011](adr/0011-structural-redactor.md)):
+  - **Never a secret, kept:** `null`, `None`, `nil`, `undefined`, `true`, `false`, `""`, `''`;
+    numbers of at most 10 digits, except under password, PIN, OTP, passcode and verification-code
+    keys; `$VAR`, `${VAR}`, `%VAR%`; an environment lookup whose only literal is an upper-snake
+    name (`os.environ["API_KEY"]`, `env::var("API_KEY")`); a UUID under a `session_id` key; and,
+    in code only (spaces around `=`, or `let`/`const`/`var`), a quote-free reference such as
+    `settings.SECRET_KEY` or `get_token(user)`. A bare identifier is a literal.
+  - **One literal:** its contents are replaced inside its own quotes
+    (`password = "[REDACTED:ENV_SECRET]"  # comment`).
+  - **Either way,** the rest of the line stays when it holds no quote and is hidden from its first
+    quote to the end of the line when it does: a later literal may be a second secret.
+  - **Any other value holding a quote** (code: concatenation, ternaries, lambdas, chained calls)
+    keeps the v1.3.1 rule (#29): hidden from its first quote to the end of the line, with a call
+    head right before that quote visible.
+
+  A line that is one complete JSON object or array, or a list of JSON members without braces
+  (`"k": v, "k2": v2`), is redacted structurally: only sensitive values are replaced, other
+  strings are redacted with their key as context, and the values above stay.
 - **Tier 3 (entropy gate):** unprefixed high-entropy Base64 tokens ($|S| \ge 24$,
   $H(S) > 4.35$ bits/char) and hex assignment values ($|S| \ge 32$, $H(S) > 3.50$ bits/char).
 

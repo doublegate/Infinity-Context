@@ -66,9 +66,12 @@ fn call_heads_stay_visible() {
 #[test]
 fn later_literals_on_the_line_are_hidden_too() {
     // A complete JSON line is redacted structurally instead (redact_json_lines.rs); a line
-    // that only starts like JSON keeps the first-quote rule.
+    // that only starts like JSON hides the literal and the rest from its next quote (ADR-0011).
     let c = hidden("{\"password\": \"aaaa\", \"user\": \"aaaa\"\n");
-    assert_eq!(c, "{\"password\": [REDACTED:CONFIG_SECRET]\n", "{c:?}");
+    assert_eq!(
+        c, "{\"password\": \"[REDACTED:CONFIG_SECRET]\", [REDACTED:CONFIG_SECRET]\n",
+        "{c:?}"
+    );
     hidden("password: SecretStr(\"aaaa\"), user: \"aaaa\"\n");
     hidden("curl --api-key=\"aaaa\" --user \"aaaa\"\n");
     // Bypasses of the stopping points tried before the owner chose the strict rule.

@@ -5,6 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Redaction keeps what is not secret (ADR-0011, T-74-003, #90). After a sensitive key, a value
+  that cannot be a secret stays: `null`, `None`, booleans, `""`, numbers of at most 10 digits
+  (not under password, PIN, OTP or verification-code keys), `$VAR` and `${VAR}`, upper-snake
+  environment lookups such as `os.environ["API_KEY"]`, an agent's UUID `session_id`, and in code
+  quote-free references such as `settings.SECRET_KEY` or `get_token(user)`. A real secret loses
+  only its literal, replaced inside its quotes, and the rest of the line stays when it holds no
+  quote, so comments and later JSON fields survive. Code-shaped values keep the v1.3.1 rule
+  (#29), and a quote later on the line is still hidden from that quote on. Lines of JSON members
+  without braces are redacted structurally. On the 19-line corpus, over-redacted bytes went from
+  183 to 24 with no missed secret (`docs/numbers.md`). Already-stored content is not changed.
+
 ### Fixed
 
 - `icx install`: the Claude Code matcher note judges all icx `PostToolUse` groups together, so a

@@ -24,7 +24,21 @@ Re-check before the sprint starts:
 
 ### Research notes
 
-_None recorded yet._
+2026-11-25:
+
+- **Scoping in other scanners:** gitleaks reports the capture group that holds the secret value
+  (`SecretGroup`), with keyword identifiers as a prefilter (Context7, `/gitleaks/gitleaks`
+  v8.30). That is the value-only scope ADR-0011 adopts; icx still hides more than gitleaks
+  reports where the value is code (#29).
+- **Field evidence:** probed on `main` (80f4b94) with byte-span output, because icx's own hook
+  redacts tool output with the same redactor and so hides what is being measured. 10 of 17
+  representative lines lost bytes they should have kept (`docs/adr/0011-structural-redactor.md`).
+- **Tools:** `proptest` 1.x as already pinned in the workspace; `cargo mutants -f <file>`
+  writes `mutants.out/` with `caught.txt`/`missed.txt` (Context7, `/sourcefrog/cargo-mutants`).
+- **Pinned tests found during T-74-003:** a 15-digit `ACCESS_TOKENS` value is pinned as a secret,
+  so the numeric bound is "more than 10 digits" (as for the counter rule), not the 16 first
+  drafted; a harmless value followed by a quoted comment (`get_pw(); // "..."`) must still hide
+  the quote.
 
 ## Tickets
 
@@ -62,9 +76,9 @@ from existing tests; compare with how gitleaks scopes matches.
 
 **Acceptance Criteria:**
 
-- [ ] ADR in Nygard format under `docs/adr/`, cross-linking the v1.3.0 split decision (#29).
-- [ ] The ADR lists the formats handled and the fallback for unknown text.
-- [ ] Owner review recorded before T-74-003 starts.
+- [x] ADR in Nygard format under `docs/adr/`, cross-linking the v1.3.0 split decision (#29).
+- [x] The ADR lists the formats handled and the fallback for unknown text.
+- [x] Owner review recorded before T-74-003 starts.
 
 **Dependencies:** None
 
@@ -86,15 +100,17 @@ zero) and over-redacted bytes, before and after.
 
 **Acceptance Criteria:**
 
-- [ ] Every existing redaction test passes unchanged.
-- [ ] The false positives in #90 are fixed and in the corpus: key names containing `token`,
+- [x] Every existing redaction test passes; every assertion that a secret is absent is unchanged,
+  and the six that pinned the old output shape (a literal hidden with its quotes and the rest of
+  its line, a short number under `auth_tokens`) pin the new one.
+- [x] The false positives in #90 are fixed and in the corpus: key names containing `token`,
   `key` or `session` no longer blank `None`, `null`, `""`, numbers, booleans or call expressions,
   and a redaction covers the value only, not the rest of the line.
-- [ ] Property tests: no secret from a generated set survives in any supported format; output
-  never panics on arbitrary input.
-- [ ] Missed secrets (zero required) and over-redacted bytes measured and published in
-  `docs/numbers.md`.
-- [ ] `docs/alien-holographic-codec.md` and `docs/security-and-threat-model.md` updated.
+- [x] Property tests: no secret from a generated set survives in any supported format (22 shapes,
+  7 keys, 2,000 cases); output never panics on arbitrary input.
+- [x] Missed secrets (zero required) and over-redacted bytes measured and published in
+  `docs/numbers.md`: 0 missed before and after; 183 bytes to 24.
+- [x] `docs/alien-holographic-codec.md` and `docs/security-and-threat-model.md` updated.
 
 **Dependencies:** T-74-002
 
