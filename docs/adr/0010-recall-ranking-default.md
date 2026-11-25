@@ -24,7 +24,7 @@ of #98, which found that prompt cases had been timed at the dereference instead 
 - **At prompt time the answer usually did not exist.** Of 314 prompt cases, 311 needed outputs
   the agent produced later in the same turn. Automatic recall, which runs at the prompt, could
   have surfaced an existing answer in 3 cases.
-- **On the fresh-answer note cases** (this project, held-out half, 370 queries), recall@10 was
+- **On the fresh-answer note cases** (this project, held-out half, 371 queries), recall@10 was
   legacy 2.4%, BM25 12.7%, RRF 5.4%, newest-first 99.2%. They measure fetching what was just
   produced, which recency answers alone, not the long-range recall that automatic recall exists
   for.

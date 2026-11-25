@@ -1349,4 +1349,14 @@ mod tests {
         assert_eq!(idx.measure_prescreen(q, 0, PRESCREEN_WORDS, 0), (false, 0));
         assert_eq!(idx.measure_suffix_claims().1, 0, "no event repeats");
     }
+
+    #[test]
+    fn subject_of_returns_the_latest_entry_for_an_artifact() {
+        let mut idx = HdcAssociativeIndex::new();
+        idx.observe_event(ArtifactId(7), "first subject", "a", false);
+        idx.observe_event(ArtifactId(8), "other", "b", false);
+        idx.observe_event(ArtifactId(7), "second subject", "a", false);
+        assert_eq!(idx.subject_of(ArtifactId(7)), Some("second subject"));
+        assert_eq!(idx.subject_of(ArtifactId(9)), None);
+    }
 }

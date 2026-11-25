@@ -162,9 +162,9 @@ agent's note before the call or the user's prompt that started the turn; each qu
 artifacts that existed when it was asked. Queries and judgements are private
 (`eval/private/`, built by `scripts/build-recall-eval-set.py`); these are aggregates.
 
-| Agent notes (this project, held-out half, 370 queries) | legacy | BM25 | RRF | newest first |
+| Agent notes (this project, held-out half, 371 queries) | legacy | BM25 | RRF | newest first |
 | :--- | ---: | ---: | ---: | ---: |
-| recall@1 | 0.0% | 2.2% | 0.3% | 83.2% |
+| recall@1 | 0.0% | 2.2% | 0.3% | 83.3% |
 | recall@10 | 2.4% | 12.7% | 5.4% | 99.2% |
 
 - **Fresh answers dominate:** across all six projects with at least 40 dereferences (1,661 note

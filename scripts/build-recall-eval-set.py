@@ -178,7 +178,8 @@ def main() -> None:
             "query": c["query"],
             "relevant": c["relevant"],
             "split": "train" if i < half else "heldout",
-            "ts": c["ts"],
+            # No time is written as no time (review of #98), never as "".
+            **({"ts": c["ts"]} if c["ts"] else {}),
         }
         for i, c in enumerate(cases)
     ]

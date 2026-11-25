@@ -1986,4 +1986,61 @@ mod recall_floor_tests {
         // A shared fractal suffix is a signal of its own.
         assert!(shown(&hit(0.03, 2, 0.03)));
     }
+
+    #[test]
+    fn fused_recall_shows_a_lexical_only_hit_and_weak_hdc_hits_do_not_win() {
+        let dir = std::env::temp_dir().join(format!("icx-fused-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut mmu = InfinityContextMmu::default();
+        mmu.set_lexical_index(true);
+        let target = mmu
+            .ingest_payload(
+                AgentKind::Codex,
+                "Read:net.rs",
+                "fn parseHttpRequest() {}\n",
+                false,
+            )
+            .artifact_id;
+        mmu.ingest_payload(AgentKind::Codex, "log", "unrelated words here\n", false);
+        mmu.save_workspace_dir(&dir).unwrap();
+        // No HDC hits at all: the BM25 match is shown, labelled with its stored subject.
+        let hit = mmu.fused_recall_hit("request", &[]).expect("lexical hit");
+        assert_eq!(hit.artifact_id, target);
+        assert_eq!(hit.subject, "Read:net.rs");
+        assert!(hit.combined_score >= MIN_RECALL_SIMILARITY);
+        // A weak HDC hit (below every display threshold) cannot outrank it.
+        let weak = AssociativeHit {
+            artifact_id: ArtifactId(1),
+            subject: "weak".into(),
+            hdc_similarity: 0.0,
+            shared_fractal_suffix: 0,
+            combined_score: 0.0,
+        };
+        assert_eq!(
+            mmu.fused_recall_hit("request", std::slice::from_ref(&weak))
+                .map(|h| h.artifact_id),
+            Some(target)
+        );
+        // A shown HDC hit that BM25 also finds is lifted to the display threshold.
+        let agreed = AssociativeHit {
+            artifact_id: target,
+            subject: "Read:net.rs".into(),
+            hdc_similarity: 0.5,
+            shared_fractal_suffix: 0,
+            combined_score: 0.0,
+        };
+        let h = mmu.fused_recall_hit("request", &[agreed]).unwrap();
+        assert!(h.combined_score >= MIN_RECALL_SIMILARITY);
+        // Nothing found by either: no hit.
+        assert!(mmu.fused_recall_hit("zzzz", &[]).is_none());
+        // Off: substring queries answer nothing; on, they confirm against the text.
+        assert_eq!(mmu.substring_matches("parseHttp", 5), vec![target]);
+        mmu.set_lexical_index(false);
+        assert_eq!(
+            mmu.substring_matches("parseHttp", 5),
+            Vec::<ArtifactId>::new()
+        );
+        assert_eq!(mmu.lexical_matches("request", 5).len(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

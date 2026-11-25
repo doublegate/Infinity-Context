@@ -165,14 +165,30 @@ pub fn artifact_times(mmu: &InfinityContextMmu) -> Times {
 /// Milliseconds since the Unix epoch for an RFC 3339 UTC time (`2026-11-24T20:51:00.123Z`).
 #[must_use]
 pub fn parse_rfc3339_ms(ts: &str) -> Option<u64> {
-    let b = ts.as_bytes();
-    if b.len() < 20 || b[4] != b'-' || b[7] != b'-' || b[10] != b'T' || !ts.ends_with('Z') {
+    let bytes = ts.as_bytes();
+    if bytes.len() < 20
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || bytes[10] != b'T'
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+        || !ts.ends_with('Z')
+    {
         return None;
     }
     let num = |r: std::ops::Range<usize>| ts.get(r)?.parse::<i64>().ok();
     let (y, mo, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
-    let (h, mi, sec) = (num(11..13)?, num(14..16)?, num(17..19)?);
-    let frac = ts[19..ts.len() - 1].strip_prefix('.').unwrap_or("");
+    let (hour, mi, sec) = (num(11..13)?, num(14..16)?, num(17..19)?);
+    // Nothing, or `.` and 1 to 9 digits, between the seconds and `Z` (review of #98).
+    let rest = ts.get(19..ts.len() - 1)?;
+    let frac = match rest.strip_prefix('.') {
+        None if rest.is_empty() => "",
+        Some(f) if (1..=9).contains(&f.len()) && f.bytes().all(|c| c.is_ascii_digit()) => f,
+        _ => return None,
+    };
+    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) || hour > 23 || mi > 59 || sec > 60 {
+        return None;
+    }
     let ms: i64 = format!("{frac:0<3}").get(..3)?.parse().ok()?;
     // Days from civil (Howard Hinnant's algorithm).
     let yy = if mo <= 2 { y - 1 } else { y };
@@ -182,7 +198,7 @@ pub fn parse_rfc3339_ms(ts: &str) -> Option<u64> {
     let doy = (153 * mp + 2) / 5 + d - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     let days = era * 146_097 + doe - 719_468;
-    let total = ((days * 24 + h) * 60 + mi) * 60 + sec;
+    let total = ((days * 24 + hour) * 60 + mi) * 60 + sec;
     u64::try_from(total * 1000 + ms).ok()
 }
 
@@ -225,10 +241,12 @@ pub fn old_answers(times: &Times, cases: Vec<Case>, min_age: usize) -> Vec<Case>
             let Some(at) = c.ts.as_deref().and_then(parse_rfc3339_ms) else {
                 return false;
             };
+            // Only answers that existed when asked (review of #98: a later one must not decide).
             let newest = c
                 .relevant
                 .iter()
                 .filter_map(|h| parse_handle(h))
+                .filter(|id| times.at.get(id).is_some_and(|&t| t <= at))
                 .filter_map(|id| times.order.iter().position(|x| *x == id))
                 .max();
             newest.is_some_and(|pos| {
@@ -256,8 +274,12 @@ pub fn rank(
 ) -> Vec<ArtifactId> {
     // With a cutoff, search everything before filtering, so later artifacts cannot fill a bounded
     // candidate list and push an earlier answer out (review of #98).
+    // HDC entries can repeat an artifact, so the entry count bounds the HDC list.
     let depth = if asked.is_some() {
-        mmu.cas.artifact_count().max(DEPTH)
+        mmu.hdc_events
+            .len()
+            .max(mmu.cas.artifact_count())
+            .max(DEPTH)
     } else {
         DEPTH
     };
@@ -272,6 +294,10 @@ pub fn rank(
                 .map(|h| h.artifact_id)
                 .filter(visible),
         )
+        .into_iter()
+        // Each list goes into fusion at `DEPTH`, with or without a cutoff (review of #98).
+        .take(DEPTH)
+        .collect::<Vec<_>>()
     };
     let bm25 = || {
         lexical.map_or_else(Vec::new, |conn| {
@@ -283,6 +309,9 @@ pub fn rank(
                     .filter(|id| mmu.cas.get_meta(*id).is_some())
                     .filter(visible),
             )
+            .into_iter()
+            .take(DEPTH)
+            .collect()
         })
     };
     let recent = || {
@@ -401,8 +430,21 @@ pub fn read_cases(text: &str, split: &str) -> Result<Vec<Case>, IcxError> {
         if line.trim().is_empty() {
             continue;
         }
-        let case: Case = serde_json::from_str(line)
+        let mut case: Case = serde_json::from_str(line)
             .map_err(|e| IcxError::Io(format!("query set line {}: {e}", i + 1)))?;
+        // An empty time means none; any other time must parse, since an unreadable one would
+        // silently disable the cutoff (review of #98).
+        if case.ts.as_deref().is_some_and(str::is_empty) {
+            case.ts = None;
+        }
+        if let Some(ts) = case.ts.as_deref()
+            && parse_rfc3339_ms(ts).is_none()
+        {
+            return Err(IcxError::Io(format!(
+                "query set line {}: unreadable time {ts:?} (expected RFC 3339 UTC, ending in Z)",
+                i + 1
+            )));
+        }
         if split == "all" || case.split == split {
             out.push(case);
         }
@@ -629,5 +671,40 @@ mod tests {
         };
         let (kept, dropped) = answer_existed(&times, vec![case(1), case(2)]);
         assert_eq!((kept.len(), dropped), (1, 1));
+    }
+
+    #[test]
+    fn malformed_times_are_refused_and_empty_ones_mean_none() {
+        for bad in [
+            "2026-11-24T20:51:00bogusZ",
+            "2026-11-24T20-51-00Z",
+            "2026-13-24T20:51:00Z",
+            "2026-11-24T20:51:00+00:00",
+            "2026-11-24T20:51:00.Z",
+            "2026-11-24T20:51:0é0Z",
+        ] {
+            assert_eq!(parse_rfc3339_ms(bad), None, "{bad}");
+            let line = format!("{{\"query\":\"q\",\"relevant\":[],\"ts\":\"{bad}\"}}");
+            assert!(read_cases(&line, "all").is_err(), "{bad}");
+        }
+        let empty = read_cases("{\"query\":\"q\",\"relevant\":[],\"ts\":\"\"}", "all").unwrap();
+        assert_eq!(empty[0].ts, None);
+    }
+
+    #[test]
+    fn a_later_answer_does_not_hide_an_old_one() {
+        let mut times = Times::default();
+        for i in 0..10u64 {
+            times.at.insert(ArtifactId(i), 1_000 * i);
+            times.order.push(ArtifactId(i));
+        }
+        // Asked at 9 s with answers 1 (old) and 9 (produced at 9 s, the last one): 1 counts.
+        let case = Case {
+            query: String::new(),
+            relevant: vec![ArtifactId(1).to_string(), ArtifactId(9).to_string()],
+            split: "heldout".into(),
+            ts: Some("1970-01-01T00:00:08Z".into()),
+        };
+        assert_eq!(old_answers(&times, vec![case], 5).len(), 1);
     }
 }

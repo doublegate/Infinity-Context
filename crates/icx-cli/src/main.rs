@@ -694,6 +694,11 @@ fn run_eval_recall(args: &[String]) -> Result<(), String> {
                 to_usize(queries.unwrap_or(200)).max(1),
                 seed,
             );
+            // `--split` applies to synthetic cases too (review of #98).
+            let cases: Vec<eval::Case> = match split.as_deref() {
+                None | Some("all") => cases,
+                Some(want) => cases.into_iter().filter(|c| c.split == want).collect(),
+            };
             (mmu, cases, format!("synthetic:{n}"))
         }
         (Some(path), None) => {
@@ -724,7 +729,7 @@ fn run_eval_recall(args: &[String]) -> Result<(), String> {
         "icx_version": env!("CARGO_PKG_VERSION"),
         "commit": commit.unwrap_or_else(|| "unknown".to_owned()),
         "source": source,
-        "split": split.unwrap_or_else(|| "heldout".to_owned()),
+        "split": split.unwrap_or_else(|| if synthetic.is_some() { "all" } else { "heldout" }.to_owned()),
         "seed": seed,
         "queries": cases.len(),
         "unanswerable_dropped": unanswerable,
