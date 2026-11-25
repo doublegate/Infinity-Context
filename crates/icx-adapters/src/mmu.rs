@@ -23,6 +23,12 @@ static WORKSPACE_IO_LOCK: Mutex<()> = Mutex::new(());
 /// Recall entries weaker than this on similarity, fractal suffix and combined score are not
 /// shown (v1.3.2).
 const MIN_RECALL_SIMILARITY: f32 = 0.10;
+/// HDC hits a prompt's recall line may be chosen from (only one is shown).
+const PROMPT_RECALL_CANDIDATES: usize = 4;
+/// A prompt word counts for the recall line only if at most 1 in `PROMPT_WORD_SHARE_DIVISOR`
+/// (2%) of indexed subjects hold it, or at most `PROMPT_WORD_MIN_CAP` in a small store.
+const PROMPT_WORD_SHARE_DIVISOR: usize = 50;
+const PROMPT_WORD_MIN_CAP: usize = 3;
 /// Recall depths the fused line uses: HDC hits per prompt (the tail slot's `top_k` at a prompt)
 /// and lexical matches (T-71-002).
 pub const FUSED_HDC_DEPTH: usize = 4;
@@ -409,31 +415,48 @@ impl InfinityContextMmu {
     /// subject, no HDC similarity, and a combined score at the display threshold, so it is shown
     /// as lexical evidence. `None` when neither ranker finds anything.
     fn fused_recall_hit(&self, query: &str, hdc_hits: &[AssociativeHit]) -> Option<AssociativeHit> {
+        self.fused_recall_hits(query, hdc_hits, 1)
+            .into_iter()
+            .next()
+    }
+
+    /// The best `k` fused recall hits, in fused order (see `fused_recall_hit`).
+    fn fused_recall_hits(
+        &self,
+        query: &str,
+        hdc_hits: &[AssociativeHit],
+        k: usize,
+    ) -> Vec<AssociativeHit> {
         let lexical: Vec<ArtifactId> = self
             .lexical_matches(query, FUSED_LEXICAL_DEPTH)
             .into_iter()
             .map(|(id, _)| id)
             .collect();
-        let top = *Self::fused_ranking(hdc_hits, &lexical).first()?;
-        if let Some(hit) = hdc_hits.iter().find(|h| h.artifact_id == top) {
-            let mut hit = hit.clone();
-            // Lexical agreement is evidence enough to show it.
-            if lexical.contains(&top) {
-                hit.combined_score = hit.combined_score.max(MIN_RECALL_SIMILARITY);
-            }
-            return Some(hit);
-        }
-        Some(AssociativeHit {
-            artifact_id: top,
-            subject: self
-                .hdc_index
-                .subject_of(top)
-                .unwrap_or("artifact")
-                .to_owned(),
-            hdc_similarity: 0.0,
-            shared_fractal_suffix: 0,
-            combined_score: MIN_RECALL_SIMILARITY,
-        })
+        Self::fused_ranking(hdc_hits, &lexical)
+            .into_iter()
+            .take(k)
+            .map(|top| {
+                if let Some(hit) = hdc_hits.iter().find(|h| h.artifact_id == top) {
+                    let mut hit = hit.clone();
+                    // Lexical agreement is evidence enough to show it.
+                    if lexical.contains(&top) {
+                        hit.combined_score = hit.combined_score.max(MIN_RECALL_SIMILARITY);
+                    }
+                    return hit;
+                }
+                AssociativeHit {
+                    artifact_id: top,
+                    subject: self
+                        .hdc_index
+                        .subject_of(top)
+                        .unwrap_or("artifact")
+                        .to_owned(),
+                    hdc_similarity: 0.0,
+                    shared_fractal_suffix: 0,
+                    combined_score: MIN_RECALL_SIMILARITY,
+                }
+            })
+            .collect()
     }
 
     /// The fused order `ICX_RECALL_RANKING=rrf` uses (T-71-002), shared by recall and by the
@@ -1181,7 +1204,25 @@ impl InfinityContextMmu {
         query: &str,
         top_k: usize,
     ) -> String {
-        let raw_slot = self.build_ephemeral_tail_slot_inner(requesting_agent, query, top_k);
+        let raw_slot = self.build_ephemeral_tail_slot_inner(requesting_agent, query, top_k, false);
+        let slot = self.epochs.bound_tail_slot(raw_slot);
+        self.record_emitted(&slot);
+        slot
+    }
+
+    /// The tail slot added to every user prompt (v1.5.0, owner decision recorded in ADR-0010):
+    /// cross-agent activity as usual, but at most one recall line, and only for a hit whose
+    /// subject shares a distinctive word with the prompt. No graph lines. The v1.5.0 evaluation found that at
+    /// prompt time the needed output almost never exists yet (313 of 316 cases), so the full
+    /// slot's up to eight recall and graph lines were mostly noise. The full slot stays for
+    /// `SessionStart`, compaction and the `recall` the agent asks for.
+    pub fn build_prompt_tail_slot(&mut self, requesting_agent: AgentKind, prompt: &str) -> String {
+        let raw_slot = self.build_ephemeral_tail_slot_inner(
+            requesting_agent,
+            prompt,
+            PROMPT_RECALL_CANDIDATES,
+            true,
+        );
         let slot = self.epochs.bound_tail_slot(raw_slot);
         self.record_emitted(&slot);
         slot
@@ -1192,6 +1233,7 @@ impl InfinityContextMmu {
         requesting_agent: AgentKind,
         query: &str,
         top_k: usize,
+        prompt_only: bool,
     ) -> String {
         let limit = self.epochs.tail_slot_byte_limit();
         let header = format!(
@@ -1208,10 +1250,31 @@ impl InfinityContextMmu {
 
         // Reserve useful recall before consuming space with sibling events. A large public
         // subject can fall back to a complete handle frame instead of dropping all recall.
-        let hdc_hits: Vec<AssociativeHit> = self.hdc_index.query_associative(query, top_k);
+        // A prompt with no distinctive word gets no recall line, so it skips the HDC query.
+        let words = if prompt_only {
+            self.prompt_words(query)
+        } else {
+            BTreeSet::new()
+        };
+        let mut hdc_hits: Vec<AssociativeHit> = if prompt_only && words.is_empty() {
+            Vec::new()
+        } else {
+            self.hdc_index.query_associative(query, top_k)
+        };
         // `legacy` (the default) shows the best HDC hit; with `ICX_RECALL_RANKING=rrf` the HDC
         // hits are fused with BM25 matches by reciprocal rank (T-71-002).
-        let best = if self.switches.lexical_index {
+        let best = if prompt_only {
+            if words.is_empty() {
+                None
+            } else if self.switches.lexical_index {
+                // Every fused candidate, not the first few (review of #101: fused lists
+                // interleave the rankers, so a cut dropped qualifying hits).
+                let fused = self.fused_recall_hits(query, &hdc_hits, usize::MAX);
+                self.pick_prompt_hit(fused, &words)
+            } else {
+                self.pick_prompt_hit(std::mem::take(&mut hdc_hits), &words)
+            }
+        } else if self.switches.lexical_index {
             self.fused_recall_hit(query, &hdc_hits)
         } else {
             hdc_hits.first().cloned()
@@ -1288,6 +1351,10 @@ impl InfinityContextMmu {
                 .insert(requesting_agent as u8, new_cursor);
         }
 
+        if prompt_only {
+            return lines.join("\n");
+        }
+
         // 2. Remaining HDC + Fractal associative hits, only as complete frames.
         for hit in hdc_hits.iter().skip(1) {
             Self::append_tail_recall(&mut lines, &mut used, limit, hit);
@@ -1322,6 +1389,95 @@ impl InfinityContextMmu {
         lines.join("\n")
     }
 
+    /// The first of `candidates`, in ranking order, that would be shown, carries its stored
+    /// subject, and whose subject shares a word with the prompt (review of #101: a candidate too
+    /// weak to show, or a placeholder subject, cannot hide a later one that qualifies).
+    fn pick_prompt_hit(
+        &self,
+        candidates: Vec<AssociativeHit>,
+        words: &BTreeSet<String>,
+    ) -> Option<AssociativeHit> {
+        candidates.into_iter().find(|h| {
+            Self::displayable(h) && self.has_stored_subject(h) && Self::shares_a_word(h, words)
+        })
+    }
+
+    /// The lowercased words of a prompt or subject: runs of letters, digits and `_`. An
+    /// identifier stays one word: splitting at `_` (suggested in the review of #101) showed a
+    /// line for 58 of the 118 measured prompts instead of 2, with no more lines used.
+    fn words_of(text: &str) -> impl Iterator<Item = String> + '_ {
+        text.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .filter(|w| !w.is_empty())
+            .map(str::to_lowercase)
+    }
+
+    /// The words of a subject without its tool prefix (`Read:`, `Bash:`, `mcp__x__y:`), so a
+    /// prompt that says "edit" or "grep" does not match every such call (review of #101).
+    fn subject_words(subject: &str) -> impl Iterator<Item = String> + '_ {
+        let rest = match subject.split_once(':') {
+            // `crate::module::item` has no tool prefix (review of #101).
+            Some((tool, rest))
+                if !tool.is_empty()
+                    && !rest.starts_with(':')
+                    && tool.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') =>
+            {
+                rest
+            }
+            _ => subject,
+        };
+        Self::words_of(rest)
+    }
+
+    /// The words of a prompt that can match a subject: at least 3 characters, not a stop word
+    /// (checked after lowercasing, so "What" is one), and distinctive. A word held by more than
+    /// 1 in `PROMPT_WORD_SHARE_DIVISOR` of indexed subjects ("cargo", "bash", "read") would
+    /// match too many hits, so it does not count; a word no subject holds cannot match either.
+    /// Frequency is counted over subjects, the text the match is made against (review of #101:
+    /// counted over output bodies, a module name common in diffs could never match its own
+    /// `Read:` subject), with the same tokenizer.
+    fn prompt_words(&self, prompt: &str) -> BTreeSet<String> {
+        let df: BTreeMap<String, usize> = Self::words_of(prompt)
+            .filter(|w| w.chars().count() >= 3 && !Self::is_ppr_stop_word(w))
+            .map(|w| (w, 0))
+            .collect();
+        if df.is_empty() {
+            return BTreeSet::new();
+        }
+        // Counted over distinct subjects, so working on one file (reading it again and again)
+        // does not make its own name common (review of #101). (count, index of the last
+        // subject counted), so a word repeated in one subject counts once.
+        let subjects: BTreeSet<&str> = self.hdc_index.subjects().collect();
+        let mut counts: BTreeMap<String, (usize, usize)> =
+            df.into_keys().map(|w| (w, (0, usize::MAX))).collect();
+        for (i, subject) in subjects.iter().enumerate() {
+            for w in Self::subject_words(subject) {
+                if let Some((count, last)) = counts.get_mut(&w)
+                    && *last != i
+                {
+                    *count += 1;
+                    *last = i;
+                }
+            }
+        }
+        // The floor of 3 lets a small, early store match; a word in every one of 3 subjects
+        // then still counts, a deliberate trade-off (review of #101).
+        let cap = (subjects.len() / PROMPT_WORD_SHARE_DIVISOR).max(PROMPT_WORD_MIN_CAP);
+        counts
+            .into_iter()
+            .filter(|&(_, (count, _))| count > 0 && count <= cap)
+            .map(|(w, _)| w)
+            .collect()
+    }
+
+    /// Whether `hit`'s subject (its command or file path, without the tool prefix) contains one of
+    /// `words` as
+    /// a whole word. The output text is not searched: a long output almost always holds some
+    /// prompt word, so a text match filtered almost nothing (measured on 118 real prompts: a
+    /// line for 113 with rare words in the text, for 2 with the subject; owner decision).
+    fn shares_a_word(hit: &AssociativeHit, words: &BTreeSet<String>) -> bool {
+        Self::subject_words(&hit.subject).any(|w| words.contains(&w))
+    }
+
     fn append_tail_line(
         lines: &mut Vec<String>,
         used: &mut usize,
@@ -1338,19 +1494,29 @@ impl InfinityContextMmu {
         }
     }
 
+    /// Whether a recall hit is strong enough to show. A hit that is weak on every signal is
+    /// noise in the agent's context (v1.3.2: 6% of injected recall lines in the field had
+    /// sim < 0.1). Exact-identifier (lexical) hits carry a combined score and are kept.
+    fn displayable(hit: &AssociativeHit) -> bool {
+        hit.hdc_similarity >= MIN_RECALL_SIMILARITY
+            || hit.shared_fractal_suffix > 0
+            || hit.combined_score >= MIN_RECALL_SIMILARITY
+    }
+
+    /// Whether `hit` carries the subject stored for it, not the `artifact` placeholder a
+    /// lexical-only hit gets when the index has no entry (review of #101: the placeholder
+    /// could match a prompt that says "artifact").
+    fn has_stored_subject(&self, hit: &AssociativeHit) -> bool {
+        self.hdc_index.subject_of(hit.artifact_id).is_some()
+    }
+
     fn append_tail_recall(
         lines: &mut Vec<String>,
         used: &mut usize,
         limit: usize,
         hit: &AssociativeHit,
     ) {
-        // A hit that is weak on every signal is noise in the agent's context (v1.3.2: 6% of
-        // injected recall lines in the field had sim < 0.1). Exact-identifier (lexical) hits
-        // carry a combined score and are kept.
-        if hit.hdc_similarity < MIN_RECALL_SIMILARITY
-            && hit.shared_fractal_suffix == 0
-            && hit.combined_score < MIN_RECALL_SIMILARITY
-        {
+        if !Self::displayable(hit) {
             return;
         }
         if !Self::append_tail_line(
@@ -2222,6 +2388,91 @@ impl InfinityContextMmu {
         let out = op(self)?;
         self.save_workspace_dir_unlocked(icx_dir).map_err(E::from)?;
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod prompt_pick_tests {
+    use super::*;
+
+    fn mmu_with(subjects: &[&str]) -> (InfinityContextMmu, Vec<ArtifactId>) {
+        let mut m = InfinityContextMmu::default();
+        let ids = subjects
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                m.ingest_payload(AgentKind::ClaudeCode, s, &format!("body {i}\n"), false)
+                    .artifact_id
+            })
+            .collect();
+        (m, ids)
+    }
+
+    fn hit(id: ArtifactId, subject: &str, sim: f32) -> AssociativeHit {
+        AssociativeHit {
+            artifact_id: id,
+            subject: subject.into(),
+            hdc_similarity: sim,
+            shared_fractal_suffix: 0,
+            combined_score: sim,
+        }
+    }
+
+    fn words(ws: &[&str]) -> BTreeSet<String> {
+        ws.iter().map(|w| (*w).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_weak_candidate_does_not_hide_a_later_one() {
+        let (m, ids) = mmu_with(&["Read:src/alpha.rs", "Read:src/beta.rs"]);
+        let picked = m.pick_prompt_hit(
+            vec![
+                hit(ids[0], "Read:src/alpha.rs", 0.01),
+                hit(ids[1], "Read:src/beta.rs", 0.5),
+            ],
+            &words(&["alpha", "beta"]),
+        );
+        assert_eq!(picked.map(|h| h.artifact_id), Some(ids[1]));
+    }
+
+    #[test]
+    fn a_placeholder_subject_never_matches() {
+        let (m, _) = mmu_with(&["Read:src/alpha.rs"]);
+        let unknown = hit(ArtifactId(0xdead_beef), "artifact", 0.5);
+        assert!(
+            m.pick_prompt_hit(vec![unknown], &words(&["artifact"]))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn identifiers_stay_whole_and_the_tool_prefix_is_ignored() {
+        let (m, ids) = mmu_with(&["Read:src/prompt_recall.rs", "Grep:needle"]);
+        let whole = |w: &[&str]| {
+            m.pick_prompt_hit(
+                vec![hit(ids[0], "Read:src/prompt_recall.rs", 0.5)],
+                &words(w),
+            )
+        };
+        assert!(whole(&["prompt_recall"]).is_some());
+        assert!(whole(&["recall"]).is_none());
+        let tool = m.pick_prompt_hit(vec![hit(ids[1], "Grep:needle", 0.5)], &words(&["grep"]));
+        assert!(tool.is_none(), "the tool name is not a subject word");
+        let path: Vec<String> = InfinityContextMmu::subject_words("icx_core::cas::store").collect();
+        assert_eq!(
+            path,
+            ["icx_core", "cas", "store"],
+            "a path keeps its first segment"
+        );
+    }
+
+    #[test]
+    fn repeated_reads_of_one_file_keep_its_name_distinctive() {
+        let mut subjects = vec!["Read:src/focus.rs"; 6];
+        subjects.extend(["Bash:ls a", "Bash:ls b"]);
+        let (m, _) = mmu_with(&subjects);
+        // Six reads of one file are one distinct subject.
+        assert!(m.prompt_words("look at focus again").contains("focus"));
     }
 }
 

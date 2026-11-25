@@ -70,7 +70,7 @@ impl CodexAdapter {
                     .get("prompt")
                     .and_then(Value::as_str)
                     .unwrap_or("codex_query");
-                let tail = mmu.build_ephemeral_tail_slot(AgentKind::Codex, prompt, 4);
+                let tail = mmu.build_prompt_tail_slot(AgentKind::Codex, prompt);
                 // Codex has no hook that changes the summary; the first hook after compaction
                 // that carries context delivers the resume packet (T-73-002).
                 let resume = codex_resume(mmu, crate::mmu::hook_session_id(&payload), &tail);

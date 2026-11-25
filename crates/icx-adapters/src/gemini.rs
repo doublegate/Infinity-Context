@@ -133,7 +133,7 @@ impl GeminiCliAdapter {
                     .and_then(Value::as_str)
                     .filter(|p| !p.trim().is_empty())
                     .unwrap_or("gemini_query");
-                let tail = mmu.build_ephemeral_tail_slot(AgentKind::GeminiCli, prompt, 4);
+                let tail = mmu.build_prompt_tail_slot(AgentKind::GeminiCli, prompt);
                 json!({
                     "hookSpecificOutput": {
                         "hookEventName": "BeforeAgent",

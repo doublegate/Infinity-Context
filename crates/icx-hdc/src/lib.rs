@@ -694,6 +694,11 @@ impl HdcAssociativeIndex {
         }
     }
 
+    /// The stored subjects of all indexed entries, oldest first.
+    pub fn subjects(&self) -> impl Iterator<Item = &str> {
+        self.entries.iter().map(IndexedEntry::subject)
+    }
+
     /// The stored subject of the latest entry for `artifact`, if indexed (used to label a
     /// recall hit found by another ranker).
     #[must_use]
@@ -1358,5 +1363,13 @@ mod tests {
         idx.observe_event(ArtifactId(7), "second subject", "a", false);
         assert_eq!(idx.subject_of(ArtifactId(7)), Some("second subject"));
         assert_eq!(idx.subject_of(ArtifactId(9)), None);
+    }
+
+    #[test]
+    fn subjects_lists_every_entry_in_order() {
+        let mut idx = HdcAssociativeIndex::new();
+        idx.observe_event(ArtifactId(1), "Read:a.rs", "alpha beta", false);
+        idx.observe_event(ArtifactId(2), "Bash:ls", "alpha gamma", false);
+        assert_eq!(idx.subjects().collect::<Vec<_>>(), ["Read:a.rs", "Bash:ls"]);
     }
 }

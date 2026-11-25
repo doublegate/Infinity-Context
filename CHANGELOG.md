@@ -18,6 +18,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `superseded`, `exploration`, `other`), recorded in the fold's summary; unknown types are
   refused, and a typed fold expands back to its exact content.
 
+### Changed
+
+- What icx adds to every user prompt (Claude Code, Codex, Gemini CLI, Muse, OpenCode, agy): at
+  most one recall line, shown only when the hit's subject (command or file path, not the tool prefix)
+  shares a distinctive word with the prompt, and no graph lines; before, up to about eight
+  recall and graph lines, mostly unrelated (ADR-0010). A word is distinctive when at most 2%
+  of indexed subjects hold it (at least 3 in a small store). On 118 real prompts the line now appears twice, once for the
+  output the turn used; matching the output text instead showed a line for 113. Cross-agent activity is unchanged;
+  `SessionStart`, compaction and the agent's own `recall` keep the full slot.
+
 ### Fixed
 
 - `icx install`: the Claude Code matcher note judges all icx `PostToolUse` groups together, so a

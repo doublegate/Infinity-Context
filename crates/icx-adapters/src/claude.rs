@@ -130,7 +130,7 @@ impl ClaudeCodeAdapter {
                     .get("prompt")
                     .and_then(Value::as_str)
                     .unwrap_or("user_query");
-                let tail = mmu.build_ephemeral_tail_slot(AgentKind::ClaudeCode, prompt, 4);
+                let tail = mmu.build_prompt_tail_slot(AgentKind::ClaudeCode, prompt);
                 // A compaction with no `SessionStart` after it is resumed at the next prompt.
                 let resume = claude_resume(mmu, crate::mmu::hook_session_id(&payload), &tail);
                 context_reply("UserPromptSubmit", &format!("{tail}{resume}"))

@@ -132,7 +132,7 @@ impl MuseAdapter {
                     .get("prompt")
                     .and_then(Value::as_str)
                     .unwrap_or("muse_query");
-                let tail = mmu.build_ephemeral_tail_slot(AgentKind::Muse, prompt, 4);
+                let tail = mmu.build_prompt_tail_slot(AgentKind::Muse, prompt);
                 json!({
                     "hookSpecificOutput": {
                         "hookEventName": "UserPromptSubmit",
