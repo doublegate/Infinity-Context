@@ -694,6 +694,20 @@ impl HdcAssociativeIndex {
         }
     }
 
+    /// How many indexed entries hold `word` (as the exact-token index normalizes it), or `None`
+    /// when this index keeps no token postings (a legacy snapshot).
+    #[must_use]
+    pub fn token_frequency(&self, word: &str) -> Option<usize> {
+        let postings = self.lexical_postings.as_ref()?;
+        Some(postings.get(&word.to_ascii_lowercase()).map_or(0, Vec::len))
+    }
+
+    /// Number of indexed entries.
+    #[must_use]
+    pub fn entry_count(&self) -> usize {
+        self.entries.len()
+    }
+
     /// The stored subject of the latest entry for `artifact`, if indexed (used to label a
     /// recall hit found by another ranker).
     #[must_use]
@@ -1358,5 +1372,16 @@ mod tests {
         idx.observe_event(ArtifactId(7), "second subject", "a", false);
         assert_eq!(idx.subject_of(ArtifactId(7)), Some("second subject"));
         assert_eq!(idx.subject_of(ArtifactId(9)), None);
+    }
+
+    #[test]
+    fn token_frequency_counts_entries_holding_a_word() {
+        let mut idx = HdcAssociativeIndex::new();
+        idx.observe_event(ArtifactId(1), "a", "alpha beta", false);
+        idx.observe_event(ArtifactId(2), "b", "alpha gamma", false);
+        assert_eq!(idx.token_frequency("alpha"), Some(2));
+        assert_eq!(idx.token_frequency("GAMMA"), Some(1));
+        assert_eq!(idx.token_frequency("delta"), Some(0));
+        assert_eq!(idx.entry_count(), 2);
     }
 }

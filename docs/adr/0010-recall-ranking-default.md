@@ -48,11 +48,22 @@ of #98, which found that prompt cases had been timed at the dereference instead 
 
 - v1.5.0 ships the index, fusion and harness without changing what any user sees by default.
 - **Prompt recall, decided by the owner (2026-11-25):** what icx adds to every user prompt is
-  now at most one recall line, shown only when the hit shares a word (3 or more characters, not
-  a stop word) with the prompt, and no graph lines; before, up to about eight recall and graph
-  lines were added, mostly unrelated. Cross-agent activity is unchanged, and `SessionStart`,
-  compaction and the `recall` an agent asks for keep the full slot
-  (`InfinityContextMmu::build_prompt_tail_slot`).
+  now at most one recall line, and no graph lines; before, up to about eight recall and graph
+  lines were added, mostly unrelated. The line is shown only when the hit's subject (its command,
+  file path or tool name) shares a distinctive word with the prompt: at least 3 characters, not
+  a stop word, and held by at most 2% of indexed outputs. Matching the output text instead
+  filtered almost nothing. Measured on 118 real prompts (each line counted as used when the turn
+  then opened that output):
+
+  | Rule | Prompts given a line | Lines the turn used |
+  | :--- | ---: | ---: |
+  | Best hit, no word rule | 118 | 1 |
+  | Rare word in the output text (2%, 0.5%, 0.1%) | 113, 90, 17 | 1, 0, 0 |
+  | Rare word in the subject (shipped) | 1 | 1 |
+
+  Cross-agent activity is unchanged, and `SessionStart`, compaction and the `recall` an agent
+  asks for keep the full slot (`InfinityContextMmu::build_prompt_tail_slot`).
+
 - **Next step, once the resume packet has been in use for a while:** inject recall only after a
   break (compaction, resume or a new session), when older context really is gone, and measure it
   with the post-install re-read figures (T-73-002).

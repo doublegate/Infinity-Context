@@ -25,6 +25,10 @@ static WORKSPACE_IO_LOCK: Mutex<()> = Mutex::new(());
 const MIN_RECALL_SIMILARITY: f32 = 0.10;
 /// HDC hits a prompt's recall line may be chosen from (only one is shown).
 const PROMPT_RECALL_CANDIDATES: usize = 4;
+/// A prompt word counts for the recall line only if at most this share of indexed outputs hold
+/// it, or at most `PROMPT_WORD_MIN_CAP` outputs in a small store.
+const PROMPT_WORD_MAX_SHARE: f64 = 0.02;
+const PROMPT_WORD_MIN_CAP: usize = 3;
 /// Recall depths the fused line uses: HDC hits per prompt (the tail slot's `top_k` at a prompt)
 /// and lexical matches (T-71-002).
 pub const FUSED_HDC_DEPTH: usize = 4;
@@ -941,8 +945,8 @@ impl InfinityContextMmu {
     }
 
     /// The tail slot added to every user prompt (v1.5.0, owner decision recorded in ADR-0010):
-    /// cross-agent activity as usual, but at most one recall line, and only for a hit that
-    /// shares a word with the prompt. No graph lines. The v1.5.0 evaluation found that at
+    /// cross-agent activity as usual, but at most one recall line, and only for a hit whose
+    /// subject shares a distinctive word with the prompt. No graph lines. The v1.5.0 evaluation found that at
     /// prompt time the needed output almost never exists yet (313 of 316 cases), so the full
     /// slot's up to eight recall and graph lines were mostly noise. The full slot stays for
     /// `SessionStart`, compaction and the `recall` the agent asks for.
@@ -985,7 +989,7 @@ impl InfinityContextMmu {
         // hits are fused with BM25 matches by reciprocal rank (T-71-002).
         let best = if prompt_only {
             // The first candidate, in ranking order, that shares a word with the prompt.
-            let words = Self::prompt_words(query);
+            let words = self.prompt_words(query);
             let ranked: Vec<AssociativeHit> = if self.lexical_index {
                 self.fused_recall_hit(query, &hdc_hits)
                     .into_iter()
@@ -995,7 +999,7 @@ impl InfinityContextMmu {
             };
             ranked
                 .into_iter()
-                .find(|h| !words.is_empty() && self.shares_a_word(h, &words))
+                .find(|h| !words.is_empty() && Self::shares_a_word(h, &words))
         } else if self.lexical_index {
             self.fused_recall_hit(query, &hdc_hits)
         } else {
@@ -1112,26 +1116,33 @@ impl InfinityContextMmu {
     }
 
     /// The words of a prompt that can match an output: at least 3 characters, not a stop word,
-    /// lowercased (the PageRank seed rule).
-    fn prompt_words(prompt: &str) -> BTreeSet<String> {
+    /// lowercased (the PageRank seed rule), and distinctive. A word in more than
+    /// `PROMPT_WORD_MAX_SHARE` of indexed outputs ("test", "error", "file") would let almost
+    /// any long output pass, so it does not count (side-agent review); a word no output holds
+    /// cannot match either. An index without token postings keeps every word.
+    fn prompt_words(&self, prompt: &str) -> BTreeSet<String> {
+        let n = self.hdc_index.entry_count();
+        let cap = ((n as f64 * PROMPT_WORD_MAX_SHARE) as usize).max(PROMPT_WORD_MIN_CAP);
         prompt
             .split(|c: char| !(c.is_alphanumeric() || c == '_'))
             .filter(|w| w.chars().count() >= 3 && !Self::is_ppr_stop_word(w))
             .map(str::to_lowercase)
+            .filter(|w| {
+                self.hdc_index
+                    .token_frequency(w)
+                    .is_none_or(|df| df > 0 && df <= cap)
+            })
             .collect()
     }
 
-    /// Whether `hit`'s subject or stored text contains one of `words` as a whole word.
-    fn shares_a_word(&self, hit: &AssociativeHit, words: &BTreeSet<String>) -> bool {
-        let has = |text: &str| {
-            text.split(|c: char| !(c.is_alphanumeric() || c == '_'))
-                .any(|w| words.contains(&w.to_lowercase()))
-        };
-        has(&hit.subject)
-            || self
-                .cas
-                .deref_bytes(hit.artifact_id)
-                .is_ok_and(|b| has(&String::from_utf8_lossy(&b)))
+    /// Whether `hit`'s subject (its command, file path or tool name) contains one of `words` as
+    /// a whole word. The output text is not searched: a long output almost always holds some
+    /// prompt word, so a text match filtered almost nothing (measured on 118 real prompts: a
+    /// line for 113 with rare words in the text, for 1 with the subject; owner decision).
+    fn shares_a_word(hit: &AssociativeHit, words: &BTreeSet<String>) -> bool {
+        hit.subject
+            .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .any(|w| words.contains(&w.to_lowercase()))
     }
 
     fn append_tail_line(

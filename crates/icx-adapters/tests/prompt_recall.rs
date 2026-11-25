@@ -49,14 +49,17 @@ fn a_prompt_gets_at_most_one_recall_line_and_no_graph_lines() {
 #[test]
 fn the_recall_line_needs_a_shared_word() {
     let mut m = mmu();
-    // A real word in common: shown.
-    let tail = m.build_prompt_tail_slot(AgentKind::ClaudeCode, "look at redact_secrets again");
+    // A distinctive word of the subject (`Read:src/redactor.rs`): shown.
+    let tail = m.build_prompt_tail_slot(AgentKind::ClaudeCode, "look at the redactor again");
     let lines = recall_lines(&tail);
     assert_eq!(lines.len(), 1, "{tail}");
     assert!(lines[0].contains("redactor"), "{tail}");
     // No word in common (stop words and short words do not count): nothing shown.
     let none = m.build_prompt_tail_slot(AgentKind::ClaudeCode, "what is it now and then?");
     assert_eq!(recall_lines(&none), Vec::<&str>::new(), "{none}");
+    // A word only in the output text, not the subject, does not count.
+    let text_only = m.build_prompt_tail_slot(AgentKind::ClaudeCode, "where is redact_secrets");
+    assert_eq!(recall_lines(&text_only), Vec::<&str>::new(), "{text_only}");
 }
 
 #[test]
@@ -78,4 +81,52 @@ fn the_prompt_hook_uses_the_prompt_slot_and_session_start_keeps_the_full_one() {
     );
     let start = ClaudeCodeAdapter::handle_hook("SessionStart", "{}", &mut m).unwrap();
     assert!(start.contains("ICX:TAIL_SLOT"), "{start}");
+}
+
+/// Measurement (run with `ICX_MEASURE_WORKSPACE=<workspace dir> ICX_MEASURE_PROMPTS=<prompt set
+/// .jsonl> cargo test --release -p icx-adapters --test prompt_recall measure -- --ignored
+/// --nocapture`): for each prompt, whether a recall line is shown with no word rule (the best HDC
+/// hit alone) and with the shipped distinctive-word rule, and whether the shown line is one of
+/// the outputs that turn used. The workspace is loaded, never saved. Prints counts only.
+#[test]
+#[ignore = "measurement; needs ICX_MEASURE_WORKSPACE and ICX_MEASURE_PROMPTS"]
+fn measure_prompt_recall_lines() {
+    let (Ok(dir), Ok(set)) = (
+        std::env::var("ICX_MEASURE_WORKSPACE"),
+        std::env::var("ICX_MEASURE_PROMPTS"),
+    ) else {
+        return;
+    };
+    let mut m = InfinityContextMmu::default();
+    m.load_workspace_dir(std::path::Path::new(&dir)).unwrap();
+    let (mut n, mut unfiltered, mut shipped, mut unfiltered_hit, mut shipped_hit) = (0, 0, 0, 0, 0);
+    for line in std::fs::read_to_string(&set).unwrap().lines() {
+        let case: serde_json::Value = serde_json::from_str(line).unwrap();
+        let q = case["query"].as_str().unwrap_or_default();
+        let relevant: Vec<String> = case["relevant"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default();
+        n += 1;
+        let uses = |t: &str| relevant.iter().any(|h| t.contains(h.as_str()));
+        let full = m.build_ephemeral_tail_slot(AgentKind::ClaudeCode, q, 1);
+        let first = full.lines().find(|l| l.contains("HDC_RECALL"));
+        if let Some(l) = first {
+            unfiltered += 1;
+            unfiltered_hit += usize::from(uses(l));
+        }
+        let tail = m.build_prompt_tail_slot(AgentKind::ClaudeCode, q);
+        if let Some(l) = tail.lines().find(|l| l.contains("HDC_RECALL")) {
+            shipped += 1;
+            shipped_hit += usize::from(uses(l));
+        }
+    }
+    println!(
+        "prompts={n} | best hit, no word rule: shown {unfiltered}, used {unfiltered_hit} | \
+         distinctive-word rule: shown {shipped}, used {shipped_hit}"
+    );
 }

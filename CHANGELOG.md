@@ -8,9 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - What icx adds to every user prompt (Claude Code, Codex, Gemini CLI, Muse, OpenCode, agy): at
-  most one recall line, shown only when the hit shares a word with the prompt, and no graph
-  lines; before, up to about eight recall and graph lines, mostly unrelated (ADR-0010; at prompt
-  time the needed output almost never existed yet). Cross-agent activity is unchanged;
+  most one recall line, shown only when the hit's subject (command, file path or tool name)
+  shares a distinctive word with the prompt, and no graph lines; before, up to about eight
+  recall and graph lines, mostly unrelated (ADR-0010). On 118 real prompts the line now appears
+  once, and was the output the turn used; matching the output text instead showed a line for
+  113. Cross-agent activity is unchanged;
   `SessionStart`, compaction and the agent's own `recall` keep the full slot.
 
 ### Fixed
