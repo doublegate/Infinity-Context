@@ -176,6 +176,73 @@ fn claude_code_gets_one_packet_after_compaction() {
 }
 
 #[test]
+fn a_session_never_takes_another_sessions_packet() {
+    let mut mmu = filled(3);
+    let hook = |m: &mut InfinityContextMmu, event: &str, body: &str| {
+        context(&ClaudeCodeAdapter::handle_hook(event, body, m).unwrap())
+    };
+    // `PreCompact` replies with plain compaction instructions, not JSON.
+    ClaudeCodeAdapter::handle_hook("PreCompact", r#"{"session_id":"session-a"}"#, &mut mmu)
+        .unwrap();
+    // Session B, running in parallel in the same workspace, gets nothing.
+    let b = hook(
+        &mut mmu,
+        "UserPromptSubmit",
+        r#"{"session_id":"session-b","prompt":"go on"}"#,
+    );
+    assert!(!b.contains("ICX:RESUME"), "{b}");
+    // Session A, after its compaction, gets its packet once.
+    let a = hook(
+        &mut mmu,
+        "SessionStart",
+        r#"{"session_id":"session-a","source":"compact"}"#,
+    );
+    assert!(a.contains("ICX:RESUME"), "{a}");
+    let again = hook(
+        &mut mmu,
+        "UserPromptSubmit",
+        r#"{"session_id":"session-a","prompt":"go on"}"#,
+    );
+    assert!(!again.contains("ICX:RESUME"), "{again}");
+    // A malformed session id is treated as none: the packet is the agent's.
+    ClaudeCodeAdapter::handle_hook("PreCompact", r#"{"session_id":"bad id/../x"}"#, &mut mmu)
+        .unwrap();
+    let any = hook(
+        &mut mmu,
+        "UserPromptSubmit",
+        r#"{"session_id":"session-b","prompt":"go on"}"#,
+    );
+    assert!(any.contains("ICX:RESUME"), "{any}");
+}
+
+#[test]
+fn pending_sessions_survive_a_save_and_are_bounded() {
+    let dir = std::env::temp_dir().join(format!("icx-resume-sessions-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut mmu = filled(2);
+    for i in 0..40 {
+        mmu.mark_resume_pending_for(AgentKind::ClaudeCode, Some(&format!("s{i}")));
+    }
+    mmu.save_workspace_dir(&dir).unwrap();
+    let mut next = InfinityContextMmu::default();
+    next.load_workspace_dir(&dir).unwrap();
+    // The oldest are dropped beyond 32; the newest survive the save.
+    assert!(
+        next.take_resume_packet_for(AgentKind::ClaudeCode, Some("s0"), 3_072)
+            .is_none()
+    );
+    assert!(
+        next.take_resume_packet_for(AgentKind::ClaudeCode, Some("s39"), 3_072)
+            .is_some()
+    );
+    assert!(
+        next.take_resume_packet_for(AgentKind::ClaudeCode, Some("s8"), 3_072)
+            .is_some()
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn codex_gets_one_packet_at_its_next_hook_with_context() {
     let mut mmu = filled(3);
     CodexAdapter::handle_hook("PreCompact", "{}", &mut mmu).unwrap();

@@ -38,6 +38,22 @@ struct Switches {
 }
 /// Resume packet bounds (T-73-001): byte budget, outputs listed, subject length, failures.
 pub const RESUME_PACKET_MAX_BYTES: usize = 3_072;
+/// Sessions with a pending resume packet kept at once; the oldest is dropped beyond this.
+const MAX_PENDING_RESUME_SESSIONS: usize = 32;
+
+/// The session a hook payload names (`session_id`), when it looks like one: 1 to 128 ASCII
+/// letters, digits, `-` or `_`. Anything else is treated as no session.
+#[must_use]
+pub fn hook_session_id(payload: &serde_json::Value) -> Option<&str> {
+    payload
+        .get("session_id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|s| {
+            (1..=128).contains(&s.len())
+                && s.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        })
+}
 const MAX_RESUME_HANDLES: usize = 12;
 const MAX_RESUME_SUBJECT_CHARS: usize = 80;
 const MAX_RESUME_FAILURES: usize = 8;
@@ -81,6 +97,11 @@ struct PersistedMmuState {
     /// Agents whose context was compacted and that have not yet received a resume packet.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pending_resume: BTreeSet<u8>,
+    /// Sessions whose context was compacted and that have not yet received a resume packet,
+    /// as (agent, session id), oldest first (review of #99: two sessions of one agent in one
+    /// workspace must not take each other's packet).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pending_resume_sessions: Vec<(u8, String)>,
     #[serde(default)]
     indexed_occurrences: BTreeMap<usize, IndexedOccurrenceRecord>,
     #[serde(default)]
@@ -109,6 +130,8 @@ pub struct InfinityContextMmu {
     agent_read_cursors: BTreeMap<u8, u64>,
     /// See `PersistedMmuState::pending_resume` (T-73-002).
     pending_resume: BTreeSet<u8>,
+    /// See `PersistedMmuState::pending_resume_sessions`.
+    pending_resume_sessions: Vec<(u8, String)>,
     redacted_artifacts: BTreeSet<ArtifactId>,
     subagent_branches: BTreeMap<String, Vec<SubagentStep>>,
     pub(crate) hdc_events: Vec<HdcEventRecord>,
@@ -157,6 +180,7 @@ impl InfinityContextMmu {
             workspace_hash: 0x4943_585F_574F_524B,
             agent_read_cursors: BTreeMap::new(),
             pending_resume: BTreeSet::new(),
+            pending_resume_sessions: Vec::new(),
             redacted_artifacts: BTreeSet::new(),
             subagent_branches: BTreeMap::new(),
             hdc_events: Vec::new(),
@@ -188,14 +212,35 @@ impl InfinityContextMmu {
         self.switches.resume_packets = on;
         if !on {
             self.pending_resume.clear();
+            self.pending_resume_sessions.clear();
         }
     }
 
     /// Records that `agent`'s context was just compacted, so its next `SessionStart` or prompt
     /// hook carries a resume packet (T-73-002). Nothing when resume packets are off.
     pub fn mark_resume_pending(&mut self, agent: AgentKind) {
-        if self.switches.resume_packets {
-            self.pending_resume.insert(agent as u8);
+        self.mark_resume_pending_for(agent, None);
+    }
+
+    /// As `mark_resume_pending`, for one session when the hook names it: only that session's
+    /// next hook then takes the packet. Without a session the packet is the agent's, for the
+    /// agent whose next session is a new one (Hermes after compression).
+    pub fn mark_resume_pending_for(&mut self, agent: AgentKind, session: Option<&str>) {
+        if !self.switches.resume_packets {
+            return;
+        }
+        match session {
+            Some(s) => {
+                let key = (agent as u8, s.to_owned());
+                self.pending_resume_sessions.retain(|k| *k != key);
+                self.pending_resume_sessions.push(key);
+                if self.pending_resume_sessions.len() > MAX_PENDING_RESUME_SESSIONS {
+                    self.pending_resume_sessions.remove(0);
+                }
+            }
+            None => {
+                self.pending_resume.insert(agent as u8);
+            }
         }
     }
 
@@ -204,13 +249,30 @@ impl InfinityContextMmu {
     /// delivered and the packet stays pending for the next hook (review of #99: a cut header was
     /// delivered, or an empty one dropped, and the pending packet lost either way).
     pub fn take_resume_packet(&mut self, agent: AgentKind, budget: usize) -> Option<String> {
-        if !self.switches.resume_packets
-            || !self.pending_resume.contains(&(agent as u8))
-            || self.resume_header(agent).len() > budget
-        {
+        self.take_resume_packet_for(agent, None, budget)
+    }
+
+    /// As `take_resume_packet`, for the session a hook names: that session's own packet, or else
+    /// one pending for the agent as a whole. Another session's packet is never taken.
+    pub fn take_resume_packet_for(
+        &mut self,
+        agent: AgentKind,
+        session: Option<&str>,
+        budget: usize,
+    ) -> Option<String> {
+        if !self.switches.resume_packets || self.resume_header(agent).len() > budget {
             return None;
         }
-        self.pending_resume.remove(&(agent as u8));
+        let own = session.and_then(|s| {
+            self.pending_resume_sessions
+                .iter()
+                .position(|(a, id)| *a == agent as u8 && id == s)
+        });
+        if let Some(i) = own {
+            self.pending_resume_sessions.remove(i);
+        } else if !self.pending_resume.remove(&(agent as u8)) {
+            return None;
+        }
         Some(self.resume_packet(agent, budget))
     }
 
@@ -1952,6 +2014,7 @@ impl InfinityContextMmu {
                 .map(|(k, v)| (k, v.min(bus_seq)))
                 .collect();
             self.pending_resume = st.pending_resume;
+            self.pending_resume_sessions = st.pending_resume_sessions;
             self.indexed_occurrences = st
                 .indexed_occurrences
                 .into_iter()
@@ -2098,6 +2161,7 @@ impl InfinityContextMmu {
             hdc_events: self.hdc_events.clone(),
             agent_read_cursors: self.agent_read_cursors.clone(),
             pending_resume: self.pending_resume.clone(),
+            pending_resume_sessions: self.pending_resume_sessions.clone(),
             indexed_occurrences: self.indexed_occurrences.clone(),
             reordered_occurrences: self.reordered_occurrences.clone(),
             agent_occurrences: self.agent_occurrences.clone(),

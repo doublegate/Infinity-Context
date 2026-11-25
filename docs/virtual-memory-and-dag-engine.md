@@ -185,8 +185,11 @@ When `tokens(W_active) > epoch_rollover_tokens`:
 
 ### 4.4 Resume Packet After Compaction (v1.5.0, T-73-001)
 
-When an agent's context is compacted, icx marks a resume packet pending for that agent (persisted,
-since hooks are separate processes). The next hook that carries context delivers it once
+When an agent's context is compacted, icx marks a resume packet pending (persisted, since hooks are
+separate processes). Where the hook names its session (`session_id`, as Claude Code and Codex do,
+and keep across a compaction), the packet belongs to that session, and a parallel session of the
+same agent in the same workspace never takes it; at most 32 such sessions are kept, oldest dropped
+first. Hermes, whose next session after compression is a new one, has one packet per agent. The next hook that carries context delivers it once
 (`SessionStart` after compaction, otherwise the next prompt; §4 of
 `agent-adapters-and-interception.md` lists the route per agent). `ICX_RESUME_PACKET=0` turns it
 off.

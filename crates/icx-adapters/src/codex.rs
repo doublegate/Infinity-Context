@@ -53,7 +53,7 @@ impl CodexAdapter {
             "SessionStart" | "session-start" => {
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::Codex, "session_start", 3);
                 let prefix = format!("{ICX_AHTL_LEGEND}\n{tail}");
-                let resume = codex_resume(mmu, &prefix);
+                let resume = codex_resume(mmu, crate::mmu::hook_session_id(&payload), &prefix);
                 json!({
                     "continue": true,
                     "hookSpecificOutput": {
@@ -73,7 +73,7 @@ impl CodexAdapter {
                 let tail = mmu.build_ephemeral_tail_slot(AgentKind::Codex, prompt, 4);
                 // Codex has no hook that changes the summary; the first hook after compaction
                 // that carries context delivers the resume packet (T-73-002).
-                let resume = codex_resume(mmu, &tail);
+                let resume = codex_resume(mmu, crate::mmu::hook_session_id(&payload), &tail);
                 json!({
                     "continue": true,
                     "hookSpecificOutput": {
@@ -180,7 +180,10 @@ impl CodexAdapter {
             }
             "PreCompact" | "pre-compact" | "PostCompact" | "post-compact" => {
                 let _ = mmu.force_rollover_and_sync_dag_root();
-                mmu.mark_resume_pending(AgentKind::Codex);
+                mmu.mark_resume_pending_for(
+                    AgentKind::Codex,
+                    crate::mmu::hook_session_id(&payload),
+                );
                 let win = mmu.assemble_prompt_window(AgentKind::Codex, "compact_checkpoint");
                 json!({
                     "continue": true,
@@ -223,11 +226,11 @@ pub const CODEX_INLINE_CONTEXT_MAX_BYTES: usize = 2_500 * 4;
 /// The pending resume packet, sized to what `prefix` leaves of the Codex context bound, so the
 /// whole reply is never replaced by the over-limit diagnostic (review of #99). Empty when none
 /// is pending or none fits; a packet that does not fit stays pending.
-fn codex_resume(mmu: &mut InfinityContextMmu, prefix: &str) -> String {
+fn codex_resume(mmu: &mut InfinityContextMmu, session: Option<&str>, prefix: &str) -> String {
     let room = CODEX_INLINE_CONTEXT_MAX_BYTES
         .saturating_sub(prefix.len() + 1)
         .min(crate::mmu::RESUME_PACKET_MAX_BYTES);
-    mmu.take_resume_packet(AgentKind::Codex, room)
+    mmu.take_resume_packet_for(AgentKind::Codex, session, room)
         .map_or_else(String::new, |p| format!("\n{p}"))
 }
 
