@@ -566,3 +566,42 @@ fn review_round_on_106_yaml() {
         ),
     ]);
 }
+
+/// Commit security review of 23f0747: webhook keys fail closed.
+#[test]
+fn webhook_keys_fail_closed() {
+    check(&[
+        ("WEBHOOK_SIGNING_KEY=qqzz\n", &["qqzz"], &[]),
+        (
+            "SLACK_WEBHOOK_PROD=https://hooks.example.com/qqzz\n",
+            &["qqzz"],
+            &[],
+        ),
+        (
+            "WEBHOOK_URL=https://hooks.example.com/qqzz\n",
+            &["qqzz"],
+            &[],
+        ),
+        ("WEBHOOK=https://hooks.example.com/qqzz\n", &["qqzz"], &[]),
+        ("WEBHOOK_NAME=alerts\n", &[], &["alerts"]),
+        ("WEBHOOK_EVENTS=push\n", &[], &["push"]),
+    ]);
+}
+
+/// Commit security review of 23f0747: shell word splitting honours escapes and stray quotes.
+#[test]
+fn shell_words_honour_escapes_and_stray_quotes() {
+    check(&[
+        (
+            "sshpass -p \"a\\\" qqzz\" ssh host\n",
+            &["qqzz"],
+            &["ssh host"],
+        ),
+        ("echo \"unclosed sshpass -p qqzz ssh host\n", &["qqzz"], &[]),
+        (
+            "docker login -u bob -p qqzz\\ rrss registry\n",
+            &["qqzz"],
+            &[],
+        ),
+    ]);
+}

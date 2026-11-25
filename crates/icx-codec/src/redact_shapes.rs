@@ -596,11 +596,17 @@ fn words(s: &str, a: usize, z: usize) -> Vec<(usize, usize)> {
             break;
         }
         let start = i;
-        // A quoted part keeps its spaces (`-p "my secret"`; review of #106).
+        // A quoted part keeps its spaces (`-p "my secret"`; review of #106); a backslash
+        // escapes the next byte, as in `segments`. A quote that never closes falls back to the
+        // plain whitespace split, so the flags after it are still found.
         let mut quote: Option<u8> = None;
         while i < z {
             let c = b[i];
             match quote {
+                _ if c == b'\\' && quote != Some(b'\'') => {
+                    i += 2;
+                    continue;
+                }
                 Some(q) if c == q => quote = None,
                 None if c == b'"' || c == b'\'' => quote = Some(c),
                 None if c == b' ' || c == b'\t' => break,
@@ -608,7 +614,15 @@ fn words(s: &str, a: usize, z: usize) -> Vec<(usize, usize)> {
             }
             i += 1;
         }
-        out.push((start, i));
+        if quote.is_some() {
+            i = start;
+            while i < z && b[i] != b' ' && b[i] != b'\t' {
+                i += 1;
+            }
+        }
+        let i_end = i.min(z);
+        out.push((start, i_end));
+        i = i_end;
     }
     out
 }

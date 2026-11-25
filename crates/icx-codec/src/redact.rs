@@ -1054,12 +1054,35 @@ impl SecretRedactor {
         let parts: Vec<&str> = upper.split(['_', '.']).filter(|p| !p.is_empty()).collect();
         // A webhook URL is the credential itself, so `_URL`, `_URI` and `_ENDPOINT` do not make
         // it harmless (#104); `WEBHOOK_NAME` or `WEBHOOK_EVENT` stay (review of #106).
-        if let Some(w) = parts.iter().position(|p| p.contains("WEBHOOK"))
-            && parts[w + 1..]
-                .iter()
-                .all(|p| matches!(*p, "URL" | "URI" | "ENDPOINT" | "SECRET" | "TOKEN" | "KEY"))
-        {
-            return true;
+        if let Some(w) = parts.iter().position(|p| p.contains("WEBHOOK")) {
+            // Fail closed: only known metadata after `WEBHOOK` is harmless (security review of
+            // #106: an allowlist of credential suffixes let `WEBHOOK_SIGNING_KEY` and
+            // `SLACK_WEBHOOK_PROD` through).
+            let tail = &parts[w + 1..];
+            let metadata = !tail.is_empty()
+                && tail.iter().all(|p| {
+                    matches!(
+                        *p,
+                        "NAME"
+                            | "NAMES"
+                            | "EVENT"
+                            | "EVENTS"
+                            | "ID"
+                            | "IDS"
+                            | "ENABLED"
+                            | "DISABLED"
+                            | "TYPE"
+                            | "TYPES"
+                            | "COUNT"
+                            | "STATUS"
+                            | "VERSION"
+                            | "TIMEOUT"
+                            | "RETRIES"
+                    )
+                });
+            if !metadata {
+                return true;
+            }
         }
         if parts.contains(&"AUTHORIZATION")
             || (parts.last() == Some(&"AUTH") && (parts.len() == 1 || upper.contains('.')))
