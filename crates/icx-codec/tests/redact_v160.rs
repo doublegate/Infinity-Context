@@ -416,3 +416,46 @@ fn api_reference_type_words_are_not_values() {
         ("password: object qqzz\n", &["qqzz"], &[]),
     ]);
 }
+
+/// Antigravity round on 877ca26, and the commit security review of f469c9f.
+#[test]
+fn review_round_on_877ca26() {
+    check(&[
+        // A non-quote look-alike next to a full-width quote inside an ASCII literal.
+        (
+            "obj[\"password\"]\u{FF1D}\"a\u{FF02} qqzz\"\n",
+            &["qqzz"],
+            &[],
+        ),
+        (
+            "sshpass\u{200B} -p \"a\u{FF02} qqzz\" ssh host\n",
+            &["qqzz"],
+            &[],
+        ),
+        ("pass\u{200B}word = 'a\u{FF07} qqzz'\n", &["qqzz"], &[]),
+        // Triple quotes and double-quoted text in the apostrophe scan.
+        (
+            "don't log; password = '''\nit's\nqqzz\n'''\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "don't; msg = \"a: 'b\"; password = '''\nqqzz\n'''\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        // Glued backtick after a type word is a value (#111).
+        ("password: string`hunter2\n", &["hunter2"], &[]),
+        ("token: integer` qqzz\n", &["qqzz"], &[]),
+    ]);
+    // A JSON line with full-width quotes next to a non-JSON one stays valid JSON.
+    let text =
+        "note \u{FF02}x\u{FF02}\n{\"note\": \"say \u{FF02}hi\u{FF02}\", \"password\": \"qqzz\"}\n";
+    let out = SecretRedactor::redact(text);
+    let json_line = out.lines().nth(1).unwrap();
+    assert!(
+        serde_json::from_str::<serde_json::Value>(json_line).is_ok(),
+        "{out:?}"
+    );
+    assert!(!out.contains("qqzz"), "{out:?}");
+}

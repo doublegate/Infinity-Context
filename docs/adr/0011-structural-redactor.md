@@ -259,19 +259,25 @@ was a regression, and they were deferred rather than fixed under review pressure
   - A whole-marker line ends a sensitive block only when it is less indented than the key.
 - **Full-width quotes.** Raw text and text with full-width quote-like characters (`＂ ＇ ＼ ｀`)
   made ASCII each hide shapes the other breaks: `-p ＂my secret＂` needs the quotes, while an ASCII
-  literal holding one (`"a＂ secret"`) needs them left alone (reviews of #110). Both first passes
-  therefore run on the input. A line takes the pass that changed it, or both when they agree;
-  when both changed it differently, the line is hidden from the earliest point either hid
-  (fail closed, at the cost of over-redacting such lines). JSON lines, judged on the view with
-  other look-alikes normalised, keep these characters as string content; text before embedded
-  JSON is normalised. A second pass then normalises every other look-alike over that result.
-  Lines no pass changed keep their original bytes; after a collapsed key block they pair with
-  their input lines from the start or the end, only where one of the results equals the input.
+  literal holding one (`"a＂ secret"`) needs them left alone (reviews of #110). Each view runs the
+  whole look-alike pipeline on its own (the first pass, then the second with every other
+  look-alike normalised), so its two passes stay consistent. The results are merged per line:
+  equal results, or the only one that changed the line, are used; where both changed it
+  differently, the line is hidden from the earliest point either hid (fail closed, at the cost
+  of over-redacting such lines). JSON lines, judged on the view with other look-alikes
+  normalised, keep these characters as string content; text before embedded JSON is normalised.
+  Lines nothing changed keep their original bytes; after a collapsed key block they pair with
+  their input lines from the start or the end.
 - **Apostrophe scan.** The apostrophe-blind continuation scan runs on every line holding an
   apostrophe (fail closed), on a copy where complete single-quoted value literals are blanked
-  (opened after `=`, `(`, `,`, `[`, `{` or `:`, closed on the line, and not a label), so
+  (opened after `=`, `(`, `,`, `[`, `{` or `:`, closed on the line, not a label, not a
+  triple-quote opener, and not inside a double-quoted string or code span), so
   `p = 'password = '` cannot arm a multi-line value while `don't`, `admins'` and `'outer:` still
   do.
+- **Type words (#111, owner decision).** `integer`, `string`, `boolean`, `object` and `number`
+  after a sensitive key are type annotations (`cache_write_tokens: integer`). A backtick after
+  the word ends the annotation only when it closes a code span opened before the key and nothing
+  is glued to it, so `string`hunter2` and `token: integer` x` stay hidden.
 - **Cost (#108).** In the second look-alike pass, a line that the first pass already redacted and
   that holds no look-alike is copied through, with no multi-line value or key block open: a
   second pass leaves such a line unchanged. A property test checks that the skip changes no output.

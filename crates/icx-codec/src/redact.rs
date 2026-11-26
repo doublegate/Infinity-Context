@@ -31,85 +31,60 @@ impl SecretRedactor {
         }
         // Raw text and text with full-width quote-like characters (`＂`, `＇`, `＼`, `｀`) made
         // ASCII each hide shapes the other breaks: `-p ＂my secret＂` needs the quotes, an ASCII
-        // literal holding one (`"a＂ secret"`) needs them left alone (reviews of #110). So both
-        // run on the input, and a line takes the pass that changed it; where both changed it
-        // differently, the line is hidden from the earliest point either hid (fail closed).
-        // JSON lines (judged on the view with other look-alikes normalised) keep the characters
-        // as string content; text before embedded JSON is normalised. A second pass then
-        // normalises every other look-alike over that result. Unchanged lines keep their bytes.
-        let quoted: String = input
-            .split_inclusive('\n')
-            .map(|line| {
-                if !line.chars().any(Self::is_quote_like) {
-                    return line.to_owned();
-                }
-                let view: String = line
-                    .chars()
-                    .filter_map(Self::normalize_keep_quotes)
-                    .collect();
-                if Self::is_json_line(view.trim_end()) {
-                    return line.to_owned();
-                }
-                let at = Self::embedded_json_start(&view).map_or(line.len(), |at_view| {
-                    Self::view_offset_to_line(line, at_view)
-                });
-                let mut out: String = line[..at].chars().map(Self::ascii_quote).collect();
-                out.push_str(&line[at..]);
-                out
-            })
-            .collect();
-        let raw = Self::redact_text(input);
-        // Per first-pass line, the original bytes to emit when the second pass hides nothing.
-        let mut first_originals: Vec<Option<&str>> = Vec::new();
-        let first = if quoted == input {
-            raw
-        } else {
-            let quoted_red = Self::redact_text(&quoted);
-            let rl: Vec<&str> = raw.split('\n').collect();
-            let ql: Vec<&str> = quoted_red.split('\n').collect();
-            let xl: Vec<&str> = input.split('\n').collect();
-            let wl: Vec<&str> = quoted.split('\n').collect();
-            if rl.len() == ql.len() && xl.len() == wl.len() {
-                // A line pairs with its input line at the same index, or at the same distance
-                // from the end when a collapsed key block shortened the text, and only where one
-                // of the results equals it unchanged.
-                let shift = xl.len().checked_sub(rl.len());
-                let mut feed = String::with_capacity(input.len());
-                let mut keep: Vec<Option<&str>> = Vec::with_capacity(rl.len());
-                for k in 0..rl.len() {
-                    if k > 0 {
-                        feed.push('\n');
-                    }
-                    let i = [Some(k), shift.map(|d| k + d)]
-                        .into_iter()
-                        .flatten()
-                        .find(|&i| xl.get(i) == Some(&rl[k]) || wl.get(i) == Some(&ql[k]));
-                    let (x, w) = (
-                        i.and_then(|i| xl.get(i).copied()),
-                        i.and_then(|i| wl.get(i).copied()),
-                    );
-                    let (line, original) = Self::merge_quote_passes(rl[k], x, ql[k], w);
-                    feed.push_str(&line);
-                    keep.push(original);
-                }
-                first_originals = keep;
-                feed
-            } else {
-                // The two passes shifted lines differently: chain the quote pass over the raw
-                // result instead (the raw pass's hides stay; a quote it consumed is lost).
-                let requoted: String = raw
-                    .split_inclusive('\n')
-                    .map(|l| {
-                        if Self::is_json_line(l.trim_end()) {
-                            l.to_owned()
-                        } else {
-                            l.chars().map(Self::ascii_quote).collect()
-                        }
-                    })
-                    .collect();
-                Self::redact_text(&requoted)
-            }
+        // literal holding one (`"a＂ secret"`) needs them left alone (reviews of #110). Each view
+        // runs the whole look-alike pipeline on its own, so its two passes stay consistent, and
+        // the results are merged per line: equal results, or the only one that changed the line,
+        // are used; where both changed it differently, the line is hidden from the earliest point
+        // either hid (fail closed). Lines nothing changed keep their original bytes.
+        let raw = Self::lookalike_pipeline(input, input);
+        let quoted = Self::quote_normalise(input);
+        if quoted == input {
+            return raw;
+        }
+        let from_quoted = Self::lookalike_pipeline(&quoted, input);
+        let al: Vec<&str> = raw.split('\n').collect();
+        let bl: Vec<&str> = from_quoted.split('\n').collect();
+        let xl: Vec<&str> = input.split('\n').collect();
+        if al.len() != bl.len() {
+            // The views shifted lines differently (a collapsed block in one only): run the
+            // quote view over the raw result, so the raw view's hides stay.
+            let requoted = Self::quote_normalise(&raw);
+            return Self::lookalike_pipeline(&requoted, &raw);
+        }
+        // An unchanged line pairs with its input line at the same index, or at the same distance
+        // from the end when a collapsed key block shortened the text.
+        let shift = xl.len().checked_sub(al.len());
+        let unchanged = |k: usize, line: &str| {
+            [Some(k), shift.map(|d| k + d)]
+                .into_iter()
+                .flatten()
+                .any(|i| xl.get(i) == Some(&line))
         };
+        let mut out = String::with_capacity(input.len());
+        for k in 0..al.len() {
+            if k > 0 {
+                out.push('\n');
+            }
+            let (a, b) = (al[k], bl[k]);
+            let line = if a == b || unchanged(k, b) {
+                a.to_owned()
+            } else if unchanged(k, a) {
+                b.to_owned()
+            } else {
+                Self::fail_closed_union(a, b)
+            };
+            out.push_str(&line);
+        }
+        out
+    }
+
+    /// The look-alike pipeline on `text` (the input, or its quote-normalised form): the first
+    /// pass, then a second over its result with every other look-alike normalised. A line the
+    /// second pass leaves alone keeps the first pass's bytes, which for a line that pass left
+    /// alone are `text`'s; where that line equals the matching line of `original`, the original
+    /// bytes are emitted.
+    fn lookalike_pipeline(text: &str, original: &str) -> String {
+        let first = Self::redact_text(text);
         let keep_quotes: String = first
             .chars()
             .filter_map(Self::normalize_keep_quotes)
@@ -128,7 +103,10 @@ impl SecretRedactor {
         if fl.len() != sl.len() {
             return second;
         }
-        let mut out = String::with_capacity(input.len());
+        let tl: Vec<&str> = text.split('\n').collect();
+        let ol: Vec<&str> = original.split('\n').collect();
+        let shift = tl.len().checked_sub(fl.len());
+        let mut out = String::with_capacity(text.len());
         for k in 0..fl.len() {
             if k > 0 {
                 out.push('\n');
@@ -137,10 +115,14 @@ impl SecretRedactor {
                 .chars()
                 .filter_map(Self::normalize_keep_quotes)
                 .eq(sl[k].chars());
-            // The second pass hid nothing more on this line: the original bytes where no pass
-            // changed it, else the first pass's line.
             let line = if first_holds {
-                first_originals.get(k).copied().flatten().unwrap_or(fl[k])
+                // Untouched by both passes: the original bytes where this line pairs with one.
+                [Some(k), shift.map(|d| k + d)]
+                    .into_iter()
+                    .flatten()
+                    .find(|&i| tl.get(i) == Some(&fl[k]) && ol.len() == tl.len())
+                    .and_then(|i| ol.get(i).copied())
+                    .unwrap_or(fl[k])
             } else {
                 sl[k]
             };
@@ -149,42 +131,50 @@ impl SecretRedactor {
         out
     }
 
-    /// One line of the two first passes: `raw` from the input line `x`, `quoted` from its
-    /// quote-normalised form `w` (`None` when the line did not pair with an input line). Returns
-    /// the line the second pass works on and, for a line neither pass changed, the original
-    /// bytes. The pass that changed the line decides; when both changed it and disagree,
-    /// everything from the earliest point either hid is hidden (fail closed).
-    fn merge_quote_passes<'a>(
-        raw: &str,
-        x: Option<&'a str>,
-        quoted: &str,
-        w: Option<&str>,
-    ) -> (String, Option<&'a str>) {
-        let raw_changed = x != Some(raw);
-        let quoted_changed = w != Some(quoted);
-        match (raw_changed, quoted_changed) {
-            // Unchanged: the second pass reads the quote-normalised form.
-            (false, false) => (quoted.to_owned(), x),
-            (true, false) => (raw.to_owned(), None),
-            (false, true) => (quoted.to_owned(), None),
-            (true, true) => {
-                let raw_q: String = raw.chars().map(Self::ascii_quote).collect();
-                if raw_q == quoted {
-                    return (quoted.to_owned(), None);
+    /// `text` with full-width quote-like characters made ASCII on every line that is not JSON
+    /// (judged on the view with other look-alikes normalised); text before embedded JSON is
+    /// normalised and the JSON part kept, since there they are string content.
+    fn quote_normalise(text: &str) -> String {
+        text.split_inclusive('\n')
+            .map(|line| {
+                if !line.chars().any(Self::is_quote_like) {
+                    return line.to_owned();
                 }
-                // Up to the first difference, and no further than either first marker.
-                let common = raw_q
-                    .char_indices()
-                    .zip(quoted.chars())
-                    .find(|((_, a), b)| a != b)
-                    .map_or(raw_q.len().min(quoted.len()), |((i, _), _)| i);
-                let first_marker = |t: &str| t.find("[REDACTED:").unwrap_or(t.len());
-                let cut = common.min(first_marker(&raw_q)).min(first_marker(quoted));
-                // A quote left open before the marker would change a second pass (idempotence).
-                let head = quoted[..cut].trim_end_matches(['"', '\'', '`']);
-                (format!("{head}[REDACTED:SECRET]"), None)
-            }
+                let view: String = line
+                    .chars()
+                    .filter_map(Self::normalize_keep_quotes)
+                    .collect();
+                if Self::is_json_line(view.trim_end()) {
+                    return line.to_owned();
+                }
+                let at = Self::embedded_json_start(&view).map_or(line.len(), |at_view| {
+                    Self::view_offset_to_line(line, at_view)
+                });
+                let mut out: String = line[..at].chars().map(Self::ascii_quote).collect();
+                out.push_str(&line[at..]);
+                out
+            })
+            .collect()
+    }
+
+    /// Two different redactions of one line: everything from the earliest point either hid is
+    /// hidden, comparing them with full-width quotes made ASCII.
+    fn fail_closed_union(a: &str, b: &str) -> String {
+        let aq: String = a.chars().map(Self::ascii_quote).collect();
+        let bq: String = b.chars().map(Self::ascii_quote).collect();
+        if aq == bq {
+            return b.to_owned();
         }
+        let common = aq
+            .char_indices()
+            .zip(bq.chars())
+            .find(|((_, x), y)| x != y)
+            .map_or(aq.len().min(bq.len()), |((i, _), _)| i);
+        let first_marker = |t: &str| t.find("[REDACTED:").unwrap_or(t.len());
+        let cut = common.min(first_marker(&aq)).min(first_marker(&bq));
+        // A quote left open before the marker would change a second pass (idempotence).
+        let head = aq[..cut].trim_end_matches(['"', '\'', '`']);
+        format!("{head}[REDACTED:SECRET]")
     }
 
     /// The byte offset in `line` of byte offset `at_view` in its `normalize_keep_quotes` view.
@@ -748,6 +738,24 @@ impl SecretRedactor {
         let mut out = b.to_vec();
         let mut i = 0;
         while i < b.len() {
+            // Double-quoted strings and code spans are not scanned: an apostrophe inside them is
+            // text (review of #110).
+            if matches!(b[i], b'"' | b'`') {
+                let q = b[i];
+                let mut k = i + 1;
+                while k < b.len() && b[k] != q {
+                    k += if b[k] == b'\\' && q == b'"' { 2 } else { 1 };
+                }
+                i = k + 1;
+                continue;
+            }
+            // A triple-quote opener starts a multi-line value; it is left whole.
+            if b[i] == b'\'' && b.get(i + 1) == Some(&b'\'') {
+                while i < b.len() && b[i] == b'\'' {
+                    i += 1;
+                }
+                continue;
+            }
             if b[i] == b'\'' {
                 let prev = b[..i]
                     .iter()
@@ -2791,7 +2799,15 @@ impl SecretRedactor {
                     search_pos = colon_idx + 1;
                     continue;
                 }
-                if let Some(type_len) = Self::type_annotation_len(&out[val_start..]) {
+                // An annotation ending in a backtick counts only when that backtick closes a code
+                // span opened before the key on this line (#111; `token: integer` x` is a value).
+                let annotation = Self::type_annotation_len(&out[val_start..]).filter(|&n| {
+                    !out[val_start + n..].starts_with('`') || {
+                        let line_start = out[..val_start].rfind('\n').map_or(0, |p| p + 1);
+                        out[line_start..val_start].matches('`').count() % 2 == 1
+                    }
+                });
+                if let Some(type_len) = annotation {
                     let after = val_start + type_len;
                     let tail = &out[after..];
                     let assigned = tail.starts_with('=') && !tail.starts_with("==");
@@ -2995,8 +3011,15 @@ impl SecretRedactor {
         }
         let s = s.trim_start_matches([' ', '\t']);
         (s.is_empty()
-            // A closing backtick ends a Markdown code span (`` `token: integer` ``, #111).
-            || s.starts_with(['=', ',', ')', ';', '{', '>', '`', '\n', '\r'])
+            // A backtick may close a Markdown code span (`` `token: integer` ``, #111) when
+            // nothing is glued to it (`string`hunter2` is a value); the caller also requires the
+            // span to have opened before the key.
+            || (s.starts_with('`')
+                && s[1..]
+                    .chars()
+                    .next()
+                    .is_none_or(|c| c.is_whitespace() || ",.;:)".contains(c)))
+            || s.starts_with(['=', ',', ')', ';', '{', '>', '\n', '\r'])
             || s.starts_with("->"))
         .then(|| rest.len() - s.len())
     }
