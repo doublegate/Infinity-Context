@@ -277,7 +277,8 @@ was a regression, and they were deferred rather than fixed under review pressure
 - **Type words (#111, owner decision).** `integer`, `string`, `boolean`, `object` and `number`
   after a sensitive key are type annotations (`cache_write_tokens: integer`). A backtick after
   the word ends the annotation only when it closes a code span opened before the key and nothing
-  is glued to it, so `string`hunter2` and `token: integer` x` stay hidden.
+  is glued to it, so a value glued to the backtick, or a backtick with no code span opened
+  before the key, stays hidden.
 - **Cost (#108).** In the second look-alike pass, a line that the first pass already redacted and
   that holds no look-alike is copied through, with no multi-line value or key block open: a
   second pass leaves such a line unchanged. A property test checks that the skip changes no output.
