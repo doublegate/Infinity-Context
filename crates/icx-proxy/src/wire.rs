@@ -1863,9 +1863,11 @@ impl WireProxyTransformer {
         )
     }
 
-    /// Appends one line of provider cache counters to `proxy-cache-usage.jsonl` in the
-    /// workspace (T-81-003). Best effort: a write failure never fails the proxied request. The
-    /// file is capped at 8 MiB; past that, the oldest half is dropped.
+    /// Appends one line of provider cache counters to `proxy-cache-usage.jsonl` in a workspace
+    /// that passed the trust gate on this request (T-81-003), under the workspace lock. Best
+    /// effort: a failure never fails the proxied request. Only a regular file is written, opened
+    /// without following symlinks; past 8 MiB the oldest half is dropped through a fresh temp
+    /// file and an atomic rename (commit security review of 7eadac0).
     fn record_cache_usage(
         workspace_dir: Option<&Path>,
         counters: &crate::usage::CacheCounters,
@@ -1873,22 +1875,61 @@ impl WireProxyTransformer {
     ) {
         const CAP: u64 = 8 * 1024 * 1024;
         let Some(dir) = workspace_dir else { return };
+        let Ok(_lock) = InfinityContextMmu::acquire_workspace_lock(dir) else {
+            return;
+        };
         let path = dir.join("proxy-cache-usage.jsonl");
+        let meta = std::fs::symlink_metadata(&path);
+        if meta.as_ref().is_ok_and(|m| !m.file_type().is_file()) {
+            return;
+        }
+        let no_follow = |opts: &mut std::fs::OpenOptions| {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                opts.custom_flags(rustix::fs::OFlags::NOFOLLOW.bits().cast_signed());
+            }
+            #[cfg(not(unix))]
+            let _ = opts;
+        };
+        if meta.is_ok_and(|m| m.len() > CAP) {
+            let mut read_opts = std::fs::OpenOptions::new();
+            read_opts.read(true);
+            no_follow(&mut read_opts);
+            let mut text = String::new();
+            if read_opts
+                .open(&path)
+                .and_then(|mut f| f.read_to_string(&mut text))
+                .is_err()
+            {
+                return;
+            }
+            let lines: Vec<&str> = text.lines().collect();
+            let keep = lines[lines.len() / 2..].join("\n") + "\n";
+            let tmp = dir.join(format!(
+                "proxy-cache-usage.jsonl.tmp-{}",
+                std::process::id()
+            ));
+            let mut tmp_opts = std::fs::OpenOptions::new();
+            tmp_opts.write(true).create_new(true);
+            no_follow(&mut tmp_opts);
+            let written = tmp_opts
+                .open(&tmp)
+                .and_then(|mut f| f.write_all(keep.as_bytes()));
+            if written.is_err() || std::fs::rename(&tmp, &path).is_err() {
+                let _ = std::fs::remove_file(&tmp);
+                return;
+            }
+        }
         let unix_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_millis());
-        if std::fs::metadata(&path).is_ok_and(|m| m.len() > CAP)
-            && let Ok(text) = std::fs::read_to_string(&path)
-        {
-            let lines: Vec<&str> = text.lines().collect();
-            let keep = lines[lines.len() / 2..].join("\n") + "\n";
-            let _ = std::fs::write(&path, keep);
-        }
         let line = counters.to_json_line(epoch, unix_ms) + "\n";
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
+        let mut opts = std::fs::OpenOptions::new();
+        opts.create(true).append(true);
+        no_follow(&mut opts);
+        if let Ok(mut f) = opts.open(&path)
+            && f.metadata().is_ok_and(|m| m.file_type().is_file())
         {
             let _ = f.write_all(line.as_bytes());
         }
@@ -2363,7 +2404,7 @@ impl WireProxyTransformer {
 
         // Execute the local workspace read-modify-write under the exclusive lock and release both
         // the workspace lock and the in-memory MMU mutex BEFORE any upstream network round-trip.
-        let (transformed_res, resolved_provider) = {
+        let (transformed_res, resolved_provider, trusted_ws) = {
             let mut mmu_guard = shared_mmu
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -2430,7 +2471,9 @@ impl WireProxyTransformer {
                 drop(g);
                 save_res.map_err(|e| io::Error::other(e.to_string()))?;
             }
-            (transformed_res, resolved_provider)
+            // Only a workspace that passed the gate on this request receives the usage ledger.
+            let trusted_ws = ws_opt.map(Path::to_path_buf);
+            (transformed_res, resolved_provider, trusted_ws)
         };
 
         let transformed = match transformed_res {
@@ -2501,7 +2544,7 @@ impl WireProxyTransformer {
                     let epoch = shared_mmu
                         .lock()
                         .map_or(0, |m| m.epochs.sealed_epochs().len() as u64);
-                    Self::record_cache_usage(workspace_dir, counters, epoch);
+                    Self::record_cache_usage(trusted_ws.as_deref(), counters, epoch);
                 }
                 _ => {}
             }
@@ -3147,6 +3190,18 @@ mod tests {
         assert_eq!(first["cache_read_tokens"], 1920);
         assert!(first["cache_write_tokens"].is_null(), "absent stays absent");
         assert_eq!(first["epoch"], 3);
+        // A symlinked ledger is not followed: its target stays as it was.
+        #[cfg(unix)]
+        {
+            let target = dir.join("elsewhere.txt");
+            std::fs::write(&target, "keep\n").unwrap();
+            std::fs::remove_file(dir.join("proxy-cache-usage.jsonl")).unwrap();
+            std::os::unix::fs::symlink(&target, dir.join("proxy-cache-usage.jsonl")).unwrap();
+            WireProxyTransformer::record_cache_usage(Some(&dir), &counters, 5);
+            assert_eq!(std::fs::read_to_string(&target).unwrap(), "keep\n");
+        }
+        // No trusted workspace: nothing is written.
+        WireProxyTransformer::record_cache_usage(None, &counters, 6);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
