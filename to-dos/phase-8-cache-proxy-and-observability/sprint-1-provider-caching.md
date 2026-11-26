@@ -43,7 +43,24 @@ Re-check before any ticket starts:
   - The OpenAI transform added no cache fields.
   - Nothing read the provider counters.
   - The `>= 94%` figure appeared as a provider hit rate in ADR-0003, the AHTL diagram generator, `CLAUDE.md` and `GEMINI.md` (both managed blocks) and `AGENTS.md` (the owner's).
-- **Measurement.** The owner approved a paid paired run capped at $5 (2026-11-26). No provider API key is configured in this environment, so it waits for the owner to supply one.
+- **Measurement.** The owner approved a paid paired run capped at $5 (2026-11-26); results below.
+
+**2026-11-26, paired paid run** (`scripts/measure_provider_cache.py`, owner-approved $5 cap, about $0.004 spent). Model: Claude Haiku 5.5. The conversation has 4 measured turns over 4 to 7 history pairs of about 1,500 characters each. Arms, run in this order each turn: direct with no cache controls; through `icx proxy`; direct with client automatic caching (top-level `cache_control`).
+
+| Turn | Direct, no caching (uncached) | icx proxy (uncached / read / written) | Client caching (uncached / read / written) |
+| ---: | ---: | --- | --- |
+| 0 | 3,925 | 554 / 0 / 3,415 | 4 / 3,415 / 506 |
+| 1 | 4,901 | 554 / 3,415 / 976 | 4 / 4,391 / 506 |
+| 2 | 5,877 | 554 / 4,391 / 976 | 4 / 5,367 / 506 |
+| 3 | 6,853 | 554 / 5,367 / 976 | 4 / 6,343 / 506 |
+
+Findings:
+
+- **Against a non-caching client,** icx's breakpoint keeps the uncached input flat at 554 tokens a request while the conversation grows.
+- **Against a client that caches itself, icx is worse:** it caches only up to the folded boundary, so the last two messages and the tail slot stay uncached (554 tokens against 4), and it writes more per turn (976 against 506). A request with top-level automatic caching gets no icx breakpoint (T-81-002), so such clients are unaffected.
+- **The proxy's rewrites keep the cacheable bytes.** The client-caching arm read the entry the proxy arm had written for the same prefix. Caches are shared per workspace, so the arms are not independent; that turn-0 read is the proxy arm's entry.
+- **The ledger matches the provider.** `proxy-cache-usage.jsonl` recorded the same counters as the responses for all 4 proxy requests.
+- **OpenAI was not measured:** the key sees no GPT-5.6 model (`gpt-5.6-nano`, `gpt-5.6-mini`, `gpt-5.6`), so T-81-001 is verified by golden tests only.
 
 ## Tickets
 
