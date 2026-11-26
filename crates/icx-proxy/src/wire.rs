@@ -68,6 +68,8 @@ struct SsePendingEntry {
 #[derive(Default, Clone)]
 struct SsePendingState {
     current_event: Option<String>,
+    /// Provider cache counters seen in the stream so far (T-81-003).
+    usage: crate::usage::CacheCounters,
     streams: std::collections::BTreeMap<String, SsePendingEntry>,
 }
 
@@ -104,6 +106,9 @@ impl WireProxyTransformer {
 
         let system_tool_breakpoints = Self::count_cache_breakpoints(root.get("system"))
             + Self::count_cache_breakpoints(root.get("tools"));
+        // Automatic caching (a top-level `cache_control`) uses one of the 4 breakpoint slots and
+        // places itself; such a request gets no icx breakpoint (T-81-002).
+        let automatic_caching = root.get("cache_control").is_some();
 
         if let Some(messages) = root.get_mut("messages").and_then(Value::as_array_mut) {
             let pager_tool_use_ids = Self::collect_anthropic_pager_tool_use_ids(messages);
@@ -136,8 +141,15 @@ impl WireProxyTransformer {
                     // breakpoint never changes the bytes later turns see (cache prefix stability).
                     Self::normalize_to_text_blocks(msg);
                 }
-                if existing_breakpoints < 4
-                    && let Some(block) = messages[fold_end - 1]
+                // The breakpoint goes on the last folded message that is not a mid-conversation
+                // system message: a turn-scoped one (`clear_at`) rejects `cache_control` (T-81-002).
+                let target = (0..fold_end)
+                    .rev()
+                    .find(|&i| messages[i].get("role").and_then(Value::as_str) != Some("system"));
+                if !automatic_caching
+                    && existing_breakpoints < 4
+                    && let Some(target) = target
+                    && let Some(block) = messages[target]
                         .get_mut("content")
                         .and_then(Value::as_array_mut)
                         .and_then(|blocks| blocks.last_mut())
@@ -562,8 +574,27 @@ impl WireProxyTransformer {
         Self::neutralize_untrusted_markers(&mut root, mmu);
         let protect_tail = 2usize;
 
+        let ttl = std::env::var("ICX_OPENAI_CACHE_TTL").ok();
         if let Some(messages) = root.get_mut("messages").and_then(Value::as_array_mut) {
             Self::transform_openai_items(messages, mmu, protect_tail, "text");
+            Self::apply_openai_cache_controls(
+                &mut root,
+                "messages",
+                "text",
+                protect_tail,
+                ttl.as_deref(),
+            );
+        } else if root.get("input").is_some_and(Value::is_array) {
+            if let Some(Value::Array(items)) = root.get_mut("input") {
+                Self::transform_openai_items(items, mmu, protect_tail, "input_text");
+            }
+            Self::apply_openai_cache_controls(
+                &mut root,
+                "input",
+                "input_text",
+                protect_tail,
+                ttl.as_deref(),
+            );
         } else if let Some(input_val) = root.get_mut("input") {
             match input_val {
                 Value::Array(items) => {
@@ -1394,6 +1425,7 @@ impl WireProxyTransformer {
             &mut committed,
             || Ok(()),
         )
+        .map(|_| ())
     }
 
     fn transform_sse_line_shared(
@@ -1411,6 +1443,7 @@ impl WireProxyTransformer {
             state.current_event = None;
             return line.to_owned();
         }
+        state.usage.observe_text(line);
         if state.is_empty() && !Self::might_contain_deref_marker(line) {
             return line.to_owned();
         }
@@ -1428,7 +1461,7 @@ impl WireProxyTransformer {
         writer: &mut W,
         headers_committed: &mut bool,
         verify_eof: F,
-    ) -> io::Result<()> {
+    ) -> io::Result<crate::usage::CacheCounters> {
         let mut status_trimmed;
         let mut resp_headers = Vec::new();
         let mut is_sse;
@@ -1509,7 +1542,8 @@ impl WireProxyTransformer {
                 write!(writer, "Content-Length: {cl}\r\n")?;
             }
             write!(writer, "Connection: close\r\n\r\n")?;
-            return writer.flush();
+            writer.flush()?;
+            return Ok(crate::usage::CacheCounters::default());
         }
 
         if is_sse {
@@ -1611,7 +1645,8 @@ impl WireProxyTransformer {
                 }
                 Self::flush_sse_pending(&mut sse_pending, writer)?;
             }
-            return verify_eof();
+            verify_eof()?;
+            return Ok(sse_pending.usage);
         }
 
         let mut resp_bytes = Vec::new();
@@ -1650,6 +1685,10 @@ impl WireProxyTransformer {
             }
         }
         verify_eof()?;
+        let mut usage = crate::usage::CacheCounters::default();
+        if is_textual_content && let Ok(text) = std::str::from_utf8(&resp_bytes) {
+            usage.observe_text(text);
+        }
         let expanded_opt = if is_textual_content {
             std::str::from_utf8(&resp_bytes).ok().and_then(|s| {
                 Self::might_contain_deref_marker(s).then(|| {
@@ -1678,7 +1717,8 @@ impl WireProxyTransformer {
             out_bytes.len()
         )?;
         writer.write_all(out_bytes)?;
-        writer.flush()
+        writer.flush()?;
+        Ok(usage)
     }
 
     fn join_upstream_path(base_path: &str, stripped_path: &str) -> String {
@@ -1758,7 +1798,7 @@ impl WireProxyTransformer {
         shared_mmu: &std::sync::Mutex<&mut InfinityContextMmu>,
         writer: &mut W,
         headers_committed: &mut bool,
-    ) -> io::Result<()> {
+    ) -> io::Result<crate::usage::CacheCounters> {
         let (connect_addr, host_header, target_path) =
             Self::parse_http_upstream_endpoint(upstream_base, stripped_path);
 
@@ -1823,6 +1863,37 @@ impl WireProxyTransformer {
         )
     }
 
+    /// Appends one line of provider cache counters to `proxy-cache-usage.jsonl` in the
+    /// workspace (T-81-003). Best effort: a write failure never fails the proxied request. The
+    /// file is capped at 8 MiB; past that, the oldest half is dropped.
+    fn record_cache_usage(
+        workspace_dir: Option<&Path>,
+        counters: &crate::usage::CacheCounters,
+        epoch: u64,
+    ) {
+        const CAP: u64 = 8 * 1024 * 1024;
+        let Some(dir) = workspace_dir else { return };
+        let path = dir.join("proxy-cache-usage.jsonl");
+        let unix_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis());
+        if std::fs::metadata(&path).is_ok_and(|m| m.len() > CAP)
+            && let Ok(text) = std::fs::read_to_string(&path)
+        {
+            let lines: Vec<&str> = text.lines().collect();
+            let keep = lines[lines.len() / 2..].join("\n") + "\n";
+            let _ = std::fs::write(&path, keep);
+        }
+        let line = counters.to_json_line(epoch, unix_ms) + "\n";
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            let _ = f.write_all(line.as_bytes());
+        }
+    }
+
     fn is_loopback_upstream(url: &str) -> bool {
         let trimmed = url.trim();
         if trimmed.contains('@')
@@ -1861,7 +1932,7 @@ impl WireProxyTransformer {
         shared_mmu: &std::sync::Mutex<&mut InfinityContextMmu>,
         writer: &mut W,
         headers_committed: &mut bool,
-    ) -> io::Result<()> {
+    ) -> io::Result<crate::usage::CacheCounters> {
         static CURL_HDR_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         struct TempFileGuard(Option<std::path::PathBuf>);
         impl Drop for TempFileGuard {
@@ -1996,7 +2067,7 @@ impl WireProxyTransformer {
                 .join()
                 .unwrap_or_else(|_| Err(io::Error::other("stdin writer thread panicked")));
             match r {
-                Ok(()) => Ok(()),
+                Ok(counters) => write_res.map(|()| counters),
                 Err(e) => Err(write_res.err().unwrap_or(e)),
             }
         });
@@ -2425,6 +2496,15 @@ impl WireProxyTransformer {
                     &mut headers_committed,
                 )
             };
+            match &forward_res {
+                Ok(counters) if !counters.is_empty() => {
+                    let epoch = shared_mmu
+                        .lock()
+                        .map_or(0, |m| m.epochs.sealed_epochs().len() as u64);
+                    Self::record_cache_usage(workspace_dir, counters, epoch);
+                }
+                _ => {}
+            }
             if let Err(err) = forward_res {
                 if !headers_committed {
                     let err_json =
@@ -2658,6 +2738,99 @@ impl WireProxyTransformer {
         }
     }
 
+    /// Whether an OpenAI model takes `prompt_cache_options` and `prompt_cache_breakpoint`:
+    /// GPT-5.6 and later (`gpt-5.6`, `gpt-6.2-sol`). Anything else, including names that do not
+    /// parse, does not (T-81-001; OpenAI prompt caching guide, checked 2026-11-26).
+    fn openai_supports_cache_options(model: &str) -> bool {
+        let Some(version) = model.strip_prefix("gpt-") else {
+            return false;
+        };
+        let mut parts = version.split(|c: char| !c.is_ascii_digit());
+        let major: u32 = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+        let minor: u32 = if version[major.to_string().len()..].starts_with('.') {
+            parts.next().and_then(|p| p.parse().ok()).unwrap_or(0)
+        } else {
+            0
+        };
+        (major, minor) >= (5, 6)
+    }
+
+    /// OpenAI cache controls (T-81-001), only for models that take them: an explicit
+    /// `prompt_cache_breakpoint` on the epoch boundary (the last folded user, developer or system
+    /// item), only while the request has fewer than 3 (implicit mode writes the latest 3 explicit
+    /// ones), and `prompt_cache_options.ttl` when configured (`30m` or `12h`) and not set by the
+    /// client. Requests for other models are left as they are.
+    fn apply_openai_cache_controls(
+        root: &mut Value,
+        items_key: &str,
+        text_part_type: &str,
+        protect_tail: usize,
+        ttl: Option<&str>,
+    ) {
+        let model = root.get("model").and_then(Value::as_str).unwrap_or("");
+        if !Self::openai_supports_cache_options(model) {
+            return;
+        }
+        if let Some(ttl) = ttl.filter(|t| matches!(*t, "30m" | "12h"))
+            && let Some(obj) = root.as_object_mut()
+        {
+            let opts = obj
+                .entry("prompt_cache_options")
+                .or_insert_with(|| json!({}));
+            if let Some(o) = opts.as_object_mut() {
+                o.entry("ttl").or_insert_with(|| json!(ttl));
+            }
+        }
+        let count = |v: &Value| -> usize {
+            fn walk(v: &Value) -> usize {
+                match v {
+                    Value::Object(m) => {
+                        usize::from(m.contains_key("prompt_cache_breakpoint"))
+                            + m.values().map(walk).sum::<usize>()
+                    }
+                    Value::Array(a) => a.iter().map(walk).sum(),
+                    _ => 0,
+                }
+            }
+            walk(v)
+        };
+        let Some(items) = root.get_mut(items_key).and_then(Value::as_array_mut) else {
+            return;
+        };
+        if count(&Value::Array(items.clone())) >= 3 || items.len() <= protect_tail {
+            return;
+        }
+        let fold_end = items.len() - protect_tail;
+        let target = (0..fold_end).rev().find(|&i| {
+            matches!(
+                items[i].get("role").and_then(Value::as_str),
+                Some("user" | "developer" | "system")
+            )
+        });
+        let Some(item) = target.map(|i| &mut items[i]) else {
+            return;
+        };
+        if let Some(Value::String(text)) = item.get("content").cloned() {
+            item["content"] = json!([{ "type": text_part_type, "text": text }]);
+        }
+        if let Some(part) = item
+            .get_mut("content")
+            .and_then(Value::as_array_mut)
+            .and_then(|parts| {
+                parts.iter_mut().rev().find(|p| {
+                    matches!(
+                        p.get("type").and_then(Value::as_str),
+                        Some("text" | "input_text")
+                    )
+                })
+            })
+            .and_then(Value::as_object_mut)
+        {
+            part.entry("prompt_cache_breakpoint")
+                .or_insert_with(|| json!({ "mode": "explicit" }));
+        }
+    }
+
     fn extract_item_text(item: &Value) -> Option<&str> {
         if let Some(s) = item.get("content").and_then(Value::as_str) {
             return Some(s);
@@ -2779,6 +2952,203 @@ impl WireProxyTransformer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// T-81-001: OpenAI cache controls only for models that take them, on the epoch boundary.
+    #[test]
+    fn openai_cache_controls_for_supported_models_only() {
+        let body = |model: &str| {
+            json!({
+                "model": model,
+                "messages": [
+                    { "role": "developer", "content": "stable instructions" },
+                    { "role": "user", "content": "first" },
+                    { "role": "assistant", "content": "answer" },
+                    { "role": "user", "content": "second" },
+                    { "role": "assistant", "content": "answer two" }
+                ]
+            })
+        };
+        for (model, ok) in [
+            ("gpt-5.6", true),
+            ("gpt-6.2-sol", true),
+            ("gpt-5.5", false),
+            ("gpt-4o", false),
+            ("o3", false),
+            ("gpt-x", false),
+        ] {
+            assert_eq!(
+                WireProxyTransformer::openai_supports_cache_options(model),
+                ok,
+                "{model}"
+            );
+        }
+        // Unsupported model: untouched.
+        let mut old = body("gpt-5.5");
+        let before = old.clone();
+        WireProxyTransformer::apply_openai_cache_controls(
+            &mut old,
+            "messages",
+            "text",
+            2,
+            Some("12h"),
+        );
+        assert_eq!(old, before);
+        // Supported: one explicit breakpoint on the last folded user message, and the TTL.
+        let mut new = body("gpt-5.6");
+        WireProxyTransformer::apply_openai_cache_controls(
+            &mut new,
+            "messages",
+            "text",
+            2,
+            Some("12h"),
+        );
+        assert_eq!(new["prompt_cache_options"]["ttl"], "12h");
+        assert_eq!(
+            new["messages"][1]["content"][0]["prompt_cache_breakpoint"]["mode"],
+            "explicit"
+        );
+        assert_eq!(new["messages"][1]["content"][0]["text"], "first");
+        assert!(
+            new["messages"][0].get("content").unwrap().is_string(),
+            "only the boundary item changes"
+        );
+        // A client TTL and three client breakpoints are respected.
+        let mut client = body("gpt-5.6");
+        client["prompt_cache_options"] = json!({ "ttl": "30m" });
+        for i in 0..3 {
+            client["messages"][i]["content"] = json!([{ "type": "text", "text": "x", "prompt_cache_breakpoint": { "mode": "explicit" } }]);
+        }
+        let before_bp = client["messages"].clone();
+        WireProxyTransformer::apply_openai_cache_controls(
+            &mut client,
+            "messages",
+            "text",
+            2,
+            Some("12h"),
+        );
+        assert_eq!(client["prompt_cache_options"]["ttl"], "30m");
+        assert_eq!(client["messages"], before_bp);
+        // An unknown TTL value is ignored.
+        let mut bad = body("gpt-5.6");
+        WireProxyTransformer::apply_openai_cache_controls(
+            &mut bad,
+            "messages",
+            "text",
+            2,
+            Some("1y"),
+        );
+        assert!(bad.get("prompt_cache_options").is_none());
+    }
+
+    /// T-81-002: automatic caching passes through without an icx breakpoint, the icx
+    /// breakpoint skips mid-conversation system messages, and the 4-breakpoint limit holds.
+    #[test]
+    fn anthropic_breakpoints_respect_automatic_caching_and_system_messages() {
+        let turn = |role: &str, text: &str| json!({ "role": role, "content": text });
+        let count = |v: &Value| WireProxyTransformer::count_cache_breakpoints(Some(v));
+        let run = |body: Value| -> Value {
+            let mut mmu = InfinityContextMmu::default();
+            serde_json::from_str(
+                &WireProxyTransformer::transform_anthropic_messages(&body.to_string(), &mut mmu)
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+        let history = vec![
+            turn("user", "first question"),
+            turn("assistant", "first answer"),
+            turn("system", "Terse mode enabled."),
+            turn("user", "second question"),
+            turn("assistant", "second answer"),
+        ];
+        // Automatic caching: no icx breakpoint is added.
+        let auto =
+            run(json!({ "cache_control": { "type": "ephemeral" }, "messages": history.clone() }));
+        assert_eq!(count(&auto["messages"]), 0, "{auto}");
+        // Without it, the breakpoint goes on the last folded message that is not a system message.
+        let plain = run(json!({ "messages": history.clone() }));
+        let msgs = plain["messages"].as_array().unwrap();
+        assert_eq!(count(&plain["messages"]), 1);
+        assert_eq!(count(&msgs[2]), 0, "never on the system message");
+        assert_eq!(count(&msgs[1]), 1, "on the assistant turn before it");
+        // Four client breakpoints already: none added.
+        let full = run(json!({
+            "system": [
+                { "type": "text", "text": "a", "cache_control": { "type": "ephemeral" } },
+                { "type": "text", "text": "b", "cache_control": { "type": "ephemeral" } }
+            ],
+            "tools": [{ "name": "t", "cache_control": { "type": "ephemeral" } }],
+            "cache_control": { "type": "ephemeral" },
+            "messages": history
+        }));
+        assert_eq!(count(&full["messages"]), 0);
+    }
+
+    /// T-81-003: the relay returns the provider cache counters of an SSE stream and of a JSON
+    /// body, and the request handler writes them to the workspace ledger.
+    #[test]
+    fn relay_returns_provider_cache_counters_and_the_ledger_records_them() {
+        let mut mmu = InfinityContextMmu::default();
+        let shared = std::sync::Mutex::new(&mut mmu);
+        let run = |response: String| {
+            let mut out = Vec::new();
+            let mut committed = false;
+            let counters = WireProxyTransformer::relay_upstream_response_with_eof(
+                &mut io::Cursor::new(response),
+                false,
+                true,
+                &shared,
+                &mut out,
+                &mut committed,
+                || Ok(()),
+            )
+            .unwrap();
+            (counters, String::from_utf8(out).unwrap())
+        };
+        let sse = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n\
+            event: message_start\n\
+            data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":9,\"cache_read_input_tokens\":4096,\"cache_creation_input_tokens\":0}}}\n\n\
+            data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":3}}\n\n";
+        let (c, body) = run(sse.to_owned());
+        assert_eq!(c.provider, Some("anthropic"));
+        assert_eq!(c.cache_read, Some(4096));
+        assert!(
+            body.contains("cache_read_input_tokens"),
+            "the stream is relayed unchanged"
+        );
+
+        let json =
+            r#"{"usage":{"prompt_tokens":2048,"prompt_tokens_details":{"cached_tokens":1920}}}"#;
+        let (c, _) = run(format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{json}",
+            json.len()
+        ));
+        assert_eq!(
+            (c.provider, c.cache_read, c.cache_write),
+            (Some("openai"), Some(1920), None)
+        );
+
+        let (c, _) = run(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}"
+                .to_owned(),
+        );
+        assert!(c.is_empty());
+
+        let dir = std::env::temp_dir().join(format!("icx-usage-ledger-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut counters = crate::usage::CacheCounters::default();
+        counters.observe_text(json);
+        WireProxyTransformer::record_cache_usage(Some(&dir), &counters, 3);
+        WireProxyTransformer::record_cache_usage(Some(&dir), &counters, 4);
+        let ledger = std::fs::read_to_string(dir.join("proxy-cache-usage.jsonl")).unwrap();
+        assert_eq!(ledger.lines().count(), 2);
+        let first: Value = serde_json::from_str(ledger.lines().next().unwrap()).unwrap();
+        assert_eq!(first["cache_read_tokens"], 1920);
+        assert!(first["cache_write_tokens"].is_null(), "absent stays absent");
+        assert_eq!(first["epoch"], 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn anthropic_and_openai_wire_transformers_inject_cache_control_and_virtualize_middle_history() {

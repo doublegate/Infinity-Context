@@ -21,3 +21,10 @@ We enforce **Append-Only Cache-Epoch Pinning (`CacheEpochController`)**:
 
 - **Positive:** Sustains `>= 94%` provider prompt-cache hit rates across 500+ turn sessions while still delivering dynamic per-turn recall.
 - **Negative:** A low-surprise turn remains in the active unsealed window until the next 16K-token epoch boundary (though bulky tool outputs $> 2\text{ KiB}$ are still stubbed immediately at `PostToolUse` before entering the window).
+
+## Correction (2026-11-26, T-81-004)
+
+The `>= 94%` figure above is not a provider prompt-cache hit rate. It is the byte-weighted
+prefix reuse measured by the synthetic transcript in `icx benchmark` (95.46% over all turns at
+v1.1.0; see `docs/numbers.md`). Provider cache behaviour is measured from the provider's own
+counters, which `icx proxy` records per request in `proxy-cache-usage.jsonl` from v1.6.0.

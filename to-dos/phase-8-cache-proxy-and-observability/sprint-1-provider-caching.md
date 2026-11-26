@@ -23,7 +23,27 @@ Re-check before any ticket starts:
 
 ### Research notes
 
-_None recorded yet._
+**2026-11-26** (Anthropic: the `claude-api` reference skill; OpenAI: the developers.openai.com docs via Context7):
+
+- **Anthropic.**
+  - At most 4 `cache_control` breakpoints per request. Automatic caching is a top-level `cache_control` that uses one slot and places itself on the last cacheable block.
+  - TTLs are 5 minutes (the default) and 1 hour; a longer-TTL entry must come before shorter ones.
+  - Minimum cacheable prefix: 512 tokens on the newest models, up to 4,096 on Opus 4.5/4.6 and Haiku 4.5.
+  - Mid-conversation `role: "system"` messages keep the cached prefix. A turn-scoped one (`clear_at`) rejects `cache_control`.
+  - Counters: `usage.cache_read_input_tokens`, `usage.cache_creation_input_tokens` and `usage.cache_creation.{ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}`.
+  - Diagnostics need the beta header `cache-diagnosis-2026-04-07` on every request.
+- **OpenAI.**
+  - `prompt_cache_options` (`mode` implicit/explicit, `ttl` `30m`/`12h`, `prewarm`, `comparison_response_id`) is supported for GPT-5.6 and later, in both Chat Completions and Responses.
+  - Explicit breakpoints are `prompt_cache_breakpoint: {mode: "explicit", ttl?}` on text content parts. Up to 4 are written per request: in implicit mode, the implicit one plus the latest 3 explicit.
+  - `prompt_cache_retention` is deprecated.
+  - Counters: Chat `usage.prompt_tokens_details.{cached_tokens, cache_write_tokens}`; Responses `usage.input_tokens_details.{cached_tokens, cache_write_tokens, cache_write_tokens_details.{ttl_30m_tokens, ttl_12h_tokens}}`.
+- **Installed agents.** Neither Claude Code nor Codex routes through `icx proxy` by default. The proxy is opt-in through `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`, so there is no recorded request per agent to inspect yet.
+- **Project evidence.**
+  - The Anthropic transform already placed one breakpoint within the 4-slot budget with the TTL ordering. It did not see automatic caching, and could place its breakpoint on a mid-conversation system message.
+  - The OpenAI transform added no cache fields.
+  - Nothing read the provider counters.
+  - The `>= 94%` figure appeared as a provider hit rate in ADR-0003, the AHTL diagram generator, `CLAUDE.md` and `GEMINI.md` (both managed blocks) and `AGENTS.md` (the owner's).
+- **Measurement.** The owner approved a paid paired run capped at $5 (2026-11-26). No provider API key is configured in this environment, so it waits for the owner to supply one.
 
 ## Tickets
 

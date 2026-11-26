@@ -185,6 +185,7 @@ icx daemon --idle-exit 900 &
 | `ICX_MCP_FOLLOW_HOOKS` | follow | `0` pins `icx mcp-serve` to its launch workspace. By default it follows the workspace its own agent's hooks use, so a session that moved into a nested project or works in a git worktree reads the store its stubs were written to (v1.3.2). |
 | `ICX_PROXY_BIND` | `127.0.0.1:49380` | Default `icx proxy` listen address. |
 | `ICX_UPSTREAM_URL` | provider default | Default `icx proxy` upstream. |
+| `ICX_OPENAI_CACHE_TTL` | unset | `30m` or `12h`: the `prompt_cache_options.ttl` `icx proxy` sets on GPT-5.6+ requests that do not set one (v1.6.0). |
 | `ANTHROPIC_BASE_URL` | — | `http://127.0.0.1:49380/t/<token>` to route Anthropic clients through the proxy (§2.1.1). |
 | `OPENAI_BASE_URL` | — | `http://127.0.0.1:49380/t/<token>/v1` to route OpenAI clients through the proxy (§2.1.1). |
 
