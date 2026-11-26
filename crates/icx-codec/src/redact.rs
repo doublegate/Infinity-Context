@@ -39,7 +39,10 @@ impl SecretRedactor {
         let quoted: String = input
             .split_inclusive('\n')
             .map(|line| {
-                if line.chars().any(Self::is_quote_like) && !Self::is_json_line(line.trim_end()) {
+                if line.chars().any(Self::is_quote_like)
+                    && !Self::is_json_line(line.trim_end())
+                    && Self::embedded_json_start(line).is_none()
+                {
                     line.chars().map(Self::ascii_quote).collect::<String>()
                 } else {
                     line.to_owned()
@@ -517,25 +520,63 @@ impl SecretRedactor {
         if !(t.ends_with('}') || t.ends_with(']')) {
             return None;
         }
-        // The first `{` or `[` after the start whose rest is one JSON value; at most 8 candidates,
-        // so a bracket-heavy line stays linear (review of #110).
-        let mut from = line.chars().next()?.len_utf8();
-        let mut tries = 0;
-        while let Some(rel) = line.get(from..)?.find(['{', '[']) {
-            tries += 1;
-            if tries > 8 {
-                return None;
-            }
-            let at = from + rel;
-            if Self::is_json_line(&line[at..]) {
-                let json = Self::redact_json_line(&line[at..])?;
-                let shaped = crate::redact_shapes::redact_json_shapes(&json);
-                if shaped == line[at..] {
-                    return None;
+        let at = Self::embedded_json_start(line)?;
+        let json = Self::redact_json_line(&line[at..])?;
+        let shaped = crate::redact_shapes::redact_json_shapes(&json);
+        if shaped == line[at..] {
+            return None;
+        }
+        Some(format!("{}{shaped}", &line[..at]))
+    }
+
+    /// Where the JSON object or array that ends `line` begins, when it begins after other text:
+    /// one backward pass from the final `}` or `]` matches brackets, skipping JSON strings (a
+    /// JSON string holds no unescaped quote), so one candidate is checked and the cost stays
+    /// linear (review of #110).
+    fn embedded_json_start(line: &str) -> Option<usize> {
+        let t = line.trim_end();
+        let b = t.as_bytes();
+        let last = *b.last()?;
+        if !matches!(last, b'}' | b']') {
+            return None;
+        }
+        let escaped = |k: usize| {
+            !b[..k]
+                .iter()
+                .rev()
+                .take_while(|c| **c == b'\\')
+                .count()
+                .is_multiple_of(2)
+        };
+        let mut stack: Vec<u8> = Vec::new();
+        let mut k = b.len();
+        while k > 0 {
+            k -= 1;
+            match b[k] {
+                b'"' if !escaped(k) => {
+                    // Back to the string's opening quote.
+                    loop {
+                        if k == 0 {
+                            return None;
+                        }
+                        k -= 1;
+                        if b[k] == b'"' && !escaped(k) {
+                            break;
+                        }
+                    }
                 }
-                return Some(format!("{}{shaped}", &line[..at]));
+                c @ (b'}' | b']') => stack.push(c),
+                c @ (b'{' | b'[') => {
+                    let want = if c == b'{' { b'}' } else { b']' };
+                    if stack.pop() != Some(want) {
+                        return None;
+                    }
+                    if stack.is_empty() {
+                        return (k > 0 && Self::is_json_line(&line[k..])).then_some(k);
+                    }
+                }
+                _ => {}
             }
-            from = at + 1;
         }
         None
     }

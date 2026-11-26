@@ -267,3 +267,30 @@ fn review_round_on_110() {
     let _ = SecretRedactor::redact(&line);
     assert!(t.elapsed().as_millis() < 2_000, "{:?}", t.elapsed());
 }
+
+/// Commit security review of f7aa746: embedded JSON is found in one pass, whatever precedes it,
+/// and a line holding embedded JSON keeps its full-width quotes as string content.
+#[test]
+fn embedded_json_after_many_brackets_and_full_width_content() {
+    check(&[
+        (
+            "[a] [b] [c] [d] [e] [f] [g] [h] [i] {\"cmd\": \"sshpass -p \\\"my qqzz\\\" ssh host\"}\n",
+            &["qqzz"],
+            &["[i]"],
+        ),
+        (
+            "log {\"note\": \"say \u{FF02}hi\u{FF02}\", \"password\": \"qqzz\"}\n",
+            &["qqzz"],
+            &["\u{FF02}hi\u{FF02}"],
+        ),
+    ]);
+    // The JSON part stays valid JSON.
+    let out = SecretRedactor::redact(
+        "log {\"note\": \"say \u{FF02}hi\u{FF02}\", \"password\": \"qqzz\"}\n",
+    );
+    let json = &out[out.find('{').unwrap()..];
+    assert!(
+        serde_json::from_str::<serde_json::Value>(json.trim()).is_ok(),
+        "{out:?}"
+    );
+}
