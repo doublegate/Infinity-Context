@@ -21,8 +21,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- The second look-alike pass copies through lines the first pass already redacted: 16.0 to 14.6
-  ms on 69 KB of text with no-break spaces. `icx benchmark` gains a gated redactor benchmark on 64
+- The second look-alike pass copies through lines the first pass already redacted. On 69 KB of
+  text with no-break spaces redaction takes 15.8 ms (15.3 ms at v1.5.1), after the review fixes
+  that run the raw and quote-normalised passes side by side. `icx benchmark` gains a gated redactor benchmark on 64
   KB of look-alike text (10 ms ceiling, 4.8 ms measured).
 
 ## [1.5.1] - 2026-11-25

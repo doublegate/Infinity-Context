@@ -153,10 +153,12 @@ fn cli_segments_and_tool_scope() {
             &[],
             &["echo ok"],
         ),
+        // The raw and quote-normalised passes disagree here, so the rest of the line is hidden
+        // (fail closed).
         (
             "sshpass -p \u{FF02}my qqzz\u{FF02} ssh host\n",
             &["qqzz"],
-            &["ssh host"],
+            &[],
         ),
         (
             "log {\"cmd\": \"sshpass -p \\\"my qqzz\\\" ssh host\"}\n",
@@ -281,7 +283,7 @@ fn embedded_json_after_many_brackets_and_full_width_content() {
         (
             "sshpass -p \u{FF02}my qqzz\u{FF02} ssh host {\"a\": 1}\n",
             &["qqzz"],
-            &["{\"a\": 1}"],
+            &[],
         ),
         (
             "log {\"note\": \"say \u{FF02}hi\u{FF02}\", \"password\": \"qqzz\"}\n",
@@ -338,6 +340,60 @@ fn review_round_on_640f975() {
         ),
         (
             "raw.split('api_key=')\nvisible line\n",
+            &[],
+            &["visible line"],
+        ),
+    ]);
+}
+
+/// Antigravity round on 7ec0f6a: the raw and quote-normalised passes both count.
+#[test]
+fn raw_and_quote_normalised_passes_both_count() {
+    check(&[
+        ("obj[\"password\"] = \"a\u{FF02} qqzz\"\n", &["qqzz"], &[]),
+        ("sshpass -p \"a\u{FF02} qqzz\" ssh host\n", &["qqzz"], &[]),
+        ("password = 'a\u{FF07} qqzz'\n", &["qqzz"], &[]),
+        (
+            "  \"password\": \"a \u{FF02}qqzz\u{FF02} b\",\n",
+            &["qqzz"],
+            &[],
+        ),
+        (
+            "log({\"password\": \"a \u{FF02}qqzz\u{FF02} b\"})\n",
+            &["qqzz"],
+            &[],
+        ),
+        (
+            "password = \"qqzz\u{FF3C}\" ; visible = 1\n",
+            &["qqzz"],
+            &[],
+        ),
+        // ...and the quote-normalised pass still finds what the raw one breaks.
+        (
+            "sshpass -p \u{FF02}my zzqq\u{FF02} ssh host\n",
+            &["zzqq"],
+            &[],
+        ),
+    ]);
+}
+
+/// Commit security review of 2987b3e: possessive plurals and contractions still open the
+/// apostrophe-blind scan; complete single-quoted values do not.
+#[test]
+fn possessive_plurals_open_the_apostrophe_scan() {
+    check(&[
+        (
+            "the admins' log; password = '''\nqqzz\n'''\nnext = 1\n",
+            &["qqzz"],
+            &["next = 1"],
+        ),
+        (
+            "note = 'password = (' and more\nvisible line\n",
+            &[],
+            &["visible line"],
+        ),
+        (
+            "doc = 'token = \"\"\"'\nvisible line\n",
             &[],
             &["visible line"],
         ),

@@ -257,15 +257,21 @@ was a regression, and they were deferred rather than fixed under review pressure
   - The name/value window is 200 lines, skipping deeper lines, so a long `value: |` block before
     `name:` is found.
   - A whole-marker line ends a sensitive block only when it is less indented than the key.
-- **Full-width quotes.** The v1.5.1 passes could consume a full-width opening quote before the
-  quote-normalising pass read it as a quote (`-p ＂my secret＂`), and a later attempt to merge a
-  from-scratch pass line by line was not a true union (reviews of #110). The look-alike pass is
-  now two chained passes: full-width quote-like characters (`＂ ＇ ＼ ｀`) are made ASCII before
-  the first pass on every line that is not JSON, and the second pass normalises every other
-  look-alike over the first pass's result, so whatever either pass hides stays hidden. On a JSON
-  line these characters are string content and stay. A line where neither pass hid anything keeps
-  its original bytes. When a collapsed key block shortens the text, such a line is paired with its
-  original from the start or the end, and only where the texts are equal.
+- **Full-width quotes.** Raw text and text with full-width quote-like characters (`＂ ＇ ＼ ｀`)
+  made ASCII each hide shapes the other breaks: `-p ＂my secret＂` needs the quotes, while an ASCII
+  literal holding one (`"a＂ secret"`) needs them left alone (reviews of #110). Both first passes
+  therefore run on the input. A line takes the pass that changed it, or both when they agree;
+  when both changed it differently, the line is hidden from the earliest point either hid
+  (fail closed, at the cost of over-redacting such lines). JSON lines, judged on the view with
+  other look-alikes normalised, keep these characters as string content; text before embedded
+  JSON is normalised. A second pass then normalises every other look-alike over that result.
+  Lines no pass changed keep their original bytes; after a collapsed key block they pair with
+  their input lines from the start or the end, only where one of the results equals the input.
+- **Apostrophe scan.** The apostrophe-blind continuation scan runs on every line holding an
+  apostrophe (fail closed), on a copy where complete single-quoted value literals are blanked
+  (opened after `=`, `(`, `,`, `[`, `{` or `:`, closed on the line, and not a label), so
+  `p = 'password = '` cannot arm a multi-line value while `don't`, `admins'` and `'outer:` still
+  do.
 - **Cost (#108).** In the second look-alike pass, a line that the first pass already redacted and
   that holds no look-alike is copied through, with no multi-line value or key block open: a
   second pass leaves such a line unchanged. A property test checks that the skip changes no output.
