@@ -2796,17 +2796,28 @@ impl WireProxyTransformer {
         let Some(version) = model.strip_prefix("gpt-") else {
             return false;
         };
-        // Leading ASCII digits only: no slicing by a parsed number's length (review of #113).
+        // One major digit, then the end, `-` or `.` with digits (review of #113: `gpt-35-turbo`
+        // is Azure's GPT-3.5 name, and `gpt-6foo` or `gpt-6.` are not versions). Anything else
+        // gets no cache fields, which is the safe side.
         let digits = |t: &str| t.bytes().take_while(u8::is_ascii_digit).count();
-        let n = digits(version);
-        let Ok(major) = version[..n].parse::<u32>() else {
+        if digits(version) != 1 {
             return false;
+        }
+        let major = u32::from(version.as_bytes()[0] - b'0');
+        let rest = &version[1..];
+        let (minor, after) = match rest.strip_prefix('.') {
+            Some(r) => {
+                let m = digits(r);
+                let Ok(minor) = r[..m].parse::<u32>() else {
+                    return false;
+                };
+                (minor, &r[m..])
+            }
+            None => (0, rest),
         };
-        let rest = &version[n..];
-        let minor = rest
-            .strip_prefix('.')
-            .and_then(|r| r[..digits(r)].parse::<u32>().ok())
-            .unwrap_or(0);
+        if !(after.is_empty() || after.starts_with('-')) {
+            return false;
+        }
         (major, minor) >= (5, 6)
     }
 
@@ -2862,12 +2873,19 @@ impl WireProxyTransformer {
                 Some("user" | "developer" | "system")
             )
         });
+        // Every folded user, developer or system item takes block form, so the folded prefix has
+        // the same shape on every turn wherever the breakpoint sits (review of #113).
+        for item in &mut items[..fold_end] {
+            let role = item.get("role").and_then(Value::as_str);
+            if matches!(role, Some("user" | "developer" | "system"))
+                && let Some(Value::String(text)) = item.get("content").cloned()
+            {
+                item["content"] = json!([{ "type": text_part_type, "text": text }]);
+            }
+        }
         let Some(item) = target.map(|i| &mut items[i]) else {
             return;
         };
-        if let Some(Value::String(text)) = item.get("content").cloned() {
-            item["content"] = json!([{ "type": text_part_type, "text": text }]);
-        }
         if let Some(part) = item
             .get_mut("content")
             .and_then(Value::as_array_mut)
@@ -3025,8 +3043,13 @@ mod tests {
         };
         for (model, ok) in [
             ("gpt-", false),
+            ("gpt-35-turbo", false),
+            ("gpt-6.", false),
+            ("gpt-6foo", false),
+            ("gpt-6", true),
+            ("gpt-5.6-mini", true),
             ("gpt-\u{e9}", false),
-            ("gpt-05.6", true),
+            ("gpt-05.6", false),
             ("gpt-5.", false),
             ("gpt-5.6", true),
             ("gpt-6.2-sol", true),
@@ -3068,8 +3091,13 @@ mod tests {
         );
         assert_eq!(new["messages"][1]["content"][0]["text"], "first");
         assert!(
-            new["messages"][0].get("content").unwrap().is_string(),
-            "only the boundary item changes"
+            new["messages"][0]["content"].is_array(),
+            "every folded item takes block form"
+        );
+        assert!(
+            new["messages"][0]["content"][0]
+                .get("prompt_cache_breakpoint")
+                .is_none()
         );
         // A client TTL and three client breakpoints are respected.
         let mut client = body("gpt-5.6");
