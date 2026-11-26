@@ -3,4 +3,4 @@
 pub mod usage;
 pub mod wire;
 
-pub use wire::{ProviderFormat, WireProxyTransformer, WorkspaceGate};
+pub use wire::{ProjectResolver, ProviderFormat, WireProxyTransformer, WorkspaceGate};

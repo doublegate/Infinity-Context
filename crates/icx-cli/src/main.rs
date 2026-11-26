@@ -107,6 +107,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
         }
         "mcp-serve" => serve_mcp_stream(tail, reader, io::stdout().lock()),
         "proxy" => run_proxy_server(tail),
+        "proxy-url" => run_proxy_url(tail).map(|url| println!("{url}")),
         "proxy-transform" => {
             let stdin_buf = read_bounded(&mut reader, MAX_STDIN_BYTES)
                 .map_err(|e| format!("proxy-transform error: {e}"))?;
@@ -237,6 +238,9 @@ Subcommands:",
         [--allow-remote] [--insecure-no-auth]
       Run the Cache-Epoch HTTP/1.1 & SSE reverse proxy (default 127.0.0.1:49380). Requests must
       carry the install token (base URL http://HOST:PORT/t/<token> or header x-icx-token)
+  proxy-url [--listen <HOST:PORT>] [--dir <PATH>]
+      Print this project's base URL for `icx proxy` (http://HOST:PORT/t/<token>/p/<id>): its
+      requests are served from this project's own workspace. Append /v1 for OPENAI_BASE_URL
   proxy-transform [--provider <anthropic|openai|gemini>] [--dir <PATH>]
       Transform an outbound Anthropic (`/v1/messages`), OpenAI (`/v1/chat/completions`, `/v1/responses`), or Gemini (`/v1beta/models/*`) JSON request
   eval-recall [--set <FILE> [--split <train|heldout|all>] [--dir <PATH>] | --synthetic <N> [--vocab <V>]
@@ -1442,7 +1446,10 @@ fn annotate_not_found(mut resp: serde_json::Value, ws_dir: &Path) -> serde_json:
             .filter(|t| t.as_str().is_some_and(|s| s.contains("not found")))
     {
         let note = format!(
-            " (searched workspace {}; a handle from another project or worktree is stored in that project's workspace)",
+            " (searched workspace {}; a handle from another project or worktree is stored in \
+             that project's workspace, and one from an icx proxy packet (`src:proxy`) in the \
+             workspace of the project in the proxy URL, `icx proxy-url`. This server cannot \
+             resolve it: do not retry the same handle)",
             ws_dir.display()
         );
         if let Some(s) = text.as_str() {
@@ -1576,6 +1583,98 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
     Ok(())
 }
 
+/// The per-project workspace for the id in a `/p/<id>` proxy path (#117): exactly 16 lowercase hex
+/// characters naming an existing directory under `<state>/workspaces/`.
+fn project_workspace_dir(id: &str) -> Option<PathBuf> {
+    if id.len() != 16
+        || !id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return None;
+    }
+    let dir = roots().state_dir.join("workspaces").join(id);
+    std::fs::symlink_metadata(&dir)
+        .is_ok_and(|m| m.is_dir())
+        .then_some(dir)
+}
+
+/// `icx proxy-url [--listen <HOST:PORT>] [--dir <PATH>]`: prints the base URL that routes this
+/// project's requests through `icx proxy` into its own workspace (#117). Append `/v1` for
+/// `OPENAI_BASE_URL`.
+fn run_proxy_url(args: &[String]) -> Result<String, String> {
+    let mut listen_flag: Option<&str> = None;
+    let mut dir_str: Option<&str> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--listen" => {
+                let value = flag_value_at(args, i, "icx proxy-url")?;
+                set_option_once(&mut listen_flag, "icx proxy-url", "--listen", value)?;
+                i += 2;
+            }
+            "--dir" => {
+                let value = flag_value_at(args, i, "icx proxy-url")?;
+                set_option_once(&mut dir_str, "icx proxy-url", "--dir", value)?;
+                i += 2;
+            }
+            other => return Err(format!("icx proxy-url: unknown argument `{other}`")),
+        }
+    }
+    let ws_dir = resolve_workspace_dir(dir_str);
+    if !matches!(workspace_state(&ws_dir, true), WsState::Ready) {
+        return Err(format!(
+            "icx proxy-url: workspace {} is not usable; run `icx doctor`",
+            ws_dir.display()
+        ));
+    }
+    let canonical = std::fs::canonicalize(&ws_dir).map_err(|e| format!("icx proxy-url: {e}"))?;
+    let id = canonical
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|id| {
+            project_workspace_dir(id).is_some_and(|d| {
+                std::fs::canonicalize(d).ok().as_deref() == Some(canonical.as_path())
+            })
+        })
+        .ok_or_else(|| {
+            format!(
+                "icx proxy-url: {} is not a per-project workspace under the icx state directory",
+                canonical.display()
+            )
+        })?;
+    let env_bind = env::var("ICX_PROXY_BIND")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let listen = listen_flag
+        .or(env_bind.as_deref())
+        .unwrap_or("127.0.0.1:49380")
+        .trim();
+    // HOST:PORT only, as a URL authority: a hostname or IPv4 address, or a bracketed IPv6
+    // address, and a port from 1 (review of #118).
+    let well_formed = listen.rsplit_once(':').is_some_and(|(host, port)| {
+        let port_ok = port.parse::<u16>().is_ok_and(|p| p > 0);
+        let host_ok = if let Some(v6) = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
+            v6.parse::<std::net::Ipv6Addr>().is_ok()
+        } else {
+            !host.is_empty()
+                && host
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+        };
+        port_ok && host_ok
+    });
+    if !well_formed {
+        return Err(format!(
+            "icx proxy-url: `{listen}` is not HOST:PORT (as for `icx proxy --listen`)"
+        ));
+    }
+    let key = workspace::derived_key(roots(), "proxy-token")
+        .map_err(|e| format!("icx proxy-url: cannot derive the proxy token: {e}"))?;
+    let token = blake3::Hash::from_bytes(key).to_hex().to_string();
+    Ok(format!("http://{listen}/t/{token}/p/{id}"))
+}
+
 fn run_proxy_server(args: &[String]) -> Result<(), String> {
     let env_bind = env::var("ICX_PROXY_BIND")
         .ok()
@@ -1678,12 +1777,16 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
         None => eprintln!("icx proxy: listening on http://{local} (no auth)"),
     }
     let gate = |dir: &Path| workspace::verify(dir, roots()).is_ok();
-    WireProxyTransformer::serve_http_listener_gated(
+    // `/p/<id>` maps only to an existing per-project workspace under `<state>/workspaces/`; the
+    // gate still checks its trust on every request (#117).
+    let resolver = |id: &str| project_workspace_dir(id);
+    WireProxyTransformer::serve_http_listener_projects(
         &listener,
         provider,
         effective_upstream,
         Some(ws_dir.as_path()),
         Some(&gate),
+        Some(&resolver),
         max_requests,
         token.as_deref(),
         &mut mmu,

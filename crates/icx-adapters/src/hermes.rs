@@ -207,6 +207,7 @@ impl HermesAdapter {
                             compressed_ahtl: sanitized_line.clone(),
                             surprise: 0.5,
                             was_virtualized: sanitized_line.len() >= mmu.tool_virtualize_threshold,
+                            stable_render: false,
                         },
                     );
                     Some(line_aid)

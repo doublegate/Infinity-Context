@@ -83,6 +83,20 @@ impl SsePendingState {
 /// [`WireProxyTransformer::serve_http_listener_gated`]).
 pub type WorkspaceGate = dyn Fn(&Path) -> bool + Sync;
 
+/// Maps the project id of a `/p/<id>` request path to that project's icx workspace, or `None`
+/// for an unknown id (#117). A request naming a project is served only from its own workspace:
+/// its folded originals, recall and cache ledger stay in that project.
+pub type ProjectResolver = dyn Fn(&str) -> Option<std::path::PathBuf> + Sync;
+
+/// Per-project routing for [`WireProxyTransformer::serve_http_listener_projects`].
+#[derive(Clone, Copy)]
+struct ProjectRouting<'a> {
+    resolver: &'a ProjectResolver,
+    /// The MMU as configured before any workspace was loaded; restored whenever a request's
+    /// workspace differs from the one last loaded, so no state crosses projects.
+    pristine: &'a InfinityContextMmu,
+}
+
 /// Transforms outbound LLM API requests to enforce Prefix-Cache-Locked Epochs (`arXiv:2610.28577`)
 /// and inject the Ephemeral Tail Slot without invalidating provider KV caches.
 #[derive(Clone, Debug, Default)]
@@ -424,7 +438,7 @@ impl WireProxyTransformer {
                 if mmu.is_emitted(s) {
                     *occ_idx += 1;
                 } else if Self::neutralized_len(s, mmu) >= threshold {
-                    let (res, _) = mmu.ingest_or_reuse_at_index(
+                    let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                         *occ_idx,
                         AgentKind::ClaudeCode,
                         subj,
@@ -455,7 +469,7 @@ impl WireProxyTransformer {
                         if mmu.is_emitted(t) {
                             *occ_idx += 1;
                         } else if Self::neutralized_len(t, mmu) >= threshold {
-                            let (res, _) = mmu.ingest_or_reuse_at_index(
+                            let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                                 *occ_idx,
                                 AgentKind::ClaudeCode,
                                 &block_subj,
@@ -472,7 +486,7 @@ impl WireProxyTransformer {
                                 if mmu.is_emitted(c) {
                                     *occ_idx += 1;
                                 } else if Self::neutralized_len(c, mmu) >= threshold {
-                                    let (res, _) = mmu.ingest_or_reuse_at_index(
+                                    let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                                         *occ_idx,
                                         AgentKind::ClaudeCode,
                                         &block_subj,
@@ -491,7 +505,7 @@ impl WireProxyTransformer {
                                             *occ_idx += 1;
                                         } else if Self::neutralized_len(nt, mmu) >= threshold {
                                             let n_subj = format!("{block_subj}_n{n_idx}");
-                                            let (res, _) = mmu.ingest_or_reuse_at_index(
+                                            let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                                                 *occ_idx,
                                                 AgentKind::ClaudeCode,
                                                 &n_subj,
@@ -658,7 +672,7 @@ impl WireProxyTransformer {
                                     occ_idx += 1;
                                 } else if Self::neutralized_len(t, mmu) >= threshold {
                                     let subj = format!("gemini_turn_{idx}_p{p_idx}");
-                                    let (res, _) = mmu.ingest_or_reuse_at_index(
+                                    let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                                         occ_idx,
                                         AgentKind::AntigravityCli,
                                         &subj,
@@ -682,7 +696,7 @@ impl WireProxyTransformer {
                                         } else if Self::neutralized_len(t, mmu) >= threshold {
                                             let subj =
                                                 format!("gemini_turn_{idx}_p{p_idx}_fr_{key}");
-                                            let (res, _) = mmu.ingest_or_reuse_at_index(
+                                            let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                                                 occ_idx,
                                                 AgentKind::AntigravityCli,
                                                 &subj,
@@ -2179,6 +2193,7 @@ impl WireProxyTransformer {
             workspace_dir,
             None,
             None,
+            None,
             &shared_mmu,
         )
     }
@@ -2280,6 +2295,29 @@ impl WireProxyTransformer {
     }
 
     /// Removes a leading `/t/<token>` segment so routing sees the provider path.
+    /// Splits a leading `/p/<id>` project segment off `path` (after the token prefix is
+    /// removed). A well-formed id is 1 to 64 characters of `[0-9a-zA-Z_-]`. A path that starts
+    /// with `/p/` but has no well-formed id yields `Some("")`, which no resolver accepts, so it is
+    /// refused rather than served from the shared workspace (review of #118).
+    fn split_project_prefix(path: &str) -> (Option<&str>, &str) {
+        let Some(rest) = path.strip_prefix("/p/") else {
+            return (None, path);
+        };
+        let end = rest.find('/').unwrap_or(rest.len());
+        let id = &rest[..end];
+        let tail = if rest[end..].is_empty() {
+            "/"
+        } else {
+            &rest[end..]
+        };
+        let well_formed = !id.is_empty()
+            && id.len() <= 64
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+        (Some(if well_formed { id } else { "" }), tail)
+    }
+
     fn strip_token_prefix(path: &str) -> String {
         match path.strip_prefix("/t/") {
             Some(rest) => match rest.find('/') {
@@ -2299,6 +2337,7 @@ impl WireProxyTransformer {
         workspace_dir: Option<&Path>,
         workspace_gate: Option<&WorkspaceGate>,
         auth_token: Option<&str>,
+        routing: Option<ProjectRouting<'_>>,
         shared_mmu: &std::sync::Mutex<&mut InfinityContextMmu>,
     ) -> io::Result<()> {
         let mut buf_reader = BufReader::new(reader);
@@ -2313,7 +2352,9 @@ impl WireProxyTransformer {
         let parts: Vec<&str> = request_line.split_whitespace().collect();
         let method = parts.first().copied().unwrap_or("GET");
         let raw_path = parts.get(1).copied().unwrap_or("/");
-        let routed_path = Self::strip_token_prefix(raw_path);
+        let token_stripped = Self::strip_token_prefix(raw_path);
+        let (project_id, path) = Self::split_project_prefix(&token_stripped);
+        let routed_path = path.to_owned();
         let path = routed_path.as_str();
 
         let mut content_length = 0usize;
@@ -2411,6 +2452,21 @@ impl WireProxyTransformer {
         }
         let body_str = String::from_utf8_lossy(&body_bytes).into_owned();
 
+        // A request naming a project uses that project's workspace, or is refused: an unknown
+        // project is never served from a shared store (#117).
+        let project_dir = project_id.and_then(|id| routing.and_then(|r| (r.resolver)(id)));
+        if project_id.is_some() && project_dir.is_none() {
+            let err = json!({ "error": "unknown or untrusted icx project in the proxy URL; run `icx proxy-url` in the project" }).to_string();
+            write!(
+                writer,
+                "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                err.len(),
+                err
+            )?;
+            return writer.flush();
+        }
+        let workspace_dir = project_dir.as_deref().or(workspace_dir);
+
         // Execute the local workspace read-modify-write under the exclusive lock and release both
         // the workspace lock and the in-memory MMU mutex BEFORE any upstream network round-trip.
         let (transformed_res, resolved_provider, trusted_ws) = {
@@ -2422,15 +2478,42 @@ impl WireProxyTransformer {
             // start takes effect and a workspace whose ownership, mode or seal changed is skipped.
             let ws_opt =
                 workspace_dir.filter(|p| p.exists() && workspace_gate.is_none_or(|gate| gate(p)));
-            let lock_guard = match ws_opt {
-                Some(p) => {
-                    let g = InfinityContextMmu::acquire_workspace_lock(p)
-                        .map_err(|e| io::Error::other(e.to_string()))?;
-                    mmu.load_workspace_dir_unlocked(p)
-                        .map_err(|e| io::Error::other(e.to_string()))?;
-                    Some((p, g))
+            if project_id.is_some() && ws_opt.is_none() {
+                // The named project's workspace failed its trust check: refuse rather than serve
+                // the request without (or from another) workspace.
+                drop(mmu_guard);
+                let err = json!({ "error": "the icx workspace of the project in the proxy URL is untrusted; run `icx doctor` in the project" }).to_string();
+                write!(
+                    writer,
+                    "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    err.len(),
+                    err
+                )?;
+                return writer.flush();
+            }
+            let lock_guard = if let Some(p) = ws_opt {
+                let g = InfinityContextMmu::acquire_workspace_lock(p)
+                    .map_err(|e| io::Error::other(e.to_string()))?;
+                if let Some(r) = routing {
+                    // Another workspace than the one loaded last: start from the pristine MMU,
+                    // so nothing (emitted blocks included) crosses projects.
+                    let canonical = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+                    if mmu.loaded_dir() != Some(canonical.as_path()) {
+                        *mmu = r.pristine.clone();
+                    }
                 }
-                None => None,
+                mmu.load_workspace_dir_unlocked(p)
+                    .map_err(|e| io::Error::other(e.to_string()))?;
+                Some((p, g))
+            } else {
+                // No workspace for this request: it must not run on, or later be saved with, a
+                // project's state left from an earlier request (review of #118).
+                if let Some(r) = routing
+                    && mmu.loaded_dir().is_some()
+                {
+                    *mmu = r.pristine.clone();
+                }
+                None
             };
 
             if method.eq_ignore_ascii_case("GET") && path.starts_with("/health") {
@@ -2664,13 +2747,54 @@ impl WireProxyTransformer {
         auth_token: Option<&str>,
         mmu: &mut InfinityContextMmu,
     ) -> io::Result<usize> {
+        Self::serve_http_listener_projects(
+            listener,
+            default_provider,
+            upstream_override,
+            workspace_dir,
+            workspace_gate,
+            None,
+            max_requests,
+            auth_token,
+            mmu,
+        )
+    }
+
+    /// [`Self::serve_http_listener_gated`] with per-project routing (#117): a request whose path
+    /// (after the token) starts with `/p/<id>` is served from the workspace `project_resolver`
+    /// returns for `<id>`, after the same trust gate, and is refused with 403 when there is none.
+    /// Requests without the segment use `workspace_dir`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn serve_http_listener_projects(
+        listener: &TcpListener,
+        default_provider: Option<ProviderFormat>,
+        upstream_override: Option<&str>,
+        workspace_dir: Option<&Path>,
+        workspace_gate: Option<&WorkspaceGate>,
+        project_resolver: Option<&ProjectResolver>,
+        max_requests: Option<usize>,
+        auth_token: Option<&str>,
+        mmu: &mut InfinityContextMmu,
+    ) -> io::Result<usize> {
         if max_requests == Some(0) {
             return Ok(0);
         }
         let _ = Self::sweep_stale_curl_header_files();
         // Header files of curl children killed mid-request are swept periodically too, not only at
         // start (PR #20 review).
+        if project_resolver.is_some() && mmu.loaded_dir().is_some() {
+            // The pristine copy every project starts from must hold no workspace's state.
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "serve_http_listener_projects needs an MMU that has not loaded a workspace",
+            ));
+        }
         let mut last_sweep = std::time::Instant::now();
+        let pristine = mmu.clone();
+        let routing = project_resolver.map(|resolver| ProjectRouting {
+            resolver,
+            pristine: &pristine,
+        });
         let shared_mmu = std::sync::Mutex::new(mmu);
         let shared_mmu_ref = &shared_mmu;
         std::thread::scope(|scope| {
@@ -2703,6 +2827,7 @@ impl WireProxyTransformer {
                         workspace_dir,
                         workspace_gate,
                         auth_token,
+                        routing,
                         shared_mmu_ref,
                     );
                 });
@@ -2958,7 +3083,7 @@ impl WireProxyTransformer {
                         return;
                     }
                     if Self::neutralized_len(s, mmu) >= threshold {
-                        let (res, _) = mmu.ingest_or_reuse_at_index(
+                        let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                             *occ_idx,
                             AgentKind::Codex,
                             subj,
@@ -2978,7 +3103,7 @@ impl WireProxyTransformer {
                                 *occ_idx += 1;
                             } else if Self::neutralized_len(t, mmu) >= threshold {
                                 let part_subj = format!("{subj}_p{p_idx}");
-                                let (res, _) = mmu.ingest_or_reuse_at_index(
+                                let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                                     *occ_idx,
                                     AgentKind::Codex,
                                     &part_subj,
@@ -3000,7 +3125,7 @@ impl WireProxyTransformer {
             if mmu.is_emitted(out_s) {
                 *occ_idx += 1;
             } else if Self::neutralized_len(out_s, mmu) >= threshold {
-                let (res, _) = mmu.ingest_or_reuse_at_index(
+                let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                     *occ_idx,
                     AgentKind::Codex,
                     subj,
@@ -3171,6 +3296,219 @@ mod tests {
             Some("1y"),
         );
         assert!(bad.get("prompt_cache_options").is_none());
+    }
+
+    /// The project server refuses an MMU that has already loaded a workspace (review of #118).
+    #[test]
+    fn project_server_refuses_a_loaded_mmu() {
+        let dir = std::env::temp_dir().join(format!("icx-proj-pristine-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut mmu = InfinityContextMmu::default();
+        mmu.save_workspace_dir(&dir).unwrap();
+        assert!(mmu.loaded_dir().is_some());
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let resolver = |_: &str| None;
+        let err = WireProxyTransformer::serve_http_listener_projects(
+            &listener,
+            None,
+            None,
+            None,
+            None,
+            Some(&resolver),
+            Some(1),
+            None,
+            &mut mmu,
+        )
+        .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// #117: the `/p/<id>` project segment is split off only when the id is well formed.
+    #[test]
+    fn project_prefix_is_split_only_for_valid_ids() {
+        let split = WireProxyTransformer::split_project_prefix;
+        assert_eq!(
+            split("/p/0123abcd/v1/messages"),
+            (Some("0123abcd"), "/v1/messages")
+        );
+        assert_eq!(split("/p/abc"), (Some("abc"), "/"));
+        assert_eq!(split("/v1/messages"), (None, "/v1/messages"));
+        // Malformed project segments stay an (unresolvable) project, never dropped.
+        assert_eq!(split("/p//v1"), (Some(""), "/v1"));
+        assert_eq!(split("/p/../x"), (Some(""), "/x"));
+        assert_eq!(split("/p/a.b/x"), (Some(""), "/x"));
+    }
+
+    /// #116: re-transforming a conversation after other conversations' traffic yields the same
+    /// folded bytes, so the provider cache prefix survives concurrent sessions and subagents.
+    #[test]
+    fn folded_history_is_byte_stable_across_unrelated_traffic() {
+        fn output(seed: usize, lines: usize) -> String {
+            use std::fmt::Write as _;
+            let mut s = String::new();
+            for k in 0..lines {
+                let v = (seed * 7919 + k * 104_729) % 100_003;
+                let _ = writeln!(s, "{seed}-{k} result row with value {v} and status ok");
+            }
+            s
+        }
+        fn conversation(tag: &str, seed: usize, turns: usize) -> Value {
+            let mut msgs = Vec::new();
+            for t in 0..turns {
+                let id = format!("tu_{tag}_{t}");
+                msgs.push(json!({ "role": "user", "content": format!("{tag} step {t}") }));
+                msgs.push(json!({ "role": "assistant", "content": [{ "type": "tool_use", "id": id, "name": "Bash", "input": { "command": "ls" } }] }));
+                msgs.push(json!({ "role": "user", "content": [{ "type": "tool_result", "tool_use_id": id, "content": output(seed * 100 + t, 120) }] }));
+                msgs.push(json!({ "role": "assistant", "content": "ok" }));
+            }
+            msgs.push(json!({ "role": "user", "content": "next" }));
+            json!({ "model": "m", "max_tokens": 16, "messages": msgs })
+        }
+        let mut mmu = InfinityContextMmu::default();
+        let tx = |mmu: &mut InfinityContextMmu, body: &Value| -> Vec<Value> {
+            let out: Value = serde_json::from_str(
+                &WireProxyTransformer::transform_anthropic_messages(&body.to_string(), mmu)
+                    .unwrap(),
+            )
+            .unwrap();
+            out["messages"].as_array().unwrap().clone()
+        };
+        let main = conversation("main", 1, 6);
+        let before = tx(&mut mmu, &main);
+        assert!(
+            before.iter().any(|m| m.to_string().contains("#icx:")),
+            "the fixture folds something"
+        );
+        // Subagent-like conversations: same agent kind, occurrence indices from 0.
+        for sub in 0..12 {
+            let _ = tx(&mut mmu, &conversation(&format!("sub{sub}"), 50 + sub, 6));
+        }
+        let after = tx(&mut mmu, &main);
+        let last = before.len() - 1; // the final message carries the tail slot, which moves by design
+        for i in 0..last {
+            assert_eq!(
+                before[i], after[i],
+                "message {i} changed after unrelated traffic"
+            );
+        }
+        // A reuse hit with no traffic in between gives the same bytes (review of #118).
+        let again = tx(&mut mmu, &main);
+        for i in 0..last {
+            assert_eq!(after[i], again[i], "message {i} changed on a reuse hit");
+        }
+        // A fresh MMU (a restarted proxy) renders the same folded bytes too.
+        let fresh = tx(&mut InfinityContextMmu::default(), &main);
+        for i in 0..last {
+            assert_eq!(before[i], fresh[i], "message {i} differs after a restart");
+        }
+    }
+
+    /// Review of #118: a slot filled by a non-stable ingest (hooks, Hermes, older state) is not
+    /// returned on the stable path, and a stable slot is not returned to a non-stable caller.
+    #[test]
+    fn stable_and_non_stable_ingests_do_not_share_reuse_slots() {
+        let big = (0..150).fold(String::new(), |mut acc, k| {
+            acc.push_str("line ");
+            acc.push_str(&k.to_string());
+            acc.push_str(" of a long tool output\n");
+            acc
+        });
+        let mut m = InfinityContextMmu::default();
+        let (plain, _) =
+            m.ingest_or_reuse_at_index(0, AgentKind::ClaudeCode, "turn_2_b0", &big, None, false);
+        assert!(!plain.compressed_ahtl.contains("src:proxy"));
+        let (stable, fresh) = m.ingest_or_reuse_at_index_stable(
+            0,
+            AgentKind::ClaudeCode,
+            "turn_2_b0",
+            &big,
+            None,
+            false,
+        );
+        assert!(fresh, "a non-stable slot is not reused on the stable path");
+        assert!(
+            stable.compressed_ahtl.contains("src:proxy"),
+            "{}",
+            stable.compressed_ahtl
+        );
+        let (again, fresh) = m.ingest_or_reuse_at_index_stable(
+            0,
+            AgentKind::ClaudeCode,
+            "turn_2_b0",
+            &big,
+            None,
+            false,
+        );
+        assert!(!fresh);
+        assert_eq!(again.compressed_ahtl, stable.compressed_ahtl);
+        let (plain2, fresh) =
+            m.ingest_or_reuse_at_index(0, AgentKind::ClaudeCode, "turn_2_b0", &big, None, false);
+        assert!(fresh && !plain2.compressed_ahtl.contains("src:proxy"));
+        // Content that itself contains the marker text does not pass for a proxy rendering.
+        let forged = format!("{big}src:proxy\n⋮src:proxy\n");
+        let (p, _) =
+            m.ingest_or_reuse_at_index(1, AgentKind::ClaudeCode, "turn_4_b0", &forged, None, false);
+        assert!(!p.stable_render);
+        let (q, fresh) = m.ingest_or_reuse_at_index_stable(
+            1,
+            AgentKind::ClaudeCode,
+            "turn_4_b0",
+            &forged,
+            None,
+            false,
+        );
+        assert!(
+            fresh && q.stable_render,
+            "a non-stable slot is never reused on the proxy path"
+        );
+    }
+
+    /// #116 on the OpenAI path: folded `tool` items stay byte-stable across unrelated traffic.
+    #[test]
+    fn openai_folded_history_is_byte_stable_across_unrelated_traffic() {
+        let conv = |tag: &str, n: usize| {
+            let mut msgs = vec![json!({ "role": "developer", "content": "rules" })];
+            for t in 0..n {
+                let out = (0..120).fold(String::new(), |mut acc, k| {
+                    acc.push_str(&format!("{tag} {t} row {k}"));
+                    acc.push_str(" status ok\n");
+                    acc
+                });
+                msgs.push(json!({ "role": "user", "content": format!("{tag} {t}") }));
+                msgs.push(json!({ "role": "assistant", "content": null, "tool_calls": [{ "id": format!("c{t}"), "type": "function", "function": { "name": "sh", "arguments": "{}" } }] }));
+                msgs.push(
+                    json!({ "role": "tool", "tool_call_id": format!("c{t}"), "content": out }),
+                );
+            }
+            msgs.push(json!({ "role": "user", "content": "next" }));
+            json!({ "model": "gpt-5.5", "messages": msgs })
+        };
+        let tx = |mmu: &mut InfinityContextMmu, body: &Value| -> Vec<Value> {
+            let out: Value = serde_json::from_str(
+                &WireProxyTransformer::transform_openai_request(&body.to_string(), mmu).unwrap(),
+            )
+            .unwrap();
+            out["messages"].as_array().unwrap().clone()
+        };
+        let mut mmu = InfinityContextMmu::default();
+        let main = conv("main", 5);
+        let before = tx(&mut mmu, &main);
+        assert!(
+            before.iter().any(|m| m.to_string().contains("#icx:")),
+            "the fixture folds something"
+        );
+        for i in 0..8 {
+            let _ = tx(&mut mmu, &conv(&format!("sub{i}"), 5));
+        }
+        let after = tx(&mut mmu, &main);
+        for i in 0..before.len() - 1 {
+            assert_eq!(
+                before[i], after[i],
+                "message {i} changed after unrelated traffic"
+            );
+        }
     }
 
     /// T-81-001 through the public transform: Responses `input` arrays get the breakpoint on an

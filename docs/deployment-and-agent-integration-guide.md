@@ -197,6 +197,7 @@ icx daemon --idle-exit 900 &
 icx proxy: listening on http://127.0.0.1:49380; set ANTHROPIC_BASE_URL / OPENAI_BASE_URL to http://127.0.0.1:49380/t/<token>
 ```
 
+- **Per project (v1.6.0):** run `icx proxy-url` in the project and use its output as the base URL, for example `env ANTHROPIC_BASE_URL=(icx proxy-url) claude` in fish or `ANTHROPIC_BASE_URL=$(icx proxy-url) claude` in bash. The folded originals, recall and cache ledger then stay in that project's own workspace, and its `icx` MCP tool can expand every packet. A base URL without `/p/<id>` shares the proxy's one workspace among every project that uses it.
 - Anthropic clients append `/v1/messages`, so `ANTHROPIC_BASE_URL=http://127.0.0.1:49380/t/<token>` routes correctly.
 - OpenAI clients append `/responses` or `/chat/completions` to a base URL that normally ends in `/v1`, so use `http://127.0.0.1:49380/t/<token>/v1`.
 - The explicit route prefixes `/anthropic`, `/openai`, and `/gemini` are also accepted after the token (for example `/t/<token>/openai/v1`).
