@@ -93,9 +93,9 @@ redaction. `icx rescan` reports what v1.5.1 would hide in it.
 
 ## Verification
 
-- **Tests:** 672 workspace tests pass, 0 fail, and 8 are ignored by design. The 6 OpenCode and
+- **Tests:** 673 workspace tests pass, 0 fail, and 8 are ignored by design. The 6 OpenCode and
   27 Hermes plugin tests are unchanged.
-- **Coverage:** 95.59% of lines at v1.5.0, 95.57% now (empty `HOME`, as in CI). The new
-  `redact_shapes.rs` is at 95.56%.
+- **Coverage:** 95.59% of lines at v1.5.0, 95.54% now (empty `HOME`, as in CI). The new
+  `redact_shapes.rs` is at 94.83%.
 - **Lint:** clippy, rustfmt, gitleaks and REUSE are clean.
 - **Red-team inputs:** the 272 inputs pinned in v1.5.0 still pass.
