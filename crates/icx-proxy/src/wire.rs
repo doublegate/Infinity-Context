@@ -2104,7 +2104,9 @@ impl WireProxyTransformer {
                 .join()
                 .unwrap_or_else(|_| Err(io::Error::other("stdin writer thread panicked")));
             match r {
-                Ok(counters) => write_res.map(|()| counters),
+                // The response is already relayed: a stdin write that curl cut short (an early
+                // 401/413/429) is not an error of this request (review of #113).
+                Ok(counters) => Ok(counters),
                 Err(e) => Err(write_res.err().unwrap_or(e)),
             }
         });
@@ -2856,9 +2858,11 @@ impl WireProxyTransformer {
         let Some(items) = root.get_mut(items_key).and_then(Value::as_array_mut) else {
             return;
         };
-        if count(&Value::Array(items.clone())) >= 3 || items.len() <= protect_tail {
+        if items.len() <= protect_tail {
             return;
         }
+        // Counted before normalizing, which adds no breakpoint; it gates only the insertion.
+        let room = count(&Value::Array(items.clone())) < 3;
         let fold_end = items.len() - protect_tail;
         let target = (0..fold_end).rev().find(|&i| {
             matches!(
@@ -2876,7 +2880,7 @@ impl WireProxyTransformer {
                 item["content"] = json!([{ "type": text_part_type, "text": text }]);
             }
         }
-        let Some(item) = target.map(|i| &mut items[i]) else {
+        let Some(item) = target.filter(|_| room).map(|i| &mut items[i]) else {
             return;
         };
         if let Some(part) = item
@@ -3108,6 +3112,20 @@ mod tests {
         );
         assert_eq!(client["prompt_cache_options"]["ttl"], "30m");
         assert_eq!(client["messages"], before_bp);
+        // With 3 client breakpoints, folded string items still take block form (the folded
+        // shape does not change when the client adds a breakpoint), and none is added.
+        let mut three = body("gpt-5.6");
+        for i in [2, 3, 4] {
+            three["messages"][i]["content"] = json!([{ "type": "text", "text": "x", "prompt_cache_breakpoint": { "mode": "explicit" } }]);
+        }
+        WireProxyTransformer::apply_openai_cache_controls(&mut three, "messages", "text", 2, None);
+        assert!(three["messages"][0]["content"].is_array());
+        assert!(three["messages"][1]["content"].is_array());
+        assert!(
+            three["messages"][1]["content"][0]
+                .get("prompt_cache_breakpoint")
+                .is_none()
+        );
         // An unknown TTL value is ignored.
         let mut bad = body("gpt-5.6");
         WireProxyTransformer::apply_openai_cache_controls(
