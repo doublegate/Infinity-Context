@@ -149,7 +149,7 @@ fn proxy_routes_each_project_into_its_own_workspace() {
     let bodies = Arc::new(Mutex::new(Vec::new()));
     let up = fake_upstream(Arc::clone(&bodies));
     let mut proxy = icx(&base, &base)
-        .args(["proxy", "--listen", &listen, "--max-requests", "2"])
+        .args(["proxy", "--listen", &listen, "--max-requests", "7"])
         .args(["--upstream", &format!("http://127.0.0.1:{up}")])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -193,17 +193,61 @@ fn proxy_routes_each_project_into_its_own_workspace() {
         err_log.lock().unwrap()
     );
 
-    // An unknown project is refused, not served from a shared store.
-    let token_part = path_a.split("/p/").next().unwrap();
-    let refused = post(
-        port,
-        &format!("{token_part}/p/ffffffffffffffff/v1/messages"),
-        &body,
-    );
-    assert!(refused.starts_with("HTTP/1.1 403"), "{refused}");
+    let token_part = path_a.split("/p/").next().unwrap().to_owned();
+    // An unrouted request between two projects' requests (the proxy's own workspace is not
+    // initialized here, so it runs without one), then project B, then project A again.
+    let unrouted = post(port, &format!("{token_part}/v1/messages"), &body);
+    assert!(unrouted.starts_with("HTTP/1.1 200"), "{unrouted}");
+    let url_b = run({
+        let mut c = icx(&base, &b);
+        c.args(["proxy-url", "--listen", &listen]);
+        c
+    });
+    let path_b = url_b
+        .trim()
+        .strip_prefix(&format!("http://{listen}"))
+        .unwrap()
+        .to_owned();
+    let body_b = body.replace("marker-qqzz", "other-rrss");
+    let resp_b = post(port, &format!("{path_b}/v1/messages"), &body_b);
+    assert!(resp_b.starts_with("HTTP/1.1 200"), "{resp_b}");
+    let again = post(port, &format!("{path_a}/v1/messages"), &body);
+    assert!(again.starts_with("HTTP/1.1 200"), "{again}");
+    // An unknown project and a malformed segment are refused, not served from a shared store.
+    for bad in ["/p/ffffffffffffffff", "/p/"] {
+        let refused = post(port, &format!("{token_part}{bad}/v1/messages"), &body);
+        assert!(refused.starts_with("HTTP/1.1 403"), "{bad}: {refused}");
+    }
+    // A project whose workspace fails the trust check is refused too.
+    let id_b = path_b.rsplit("/p/").next().unwrap().to_owned();
+    let ws_b = base.join("state").join("workspaces").join(&id_b);
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&ws_b, std::fs::Permissions::from_mode(0o777)).unwrap();
+    }
+    let untrusted = post(port, &format!("{path_b}/v1/messages"), &body_b);
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&ws_b, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    assert!(untrusted.starts_with("HTTP/1.1 403"), "{untrusted}");
     let _ = proxy.wait();
 
-    let forwarded = bodies.lock().unwrap().join("\n");
+    let forwarded_all = bodies.lock().unwrap().clone();
+    assert_eq!(
+        forwarded_all.len(),
+        4,
+        "A, unrouted, B, A reached the provider"
+    );
+    // Project A's folded history is byte-identical on its second request, with an unrouted
+    // request and project B in between; B's request carries none of A's content.
+    assert_eq!(forwarded_all[0], forwarded_all[3]);
+    assert!(
+        !forwarded_all[2].contains("marker-qqzz"),
+        "{}",
+        forwarded_all[2]
+    );
+    let forwarded = forwarded_all[0].clone();
     assert!(forwarded.contains("src:proxy"), "{forwarded}");
     let at = forwarded.find("#icx:").expect("a folded handle");
     let handle = &forwarded[at..at + 5 + 16];
@@ -224,5 +268,8 @@ fn proxy_routes_each_project_into_its_own_workspace() {
         .join(path_a.rsplit("/p/").next().unwrap());
     let ledger = std::fs::read_to_string(ws_a.join("proxy-cache-usage.jsonl")).unwrap();
     assert!(ledger.contains("\"cache_read_tokens\":100"), "{ledger}");
+    assert_eq!(ledger.lines().count(), 2, "A's two requests only: {ledger}");
+    let ledger_b = std::fs::read_to_string(ws_b.join("proxy-cache-usage.jsonl")).unwrap();
+    assert_eq!(ledger_b.lines().count(), 1, "{ledger_b}");
     let _ = std::fs::remove_dir_all(&base);
 }

@@ -1648,7 +1648,19 @@ fn run_proxy_url(args: &[String]) -> Result<String, String> {
         .filter(|s| !s.trim().is_empty());
     let listen = listen_flag
         .or(env_bind.as_deref())
-        .unwrap_or("127.0.0.1:49380");
+        .unwrap_or("127.0.0.1:49380")
+        .trim();
+    // HOST:PORT only: a scheme or path would produce a broken URL (review of #118).
+    let well_formed = !listen.contains('/')
+        && !listen.chars().any(char::is_whitespace)
+        && listen
+            .rsplit_once(':')
+            .is_some_and(|(h, p)| !h.is_empty() && p.parse::<u16>().is_ok());
+    if !well_formed {
+        return Err(format!(
+            "icx proxy-url: `{listen}` is not HOST:PORT (as for `icx proxy --listen`)"
+        ));
+    }
     let key = workspace::derived_key(roots(), "proxy-token")
         .map_err(|e| format!("icx proxy-url: cannot derive the proxy token: {e}"))?;
     let token = blake3::Hash::from_bytes(key).to_hex().to_string();

@@ -2296,23 +2296,26 @@ impl WireProxyTransformer {
 
     /// Removes a leading `/t/<token>` segment so routing sees the provider path.
     /// Splits a leading `/p/<id>` project segment off `path` (after the token prefix is
-    /// removed). The id must be 1 to 64 characters of `[0-9a-zA-Z_-]`; anything else is not a
-    /// project segment and the path is returned unchanged.
+    /// removed). A well-formed id is 1 to 64 characters of `[0-9a-zA-Z_-]`. A path that starts
+    /// with `/p/` but has no well-formed id yields `Some("")`, which no resolver accepts, so it is
+    /// refused rather than served from the shared workspace (review of #118).
     fn split_project_prefix(path: &str) -> (Option<&str>, &str) {
-        if let Some(rest) = path.strip_prefix("/p/") {
-            let end = rest.find('/').unwrap_or(rest.len());
-            let id = &rest[..end];
-            if !id.is_empty()
-                && id.len() <= 64
-                && id
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-            {
-                let tail = &rest[end..];
-                return (Some(id), if tail.is_empty() { "/" } else { tail });
-            }
-        }
-        (None, path)
+        let Some(rest) = path.strip_prefix("/p/") else {
+            return (None, path);
+        };
+        let end = rest.find('/').unwrap_or(rest.len());
+        let id = &rest[..end];
+        let tail = if rest[end..].is_empty() {
+            "/"
+        } else {
+            &rest[end..]
+        };
+        let well_formed = !id.is_empty()
+            && id.len() <= 64
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+        (Some(if well_formed { id } else { "" }), tail)
     }
 
     fn strip_token_prefix(path: &str) -> String {
@@ -2488,24 +2491,29 @@ impl WireProxyTransformer {
                 )?;
                 return writer.flush();
             }
-            let lock_guard = match ws_opt {
-                Some(p) => {
-                    let g = InfinityContextMmu::acquire_workspace_lock(p)
-                        .map_err(|e| io::Error::other(e.to_string()))?;
-                    if let Some(r) = routing {
-                        // Another workspace than the one loaded last: start from the pristine
-                        // MMU, so nothing (emitted blocks included) crosses projects.
-                        let canonical =
-                            std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
-                        if mmu.loaded_dir() != Some(canonical.as_path()) {
-                            *mmu = r.pristine.clone();
-                        }
+            let lock_guard = if let Some(p) = ws_opt {
+                let g = InfinityContextMmu::acquire_workspace_lock(p)
+                    .map_err(|e| io::Error::other(e.to_string()))?;
+                if let Some(r) = routing {
+                    // Another workspace than the one loaded last: start from the pristine MMU,
+                    // so nothing (emitted blocks included) crosses projects.
+                    let canonical = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+                    if mmu.loaded_dir() != Some(canonical.as_path()) {
+                        *mmu = r.pristine.clone();
                     }
-                    mmu.load_workspace_dir_unlocked(p)
-                        .map_err(|e| io::Error::other(e.to_string()))?;
-                    Some((p, g))
                 }
-                None => None,
+                mmu.load_workspace_dir_unlocked(p)
+                    .map_err(|e| io::Error::other(e.to_string()))?;
+                Some((p, g))
+            } else {
+                // No workspace for this request: it must not run on, or later be saved with, a
+                // project's state left from an earlier request (review of #118).
+                if let Some(r) = routing
+                    && mmu.loaded_dir().is_some()
+                {
+                    *mmu = r.pristine.clone();
+                }
+                None
             };
 
             if method.eq_ignore_ascii_case("GET") && path.starts_with("/health") {
@@ -2774,6 +2782,13 @@ impl WireProxyTransformer {
         let _ = Self::sweep_stale_curl_header_files();
         // Header files of curl children killed mid-request are swept periodically too, not only at
         // start (PR #20 review).
+        if project_resolver.is_some() && mmu.loaded_dir().is_some() {
+            // The pristine copy every project starts from must hold no workspace's state.
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "serve_http_listener_projects needs an MMU that has not loaded a workspace",
+            ));
+        }
         let mut last_sweep = std::time::Instant::now();
         let pristine = mmu.clone();
         let routing = project_resolver.map(|resolver| ProjectRouting {
@@ -3293,9 +3308,10 @@ mod tests {
         );
         assert_eq!(split("/p/abc"), (Some("abc"), "/"));
         assert_eq!(split("/v1/messages"), (None, "/v1/messages"));
-        assert_eq!(split("/p//v1"), (None, "/p//v1"));
-        assert_eq!(split("/p/../x"), (None, "/p/../x"));
-        assert_eq!(split("/p/a.b/x"), (None, "/p/a.b/x"));
+        // Malformed project segments stay an (unresolvable) project, never dropped.
+        assert_eq!(split("/p//v1"), (Some(""), "/v1"));
+        assert_eq!(split("/p/../x"), (Some(""), "/x"));
+        assert_eq!(split("/p/a.b/x"), (Some(""), "/x"));
     }
 
     /// #116: re-transforming a conversation after other conversations' traffic yields the same

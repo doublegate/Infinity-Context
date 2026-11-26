@@ -1178,8 +1178,9 @@ impl InfinityContextMmu {
         }
         if stable {
             // Marks a packet written by the wire proxy (#117): its handle is stored in the
-            // proxy's workspace, which `icx mcp-serve` also searches. Constant, so the packet
-            // stays byte-stable (#116); a `src` clause the content produced is replaced.
+            // workspace the request was routed to (the project's own, via `icx proxy-url`).
+            // Constant, so the packet stays byte-stable (#116); a `src` clause the content
+            // produced is replaced.
             packet.clauses.retain(|c| c.key != "src");
             packet.clauses.push(icx_codec::AhtlClause::new(
                 icx_codec::ClauseOp::Neutral,
