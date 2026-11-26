@@ -196,3 +196,21 @@ fn collapsed_blocks_keep_lookalike_lines_exact() {
     assert!(!out.contains("qqzz") && !out.contains("rrss"), "{out:?}");
     assert!(out.ends_with("plain tail\n"), "{out:?}");
 }
+
+/// A line with full-width quotes where several passes hide different values keeps every value
+/// hidden (the merge is a union, not a choice of one pass; side-agent review of #110).
+#[test]
+fn full_width_lines_hide_what_any_pass_found() {
+    check(&[
+        (
+            "api_key=\u{FF02}rrss abcd\u{FF02} and sshpass -p \u{FF02}my qqzz\u{FF02} host\n",
+            &["rrss", "abcd", "qqzz"],
+            &[],
+        ),
+        (
+            "password=\u{FF02}a1b2 c3d4\u{FF02}; TOKEN=rrsszzqq \u{FF02}x\u{FF02}\n",
+            &["a1b2", "c3d4", "rrsszzqq"],
+            &[],
+        ),
+    ]);
+}

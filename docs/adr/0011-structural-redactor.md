@@ -260,7 +260,8 @@ was a regression, and they were deferred rather than fixed under review pressure
 - **Full-width quotes.** The earlier passes can consume a full-width opening quote before the
   quote-normalising pass reads it as a quote (`-p ＂my secret＂`). The fully normalised input is
   therefore also redacted from scratch. A non-JSON line that only this pass changed takes its
-  result; a line that several passes changed takes whichever leaves less visible. When redaction
+  result. A line that several passes changed is their union: the chained result, with every
+  text the from-scratch pass hid, and each word of 3 or more characters in it, hidden too. When redaction
   changed the line count (a collapsed key block), this pass is not used, so secret-free lines keep
   their bytes.
 - **Cost (#108).** In the second look-alike pass, a line that the first pass already redacted and
