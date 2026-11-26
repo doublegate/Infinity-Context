@@ -45,20 +45,27 @@ Re-check before any ticket starts:
   - The `>= 94%` figure appeared as a provider hit rate in ADR-0003, the AHTL diagram generator, `CLAUDE.md` and `GEMINI.md` (both managed blocks) and `AGENTS.md` (the owner's).
 - **Measurement.** The owner approved a paid paired run capped at $5 (2026-11-26); results below.
 
-**2026-11-26, paired paid run** (`scripts/measure_provider_cache.py`, owner-approved $5 cap, about $0.004 spent). Model: Claude Haiku 5.5. The conversation has 4 measured turns over 4 to 7 history pairs of about 1,500 characters each. Arms, run in this order each turn: direct with no cache controls; through `icx proxy`; direct with client automatic caching (top-level `cache_control`).
+**2026-11-26, paired paid runs** (`scripts/measure_provider_cache.py`, owner-approved $5 cap, about $0.012 spent over three runs). Model: Claude Haiku 5.5, 4 measured turns over 4 to 7 history pairs of about 1,500 characters each. Arms, each turn: direct with no cache controls; through `icx proxy`; direct with client automatic caching (top-level `cache_control`).
 
-| Turn | Direct, no caching (uncached) | icx proxy (uncached / read / written) | Client caching (uncached / read / written) |
+Run 3 (`9b333cbc`, the valid one), uncached / read / written tokens:
+
+| Turn | Direct, no caching | icx proxy | Client caching |
 | ---: | ---: | --- | --- |
-| 0 | 3,925 | 554 / 0 / 3,415 | 4 / 3,415 / 506 |
-| 1 | 4,901 | 554 / 3,415 / 976 | 4 / 4,391 / 506 |
-| 2 | 5,877 | 554 / 4,391 / 976 | 4 / 5,367 / 506 |
-| 3 | 6,853 | 554 / 5,367 / 976 | 4 / 6,343 / 506 |
+| 0 | 4,429 | 1,036 / 0 / 3,455 | 4 / 0 / 4,425 |
+| 1 | 5,413 | 1,036 / 3,455 / 988 | 4 / 4,425 / 984 |
+| 2 | 6,397 | 1,036 / 4,443 / 988 | 4 / 5,409 / 984 |
+| 3 | 7,381 | 1,036 / 5,431 / 988 | 4 / 6,393 / 984 |
+
+Why runs 1 and 2 are not used for the client-caching arm:
+
+- **Run 1:** all arms sent identical text, so the client-caching arm read the entries the proxy arm had just written (review of #113).
+- **Run 2** (`9a4f4acc`, salted per arm): the conversation was not append-only. Each turn replaced the previous final question, so the prefix at the automatic breakpoint never recurred, and the arm read nothing. The proxy arm reproduced in both runs.
 
 Findings:
 
-- **Against a non-caching client,** icx's breakpoint keeps the uncached input flat at 554 tokens a request while the conversation grows.
-- **The client-caching column is not an independent measurement** (review of #113). All three arms sent identical text, so on every turn the client-caching arm read the entry the proxy arm had just written, and its 506-token writes are the tail beyond that entry. The earlier conclusion that icx writes more per turn than a caching client does not follow from this run. The script now salts every message per arm and per run; the comparison against a caching client waits for that rerun.
-- **The ledger matches the provider.** `proxy-cache-usage.jsonl` recorded the same counters as the responses for all 4 proxy requests.
+- **Against a non-caching client,** icx's breakpoint keeps the uncached input flat (1,036 tokens) while the conversation grows.
+- **Against a client that caches itself,** icx is worse: the writes are the same (988 against 984 a turn), but icx leaves its 2 unfolded tail messages uncached, about 1,000 extra full-price input tokens a request. A request with automatic caching gets no icx breakpoint (T-81-002), and a client that already uses 4 breakpoints gets none either, so such clients are unaffected.
+- **The ledger matches the provider.** `proxy-cache-usage.jsonl` recorded the same counters as the responses on every proxy request in all three runs.
 - **OpenAI was not measured:** the key sees no GPT-5.6 model (`gpt-5.6-nano`, `gpt-5.6-mini`, `gpt-5.6`), so T-81-001 is verified by golden tests only.
 
 ## Tickets
