@@ -2961,6 +2961,9 @@ impl SecretRedactor {
             "Set",
             "Any",
         ];
+        // API reference text: `optional integer` (owner decision on #111).
+        let rest_in = rest;
+        let rest = rest.strip_prefix("optional ").unwrap_or(rest);
         let mut s = rest.strip_prefix('&').map_or(rest, |r| {
             let r = r.strip_prefix("mut ").unwrap_or(r);
             let r = match r.strip_prefix('\'') {
@@ -3010,6 +3013,9 @@ impl SecretRedactor {
             s = Self::skip_generic_args(&after[n..])?;
         }
         let s = s.trim_start_matches([' ', '\t']);
+        // `integer (default: 0)`: a parenthetical default that is a number, a boolean or null
+        // ends the annotation; any other default (a word, a quoted value) is a value (#111).
+        let s = Self::strip_literal_default(s).unwrap_or(s);
         (s.is_empty()
             // A backtick may close a Markdown code span (`` `token: integer` ``, #111) when
             // nothing is glued to it (`string`hunter2` is a value); the caller also requires the
@@ -3021,7 +3027,21 @@ impl SecretRedactor {
                     .is_none_or(|c| c.is_whitespace() || ",.;:)".contains(c)))
             || s.starts_with(['=', ',', ')', ';', '{', '>', '\n', '\r'])
             || s.starts_with("->"))
-        .then(|| rest.len() - s.len())
+        .then(|| rest_in.len() - s.len())
+    }
+
+    /// `(default: 0)`, `(default: true)`, `(default: null)` and the rest of the text after it, or
+    /// `None` for any other parenthetical.
+    fn strip_literal_default(s: &str) -> Option<&str> {
+        let inner = s.strip_prefix("(default:")?;
+        let close = inner.find(')')?;
+        let value = inner[..close].trim();
+        let literal = (!value.is_empty()
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_digit() || b == b'.' || b == b'-'))
+            || matches!(value, "true" | "false" | "null" | "none" | "None");
+        literal.then(|| inner[close + 1..].trim_start_matches([' ', '\t']))
     }
 
     /// The type name of an annotation path: the path itself, or for a dotted path the last segment

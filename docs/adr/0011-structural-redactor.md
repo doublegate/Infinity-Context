@@ -275,7 +275,9 @@ was a regression, and they were deferred rather than fixed under review pressure
   `p = 'password = '` cannot arm a multi-line value while `don't`, `admins'` and `'outer:` still
   do.
 - **Type words (#111, owner decision).** `integer`, `string`, `boolean`, `object` and `number`
-  after a sensitive key are type annotations (`cache_write_tokens: integer`). A backtick after
+  after a sensitive key are type annotations (`cache_write_tokens: integer`), also after
+  `optional` and before a literal default (`optional integer (default: 0)`, where the default is
+  a number, a boolean or null). A backtick after
   the word ends the annotation only when it closes a code span opened before the key and nothing
   is glued to it, so a value glued to the backtick, or a backtick with no code span opened
   before the key, stays hidden.

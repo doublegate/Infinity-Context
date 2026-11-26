@@ -19,8 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - No longer hidden: the wrapped command's own `-p` after `sshpass -p` (`ssh -p 2222`), and the
   command before `; docker login --password-stdin` when it is not piped in.
 - No longer hidden: API reference type words after a sensitive key (`cache_write_tokens:
-  integer`; `integer`, `string`, `boolean`, `object`, `number`), also inside a Markdown code span
-  (#111).
+  integer`; `integer`, `string`, `boolean`, `object`, `number`), also after `optional`, before a
+  literal default such as `(default: 0)`, and inside a Markdown code span (#111).
 
 ### Changed
 

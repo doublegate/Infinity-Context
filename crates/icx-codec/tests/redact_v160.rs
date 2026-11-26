@@ -459,3 +459,30 @@ fn review_round_on_877ca26() {
     );
     assert!(!out.contains("qqzz"), "{out:?}");
 }
+
+/// #111 (owner decision, 2026-11-26): `optional` before a type word, and a literal default.
+#[test]
+fn optional_type_words_and_literal_defaults() {
+    check(&[
+        (
+            "  - `cache_write_tokens: optional integer (default: 0)`\n",
+            &[],
+            &["optional integer (default: 0)"],
+        ),
+        ("token: optional string\n", &[], &["optional string"]),
+        (
+            "api_key: optional boolean (default: false)\n",
+            &[],
+            &["(default: false)"],
+        ),
+        // A default that is not a literal number, boolean or null is still hidden.
+        ("api_key: optional string (default: qqzz)\n", &["qqzz"], &[]),
+        (
+            "password: optional string (default: \"qqzz\")\n",
+            &["qqzz"],
+            &[],
+        ),
+        // `optional` alone, or before a word that is not a type, is a value.
+        ("password: optional qqzz\n", &["qqzz"], &[]),
+    ]);
+}
