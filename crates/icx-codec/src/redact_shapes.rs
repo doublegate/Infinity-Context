@@ -236,9 +236,17 @@ fn xml_elements(line: &str) -> String {
             continue;
         }
         let name = s[name_start..name_end].to_owned();
-        // The same quote-aware tag end as for attributes (review of #106: `hint="a<b"`).
+        // The same quote-aware tag end as for attributes (review of #106: `hint="a<b"`). When
+        // the quotes do not pair, a sensitive element still ends at its first `>` (fail closed:
+        // `<password hint="a>secret</password>`); other names are skipped as stray.
         let gt = match tag_end(&s, open) {
             TagEnd::At(gt) => gt,
+            _ if R::is_sensitive_key_name(&s[name_start..name_end]) => {
+                match s[name_end..].find('>') {
+                    Some(k) => name_end + k,
+                    None => break,
+                }
+            }
             TagEnd::Stray => {
                 pos = open + 1;
                 continue;

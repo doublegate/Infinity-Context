@@ -888,3 +888,17 @@ fn review_round_on_615dfee() {
         ),
     ]);
 }
+
+/// Commit security review of 5aea531: unbalanced attribute quotes on a sensitive element.
+#[test]
+fn unbalanced_attribute_quotes_on_sensitive_elements() {
+    check(&[
+        ("<password hint=\"a>qqzz</password>\n", &["qqzz"], &[]),
+        (
+            "<password hint='a>qqzz</password> <b>ok</b>\n",
+            &["qqzz"],
+            &["<b>ok</b>"],
+        ),
+        ("<note title=\"a>public</note>\n", &[], &["public"]),
+    ]);
+}
