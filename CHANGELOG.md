@@ -5,6 +5,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Redactor shapes found in the v1.5.1 review rounds, each also leaked by v1.5.0 (#107, #108; each
+  with a test in `crates/icx-codec/tests/redact_v160.rs`):
+  - a multi-line value after an apostrophe on the same line (`don't log; password = '''`);
+  - a planted marker glued to `#` or `\`;
+  - PIN and OTP numbers in URLs, form strings, quotes and calls;
+  - prefixed, triple-quoted and backtick literals in subscripts and `=>`;
+  - CLI: an open quote later on the line, JSON embedded after a log prefix, and full-width quoted
+    passwords;
+  - YAML: comments on name, value and block-key lines, and long blocks before `name:`.
+- No longer hidden: the wrapped command's own `-p` after `sshpass -p` (`ssh -p 2222`), and the
+  command before `; docker login --password-stdin` when it is not piped in.
+
+### Changed
+
+- The second look-alike pass copies through lines the first pass already redacted: 16.0 to 14.6
+  ms on 69 KB of text with no-break spaces. `icx benchmark` gains a gated redactor benchmark on 64
+  KB of look-alike text (10 ms ceiling, 4.8 ms measured).
+
 ## [1.5.1] - 2026-11-25
 
 ### Fixed

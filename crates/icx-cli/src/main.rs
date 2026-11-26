@@ -133,6 +133,9 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
 
 /// Largest hook / proxy-transform stdin accepted: the 64 MiB ingest bound plus JSON envelope.
 const MAX_STDIN_BYTES: u64 = icx_core::ICX_MAX_INGEST_BYTES as u64 + 64 * 1024;
+/// Release ceiling for redacting the benchmark's 64 KB of text with a no-break space every 15
+/// words (#108): about twice the 4.8 ms median measured on the development host at v1.6.0.
+const REDACT_LOOKALIKE_64K_CEILING_US: f64 = 10_000.0;
 /// Ceiling for the exact parallel 10,000-node HDC scan in `icx benchmark`: the slowest of 10
 /// quiet-host runs of the v1.2.0 release candidate (1,354 us, median 907 us; i9-10850K) times
 /// 1.5, rounded. Measured, unlike the earlier 1,500 us figure extrapolated from the 1k gate.
@@ -2767,6 +2770,49 @@ fn run_benchmark(args: &[String]) -> Result<(), String> {
         machine,
     );
 
+    // 9. Redactor on look-alike text (#108; release ceiling: <= 10,000 us for about 64 KB).
+    // Web pages carry no-break spaces, so the look-alike passes run; median of five runs.
+    let mut lookalike_text = String::with_capacity(66_000);
+    let mut word = 0usize;
+    while lookalike_text.len() < 64_000 {
+        word += 1;
+        lookalike_text.push_str("word");
+        lookalike_text.push_str(&(word % 97).to_string());
+        lookalike_text.push(if word.is_multiple_of(15) {
+            '\u{00A0}'
+        } else {
+            ' '
+        });
+        if word.is_multiple_of(12) {
+            lookalike_text.push('\n');
+        }
+        if word.is_multiple_of(400) {
+            lookalike_text.push_str("password\u{00A0}=\u{00A0}\"qqzzqqzz\"\n");
+        }
+    }
+    let mut redact_runs = [0.0_f64; 5];
+    for run in &mut redact_runs {
+        let t = Instant::now();
+        let clean = std::hint::black_box(icx_codec::SecretRedactor::redact(&lookalike_text));
+        *run = benchmark_microseconds(t.elapsed());
+        assert!(
+            !clean.contains("qqzzqqzz"),
+            "the benchmark text's secrets are hidden"
+        );
+    }
+    redact_runs.sort_by(f64::total_cmp);
+    let redact_lookalike_us = redact_runs[2];
+    check_slo(
+        redact_lookalike_us <= REDACT_LOOKALIKE_64K_CEILING_US * scale,
+        "Redactor, 64 KB look-alike text  ",
+        &format!(
+            "{redact_lookalike_us:.0} us median of 5 ({} B, a no-break space every 15 words)",
+            lookalike_text.len()
+        ),
+        &mut failures,
+        machine,
+    );
+
     // 8. Full Synchronous Hook Round-Trip (`ClaudeCodeAdapter::handle_hook`) Benchmark (release ceiling: <= 1,000 us)
     let hook_cfg = EpochControllerConfig::anthropic_default();
     let mut hook_mmu =
@@ -2904,6 +2950,7 @@ fn run_benchmark(args: &[String]) -> Result<(), String> {
                     "fractal_suffix_ns":ifs_ns, "associative_query_us":idx_us, "ppr_us":ppr_us,
                     "codec_us":codec_us, "repetitive_log_byte_ratio":ratio,
                     "cas_ingest_us":cas_us, "bus_publish_ns":bus_ns_per_op, "in_memory_hook_us":hook_us,
+                    "redact_lookalike_64k":{"kind":"measured", "us":redact_lookalike_us, "ceiling_us":REDACT_LOOKALIKE_64K_CEILING_US, "slo_gated":true},
                     "prefix_byte_reuse_pct":all_turns, "simulation_ms":sim_elapsed.as_secs_f64()*1000.0
                 }
             })

@@ -184,19 +184,47 @@ fn literal_end(s: &str, open: usize) -> Option<usize> {
     None
 }
 
+/// The length of a string-literal prefix at the start of `t` that a quote follows (`r`, `f`,
+/// `b`, `u`, `rb`, `br`, `fr`, `rf`, any case), or 0.
+fn literal_prefix_len(t: &str) -> usize {
+    let b = t.as_bytes();
+    let n = b
+        .iter()
+        .take(2)
+        .take_while(|c| matches!(c.to_ascii_lowercase(), b'r' | b'f' | b'b' | b'u'))
+        .count();
+    (1..=n)
+        .rev()
+        .find(|&k| matches!(b.get(k), Some(b'"' | b'\'')))
+        .unwrap_or(0)
+}
+
 /// Hides the value that starts at `pos` (after optional spaces): a quoted literal loses its
 /// contents, an unterminated one everything to the end of the line, an unquoted value the run
 /// up to whitespace or `,;)]}`.
+#[allow(clippy::many_single_char_names)] // byte scanners: `s`, `b`, `i` as everywhere in redact.rs
 fn hide_value_at(s: &mut String, pos: usize, marker: &str) -> usize {
     let b = s.as_bytes();
     let mut i = pos;
     while i < b.len() && (b[i] == b' ' || b[i] == b'\t') {
         i += 1;
     }
-    let Some(&c) = b.get(i) else {
+    // A string prefix (`r"…"`, `f"…"`, `b'…'`; #108) belongs to the literal.
+    let prefix = literal_prefix_len(&s[i..]);
+    let Some(&c) = b.get(i + prefix) else {
         return i;
     };
     if matches!(c, b'"' | b'\'' | b'`') {
+        let i = i + prefix;
+        // A triple-quoted literal closes at the next triple quote (#108: `"""…"""`).
+        let triple = b.get(i + 1) == Some(&c) && b.get(i + 2) == Some(&c);
+        if triple {
+            let delim = &s[i..i + 3];
+            return match s[i + 3..].find(delim) {
+                Some(k) => hide(s, i + 3, i + 3 + k, marker) + 3,
+                None => hide(s, i + 3, s.len(), marker),
+            };
+        }
         return match literal_end(s, i) {
             Some(close) => hide(s, i + 1, close, marker) + 1,
             None => hide(s, i + 1, s.len(), marker),
@@ -654,9 +682,10 @@ fn subscript_and_arrow(line: &str) -> String {
         let t = rest.trim_start();
         let at = j + (rest.len() - t.len());
         let assigns = t.starts_with('=') && !t.starts_with("==") && !t.starts_with("=>");
-        let literal = t
-            .get(1..)
-            .is_some_and(|r| r.trim_start().starts_with(['"', '\'', '`']));
+        let literal = t.get(1..).is_some_and(|r| {
+            let r = r.trim_start();
+            r[literal_prefix_len(r)..].starts_with(['"', '\'', '`'])
+        });
         if assigns && literal && R::is_sensitive_key_name(&key) {
             pos = hide_value_at(&mut s, at + 1, MARK);
         } else {
@@ -673,7 +702,10 @@ fn subscript_and_arrow(line: &str) -> String {
             .rsplit(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'))
             .next()
             .unwrap_or("");
-        let literal = s[arrow + 2..].trim_start().starts_with(['"', '\'']);
+        let literal = {
+            let r = s[arrow + 2..].trim_start();
+            r[literal_prefix_len(r)..].starts_with(['"', '\'', '`'])
+        };
         if literal && !key.is_empty() && R::is_sensitive_key_name(key) {
             pos = hide_value_at(&mut s, arrow + 2, MARK);
         } else {
@@ -720,11 +752,47 @@ fn split_segments(s: &str, quotes: bool) -> Option<Vec<(usize, usize)>> {
         }
         i += 1;
     }
-    if quote.is_some() {
-        return None;
+    out.push((start.min(b.len()), b.len()));
+    quote.is_none().then_some(out)
+}
+
+/// The quote-aware split even when a quote is left open (its rest is one segment), and whether
+/// every quote closed.
+fn segments_partial(s: &str) -> (Vec<(usize, usize)>, bool) {
+    if let Some(v) = split_segments(s, true) {
+        return (v, true);
+    }
+    // Redo the quote-aware split, keeping what it found before the open quote.
+    let b = s.as_bytes();
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut quote: Option<u8> = None;
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        if let Some(q) = quote {
+            if c == b'\\' && q == b'"' {
+                i += 2;
+                continue;
+            }
+            if c == q {
+                quote = None;
+            }
+        } else if c == b'\\' {
+            i += 2;
+            continue;
+        } else if matches!(c, b'"' | b'\'') {
+            quote = Some(c);
+        } else if c == b';' || c == b'|' || (c == b'&' && b.get(i + 1) == Some(&b'&')) {
+            out.push((start, i));
+            let skip = usize::from(b.get(i + 1) == Some(&c));
+            start = i + 1 + skip;
+            i += skip;
+        }
+        i += 1;
     }
     out.push((start.min(b.len()), b.len()));
-    Some(out)
+    (out, false)
 }
 
 /// Whitespace-separated words of `s[a..z]`, a quoted part counting as one word: `(start, end)`,
@@ -839,8 +907,22 @@ fn password_tool(word: &str) -> Option<&'static str> {
 /// - the input of `--password-stdin`: a here-string (`<<< secret`) or `echo secret |`.
 #[allow(clippy::many_single_char_names)] // byte scanners: `s`, `b`, `i` as everywhere in redact.rs
 fn cli_shapes(line: &str) -> String {
+    // With a quote left open, both readings run (#108): the quote-aware one, where the open
+    // quote's rest is one segment (`-p "part1; part2"` stays one value), and the quote-blind
+    // one (an earlier stray quote must not hide `; set -x PASSWORD …`).
+    let (segs, closed) = segments_partial(line);
+    let s = cli_shapes_with(line, &segs);
+    if closed {
+        return s;
+    }
+    let blind = split_segments(&s, false).unwrap_or_default();
+    cli_shapes_with(&s, &blind)
+}
+
+#[allow(clippy::too_many_lines)] // one pass over the words of each segment, rule by rule
+fn cli_shapes_with(line: &str, segs: &[(usize, usize)]) -> String {
     let mut s = line.to_owned();
-    let segs = segments(line);
+    let segs = segs.to_vec();
     let stdin_login = line.contains("--password-stdin");
     let mut targets: Vec<(usize, usize)> = Vec::new();
     for (idx, &(a, z)) in segs.iter().enumerate() {
@@ -886,7 +968,16 @@ fn cli_shapes(line: &str) -> String {
                 targets.push((nx, ny));
             }
             // `-p` for sshpass and registry logins.
-            if (sshpass || login) && tok.starts_with("-p") {
+            // sshpass's own `-p` is the first after the sshpass word; a later one belongs to the
+            // command it wraps (#108: `sshpass -p x ssh -p 2222 host`).
+            let sshpass_p = sshpass
+                && Some(k)
+                    == w.iter()
+                        .position(|&(a2, b2)| password_tool(&s[a2..b2]) == Some("sshpass"))
+                        .and_then(|sp| {
+                            (sp + 1..w.len()).find(|&j| s[w[j].0..w[j].1].starts_with("-p"))
+                        });
+            if (sshpass_p || login) && tok.starts_with("-p") {
                 if tok == "-p" {
                     if let Some((nx, ny)) = next {
                         targets.push((nx, ny));
@@ -925,7 +1016,9 @@ fn cli_shapes(line: &str) -> String {
             }
         }
         // `echo secret | ... --password-stdin`.
+        let piped = s.as_bytes().get(z) == Some(&b'|') && s.as_bytes().get(z + 1) != Some(&b'|');
         if stdin_login
+            && piped
             && matches!(word(0), Some("echo" | "printf"))
             && segs
                 .get(idx + 1)
@@ -1151,7 +1244,15 @@ fn pin_values(line: &str) -> String {
         let ends = match after {
             None => true,
             Some(ch) if quoted => ch == '"' || ch == '\'',
-            Some(ch) => ch.is_whitespace() || matches!(ch, ',' | ';' | '}' | ']' | ')'),
+            // A form or URL parameter (`&`, `#`) or the end of an enclosing string
+            // (`echo "PIN=1234"`, `log("pin: 1234")`) ends it too (#108).
+            Some(ch) => {
+                ch.is_whitespace()
+                    || matches!(
+                        ch,
+                        ',' | ';' | '}' | ']' | ')' | '&' | '#' | '"' | '\'' | '`'
+                    )
+            }
         };
         if (4..=10).contains(&digits) && ends {
             let json_key = line[..i].trim_end().ends_with('"');
@@ -1199,6 +1300,23 @@ fn yaml_member(line: &str) -> Option<(usize, &str, usize)> {
 }
 
 /// Hides the scalar value of a YAML line from byte `v` (keeping surrounding quotes).
+/// `v` without an unquoted trailing `# comment` (a `#` after whitespace, outside quotes).
+fn strip_yaml_comment(v: &str) -> &str {
+    let b = v.as_bytes();
+    let mut quote: Option<u8> = None;
+    for (k, &c) in b.iter().enumerate() {
+        match quote {
+            Some(q) if c == q => quote = None,
+            None if (c == b'"' || c == b'\'') && k == 0 => quote = Some(c),
+            None if c == b'#' && (k == 0 || matches!(b[k - 1], b' ' | b'\t')) => {
+                return v[..k].trim_end();
+            }
+            _ => {}
+        }
+    }
+    v
+}
+
 /// Whether `v` is a YAML block-scalar header: `|` or `>`, an optional chomping and indentation
 /// indicator, and an optional comment (`>qqzz` is a plain value, not a header).
 fn is_block_header(v: &str) -> bool {
@@ -1246,7 +1364,7 @@ pub(crate) fn redact_yaml_pairs(text: String) -> String {
     let hide_member =
         |changed: &mut std::collections::BTreeMap<usize, String>, j: usize, v: usize| {
             let body = lines[j].trim_end_matches(['\r', '\n']);
-            let value = body.get(v..).unwrap_or("").trim();
+            let value = strip_yaml_comment(body.get(v..).unwrap_or("").trim());
             // A block-scalar header (`|`, `>-`, `|2 # note`) or an empty value whose scalar
             // wraps onto deeper lines: the deeper lines are the value (review of #106).
             if is_block_header(value) || value.is_empty() {
@@ -1272,12 +1390,14 @@ pub(crate) fn redact_yaml_pairs(text: String) -> String {
             continue;
         };
         let body = lines[i].trim_end_matches(['\r', '\n']);
-        let value = body[v.min(body.len())..].trim();
+        // An unquoted `# comment` is not part of the value (#108: `name: DB_PASSWORD # prod`,
+        // `tokens: # api tokens`).
+        let value = strip_yaml_comment(body[v.min(body.len())..].trim());
         // Name/value siblings, in either order, skipping comments (review of #106).
         if matches!(key.to_ascii_lowercase().as_str(), "name" | "key")
             && R::is_sensitive_key_name(value.trim_matches(|c| c == '"' || c == '\''))
         {
-            for j in i + 1..lines.len().min(i + 12) {
+            for j in i + 1..lines.len().min(i + 200) {
                 if skippable(lines[j]) {
                     continue;
                 }
@@ -1300,7 +1420,7 @@ pub(crate) fn redact_yaml_pairs(text: String) -> String {
                 }
             }
             if !lines[i].trim_start().starts_with("- ") {
-                for j in (i.saturating_sub(12)..i).rev() {
+                for j in (i.saturating_sub(200)..i).rev() {
                     if skippable(lines[j]) {
                         continue;
                     }
@@ -1339,10 +1459,14 @@ pub(crate) fn redact_yaml_pairs(text: String) -> String {
                     continue;
                 }
                 let item = l.trim_start().starts_with("- ");
-                // A line an earlier pass already hid whole is part of the block.
+                // A line an earlier pass already hid whole is part of the block, also at the
+                // key's own indent (an item it hid); a less-indented one ends it (#108).
                 if R::starts_with_marker(l.trim())
                     && R::marker_len(l.trim()) == Some(l.trim().len())
                 {
+                    if indent_of(l) < base || n >= 200 {
+                        break;
+                    }
                     continue;
                 }
                 if indent_of(l) < base || (indent_of(l) == base && !item) || n >= 200 {

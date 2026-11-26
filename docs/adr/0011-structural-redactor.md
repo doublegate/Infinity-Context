@@ -228,3 +228,44 @@ a continuation. Any other planted marker, or text after one, still opens it.
   icx sees mixed text (logs, diffs, shell output) where no grammar applies, and the fallback rules
   would still be needed. Rejected: trusting the "next field" boundary inside code (`, name=`),
   which is where most PR #27 bypasses lived; only strictly parsed JSON field lists split there.
+
+## Amendments in v1.6.0 (#107, #108, 2026-11-26)
+
+These shapes were found in the review rounds of #106. v1.5.0 leaks every one of them, so none
+was a regression, and they were deferred rather than fixed under review pressure.
+
+- **Multi-line value after an apostrophe (#107).** The apostrophe-blind second scan now runs on
+  any line that holds an apostrophe, not only one that ends inside one, because
+  `don't log; password = '''` balances its apostrophes. It ignores apostrophes only: double quotes
+  and backticks stay quoted, so a closed `"…"` before an apostrophe cannot arm a continuation.
+- **Planted markers.** A marker glued to `#`, `//` or `\` (`[REDACTED:X]#secret`) is one shell
+  word; these characters start a comment or escape only after a space.
+- **PIN and OTP.** A form or URL parameter separator (`&`, `#`) or the end of an enclosing string
+  also ends the number (`?otp=482913&user=a`, `echo "USER_PIN=482913"`, `log("pin: 1234")`).
+- **Subscripts and `=>`.** Prefixed literals (`r"…"`, `f"…"`, `b'…'`), triple-quoted literals
+  and backtick literals after `=>` are values.
+- **CLI.**
+  - With a quote left open on the line, both segment readings run: the quote-aware one, where the
+    open quote's rest is one segment, and the quote-blind one.
+  - sshpass's `-p` is only the first after the sshpass word; a later one belongs to the wrapped
+    command (`ssh -p 2222` stays).
+  - The `echo …` rule for `--password-stdin` needs a pipe between the two commands.
+  - JSON embedded after a prefix (`log {"cmd": "…"}`) is redacted structurally first, so its
+    strings are decoded; the line rules still run on the whole line.
+- **YAML.**
+  - An unquoted `# comment` is stripped before the name, value and block-key checks.
+  - The name/value window is 200 lines, skipping deeper lines, so a long `value: |` block before
+    `name:` is found.
+  - A whole-marker line ends a sensitive block only when it is less indented than the key.
+- **Full-width quotes.** The earlier passes can consume a full-width opening quote before the
+  quote-normalising pass reads it as a quote (`-p ＂my secret＂`). The fully normalised input is
+  therefore also redacted from scratch. A non-JSON line that only this pass changed takes its
+  result; a line that several passes changed takes whichever leaves less visible. When redaction
+  changed the line count (a collapsed key block), this pass is not used, so secret-free lines keep
+  their bytes.
+- **Cost (#108).** In the second look-alike pass, a line that the first pass already redacted and
+  that holds no look-alike is copied through, with no multi-line value or key block open: a
+  second pass leaves such a line unchanged. A property test checks that the skip changes no output.
+  On 69 KB of text with no-break spaces this cut the median from 16.0 to 14.6 ms; the
+  remaining cost is the normalised lines themselves. `icx benchmark` gates the look-alike path at
+  10 ms for its 64 KB fixture (4.8 ms measured).
