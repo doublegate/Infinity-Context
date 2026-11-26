@@ -108,7 +108,7 @@ impl WireProxyTransformer {
             + Self::count_cache_breakpoints(root.get("tools"));
         // Automatic caching (a top-level `cache_control`) uses one of the 4 breakpoint slots and
         // places itself; such a request gets no icx breakpoint (T-81-002).
-        let automatic_caching = root.get("cache_control").is_some();
+        let automatic_caching = root.get("cache_control").is_some_and(Value::is_object);
 
         if let Some(messages) = root.get_mut("messages").and_then(Value::as_array_mut) {
             let pager_tool_use_ids = Self::collect_anthropic_pager_tool_use_ids(messages);
@@ -1866,6 +1866,7 @@ impl WireProxyTransformer {
         epoch: u64,
     ) {
         const CAP: u64 = 8 * 1024 * 1024;
+        static TRIM_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let Some(dir) = workspace_dir else { return };
         let Ok(_lock) = InfinityContextMmu::acquire_workspace_lock(dir) else {
             return;
@@ -1904,9 +1905,15 @@ impl WireProxyTransformer {
                 .iter()
                 .position(|&b| b == b'\n')
                 .map_or(&[][..], |nl| &tail[nl + 1..]);
+            // Unique per process, call and moment, so a stale file from a crash or a reused PID
+            // never collides (`create_new` would then fail and the trim be skipped).
             let tmp = dir.join(format!(
-                "proxy-cache-usage.jsonl.tmp-{}",
-                std::process::id()
+                "proxy-cache-usage.jsonl.tmp-{}-{}-{}",
+                std::process::id(),
+                TRIM_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_nanos())
             ));
             let mut tmp_opts = std::fs::OpenOptions::new();
             tmp_opts.write(true).create_new(true);
@@ -2862,13 +2869,26 @@ impl WireProxyTransformer {
             return;
         }
         // Counted before normalizing, which adds no breakpoint; it gates only the insertion.
-        let room = count(&Value::Array(items.clone())) < 3;
+        let room = items.iter().map(count).sum::<usize>() < 3;
         let fold_end = items.len() - protect_tail;
+        // The last folded user, developer or system item with text: an image-only item has no
+        // part to carry the breakpoint, so an earlier one takes it (review of #113).
         let target = (0..fold_end).rev().find(|&i| {
-            matches!(
+            let role_ok = matches!(
                 items[i].get("role").and_then(Value::as_str),
                 Some("user" | "developer" | "system")
-            )
+            );
+            let has_text = match items[i].get("content") {
+                Some(Value::String(_)) => true,
+                Some(Value::Array(parts)) => parts.iter().any(|p| {
+                    matches!(
+                        p.get("type").and_then(Value::as_str),
+                        Some("text" | "input_text")
+                    )
+                }),
+                _ => false,
+            };
+            role_ok && has_text
         });
         // Every folded user, developer or system item takes block form, so the folded prefix has
         // the same shape on every turn wherever the breakpoint sits (review of #113).
@@ -3126,6 +3146,17 @@ mod tests {
                 .get("prompt_cache_breakpoint")
                 .is_none()
         );
+        // An image-only last folded user item passes the breakpoint to an earlier text item.
+        let mut img = body("gpt-5.6");
+        img["messages"][3]["content"] =
+            json!([{ "type": "image_url", "image_url": { "url": "data:," } }]);
+        let mut img6 = img.clone();
+        img6["messages"].as_array_mut().unwrap().insert(4, json!({ "role": "user", "content": [{ "type": "image_url", "image_url": { "url": "data:," } }] }));
+        WireProxyTransformer::apply_openai_cache_controls(&mut img6, "messages", "text", 2, None);
+        assert_eq!(
+            img6["messages"][1]["content"][0]["prompt_cache_breakpoint"]["mode"],
+            "explicit"
+        );
         // An unknown TTL value is ignored.
         let mut bad = body("gpt-5.6");
         WireProxyTransformer::apply_openai_cache_controls(
@@ -3207,11 +3238,20 @@ mod tests {
                 { "type": "text", "text": "a", "cache_control": { "type": "ephemeral" } },
                 { "type": "text", "text": "b", "cache_control": { "type": "ephemeral" } }
             ],
-            "tools": [{ "name": "t", "cache_control": { "type": "ephemeral" } }],
-            "cache_control": { "type": "ephemeral" },
-            "messages": history
+            "tools": [
+                { "name": "t", "cache_control": { "type": "ephemeral" } },
+                { "name": "u", "cache_control": { "type": "ephemeral" } }
+            ],
+            "messages": history.clone()
         }));
-        assert_eq!(count(&full["messages"]), 0);
+        assert_eq!(
+            count(&full["messages"]),
+            0,
+            "four client breakpoints: none added"
+        );
+        // An explicit `null` cache_control is not automatic caching.
+        let null_cc = run(json!({ "cache_control": null, "messages": history }));
+        assert_eq!(count(&null_cc["messages"]), 1);
     }
 
     /// T-81-003: the relay returns the provider cache counters of an SSE stream and of a JSON

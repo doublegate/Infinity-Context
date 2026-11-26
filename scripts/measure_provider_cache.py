@@ -162,12 +162,15 @@ def start_proxy(icx: str, tmp: Path) -> tuple[subprocess.Popen, str, Path]:
         stderr=subprocess.DEVNULL,
     )
     for _ in range(50):
+        if proc.poll() is not None:
+            raise RuntimeError(f"icx proxy exited early with status {proc.returncode}")
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.2):
-                break
+                return proc, f"http://127.0.0.1:{port}", ws
         except OSError:
             time.sleep(0.1)
-    return proc, f"http://127.0.0.1:{port}", ws
+    proc.kill()
+    raise RuntimeError("icx proxy did not start listening within 5 s")
 
 
 def anthropic_request(
@@ -267,7 +270,11 @@ def main() -> int:
     run_id = os.urandom(4).hex()
     results: dict = {"plan": manifest, "runs": {}, "run_id": run_id}
     tmp = Path(tempfile.mkdtemp(prefix="icx-cache-run-"))
-    proc, proxy_base, ws = start_proxy(args.icx, tmp)
+    try:
+        proc, proxy_base, ws = start_proxy(args.icx, tmp)
+    except (OSError, RuntimeError, subprocess.CalledProcessError):
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
     try:
         for p in providers:
             model = ANTHROPIC_MODEL

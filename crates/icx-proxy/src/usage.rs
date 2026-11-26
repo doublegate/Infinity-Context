@@ -62,7 +62,9 @@ impl CacheCounters {
             .get("diagnostics")
             .or_else(|| value.get("message").and_then(|m| m.get("diagnostics")));
         if let Some(Value::Object(d)) = diag {
-            self.diagnostics = Some(d.keys().take(16).cloned().collect());
+            let mut names: Vec<String> = d.keys().take(16).cloned().collect();
+            names.sort();
+            self.diagnostics = Some(names);
         }
     }
 
@@ -70,7 +72,8 @@ impl CacheCounters {
     pub fn observe_text(&mut self, text: &str) {
         let t = text.trim();
         let t = t.strip_prefix("data:").map_or(t, str::trim_start);
-        if !(t.starts_with('{') && (t.contains("usage") || t.contains("diagnostics"))) {
+        // The quoted key, not the word: assistant text that mentions usage is not parsed.
+        if !(t.starts_with('{') && (t.contains("\"usage\"") || t.contains("\"diagnostics\""))) {
             return;
         }
         if let Ok(v) = serde_json::from_str::<Value>(t) {
@@ -95,7 +98,8 @@ impl CacheCounters {
         }
         let details = u
             .get("prompt_tokens_details")
-            .or_else(|| u.get("input_tokens_details"));
+            .filter(|d| d.is_object())
+            .or_else(|| u.get("input_tokens_details").filter(|d| d.is_object()));
         if let Some(d) = details {
             self.provider = Some("openai");
             set(&mut self.cache_read, get(d, "cached_tokens"));
@@ -219,6 +223,10 @@ mod tests {
         assert_eq!(c.provider, Some("anthropic"));
         assert_eq!(c.cache_read, None);
         assert_eq!(c.cache_write, None);
+        // A null details object falls back to the other one.
+        let mut n = CacheCounters::default();
+        n.observe_text(r#"{"usage":{"prompt_tokens_details":null,"input_tokens":9,"input_tokens_details":{"cached_tokens":7}}}"#);
+        assert_eq!((n.cache_read, n.input), (Some(7), Some(9)));
         // A `usage` that is not an object, and invalid JSON, are ignored.
         let mut d = CacheCounters::default();
         d.observe_text(r#"{"usage":"none"}"#);
