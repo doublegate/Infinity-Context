@@ -219,9 +219,24 @@ fn hide_value_at(s: &mut String, pos: usize, marker: &str) -> usize {
         // A triple-quoted literal closes at the next triple quote (#108: `"""…"""`).
         let triple = b.get(i + 1) == Some(&c) && b.get(i + 2) == Some(&c);
         if triple {
-            let delim = &s[i..i + 3];
-            return match s[i + 3..].find(delim) {
-                Some(k) => hide(s, i + 3, i + 3 + k, marker) + 3,
+            // The closing triple quote is the first one not escaped (`"""a\"""b"""` is one
+            // literal; review of #110).
+            let delim = s[i..i + 3].to_owned();
+            let mut from = i + 3;
+            let close = loop {
+                match s[from..].find(&delim) {
+                    Some(k)
+                        if !backslash_run_before(s.as_bytes(), i + 3, from + k)
+                            .is_multiple_of(2) =>
+                    {
+                        from += k + 1;
+                    }
+                    Some(k) => break Some(from + k),
+                    None => break None,
+                }
+            };
+            return match close {
+                Some(k) => hide(s, i + 3, k, marker) + 3,
                 None => hide(s, i + 3, s.len(), marker),
             };
         }
@@ -970,13 +985,15 @@ fn cli_shapes_with(line: &str, segs: &[(usize, usize)]) -> String {
             // `-p` for sshpass and registry logins.
             // sshpass's own `-p` is the first after the sshpass word; a later one belongs to the
             // command it wraps (#108: `sshpass -p x ssh -p 2222 host`).
+            // Each sshpass invocation in the segment has its own (Codex review of #110).
             let sshpass_p = sshpass
-                && Some(k)
-                    == w.iter()
-                        .position(|&(a2, b2)| password_tool(&s[a2..b2]) == Some("sshpass"))
-                        .and_then(|sp| {
-                            (sp + 1..w.len()).find(|&j| s[w[j].0..w[j].1].starts_with("-p"))
-                        });
+                && w.iter()
+                    .enumerate()
+                    .filter(|&(_, &(a2, b2))| password_tool(&s[a2..b2]) == Some("sshpass"))
+                    .filter_map(|(sp, _)| {
+                        (sp + 1..w.len()).find(|&j| s[w[j].0..w[j].1].starts_with("-p"))
+                    })
+                    .any(|j| j == k);
             if (sshpass_p || login) && tok.starts_with("-p") {
                 if tok == "-p" {
                     if let Some((nx, ny)) = next {

@@ -214,3 +214,56 @@ fn full_width_lines_hide_what_any_pass_found() {
         ),
     ]);
 }
+
+/// Review round on #110 (Antigravity and Codex).
+#[test]
+fn review_round_on_110() {
+    let key = concat!(
+        "-----BEGIN ",
+        "PRIVATE KEY-----\nqqzzqqzzqqzz\nrrssrrssrrss\n-----END ",
+        "PRIVATE KEY-----\n"
+    );
+    check(&[
+        // A collapsed key block in the same text does not drop the full-width pass.
+        (
+            &format!("{key}sshpass -p \u{FF02}my zzqq\u{FF02} ssh host\n"),
+            &["zzqq", "qqzz"],
+            &[],
+        ),
+        (
+            &format!("{key}password = \u{FF02}\u{FF02}\u{FF02}\nzzqq\n\u{FF02}\u{FF02}\u{FF02}\n"),
+            &["zzqq"],
+            &[],
+        ),
+        // Several full-width-quoted values on one line.
+        (
+            "password = \u{FF02}s1s1\u{FF02} token = \u{FF02}my xyxy\u{FF02}\n",
+            &["s1s1", "xyxy"],
+            &[],
+        ),
+        ("password = \u{FF02}my zzqq\u{FF02}\n", &["zzqq"], &[]),
+        // Embedded JSON after a multi-byte character.
+        (
+            "\u{2022} {\"cmd\": \"sshpass -p \\\"my qqzz\\\" ssh host\"}\n",
+            &["qqzz"],
+            &[],
+        ),
+        // An escaped triple quote inside a triple-quoted literal.
+        (
+            "obj[\"password\"] = \"\"\"foo\\\"\"\"qqzz\"\"\"\n",
+            &["qqzz"],
+            &[],
+        ),
+        // Each sshpass invocation in a segment.
+        (
+            "sshpass -p qqzz ssh gateway sshpass -p rrss ssh host\n",
+            &["qqzz", "rrss"],
+            &["host"],
+        ),
+    ]);
+    // A bracket-heavy line stays fast.
+    let line = format!("x {}{}\n", "[".repeat(20_000), "]}");
+    let t = std::time::Instant::now();
+    let _ = SecretRedactor::redact(&line);
+    assert!(t.elapsed().as_millis() < 2_000, "{:?}", t.elapsed());
+}

@@ -29,13 +29,24 @@ impl SecretRedactor {
         if !input.chars().any(Self::is_lookalike) {
             return Self::redact_text(input);
         }
-        // Three passes, each over the previous result, so whatever any pass hides is hidden:
-        // the original text; every look-alike normalised except quote-like characters; and
-        // those too (security reviews of v1.5.1 and #106). A full-width `＂` is a quote to a
-        // reader of plain text but only content inside a JSON string, so a line that is JSON
-        // after the second pass takes that pass's result, and any other line the third pass's
-        // where it hides more. A line keeps its original bytes where no pass hid anything.
-        let plain = Self::redact_text(input);
+        // Two passes, the second over the first's result, so whatever either hides is hidden
+        // (security reviews of v1.5.1, #106 and #110). Full-width quote-like characters (`＂`,
+        // `＇`, `＼`, `｀`) are quotes to a reader of plain text, so outside JSON lines they are
+        // made ASCII before the first pass: no pass can then consume an opening quote before
+        // another reads it as one. On a JSON line they are string content and stay. The second
+        // pass normalises every other look-alike. A line where neither pass hid anything keeps
+        // its original bytes.
+        let quoted: String = input
+            .split_inclusive('\n')
+            .map(|line| {
+                if line.chars().any(Self::is_quote_like) && !Self::is_json_line(line.trim_end()) {
+                    line.chars().map(Self::ascii_quote).collect::<String>()
+                } else {
+                    line.to_owned()
+                }
+            })
+            .collect();
+        let plain = Self::redact_text(&quoted);
         let keep_quotes: String = plain
             .chars()
             .filter_map(Self::normalize_keep_quotes)
@@ -47,45 +58,26 @@ impl SecretRedactor {
             .filter(|l| !l.chars().any(Self::is_lookalike))
             .collect();
         let second = Self::redact_text_skipping(&keep_quotes, &fixed);
-        // The third pass only matters when quote-like characters are left.
-        let third = if second
-            .chars()
-            .any(|c| matches!(c, '\u{FF02}' | '\u{FF07}' | '\u{FF3C}' | '\u{FF40}'))
-        {
-            let all: String = second.chars().filter_map(Self::normalize_char).collect();
-            Self::redact_text(&all)
-        } else {
-            second.clone()
-        };
         // `split`, not `split_inclusive`: a last line holding only removed characters
         // (`"\u{FEFF}"`) must still pair with its empty counterpart (review of #106).
-        // The earlier passes can consume a full-width opening quote before the third pass
-        // reads it as a quote (#108: `-p ＂my secret＂` loses only `＂my`), so the fully
-        // normalised input is also redacted from scratch.
-        let has_quote_like = |t: &str| {
-            t.chars()
-                .any(|c| matches!(c, '\u{FF02}' | '\u{FF07}' | '\u{FF3C}' | '\u{FF40}'))
-        };
-        let fresh = if has_quote_like(input) {
-            let all: String = input.chars().filter_map(Self::normalize_char).collect();
-            Some((Self::redact_text(&all), all))
-        } else {
-            None
-        };
         let pl: Vec<&str> = plain.split('\n').collect();
         let ql: Vec<&str> = second.split('\n').collect();
-        let rl: Vec<&str> = third.split('\n').collect();
         let xl: Vec<&str> = input.split('\n').collect();
-        if pl.len() != ql.len() || ql.len() != rl.len() {
-            return third;
+        let wl: Vec<&str> = quoted.split('\n').collect();
+        if pl.len() != ql.len() {
+            return second;
         }
-        let fresh_lines = fresh.as_ref().and_then(|(red, all)| {
-            let f: Vec<&str> = red.split('\n').collect();
-            let n: Vec<&str> = all.split('\n').collect();
-            // Only when redaction kept the line count (a collapsed key block shifts it), so the
-            // lines pair up; otherwise the from-scratch pass is not used.
-            (f.len() == pl.len() && n.len() == pl.len() && xl.len() == pl.len()).then_some((f, n))
-        });
+        // An unchanged line pairs with its original at the same index, or at the same distance
+        // from the end when a collapsed key block shortened the text, and only where the
+        // quote-normalised texts are equal: a wrong pairing can only pick an identical line.
+        let shift = wl.len().checked_sub(pl.len());
+        let original = |k: usize| -> Option<&str> {
+            [Some(k), shift.map(|d| k + d)]
+                .into_iter()
+                .flatten()
+                .find(|&i| wl.get(i) == Some(&pl[k]))
+                .and_then(|i| xl.get(i).copied())
+        };
         let mut out = String::with_capacity(input.len());
         for k in 0..pl.len() {
             if k > 0 {
@@ -95,117 +87,29 @@ impl SecretRedactor {
                 .chars()
                 .filter_map(Self::normalize_keep_quotes)
                 .eq(ql[k].chars());
-            let up_to_second = if first_holds { pl[k] } else { ql[k] };
-            let second_holds = ql[k]
-                .chars()
-                .filter_map(Self::normalize_char)
-                .eq(rl[k].chars());
-            let json = Self::is_json_line(ql[k]);
-            let chained = if second_holds || json {
-                up_to_second
+            // Nothing hidden on this line by either pass: the original bytes.
+            let line = if first_holds {
+                original(k).unwrap_or(pl[k])
             } else {
-                rl[k]
+                ql[k]
             };
-            // The from-scratch pass decides a non-JSON line it changed alone when the other
-            // passes left the line as it was. When both changed it, the line is the union: the
-            // chained result with everything the from-scratch pass hid hidden too (fail closed;
-            // review of #110).
-            match &fresh_lines {
-                Some((f, n)) if !json && f[k] != n[k] => {
-                    if chained == xl[k] {
-                        out.push_str(f[k]);
-                    } else {
-                        let base: String =
-                            chained.chars().filter_map(Self::normalize_char).collect();
-                        out.push_str(&Self::hide_texts(&base, &Self::hidden_texts(n[k], f[k])));
-                    }
-                }
-                _ => out.push_str(chained),
-            }
+            out.push_str(line);
         }
         out
     }
 
-    /// `line` cut into `(is_marker, text)` pieces around complete `[REDACTED:…]` markers.
-    fn marker_pieces(line: &str) -> Vec<(bool, &str)> {
-        let mut out = Vec::new();
-        let mut rest = line;
-        while let Some(at) = rest.find("[REDACTED:") {
-            if let Some(n) = Self::marker_len(&rest[at..]) {
-                if at > 0 {
-                    out.push((false, &rest[..at]));
-                }
-                out.push((true, &rest[at..at + n]));
-                rest = &rest[at + n..];
-            } else {
-                out.push((false, &rest[..=at]));
-                rest = &rest[at + 1..];
-            }
-        }
-        if !rest.is_empty() {
-            out.push((false, rest));
-        }
-        out
+    /// A full-width quote-like character: `＂`, `＇`, `＼` or `｀`.
+    fn is_quote_like(c: char) -> bool {
+        matches!(c, '\u{FF02}' | '\u{FF07}' | '\u{FF3C}' | '\u{FF40}')
     }
 
-    /// The texts of `source` that `redacted` replaced with markers: the visible pieces of
-    /// `redacted` are found in `source` in order, and what lies between them under a marker was
-    /// hidden.
-    fn hidden_texts(source: &str, redacted: &str) -> Vec<String> {
-        let mut out = Vec::new();
-        let mut pos = 0;
-        let mut after_marker = false;
-        for (is_marker, text) in Self::marker_pieces(redacted) {
-            if is_marker {
-                after_marker = true;
-                continue;
-            }
-            let Some(rel) = source[pos..].find(text) else {
-                // Not alignable (the pass also reshaped visible text): hide all of the rest.
-                out.push(source[pos..].to_owned());
-                return out;
-            };
-            if after_marker && rel > 0 {
-                out.push(source[pos..pos + rel].to_owned());
-            }
-            pos += rel + text.len();
-            after_marker = false;
+    /// The ASCII form of a full-width quote-like character; every other character as it is.
+    fn ascii_quote(c: char) -> char {
+        if Self::is_quote_like(c) {
+            char::from_u32(c as u32 - 0xFEE0).unwrap_or(c)
+        } else {
+            c
         }
-        if after_marker && pos < source.len() {
-            out.push(source[pos..].to_owned());
-        }
-        out
-    }
-
-    /// `line` with every occurrence of each of `texts` outside markers replaced by a marker,
-    /// and of each of their words of 3 or more characters: another pass may have hidden part of
-    /// a span already (`-p ＂my secret＂` loses only `＂my`), so the whole span no longer occurs.
-    fn hide_texts(line: &str, texts: &[String]) -> String {
-        let mut needles: Vec<&str> = Vec::new();
-        for t in texts {
-            let t = t.trim();
-            needles.push(t);
-            needles.extend(t.split_whitespace().filter(|w| w.chars().count() >= 3));
-        }
-        // Longest first, so a whole span is replaced before its words.
-        needles.sort_by_key(|n| std::cmp::Reverse(n.len()));
-        needles.dedup();
-        let mut current = line.to_owned();
-        for t in needles {
-            if t.is_empty() || Self::starts_with_marker(t) {
-                continue;
-            }
-            let mut next = String::with_capacity(current.len());
-            for (is_marker, piece) in Self::marker_pieces(&current) {
-                if is_marker {
-                    next.push_str(piece);
-                } else {
-                    next.push_str(&piece.replace(t, "[REDACTED:SECRET]"));
-                }
-            }
-            current = next;
-        }
-        current
     }
 
     /// [`Self::normalize_char`] without the quote-like characters (`＂`, `＇`, `＼`, `｀`).
@@ -613,9 +517,15 @@ impl SecretRedactor {
         if !(t.ends_with('}') || t.ends_with(']')) {
             return None;
         }
-        // The first `{` or `[` after the start whose rest is one JSON value.
-        let mut from = 1;
+        // The first `{` or `[` after the start whose rest is one JSON value; at most 8 candidates,
+        // so a bracket-heavy line stays linear (review of #110).
+        let mut from = line.chars().next()?.len_utf8();
+        let mut tries = 0;
         while let Some(rel) = line.get(from..)?.find(['{', '[']) {
+            tries += 1;
+            if tries > 8 {
+                return None;
+            }
             let at = from + rel;
             if Self::is_json_line(&line[at..]) {
                 let json = Self::redact_json_line(&line[at..])?;
@@ -4283,57 +4193,6 @@ impl JsonScan<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Full-width-quote lines are a union (review of #110): no text the from-scratch pass hid is
-    /// visible in the final result, whatever the chained passes did.
-    #[test]
-    fn full_width_merge_is_a_union() {
-        use proptest::prelude::*;
-        let piece = prop_oneof![
-            Just("api_key=\u{FF02}rrss abcd\u{FF02}".to_owned()),
-            Just("sshpass -p \u{FF02}my qqzz\u{FF02} host".to_owned()),
-            Just("password=\u{FF02}a1b2\u{FF02}".to_owned()),
-            Just("TOKEN=rrsszzqq".to_owned()),
-            Just("obj[\u{FF02}password\u{FF02}] = \u{FF02}zzqq\u{FF02}".to_owned()),
-            Just("note \u{FF02}hi\u{FF02}".to_owned()),
-            "[a-z \u{FF02}=:;]{0,10}",
-        ];
-        let line = proptest::collection::vec(piece, 1..5).prop_map(|v| v.join(" ") + "\n");
-        let mut runner = proptest::test_runner::TestRunner::new(proptest::test_runner::Config {
-            cases: 2000,
-            ..Default::default()
-        });
-        runner
-            .run(&line, |input| {
-                let out = SecretRedactor::redact(&input);
-                let all: String = input
-                    .chars()
-                    .filter_map(SecretRedactor::normalize_char)
-                    .collect();
-                let fresh = SecretRedactor::redact_text(&all);
-                let visible: String = SecretRedactor::marker_pieces(&out)
-                    .into_iter()
-                    .filter(|(m, _)| !m)
-                    .map(|(_, t)| {
-                        t.chars()
-                            .filter_map(SecretRedactor::normalize_char)
-                            .collect::<String>()
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\u{0}");
-                for t in SecretRedactor::hidden_texts(&all, &fresh) {
-                    let t = t.trim();
-                    if t.len() >= 3 && !SecretRedactor::is_json_line(&input) {
-                        prop_assert!(
-                            !visible.contains(t),
-                            "{t:?} visible in {out:?} from {input:?}"
-                        );
-                    }
-                }
-                Ok(())
-            })
-            .unwrap();
-    }
 
     /// The look-alike pass's line skip (#108) changes no output: over generated text mixing
     /// look-alikes, secret shapes, multi-line values and key blocks, the second pass with and

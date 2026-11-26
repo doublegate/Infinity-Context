@@ -257,13 +257,15 @@ was a regression, and they were deferred rather than fixed under review pressure
   - The name/value window is 200 lines, skipping deeper lines, so a long `value: |` block before
     `name:` is found.
   - A whole-marker line ends a sensitive block only when it is less indented than the key.
-- **Full-width quotes.** The earlier passes can consume a full-width opening quote before the
-  quote-normalising pass reads it as a quote (`-p ＂my secret＂`). The fully normalised input is
-  therefore also redacted from scratch. A non-JSON line that only this pass changed takes its
-  result. A line that several passes changed is their union: the chained result, with every
-  text the from-scratch pass hid, and each word of 3 or more characters in it, hidden too. When redaction
-  changed the line count (a collapsed key block), this pass is not used, so secret-free lines keep
-  their bytes.
+- **Full-width quotes.** The v1.5.1 passes could consume a full-width opening quote before the
+  quote-normalising pass read it as a quote (`-p ＂my secret＂`), and a later attempt to merge a
+  from-scratch pass line by line was not a true union (reviews of #110). The look-alike pass is
+  now two chained passes: full-width quote-like characters (`＂ ＇ ＼ ｀`) are made ASCII before
+  the first pass on every line that is not JSON, and the second pass normalises every other
+  look-alike over the first pass's result, so whatever either pass hides stays hidden. On a JSON
+  line these characters are string content and stay. A line where neither pass hid anything keeps
+  its original bytes. When a collapsed key block shortens the text, such a line is paired with its
+  original from the start or the end, and only where the texts are equal.
 - **Cost (#108).** In the second look-alike pass, a line that the first pass already redacted and
   that holds no look-alike is copied through, with no multi-line value or key block open: a
   second pass leaves such a line unchanged. A property test checks that the skip changes no output.
