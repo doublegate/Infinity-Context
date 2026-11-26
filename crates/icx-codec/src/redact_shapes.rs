@@ -236,15 +236,15 @@ fn xml_elements(line: &str) -> String {
             continue;
         }
         let name = s[name_start..name_end].to_owned();
-        let Some(gt_rel) = s[name_end..].find('>') else {
-            break;
+        // The same quote-aware tag end as for attributes (review of #106: `hint="a<b"`).
+        let gt = match tag_end(&s, open) {
+            TagEnd::At(gt) => gt,
+            TagEnd::Stray => {
+                pos = open + 1;
+                continue;
+            }
+            TagEnd::Open => break,
         };
-        let gt = name_end + gt_rel;
-        // A `>` past another `<` belongs to a later tag (`a <b && <password>…`).
-        if s[name_end..gt].contains('<') {
-            pos = open + 1;
-            continue;
-        }
         if s[..gt].ends_with('/') || !R::is_sensitive_key_name(&name) {
             pos = gt + 1;
             continue;
@@ -990,10 +990,17 @@ fn url_end_at(s: &str, from: usize) -> usize {
             let c = b[k];
             c.is_ascii_whitespace()
                 || matches!(c, b'"' | b'\'' | b'<' | b'>' | b'`')
-                || (c == b'\\' && matches!(b.get(k + 1), Some(b'"' | b'\'')))
+                || (c == b'\\'
+                    && matches!(b.get(k + 1), Some(b'"' | b'\''))
+                    && backslash_run_before(b, from, k).is_multiple_of(2))
                 || (c >= 0x80 && s.is_char_boundary(k) && s[k..].starts_with(char::is_whitespace))
         })
         .unwrap_or(b.len())
+}
+
+/// How many backslashes directly precede `k`, not looking before `from`.
+fn backslash_run_before(b: &[u8], from: usize, k: usize) -> usize {
+    b[from..k].iter().rev().take_while(|c| **c == b'\\').count()
 }
 
 /// Whether `text` leaves a quote open (backslash escapes honoured outside single quotes).
@@ -1174,6 +1181,18 @@ fn yaml_member(line: &str) -> Option<(usize, &str, usize)> {
 }
 
 /// Hides the scalar value of a YAML line from byte `v` (keeping surrounding quotes).
+/// Whether `v` is a YAML block-scalar header: `|` or `>`, an optional chomping and indentation
+/// indicator, and an optional comment (`>qqzz` is a plain value, not a header).
+fn is_block_header(v: &str) -> bool {
+    let Some(rest) = v.strip_prefix(['|', '>']) else {
+        return false;
+    };
+    let rest = rest.trim_start_matches(['+', '-', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
+    let rest = rest.trim_start_matches(['+', '-']);
+    let rest = rest.trim_start();
+    rest.is_empty() || rest.starts_with('#')
+}
+
 fn hide_yaml_value(line: &str, v: usize) -> String {
     let mut s = line.to_owned();
     let body_end = s.trim_end_matches(['\r', '\n']).len();
@@ -1210,7 +1229,9 @@ pub(crate) fn redact_yaml_pairs(text: String) -> String {
         |changed: &mut std::collections::BTreeMap<usize, String>, j: usize, v: usize| {
             let body = lines[j].trim_end_matches(['\r', '\n']);
             let value = body.get(v..).unwrap_or("").trim();
-            if value.starts_with(['|', '>']) {
+            // A block-scalar header (`|`, `>-`, `|2 # note`) or an empty value whose scalar
+            // wraps onto deeper lines: the deeper lines are the value (review of #106).
+            if is_block_header(value) || value.is_empty() {
                 // The key's column, not the line's indent (`- value: |` sits at column 2).
                 let base = yaml_member(lines[j]).map_or(indent_of(lines[j]), |m| m.0);
                 for (k, l) in lines.iter().enumerate().skip(j + 1).take(200) {
@@ -1320,7 +1341,20 @@ pub(crate) fn redact_yaml_pairs(text: String) -> String {
                     }
                 } else if let Some(rest) = l.trim_start().strip_prefix("- ") {
                     let v2 = indent_of(l) + 2 + (rest.len() - rest.trim_start().len());
-                    changed.insert(j, hide_yaml_value(l, v2));
+                    if is_block_header(rest.trim()) {
+                        // `- |` item: its deeper body lines are the value.
+                        let item_indent = indent_of(l);
+                        for (k, body) in lines.iter().enumerate().skip(j + 1).take(200) {
+                            if !body.trim().is_empty() && indent_of(body) <= item_indent {
+                                break;
+                            }
+                            if !body.trim().is_empty() {
+                                changed.insert(k, hide_yaml_value(body, indent_of(body)));
+                            }
+                        }
+                    } else {
+                        changed.insert(j, hide_yaml_value(l, v2));
+                    }
                 }
             }
         }

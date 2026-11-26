@@ -857,3 +857,34 @@ fn apostrophes_before_tags_do_not_end_the_scan() {
         ),
     ]);
 }
+
+/// Antigravity round on 615dfee.
+#[test]
+fn review_round_on_615dfee() {
+    let line = "{\"url\": \"https://h/cb?sig=qqzz\\\\\"}\n";
+    let out = icx_codec::SecretRedactor::redact(line);
+    assert!(
+        serde_json::from_str::<serde_json::Value>(out.trim()).is_ok(),
+        "{out:?}"
+    );
+    check(&[
+        ("{\"url\": \"https://h/cb?sig=qqzz\\\\\"}\n", &["qqzz"], &[]),
+        ("<password hint=\"a<b\">qqzz</password>\n", &["qqzz"], &[]),
+        (
+            "<password hint=\"a>b\">qqzz</password>\n",
+            &["qqzz"],
+            &["hint=\"a>b\""],
+        ),
+        (
+            "- name: DB_PASSWORD\n  value:\n    qqzz\n- name: HOST\n  value: db\n",
+            &["qqzz"],
+            &["value: db"],
+        ),
+        ("- name: DB_PASSWORD\n  value: >qqzz\n", &["qqzz"], &[]),
+        (
+            "tokens:\n  - |\n    qqzz\n    rrss\nnext: 1\n",
+            &["qqzz", "rrss"],
+            &["next: 1"],
+        ),
+    ]);
+}
