@@ -39,14 +39,14 @@ impl SecretRedactor {
         let quoted: String = input
             .split_inclusive('\n')
             .map(|line| {
-                if line.chars().any(Self::is_quote_like)
-                    && !Self::is_json_line(line.trim_end())
-                    && Self::embedded_json_start(line).is_none()
-                {
-                    line.chars().map(Self::ascii_quote).collect::<String>()
-                } else {
-                    line.to_owned()
+                if !line.chars().any(Self::is_quote_like) || Self::is_json_line(line.trim_end()) {
+                    return line.to_owned();
                 }
+                // Embedded JSON keeps its characters; the text before it is normalised.
+                let at = Self::embedded_json_start(line).unwrap_or(line.len());
+                let mut out: String = line[..at].chars().map(Self::ascii_quote).collect();
+                out.push_str(&line[at..]);
+                out
             })
             .collect();
         let plain = Self::redact_text(&quoted);

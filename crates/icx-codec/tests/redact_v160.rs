@@ -279,6 +279,11 @@ fn embedded_json_after_many_brackets_and_full_width_content() {
             &["[i]"],
         ),
         (
+            "sshpass -p \u{FF02}my qqzz\u{FF02} ssh host {\"a\": 1}\n",
+            &["qqzz"],
+            &["{\"a\": 1}"],
+        ),
+        (
             "log {\"note\": \"say \u{FF02}hi\u{FF02}\", \"password\": \"qqzz\"}\n",
             &["qqzz"],
             &["\u{FF02}hi\u{FF02}"],
