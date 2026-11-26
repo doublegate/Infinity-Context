@@ -967,6 +967,19 @@ fn cli_shapes_with(line: &str, segs: &[(usize, usize)]) -> String {
                     Some("docker" | "podman" | "nerdctl" | "buildah" | "skopeo" | "helm")
                 )
             });
+        // The `-p` each sshpass word owns: the first after it, in one pass over the words
+        // (review of #110: a per-word rescan was cubic on a line of repeated words).
+        let mut sshpass_p_at = vec![false; w.len()];
+        let mut awaiting = false;
+        for (j, &(a2, b2)) in w.iter().enumerate() {
+            let t = &s[a2..b2];
+            if password_tool(t) == Some("sshpass") {
+                awaiting = true;
+            } else if awaiting && t.starts_with("-p") {
+                sshpass_p_at[j] = true;
+                awaiting = false;
+            }
+        }
         for k in 0..w.len() {
             let (x, y) = w[k];
             let tok = &s[x..y];
@@ -986,14 +999,7 @@ fn cli_shapes_with(line: &str, segs: &[(usize, usize)]) -> String {
             // sshpass's own `-p` is the first after the sshpass word; a later one belongs to the
             // command it wraps (#108: `sshpass -p x ssh -p 2222 host`).
             // Each sshpass invocation in the segment has its own (Codex review of #110).
-            let sshpass_p = sshpass
-                && w.iter()
-                    .enumerate()
-                    .filter(|&(_, &(a2, b2))| password_tool(&s[a2..b2]) == Some("sshpass"))
-                    .filter_map(|(sp, _)| {
-                        (sp + 1..w.len()).find(|&j| s[w[j].0..w[j].1].starts_with("-p"))
-                    })
-                    .any(|j| j == k);
+            let sshpass_p = sshpass && sshpass_p_at[k];
             if (sshpass_p || login) && tok.starts_with("-p") {
                 if tok == "-p" {
                     if let Some((nx, ny)) = next {

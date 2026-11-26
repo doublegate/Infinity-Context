@@ -299,3 +299,18 @@ fn embedded_json_after_many_brackets_and_full_width_content() {
         "{out:?}"
     );
 }
+
+/// Review of #110: a line of repeated sshpass words stays linear.
+#[test]
+fn repeated_sshpass_words_stay_fast() {
+    // Later `-p` words belong to the wrapped command by design; the timing is the point.
+    let line = format!(
+        "{}-p qqzz {}\n",
+        "sshpass ".repeat(4_000),
+        "-x ".repeat(4_000)
+    );
+    let t = std::time::Instant::now();
+    let out = SecretRedactor::redact(&line);
+    assert!(t.elapsed().as_millis() < 2_000, "{:?}", t.elapsed());
+    assert!(!out.contains("qqzz"));
+}
