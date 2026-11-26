@@ -912,3 +912,28 @@ fn unclosed_sensitive_elements_do_not_shield_nested_ones() {
         ("<password <api_key>qqzz</api_key>\n", &["qqzz"], &[]),
     ]);
 }
+
+/// Antigravity round on 5aea531: the look-alike pass keeps JSON valid and secret-free text exact.
+#[test]
+fn lookalike_pass_keeps_json_and_secret_free_text() {
+    for text in [
+        "\u{FEFF}",
+        "caf\u{e9}\u{00A0}menu\n\u{200B}",
+        "a\u{00A0}b\n\n\u{200C}",
+    ] {
+        assert_eq!(icx_codec::SecretRedactor::redact(text), text);
+    }
+    for line in [
+        "{\"a\": \"x\u{FF02}\", \"name\": \"PASS\u{200B}WORD\", \"value\": \"qqzz\"}\n",
+        "{\"a\": \"x\u{FF3C}\", \"name\": \"PASS\u{200B}WORD\", \"value\": \"qqzz\"}\n",
+        "{\"a\": \"x\u{FF02}\", \"args\": [\"\u{200B}--password\", \"qqzz\"]}\n",
+        "{\"note\": \"say \u{FF02}hi\u{FF02}\", \"pass\u{200B}word\": \"qqzz\"}\n",
+    ] {
+        let out = icx_codec::SecretRedactor::redact(line);
+        assert!(!out.contains("qqzz"), "{line:?} -> {out:?}");
+        assert!(
+            serde_json::from_str::<serde_json::Value>(out.trim()).is_ok(),
+            "{out:?}"
+        );
+    }
+}

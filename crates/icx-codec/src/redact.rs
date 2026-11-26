@@ -35,13 +35,19 @@ impl SecretRedactor {
         let plain = Self::redact_text(input);
         let normalized: String = plain.chars().filter_map(Self::normalize_char).collect();
         let combined = Self::redact_text(&normalized);
-        let plain_lines: Vec<&str> = plain.split_inclusive('\n').collect();
-        let combined_lines: Vec<&str> = combined.split_inclusive('\n').collect();
+        // `split`, not `split_inclusive`: a last line holding only removed characters
+        // (`"\u{FEFF}"`) must still pair with its empty counterpart (review of #106).
+        let plain_lines: Vec<&str> = plain.split('\n').collect();
+        let combined_lines: Vec<&str> = combined.split('\n').collect();
         if plain_lines.len() != combined_lines.len() {
             return combined;
         }
         let mut out = String::with_capacity(input.len());
-        for (plain_line, combined_line) in plain_lines.iter().zip(&combined_lines) {
+        for (k, (plain_line, combined_line)) in plain_lines.iter().zip(&combined_lines).enumerate()
+        {
+            if k > 0 {
+                out.push('\n');
+            }
             let same = plain_line
                 .chars()
                 .filter_map(Self::normalize_char)
@@ -67,6 +73,9 @@ impl SecretRedactor {
             | '\u{205F}'
             | '\u{3000}' => Some(' '),
             '\u{00AD}' | '\u{200B}'..='\u{200D}' | '\u{2060}' | '\u{FEFF}' => None,
+            // Full-width quotes, apostrophe, backslash and backtick stay: as ASCII they would
+            // change the text's quoting and break JSON (review of #106).
+            '\u{FF02}' | '\u{FF07}' | '\u{FF3C}' | '\u{FF40}' => Some(c),
             '\u{FF01}'..='\u{FF5E}' => char::from_u32(c as u32 - 0xFEE0),
             _ => Some(c),
         }
