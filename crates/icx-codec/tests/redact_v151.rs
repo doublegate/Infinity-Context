@@ -902,3 +902,13 @@ fn unbalanced_attribute_quotes_on_sensitive_elements() {
         ("<note title=\"a>public</note>\n", &[], &["public"]),
     ]);
 }
+
+/// Commit security review of 6234d36: a sensitive element with no closing tag does not hide the
+/// elements inside what looked like its tag.
+#[test]
+fn unclosed_sensitive_elements_do_not_shield_nested_ones() {
+    check(&[
+        ("<password hint=\"a <token>qqzz</token>\n", &["qqzz"], &[]),
+        ("<password <api_key>qqzz</api_key>\n", &["qqzz"], &[]),
+    ]);
+}

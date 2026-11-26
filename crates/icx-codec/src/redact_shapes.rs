@@ -274,8 +274,10 @@ fn xml_elements(line: &str) -> String {
             }
             from = at + close_tag.len();
         }
+        // No closing tag: rescan from just after this `<`, so elements nested in what looked
+        // like its tag are still checked (security review of #106).
         let Some(close) = close else {
-            pos = gt + 1;
+            pos = open + 1;
             continue;
         };
         pos = hide(&mut s, gt + 1, close, MARK) + close_tag.len();
