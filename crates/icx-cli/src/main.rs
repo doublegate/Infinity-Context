@@ -107,6 +107,7 @@ fn dispatch_cli_args<R: BufRead>(args: &[String], mut reader: R) -> Result<(), S
         }
         "mcp-serve" => serve_mcp_stream(tail, reader, io::stdout().lock()),
         "proxy" => run_proxy_server(tail),
+        "proxy-url" => run_proxy_url(tail).map(|url| println!("{url}")),
         "proxy-transform" => {
             let stdin_buf = read_bounded(&mut reader, MAX_STDIN_BYTES)
                 .map_err(|e| format!("proxy-transform error: {e}"))?;
@@ -237,6 +238,9 @@ Subcommands:",
         [--allow-remote] [--insecure-no-auth]
       Run the Cache-Epoch HTTP/1.1 & SSE reverse proxy (default 127.0.0.1:49380). Requests must
       carry the install token (base URL http://HOST:PORT/t/<token> or header x-icx-token)
+  proxy-url [--listen <HOST:PORT>] [--dir <PATH>]
+      Print this project's base URL for `icx proxy` (http://HOST:PORT/t/<token>/p/<id>): its
+      requests are served from this project's own workspace. Append /v1 for OPENAI_BASE_URL
   proxy-transform [--provider <anthropic|openai|gemini>] [--dir <PATH>]
       Transform an outbound Anthropic (`/v1/messages`), OpenAI (`/v1/chat/completions`, `/v1/responses`), or Gemini (`/v1beta/models/*`) JSON request
   eval-recall [--set <FILE> [--split <train|heldout|all>] [--dir <PATH>] | --synthetic <N> [--vocab <V>]
@@ -1429,48 +1433,6 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
     }
 }
 
-/// Retries a read (`deref`, `slice`, `grep` with an id) that missed in `ws_dir` against the
-/// registered `icx proxy` stores (#117): handles in the proxy's folded packets are stored there.
-/// Each store must pass the same trust check as the project workspace; it is loaded under its
-/// lock and never written.
-fn try_proxy_stores(req_line: &str, ws_dir: &Path) -> Option<(serde_json::Value, PathBuf)> {
-    if McpPagerServer::is_mutating_request(req_line) {
-        return None;
-    }
-    let own = std::fs::canonicalize(ws_dir).ok();
-    for store in workspace::proxy_stores(roots()) {
-        if own.as_ref() == Some(&store) || workspace::verify(&store, roots()).is_err() {
-            continue;
-        }
-        let Ok(lock_guard) = acquire_workspace_lock(&store) else {
-            continue;
-        };
-        let mut mmu = workspace_mmu();
-        if mmu.load_workspace_dir_unlocked(&store).is_err() {
-            continue;
-        }
-        let r = McpPagerServer::handle_jsonrpc(req_line, &mut mmu);
-        drop(lock_guard);
-        // Only a miss moves on: a store that has the handle answers, errors included (an
-        // integrity failure or a bad range must reach the model; review of #118).
-        if !is_not_found(&r) {
-            return Some((r, store));
-        }
-    }
-    None
-}
-
-/// Whether a tool response is a "not found" error.
-fn is_not_found(resp: &serde_json::Value) -> bool {
-    resp.pointer("/result/isError")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false)
-        && resp
-            .pointer("/result/content/0/text")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|s| s.contains("not found"))
-}
-
 /// Names the workspace that was searched in a "not found" tool error, so a stub written to
 /// another workspace (a different project, or an old worktree) is diagnosable (#37).
 fn annotate_not_found(mut resp: serde_json::Value, ws_dir: &Path) -> serde_json::Value {
@@ -1484,9 +1446,10 @@ fn annotate_not_found(mut resp: serde_json::Value, ws_dir: &Path) -> serde_json:
             .filter(|t| t.as_str().is_some_and(|s| s.contains("not found")))
     {
         let note = format!(
-            " (searched workspace {} and the registered icx proxy stores; a handle from another \
-             project or worktree is stored in that project's workspace. If it is in none of \
-             these, this server cannot resolve it: do not retry the same handle)",
+            " (searched workspace {}; a handle from another project or worktree is stored in \
+             that project's workspace, and one from an icx proxy packet (`src:proxy`) in the \
+             workspace of the project in the proxy URL, `icx proxy-url`. This server cannot \
+             resolve it: do not retry the same handle)",
             ws_dir.display()
         );
         if let Some(s) = text.as_str() {
@@ -1576,13 +1539,7 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
                             )
                         } else {
                             drop(lock_guard);
-                            if is_not_found(&r)
-                                && let Some((found, _store)) = try_proxy_stores(&req_line, &ws_dir)
-                            {
-                                found
-                            } else {
-                                annotate_not_found(r, &ws_dir)
-                            }
+                            annotate_not_found(r, &ws_dir)
                         }
                     }
                     Err(e) => {
@@ -1624,6 +1581,78 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
             .map_err(|e| format!("mcp-serve flush error: {e}"))?;
     }
     Ok(())
+}
+
+/// The per-project workspace for the id in a `/p/<id>` proxy path (#117): exactly 16 lowercase hex
+/// characters naming an existing directory under `<state>/workspaces/`.
+fn project_workspace_dir(id: &str) -> Option<PathBuf> {
+    if id.len() != 16
+        || !id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return None;
+    }
+    let dir = roots().state_dir.join("workspaces").join(id);
+    std::fs::symlink_metadata(&dir)
+        .is_ok_and(|m| m.is_dir())
+        .then_some(dir)
+}
+
+/// `icx proxy-url [--listen <HOST:PORT>] [--dir <PATH>]`: prints the base URL that routes this
+/// project's requests through `icx proxy` into its own workspace (#117). Append `/v1` for
+/// `OPENAI_BASE_URL`.
+fn run_proxy_url(args: &[String]) -> Result<String, String> {
+    let mut listen_flag: Option<&str> = None;
+    let mut dir_str: Option<&str> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--listen" => {
+                let value = flag_value_at(args, i, "icx proxy-url")?;
+                set_option_once(&mut listen_flag, "icx proxy-url", "--listen", value)?;
+                i += 2;
+            }
+            "--dir" => {
+                let value = flag_value_at(args, i, "icx proxy-url")?;
+                set_option_once(&mut dir_str, "icx proxy-url", "--dir", value)?;
+                i += 2;
+            }
+            other => return Err(format!("icx proxy-url: unknown argument `{other}`")),
+        }
+    }
+    let ws_dir = resolve_workspace_dir(dir_str);
+    if !matches!(workspace_state(&ws_dir, true), WsState::Ready) {
+        return Err(format!(
+            "icx proxy-url: workspace {} is not usable; run `icx doctor`",
+            ws_dir.display()
+        ));
+    }
+    let canonical = std::fs::canonicalize(&ws_dir).map_err(|e| format!("icx proxy-url: {e}"))?;
+    let id = canonical
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|id| {
+            project_workspace_dir(id).is_some_and(|d| {
+                std::fs::canonicalize(d).ok().as_deref() == Some(canonical.as_path())
+            })
+        })
+        .ok_or_else(|| {
+            format!(
+                "icx proxy-url: {} is not a per-project workspace under the icx state directory",
+                canonical.display()
+            )
+        })?;
+    let env_bind = env::var("ICX_PROXY_BIND")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let listen = listen_flag
+        .or(env_bind.as_deref())
+        .unwrap_or("127.0.0.1:49380");
+    let key = workspace::derived_key(roots(), "proxy-token")
+        .map_err(|e| format!("icx proxy-url: cannot derive the proxy token: {e}"))?;
+    let token = blake3::Hash::from_bytes(key).to_hex().to_string();
+    Ok(format!("http://{listen}/t/{token}/p/{id}"))
 }
 
 fn run_proxy_server(args: &[String]) -> Result<(), String> {
@@ -1688,11 +1717,7 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
     let mut mmu = workspace_mmu();
     let ws_dir = resolve_workspace_dir(dir_str);
     // Creates and seals a missing workspace; trust is re-checked per request by the gate.
-    if matches!(workspace_state(&ws_dir, true), WsState::Ready)
-        && let Err(e) = workspace::register_proxy_store(&ws_dir, roots())
-    {
-        eprintln!("icx proxy: warning: cannot register the store for icx mcp-serve: {e}");
-    }
+    let _ = workspace_state(&ws_dir, true);
     let env_upstream = env::var("ICX_UPSTREAM_URL")
         .ok()
         .filter(|s| !s.trim().is_empty());
@@ -1731,21 +1756,17 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
         ),
         None => eprintln!("icx proxy: listening on http://{local} (no auth)"),
     }
-    // Re-registers the store on every trusted request, so a long-running proxy stays among the
-    // most recent stores (review of #118); an unchanged list is not rewritten.
-    let gate = |dir: &Path| {
-        let ok = workspace::verify(dir, roots()).is_ok();
-        if ok {
-            let _ = workspace::register_proxy_store(dir, roots());
-        }
-        ok
-    };
-    WireProxyTransformer::serve_http_listener_gated(
+    let gate = |dir: &Path| workspace::verify(dir, roots()).is_ok();
+    // `/p/<id>` maps only to an existing per-project workspace under `<state>/workspaces/`; the
+    // gate still checks its trust on every request (#117).
+    let resolver = |id: &str| project_workspace_dir(id);
+    WireProxyTransformer::serve_http_listener_projects(
         &listener,
         provider,
         effective_upstream,
         Some(ws_dir.as_path()),
         Some(&gate),
+        Some(&resolver),
         max_requests,
         token.as_deref(),
         &mut mmu,
@@ -1779,8 +1800,6 @@ fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, S
     let mut mmu = workspace_mmu();
     let icx_dir = resolve_workspace_dir(dir_str);
     if matches!(workspace_state(&icx_dir, true), WsState::Ready) {
-        // The handles this writes are resolvable by `icx mcp-serve` in other workspaces (#117).
-        let _ = workspace::register_proxy_store(&icx_dir, roots());
         return mmu
             .with_locked_workspace(&icx_dir, |mmu| {
                 WireProxyTransformer::transform_for_provider(provider, "/", stdin_buf, mmu)

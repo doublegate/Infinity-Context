@@ -875,6 +875,12 @@ impl InfinityContextMmu {
         (res, true)
     }
 
+    /// The canonical workspace directory last loaded or saved, if any (#117).
+    #[must_use]
+    pub fn loaded_dir(&self) -> Option<&Path> {
+        self.loaded_generation.as_ref().map(|(d, _)| d.as_path())
+    }
+
     /// [`Self::ingest_or_reuse_at_index`] for the wire proxy: the rendered packet depends only on
     /// the content, subject and exit code, so re-rendering a conversation's history gives the
     /// same bytes whatever else the MMU has seen (#116).

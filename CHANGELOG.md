@@ -12,11 +12,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   rebuild the main conversation's folded packets with history-dependent hologram bytes. In the
   first live trial that reset the cache to the system prompt four times, costing about 37% of
   the session's input in relative units (#116).
-- `icx proxy`: the model can expand the packets the proxy folds. Their originals are in the
-  proxy's own store, which the MCP server could not read, so in the trial 18 of 23 `icx` calls
-  failed. The proxy now registers its store, `icx mcp-serve` searches registered stores
-  (read-only, trust-checked) when a handle is not in the project workspace, proxy packets carry
-  a `src:proxy` clause, and a handle in no store gets an error saying not to retry (#117).
+- `icx proxy`: per-project routing. A base URL from the new `icx proxy-url`
+  (`.../t/<token>/p/<id>`) serves that project's requests from its own icx workspace: the
+  folded originals, recall and cache ledger stay there, the project's `icx` MCP tool can
+  expand every packet (in the trial, 18 of 23 calls failed on handles stored only in the
+  proxy's store), and no other project can. An unknown or untrusted project is refused with
+  `403`. Proxy packets carry a `src:proxy` clause, and a handle the server cannot resolve gets
+  an error saying not to retry (#117).
 - Redactor shapes found in the v1.5.1 review rounds, each also leaked by v1.5.0 (#107, #108; each
   with a test in `crates/icx-codec/tests/redact_v160.rs`):
   - a multi-line value after an apostrophe on the same line (`don't log; password = '''`);

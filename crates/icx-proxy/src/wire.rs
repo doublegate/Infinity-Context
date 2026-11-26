@@ -83,6 +83,20 @@ impl SsePendingState {
 /// [`WireProxyTransformer::serve_http_listener_gated`]).
 pub type WorkspaceGate = dyn Fn(&Path) -> bool + Sync;
 
+/// Maps the project id of a `/p/<id>` request path to that project's icx workspace, or `None`
+/// for an unknown id (#117). A request naming a project is served only from its own workspace:
+/// its folded originals, recall and cache ledger stay in that project.
+pub type ProjectResolver = dyn Fn(&str) -> Option<std::path::PathBuf> + Sync;
+
+/// Per-project routing for [`WireProxyTransformer::serve_http_listener_projects`].
+#[derive(Clone, Copy)]
+struct ProjectRouting<'a> {
+    resolver: &'a ProjectResolver,
+    /// The MMU as configured before any workspace was loaded; restored whenever a request's
+    /// workspace differs from the one last loaded, so no state crosses projects.
+    pristine: &'a InfinityContextMmu,
+}
+
 /// Transforms outbound LLM API requests to enforce Prefix-Cache-Locked Epochs (`arXiv:2610.28577`)
 /// and inject the Ephemeral Tail Slot without invalidating provider KV caches.
 #[derive(Clone, Debug, Default)]
@@ -2179,6 +2193,7 @@ impl WireProxyTransformer {
             workspace_dir,
             None,
             None,
+            None,
             &shared_mmu,
         )
     }
@@ -2280,6 +2295,26 @@ impl WireProxyTransformer {
     }
 
     /// Removes a leading `/t/<token>` segment so routing sees the provider path.
+    /// Splits a leading `/p/<id>` project segment off `path` (after the token prefix is
+    /// removed). The id must be 1 to 64 characters of `[0-9a-zA-Z_-]`; anything else is not a
+    /// project segment and the path is returned unchanged.
+    fn split_project_prefix(path: &str) -> (Option<&str>, &str) {
+        if let Some(rest) = path.strip_prefix("/p/") {
+            let end = rest.find('/').unwrap_or(rest.len());
+            let id = &rest[..end];
+            if !id.is_empty()
+                && id.len() <= 64
+                && id
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            {
+                let tail = &rest[end..];
+                return (Some(id), if tail.is_empty() { "/" } else { tail });
+            }
+        }
+        (None, path)
+    }
+
     fn strip_token_prefix(path: &str) -> String {
         match path.strip_prefix("/t/") {
             Some(rest) => match rest.find('/') {
@@ -2299,6 +2334,7 @@ impl WireProxyTransformer {
         workspace_dir: Option<&Path>,
         workspace_gate: Option<&WorkspaceGate>,
         auth_token: Option<&str>,
+        routing: Option<ProjectRouting<'_>>,
         shared_mmu: &std::sync::Mutex<&mut InfinityContextMmu>,
     ) -> io::Result<()> {
         let mut buf_reader = BufReader::new(reader);
@@ -2313,7 +2349,9 @@ impl WireProxyTransformer {
         let parts: Vec<&str> = request_line.split_whitespace().collect();
         let method = parts.first().copied().unwrap_or("GET");
         let raw_path = parts.get(1).copied().unwrap_or("/");
-        let routed_path = Self::strip_token_prefix(raw_path);
+        let token_stripped = Self::strip_token_prefix(raw_path);
+        let (project_id, path) = Self::split_project_prefix(&token_stripped);
+        let routed_path = path.to_owned();
         let path = routed_path.as_str();
 
         let mut content_length = 0usize;
@@ -2411,6 +2449,21 @@ impl WireProxyTransformer {
         }
         let body_str = String::from_utf8_lossy(&body_bytes).into_owned();
 
+        // A request naming a project uses that project's workspace, or is refused: an unknown
+        // project is never served from a shared store (#117).
+        let project_dir = project_id.and_then(|id| routing.and_then(|r| (r.resolver)(id)));
+        if project_id.is_some() && project_dir.is_none() {
+            let err = json!({ "error": "unknown or untrusted icx project in the proxy URL; run `icx proxy-url` in the project" }).to_string();
+            write!(
+                writer,
+                "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                err.len(),
+                err
+            )?;
+            return writer.flush();
+        }
+        let workspace_dir = project_dir.as_deref().or(workspace_dir);
+
         // Execute the local workspace read-modify-write under the exclusive lock and release both
         // the workspace lock and the in-memory MMU mutex BEFORE any upstream network round-trip.
         let (transformed_res, resolved_provider, trusted_ws) = {
@@ -2422,10 +2475,32 @@ impl WireProxyTransformer {
             // start takes effect and a workspace whose ownership, mode or seal changed is skipped.
             let ws_opt =
                 workspace_dir.filter(|p| p.exists() && workspace_gate.is_none_or(|gate| gate(p)));
+            if project_id.is_some() && ws_opt.is_none() {
+                // The named project's workspace failed its trust check: refuse rather than serve
+                // the request without (or from another) workspace.
+                drop(mmu_guard);
+                let err = json!({ "error": "the icx workspace of the project in the proxy URL is untrusted; run `icx doctor` in the project" }).to_string();
+                write!(
+                    writer,
+                    "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    err.len(),
+                    err
+                )?;
+                return writer.flush();
+            }
             let lock_guard = match ws_opt {
                 Some(p) => {
                     let g = InfinityContextMmu::acquire_workspace_lock(p)
                         .map_err(|e| io::Error::other(e.to_string()))?;
+                    if let Some(r) = routing {
+                        // Another workspace than the one loaded last: start from the pristine
+                        // MMU, so nothing (emitted blocks included) crosses projects.
+                        let canonical =
+                            std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+                        if mmu.loaded_dir() != Some(canonical.as_path()) {
+                            *mmu = r.pristine.clone();
+                        }
+                    }
                     mmu.load_workspace_dir_unlocked(p)
                         .map_err(|e| io::Error::other(e.to_string()))?;
                     Some((p, g))
@@ -2664,6 +2739,35 @@ impl WireProxyTransformer {
         auth_token: Option<&str>,
         mmu: &mut InfinityContextMmu,
     ) -> io::Result<usize> {
+        Self::serve_http_listener_projects(
+            listener,
+            default_provider,
+            upstream_override,
+            workspace_dir,
+            workspace_gate,
+            None,
+            max_requests,
+            auth_token,
+            mmu,
+        )
+    }
+
+    /// [`Self::serve_http_listener_gated`] with per-project routing (#117): a request whose path
+    /// (after the token) starts with `/p/<id>` is served from the workspace `project_resolver`
+    /// returns for `<id>`, after the same trust gate, and is refused with 403 when there is none.
+    /// Requests without the segment use `workspace_dir`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn serve_http_listener_projects(
+        listener: &TcpListener,
+        default_provider: Option<ProviderFormat>,
+        upstream_override: Option<&str>,
+        workspace_dir: Option<&Path>,
+        workspace_gate: Option<&WorkspaceGate>,
+        project_resolver: Option<&ProjectResolver>,
+        max_requests: Option<usize>,
+        auth_token: Option<&str>,
+        mmu: &mut InfinityContextMmu,
+    ) -> io::Result<usize> {
         if max_requests == Some(0) {
             return Ok(0);
         }
@@ -2671,6 +2775,11 @@ impl WireProxyTransformer {
         // Header files of curl children killed mid-request are swept periodically too, not only at
         // start (PR #20 review).
         let mut last_sweep = std::time::Instant::now();
+        let pristine = mmu.clone();
+        let routing = project_resolver.map(|resolver| ProjectRouting {
+            resolver,
+            pristine: &pristine,
+        });
         let shared_mmu = std::sync::Mutex::new(mmu);
         let shared_mmu_ref = &shared_mmu;
         std::thread::scope(|scope| {
@@ -2703,6 +2812,7 @@ impl WireProxyTransformer {
                         workspace_dir,
                         workspace_gate,
                         auth_token,
+                        routing,
                         shared_mmu_ref,
                     );
                 });
@@ -3171,6 +3281,21 @@ mod tests {
             Some("1y"),
         );
         assert!(bad.get("prompt_cache_options").is_none());
+    }
+
+    /// #117: the `/p/<id>` project segment is split off only when the id is well formed.
+    #[test]
+    fn project_prefix_is_split_only_for_valid_ids() {
+        let split = WireProxyTransformer::split_project_prefix;
+        assert_eq!(
+            split("/p/0123abcd/v1/messages"),
+            (Some("0123abcd"), "/v1/messages")
+        );
+        assert_eq!(split("/p/abc"), (Some("abc"), "/"));
+        assert_eq!(split("/v1/messages"), (None, "/v1/messages"));
+        assert_eq!(split("/p//v1"), (None, "/p//v1"));
+        assert_eq!(split("/p/../x"), (None, "/p/../x"));
+        assert_eq!(split("/p/a.b/x"), (None, "/p/a.b/x"));
     }
 
     /// #116: re-transforming a conversation after other conversations' traffic yields the same
