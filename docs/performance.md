@@ -83,6 +83,7 @@ ceilings are multiplied by 3 in CI and by 100 in debug builds.
 | FastCDC + BLAKE3 CAS ingest, 64 KiB | `<= 250 µs` | 86.72 µs |
 | Telepathy ring publish, in-process backend | `<= 5 µs` | 58.3 ns / slot |
 | Hook round-trip (`PostToolUse` virtualization, in-process MMU) | `<= 1,000 µs` | 244.05 µs |
+| Redactor, 64 KB of text with a no-break space every 15 words (v1.6.0, #108) | `<= 10,000 µs` | 4.8 ms (v1.6.0) |
 | 50-turn synthetic transcript: byte-weighted prefix reuse | `>= 90%` | 95.46% over all turns (95.38% excluding seal turns) |
 
 **Compression ratio.** An AHTL packet is a structural skeleton plus a `#icx:` handle, not a

@@ -228,3 +228,62 @@ a continuation. Any other planted marker, or text after one, still opens it.
   icx sees mixed text (logs, diffs, shell output) where no grammar applies, and the fallback rules
   would still be needed. Rejected: trusting the "next field" boundary inside code (`, name=`),
   which is where most PR #27 bypasses lived; only strictly parsed JSON field lists split there.
+
+## Amendments in v1.6.0 (#107, #108, 2026-11-26)
+
+These shapes were found in the review rounds of #106. v1.5.0 leaks every one of them, so none
+was a regression, and they were deferred rather than fixed under review pressure.
+
+- **Multi-line value after an apostrophe (#107).** The apostrophe-blind second scan now runs on
+  any line that holds an apostrophe, not only one that ends inside one, because
+  `don't log; password = '''` balances its apostrophes. It ignores apostrophes only: double quotes
+  and backticks stay quoted, so a closed `"…"` before an apostrophe cannot arm a continuation.
+- **Planted markers.** A marker glued to `#`, `//` or `\` (`[REDACTED:X]#secret`) is one shell
+  word; these characters start a comment or escape only after a space.
+- **PIN and OTP.** A form or URL parameter separator (`&`, `#`) or the end of an enclosing string
+  also ends the number (`?otp=482913&user=a`, `echo "USER_PIN=482913"`, `log("pin: 1234")`).
+- **Subscripts and `=>`.** Prefixed literals (`r"…"`, `f"…"`, `b'…'`), triple-quoted literals
+  and backtick literals after `=>` are values.
+- **CLI.**
+  - With a quote left open on the line, both segment readings run: the quote-aware one, where the
+    open quote's rest is one segment, and the quote-blind one.
+  - sshpass's `-p` is only the first after the sshpass word; a later one belongs to the wrapped
+    command (`ssh -p 2222` stays).
+  - The `echo …` rule for `--password-stdin` needs a pipe between the two commands.
+  - JSON embedded after a prefix (`log {"cmd": "…"}`) is redacted structurally first, so its
+    strings are decoded; the line rules still run on the whole line.
+- **YAML.**
+  - An unquoted `# comment` is stripped before the name, value and block-key checks.
+  - The name/value window is 200 lines, skipping deeper lines, so a long `value: |` block before
+    `name:` is found.
+  - A whole-marker line ends a sensitive block only when it is less indented than the key.
+- **Full-width quotes.** Raw text and text with full-width quote-like characters (`＂ ＇ ＼ ｀`)
+  made ASCII each hide shapes the other breaks: `-p ＂my secret＂` needs the quotes, while an ASCII
+  literal holding one (`"a＂ secret"`) needs them left alone (reviews of #110). Each view runs the
+  whole look-alike pipeline on its own (the first pass, then the second with every other
+  look-alike normalised), so its two passes stay consistent. The results are merged per line:
+  equal results, or the only one that changed the line, are used; where both changed it
+  differently, the line is hidden from the earliest point either hid (fail closed, at the cost
+  of over-redacting such lines). JSON lines, judged on the view with other look-alikes
+  normalised, keep these characters as string content; text before embedded JSON is normalised.
+  Lines nothing changed keep their original bytes; after a collapsed key block they pair with
+  their input lines from the start or the end.
+- **Apostrophe scan.** The apostrophe-blind continuation scan runs on every line holding an
+  apostrophe (fail closed), on a copy where complete single-quoted value literals are blanked
+  (opened after `=`, `(`, `,`, `[`, `{` or `:`, closed on the line, not a label, not a
+  triple-quote opener, and not inside a double-quoted string or code span), so
+  `p = 'password = '` cannot arm a multi-line value while `don't`, `admins'` and `'outer:` still
+  do.
+- **Type words (#111, owner decision).** `integer`, `string`, `boolean`, `object` and `number`
+  after a sensitive key are type annotations (`cache_write_tokens: integer`), also after
+  `optional` and before a literal default (`optional integer (default: 0)`, where the default is
+  a number, a boolean or null). A backtick after
+  the word ends the annotation only when it closes a code span opened before the key and nothing
+  is glued to it, so a value glued to the backtick, or a backtick with no code span opened
+  before the key, stays hidden.
+- **Cost (#108).** In the second look-alike pass, a line that the first pass already redacted and
+  that holds no look-alike is copied through, with no multi-line value or key block open: a
+  second pass leaves such a line unchanged. A property test checks that the skip changes no output.
+  On 69 KB of text with no-break spaces this cut the median from 16.0 to 14.6 ms; the
+  remaining cost is the normalised lines themselves. `icx benchmark` gates the look-alike path at
+  10 ms for its 64 KB fixture (4.8 ms measured).
