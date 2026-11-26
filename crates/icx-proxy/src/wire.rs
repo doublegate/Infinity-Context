@@ -424,7 +424,7 @@ impl WireProxyTransformer {
                 if mmu.is_emitted(s) {
                     *occ_idx += 1;
                 } else if Self::neutralized_len(s, mmu) >= threshold {
-                    let (res, _) = mmu.ingest_or_reuse_at_index(
+                    let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                         *occ_idx,
                         AgentKind::ClaudeCode,
                         subj,
@@ -455,7 +455,7 @@ impl WireProxyTransformer {
                         if mmu.is_emitted(t) {
                             *occ_idx += 1;
                         } else if Self::neutralized_len(t, mmu) >= threshold {
-                            let (res, _) = mmu.ingest_or_reuse_at_index(
+                            let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                                 *occ_idx,
                                 AgentKind::ClaudeCode,
                                 &block_subj,
@@ -472,7 +472,7 @@ impl WireProxyTransformer {
                                 if mmu.is_emitted(c) {
                                     *occ_idx += 1;
                                 } else if Self::neutralized_len(c, mmu) >= threshold {
-                                    let (res, _) = mmu.ingest_or_reuse_at_index(
+                                    let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                                         *occ_idx,
                                         AgentKind::ClaudeCode,
                                         &block_subj,
@@ -491,7 +491,7 @@ impl WireProxyTransformer {
                                             *occ_idx += 1;
                                         } else if Self::neutralized_len(nt, mmu) >= threshold {
                                             let n_subj = format!("{block_subj}_n{n_idx}");
-                                            let (res, _) = mmu.ingest_or_reuse_at_index(
+                                            let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                                                 *occ_idx,
                                                 AgentKind::ClaudeCode,
                                                 &n_subj,
@@ -658,7 +658,7 @@ impl WireProxyTransformer {
                                     occ_idx += 1;
                                 } else if Self::neutralized_len(t, mmu) >= threshold {
                                     let subj = format!("gemini_turn_{idx}_p{p_idx}");
-                                    let (res, _) = mmu.ingest_or_reuse_at_index(
+                                    let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                                         occ_idx,
                                         AgentKind::AntigravityCli,
                                         &subj,
@@ -682,7 +682,7 @@ impl WireProxyTransformer {
                                         } else if Self::neutralized_len(t, mmu) >= threshold {
                                             let subj =
                                                 format!("gemini_turn_{idx}_p{p_idx}_fr_{key}");
-                                            let (res, _) = mmu.ingest_or_reuse_at_index(
+                                            let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                                                 occ_idx,
                                                 AgentKind::AntigravityCli,
                                                 &subj,
@@ -2958,7 +2958,7 @@ impl WireProxyTransformer {
                         return;
                     }
                     if Self::neutralized_len(s, mmu) >= threshold {
-                        let (res, _) = mmu.ingest_or_reuse_at_index(
+                        let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                             *occ_idx,
                             AgentKind::Codex,
                             subj,
@@ -2978,7 +2978,7 @@ impl WireProxyTransformer {
                                 *occ_idx += 1;
                             } else if Self::neutralized_len(t, mmu) >= threshold {
                                 let part_subj = format!("{subj}_p{p_idx}");
-                                let (res, _) = mmu.ingest_or_reuse_at_index(
+                                let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                                     *occ_idx,
                                     AgentKind::Codex,
                                     &part_subj,
@@ -3000,7 +3000,7 @@ impl WireProxyTransformer {
             if mmu.is_emitted(out_s) {
                 *occ_idx += 1;
             } else if Self::neutralized_len(out_s, mmu) >= threshold {
-                let (res, _) = mmu.ingest_or_reuse_at_index(
+                let (res, _) = mmu.ingest_or_reuse_at_index_stable(
                     *occ_idx,
                     AgentKind::Codex,
                     subj,
@@ -3171,6 +3171,65 @@ mod tests {
             Some("1y"),
         );
         assert!(bad.get("prompt_cache_options").is_none());
+    }
+
+    /// #116: re-transforming a conversation after other conversations' traffic yields the same
+    /// folded bytes, so the provider cache prefix survives concurrent sessions and subagents.
+    #[test]
+    fn folded_history_is_byte_stable_across_unrelated_traffic() {
+        fn output(seed: usize, lines: usize) -> String {
+            use std::fmt::Write as _;
+            let mut s = String::new();
+            for k in 0..lines {
+                let v = (seed * 7919 + k * 104_729) % 100_003;
+                let _ = writeln!(s, "{seed}-{k} result row with value {v} and status ok");
+            }
+            s
+        }
+        fn conversation(tag: &str, seed: usize, turns: usize) -> Value {
+            let mut msgs = Vec::new();
+            for t in 0..turns {
+                let id = format!("tu_{tag}_{t}");
+                msgs.push(json!({ "role": "user", "content": format!("{tag} step {t}") }));
+                msgs.push(json!({ "role": "assistant", "content": [{ "type": "tool_use", "id": id, "name": "Bash", "input": { "command": "ls" } }] }));
+                msgs.push(json!({ "role": "user", "content": [{ "type": "tool_result", "tool_use_id": id, "content": output(seed * 100 + t, 120) }] }));
+                msgs.push(json!({ "role": "assistant", "content": "ok" }));
+            }
+            msgs.push(json!({ "role": "user", "content": "next" }));
+            json!({ "model": "m", "max_tokens": 16, "messages": msgs })
+        }
+        let mut mmu = InfinityContextMmu::default();
+        let tx = |mmu: &mut InfinityContextMmu, body: &Value| -> Vec<Value> {
+            let out: Value = serde_json::from_str(
+                &WireProxyTransformer::transform_anthropic_messages(&body.to_string(), mmu)
+                    .unwrap(),
+            )
+            .unwrap();
+            out["messages"].as_array().unwrap().clone()
+        };
+        let main = conversation("main", 1, 6);
+        let before = tx(&mut mmu, &main);
+        assert!(
+            before.iter().any(|m| m.to_string().contains("#icx:")),
+            "the fixture folds something"
+        );
+        // Subagent-like conversations: same agent kind, occurrence indices from 0.
+        for sub in 0..12 {
+            let _ = tx(&mut mmu, &conversation(&format!("sub{sub}"), 50 + sub, 6));
+        }
+        let after = tx(&mut mmu, &main);
+        let last = before.len() - 1; // the final message carries the tail slot, which moves by design
+        for i in 0..last {
+            assert_eq!(
+                before[i], after[i],
+                "message {i} changed after unrelated traffic"
+            );
+        }
+        // A fresh MMU (a restarted proxy) renders the same folded bytes too.
+        let fresh = tx(&mut InfinityContextMmu::default(), &main);
+        for i in 0..last {
+            assert_eq!(before[i], fresh[i], "message {i} differs after a restart");
+        }
     }
 
     /// T-81-001 through the public transform: Responses `input` arrays get the breakpoint on an

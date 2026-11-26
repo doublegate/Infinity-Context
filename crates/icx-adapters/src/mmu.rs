@@ -133,6 +133,9 @@ pub struct InfinityContextMmu {
     pub bus: SeqlockTelemetryBus,
     pub tool_virtualize_threshold: usize,
     pub workspace_hash: u64,
+    /// Set while the wire proxy ingests a request (#116): rendered packets then depend only on
+    /// their content, never on what the MMU observed before. Not persisted.
+    stable_packets: bool,
     agent_read_cursors: BTreeMap<u8, u64>,
     /// See `PersistedMmuState::pending_resume` (T-73-002).
     pending_resume: BTreeSet<u8>,
@@ -183,6 +186,7 @@ impl InfinityContextMmu {
             graph: BiTemporalGraph::new(),
             bus,
             tool_virtualize_threshold: DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES,
+            stable_packets: false,
             workspace_hash: 0x4943_585F_574F_524B,
             agent_read_cursors: BTreeMap::new(),
             pending_resume: BTreeSet::new(),
@@ -837,6 +841,31 @@ impl InfinityContextMmu {
         (res, true)
     }
 
+    /// [`Self::ingest_or_reuse_at_index`] for the wire proxy: the rendered packet depends only on
+    /// the content, subject and exit code, so re-rendering a conversation's history gives the
+    /// same bytes whatever else the MMU has seen (#116).
+    pub fn ingest_or_reuse_at_index_stable(
+        &mut self,
+        occurrence_idx: usize,
+        agent: AgentKind,
+        raw_subject: &str,
+        raw_text: &str,
+        exit_code: Option<i32>,
+        force_anomaly: bool,
+    ) -> (IngestResult, bool) {
+        let prev = std::mem::replace(&mut self.stable_packets, true);
+        let out = self.ingest_or_reuse_at_index(
+            occurrence_idx,
+            agent,
+            raw_subject,
+            raw_text,
+            exit_code,
+            force_anomaly,
+        );
+        self.stable_packets = prev;
+        out
+    }
+
     /// Returns `true` if `occurrence_idx` is already recorded for `agent` in
     /// `self.agent_occurrences` or `self.indexed_occurrences`.
     #[inline]
@@ -1045,6 +1074,19 @@ impl InfinityContextMmu {
         if was_redacted {
             receipt.hologram_bytes[7] |= icx_codec::FLAG_IS_REDACTED;
         }
+        // The packet's hologram as rendered. The trajectory quadrant (bytes 4-5), the surprise
+        // (byte 6) and the tier bits (byte 7, bits 0-1) depend on everything observed before.
+        // The wire proxy re-renders history on every request, so there they are fixed and the
+        // bytes depend on the content alone; otherwise the same folded message renders
+        // differently after other traffic and busts the provider cache (#116). The index keeps
+        // the full receipt.
+        let mut rendered_hologram = receipt.hologram_bytes;
+        if self.stable_packets {
+            rendered_hologram[4] = 0;
+            rendered_hologram[5] = 0;
+            rendered_hologram[6] = 0;
+            rendered_hologram[7] = (rendered_hologram[7] & !0b11) | 1;
+        }
         if body_redacted {
             self.redacted_artifacts.insert(artifact_id);
         }
@@ -1053,7 +1095,7 @@ impl InfinityContextMmu {
             subject,
             &model_view,
             Some(artifact_id),
-            receipt.hologram_bytes,
+            rendered_hologram,
         );
         packet.clauses.retain(|c| c.key != "exit_code");
         if let Some(code) = exit_code {
