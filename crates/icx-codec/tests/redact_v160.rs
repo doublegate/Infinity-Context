@@ -486,3 +486,20 @@ fn optional_type_words_and_literal_defaults() {
         ("password: optional qqzz\n", &["qqzz"], &[]),
     ]);
 }
+
+/// Commit security review of ede7fbf: a long numeric default may be a PIN or token.
+#[test]
+fn long_numeric_defaults_stay_hidden() {
+    check(&[
+        (
+            "api_key: optional integer (default: 12345678)\n",
+            &["12345678"],
+            &[],
+        ),
+        (
+            "token_count: optional integer (default: 100)\n",
+            &[],
+            &["(default: 100)"],
+        ),
+    ]);
+}

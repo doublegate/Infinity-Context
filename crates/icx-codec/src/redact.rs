@@ -3036,7 +3036,10 @@ impl SecretRedactor {
         let inner = s.strip_prefix("(default:")?;
         let close = inner.find(')')?;
         let value = inner[..close].trim();
+        // A short number only (at most 3 digits): 4 or more digits may be a PIN or a numeric
+        // token, so such a default stays a value (commit security review of ede7fbf).
         let literal = (!value.is_empty()
+            && value.bytes().filter(u8::is_ascii_digit).count() <= 3
             && value
                 .bytes()
                 .all(|b| b.is_ascii_digit() || b == b'.' || b == b'-'))
