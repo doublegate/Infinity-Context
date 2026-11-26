@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- `icx proxy`: folded history now renders the same bytes on every request, so the provider's
+  prompt cache survives concurrent conversations. Before, a subagent's traffic made the proxy
+  rebuild the main conversation's folded packets with history-dependent hologram bytes. In the
+  first live trial that reset the cache to the system prompt four times, costing about 37% of
+  the session's input in relative units (#116).
 - Redactor shapes found in the v1.5.1 review rounds, each also leaked by v1.5.0 (#107, #108; each
   with a test in `crates/icx-codec/tests/redact_v160.rs`):
   - a multi-line value after an apostrophe on the same line (`don't log; password = '''`);
