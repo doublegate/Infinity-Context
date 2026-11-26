@@ -1650,12 +1650,20 @@ fn run_proxy_url(args: &[String]) -> Result<String, String> {
         .or(env_bind.as_deref())
         .unwrap_or("127.0.0.1:49380")
         .trim();
-    // HOST:PORT only: a scheme or path would produce a broken URL (review of #118).
-    let well_formed = !listen.contains('/')
-        && !listen.chars().any(char::is_whitespace)
-        && listen
-            .rsplit_once(':')
-            .is_some_and(|(h, p)| !h.is_empty() && p.parse::<u16>().is_ok());
+    // HOST:PORT only, as a URL authority: a hostname or IPv4 address, or a bracketed IPv6
+    // address, and a port from 1 (review of #118).
+    let well_formed = listen.rsplit_once(':').is_some_and(|(host, port)| {
+        let port_ok = port.parse::<u16>().is_ok_and(|p| p > 0);
+        let host_ok = if let Some(v6) = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
+            v6.parse::<std::net::Ipv6Addr>().is_ok()
+        } else {
+            !host.is_empty()
+                && host
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+        };
+        port_ok && host_ok
+    });
     if !well_formed {
         return Err(format!(
             "icx proxy-url: `{listen}` is not HOST:PORT (as for `icx proxy --listen`)"

@@ -3298,6 +3298,33 @@ mod tests {
         assert!(bad.get("prompt_cache_options").is_none());
     }
 
+    /// The project server refuses an MMU that has already loaded a workspace (review of #118).
+    #[test]
+    fn project_server_refuses_a_loaded_mmu() {
+        let dir = std::env::temp_dir().join(format!("icx-proj-pristine-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut mmu = InfinityContextMmu::default();
+        mmu.save_workspace_dir(&dir).unwrap();
+        assert!(mmu.loaded_dir().is_some());
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let resolver = |_: &str| None;
+        let err = WireProxyTransformer::serve_http_listener_projects(
+            &listener,
+            None,
+            None,
+            None,
+            None,
+            Some(&resolver),
+            Some(1),
+            None,
+            &mut mmu,
+        )
+        .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// #117: the `/p/<id>` project segment is split off only when the id is well formed.
     #[test]
     fn project_prefix_is_split_only_for_valid_ids() {

@@ -1176,19 +1176,23 @@ impl InfinityContextMmu {
                 Some(code.to_string()),
             ));
         }
-        if stable {
-            // Marks a packet written by the wire proxy (#117): its handle is stored in the
-            // workspace the request was routed to (the project's own, via `icx proxy-url`).
-            // Constant, so the packet stays byte-stable (#116); a `src` clause the content
-            // produced is replaced.
-            packet.clauses.retain(|c| c.key != "src");
-            packet.clauses.push(icx_codec::AhtlClause::new(
+        // Marks a packet written by the wire proxy (#117): its handle is stored in the workspace
+        // the request was routed to (the project's own, via `icx proxy-url`). Constant, so the
+        // packet stays byte-stable (#116); a `src` clause the content produced is replaced in
+        // the rendering only. The graph below indexes the content's own clauses, so the marker
+        // never becomes a shared `src -> proxy` hub (review of #118).
+        let ahtl_rendered = if stable {
+            let mut marked = packet.clone();
+            marked.clauses.retain(|c| c.key != "src");
+            marked.clauses.push(icx_codec::AhtlClause::new(
                 icx_codec::ClauseOp::Neutral,
                 "src",
                 Some("proxy".to_owned()),
             ));
-        }
-        let ahtl_rendered = packet.render();
+            marked.render()
+        } else {
+            packet.render()
+        };
 
         // Populate Bi-Temporal Graph with extracted clause relations
         let edge_weight = receipt.verdict.momentum_surprise.max(0.2);

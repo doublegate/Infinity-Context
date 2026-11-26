@@ -273,3 +273,51 @@ fn proxy_routes_each_project_into_its_own_workspace() {
     assert_eq!(ledger_b.lines().count(), 1, "{ledger_b}");
     let _ = std::fs::remove_dir_all(&base);
 }
+
+#[test]
+fn proxy_url_rejects_bad_arguments_and_non_project_workspaces() {
+    let base = base_dir("proxy-url-args");
+    let a = base.join("project-a");
+    std::fs::create_dir_all(&a).unwrap();
+    run({
+        let mut c = icx(&base, &a);
+        c.arg("init");
+        c
+    });
+    let fails = |args: &[&str]| {
+        let out = icx(&base, &a).arg("proxy-url").args(args).output().unwrap();
+        assert!(!out.status.success(), "{args:?}: {out:?}");
+        String::from_utf8_lossy(&out.stderr).into_owned()
+    };
+    for bad in [
+        "http://127.0.0.1:49380",
+        "127.0.0.1:0",
+        "127.0.0.1",
+        "::1:49380",
+        "host@x:49380",
+        ":49380",
+    ] {
+        let err = fails(&["--listen", bad]);
+        assert!(err.contains("HOST:PORT"), "{bad}: {err}");
+    }
+    assert!(fails(&["--bogus"]).contains("unknown argument"));
+    // A workspace outside `<state>/workspaces/` has no project id.
+    let other = base.join("other-ws");
+    run({
+        let mut c = icx(&base, &a);
+        c.args(["init", "--dir"]).arg(&other);
+        c
+    });
+    let err = fails(&["--dir", other.to_str().unwrap()]);
+    assert!(err.contains("not a per-project workspace"), "{err}");
+    // Accepted forms.
+    for good in ["127.0.0.1:49380", "localhost:8080", "[::1]:49380"] {
+        let url = run({
+            let mut c = icx(&base, &a);
+            c.args(["proxy-url", "--listen", good]);
+            c
+        });
+        assert!(url.starts_with(&format!("http://{good}/t/")), "{url}");
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
