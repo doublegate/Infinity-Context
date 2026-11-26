@@ -249,7 +249,7 @@ def build_diagram_1_master_architecture() -> str:
   <!-- Stage 4: Prefix-Cache-Locked Virtual Window -->
   <rect x="905" y="340" width="645" height="205" rx="10" fill="#0F172A" stroke="#A855F7" stroke-width="2"/>
   <text x="1227" y="365" text-anchor="middle" fill="#C084FC" font-family="DejaVu Sans, sans-serif" font-size="13.5" font-weight="bold">
-    STAGE 4: 4-Zone Prefix-Cache-Locked Virtual Window (&gt;= 94% KV Hit Rate)
+    STAGE 4: 4-Zone Prefix-Cache-Locked Virtual Window (~95% byte-prefix reuse, simulation)
   </text>
   <rect x="922" y="378" width="610" height="32" rx="5" fill="url(#cyanBox)" stroke="#00E5FF" stroke-width="1.2"/>
   <text x="1227" y="399" text-anchor="middle" fill="#E0F2FE" font-family="DejaVu Sans Mono, monospace" font-size="10.6">
@@ -861,7 +861,7 @@ def build_diagram_4_multi_index_retrieval() -> str:
     • Appended AFTER Frozen Prefix Epochs (Zone 1 &amp; 2)
   </text>
   <text x="1138" y="578" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="10.8" font-weight="bold">
-    • Zero Prefix Cache Invalidation (&gt;= 94% Hit Rate)
+    • Stable Prompt Prefix (~95% byte reuse, simulation)
   </text>
 
   <rect x="1125" y="622" width="420" height="95" rx="8" fill="url(#emeraldBox)" stroke="#10B981" stroke-width="1.5"/>
@@ -1211,7 +1211,7 @@ def build_diagram_6_pareto_frontier() -> str:
 
   <rect x="980" y="410" width="555" height="112" rx="8" fill="url(#emeraldBox)" stroke="#10B981" stroke-width="1.5"/>
   <text x="996" y="435" fill="#34D399" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="bold">
-    3. Prefix-Cache-Locked Epochs Preserve Provider KV Cache (&gt;= 94% Hit)
+    3. Prefix-Cache-Locked Epochs Keep the Prompt Prefix Stable (byte reuse)
   </text>
   <text x="996" y="458" fill="#E2E8F0" font-family="DejaVu Sans Mono, monospace" font-size="10.6">
     • Conventional `/compact` rewrites the conversation history, invalidating
@@ -1245,7 +1245,7 @@ def build_diagram_6_pareto_frontier() -> str:
   <text x="70" y="792" fill="#FCA5A5" font-family="DejaVu Sans Mono, monospace" font-size="11.5" xml:space="preserve">English Prose `/compact`        28.0x         19.0% (destroys hex)       12.0% (busts KV)    Yes (Extra LLM call)    3,500,000.0 µs</text>
   <text x="70" y="818" fill="#D8B4FE" font-family="DejaVu Sans Mono, monospace" font-size="11.5" xml:space="preserve">LLMLingua-2 Token Pruning        8.5x         61.4% (drops syntax)       18.0% (mutates)     Yes (Requires BERT GPU)    45,000.0 µs</text>
   <text x="70" y="844" fill="#F9A8D4" font-family="DejaVu Sans Mono, monospace" font-size="11.5" xml:space="preserve">Activation Beacons / ICAE       16.0x         42.0% (soft vectors)        0.0%               NO (Needs custom weights)  18,000.0 µs</text>
-  <text x="70" y="870" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="11.5" font-weight="bold" xml:space="preserve">AHTL v1.0 (Profile A / B)   18.4x–72.1x      100.0% (Lossless CAS)     &gt;=94.0% (Epoch Lock)  YES (Pure UTF-8 Dialect)      197.85 µs</text>
+  <text x="70" y="870" fill="#34D399" font-family="DejaVu Sans Mono, monospace" font-size="11.5" font-weight="bold" xml:space="preserve">AHTL v1.0 (Profile A / B)   18.4x–72.1x      100.0% (Lossless CAS)  ~95% byte reuse (sim.)    YES (Pure UTF-8 Dialect)      197.85 µs</text>
 </svg>"""
 
 

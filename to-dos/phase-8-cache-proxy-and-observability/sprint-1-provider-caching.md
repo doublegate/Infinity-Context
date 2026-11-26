@@ -23,7 +23,50 @@ Re-check before any ticket starts:
 
 ### Research notes
 
-_None recorded yet._
+**2026-11-26** (Anthropic: the `claude-api` reference skill; OpenAI: the developers.openai.com docs via Context7):
+
+- **Anthropic.**
+  - At most 4 `cache_control` breakpoints per request. Automatic caching is a top-level `cache_control` that uses one slot and places itself on the last cacheable block.
+  - TTLs are 5 minutes (the default) and 1 hour; a longer-TTL entry must come before shorter ones.
+  - Minimum cacheable prefix: 512 tokens on the newest models, up to 4,096 on Opus 4.5/4.6 and Haiku 4.5.
+  - Mid-conversation `role: "system"` messages keep the cached prefix. A turn-scoped one (`clear_at`) rejects `cache_control`.
+  - Counters: `usage.cache_read_input_tokens`, `usage.cache_creation_input_tokens` and `usage.cache_creation.{ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}`.
+  - Diagnostics need the beta header `cache-diagnosis-2026-04-07` on every request.
+- **OpenAI.**
+  - `prompt_cache_options` (`mode` implicit/explicit, `ttl` `30m`/`12h`, `prewarm`, `comparison_response_id`) is supported for GPT-5.6 and later, in both Chat Completions and Responses.
+  - Explicit breakpoints are `prompt_cache_breakpoint: {mode: "explicit", ttl?}` on text content parts. Up to 4 are written per request: in implicit mode, the implicit one plus the latest 3 explicit.
+  - `prompt_cache_retention` is deprecated.
+  - Counters: Chat `usage.prompt_tokens_details.{cached_tokens, cache_write_tokens}`; Responses `usage.input_tokens_details.{cached_tokens, cache_write_tokens, cache_write_tokens_details.{ttl_30m_tokens, ttl_12h_tokens}}`.
+- **Installed agents.** Neither Claude Code nor Codex routes through `icx proxy` by default. The proxy is opt-in through `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`, so there is no recorded request per agent to inspect yet.
+- **Project evidence.**
+  - The Anthropic transform already placed one breakpoint within the 4-slot budget with the TTL ordering. It did not see automatic caching, and could place its breakpoint on a mid-conversation system message.
+  - The OpenAI transform added no cache fields.
+  - Nothing read the provider counters.
+  - The `>= 94%` figure appeared as a provider hit rate in ADR-0003, the AHTL diagram generator, `CLAUDE.md` and `GEMINI.md` (both managed blocks) and `AGENTS.md` (the owner's).
+- **Measurement.** The owner approved a paid paired run capped at $5 (2026-11-26); results below.
+
+**2026-11-26, paired paid runs** (`scripts/measure_provider_cache.py`, owner-approved $5 cap, about $0.012 spent over three runs). Model: Claude Haiku 5.5, 4 measured turns over 4 to 7 history pairs of about 1,500 characters each. Arms, each turn: direct with no cache controls; through `icx proxy`; direct with client automatic caching (top-level `cache_control`).
+
+Run 3 (`9b333cbc`, the valid one), uncached / read / written tokens:
+
+| Turn | Direct, no caching | icx proxy | Client caching |
+| ---: | ---: | --- | --- |
+| 0 | 4,429 | 1,036 / 0 / 3,455 | 4 / 0 / 4,425 |
+| 1 | 5,413 | 1,036 / 3,455 / 988 | 4 / 4,425 / 984 |
+| 2 | 6,397 | 1,036 / 4,443 / 988 | 4 / 5,409 / 984 |
+| 3 | 7,381 | 1,036 / 5,431 / 988 | 4 / 6,393 / 984 |
+
+Why runs 1 and 2 are not used for the client-caching arm:
+
+- **Run 1:** all arms sent identical text, so the client-caching arm read the entries the proxy arm had just written (review of #113).
+- **Run 2** (`9a4f4acc`, salted per arm): the conversation was not append-only. Each turn replaced the previous final question, so the prefix at the automatic breakpoint never recurred, and the arm read nothing. The proxy arm reproduced in both runs.
+
+Findings:
+
+- **Against a non-caching client,** icx's breakpoint keeps the uncached input flat (1,036 tokens) while the conversation grows.
+- **Against a client that caches itself,** icx is worse: the writes are the same (988 against 984 a turn), but icx leaves its 2 unfolded tail messages uncached, about 1,000 extra full-price input tokens a request. A request with automatic caching gets no icx breakpoint (T-81-002), and a client that already uses 4 breakpoints gets none either, so such clients are unaffected.
+- **The ledger matches the provider.** `proxy-cache-usage.jsonl` recorded the same counters as the responses on every proxy request in all three runs.
+- **OpenAI was not measured:** the key sees no GPT-5.6 model (`gpt-5.6-nano`, `gpt-5.6-mini`, `gpt-5.6`), so T-81-001 is verified by golden tests only.
 
 ## Tickets
 

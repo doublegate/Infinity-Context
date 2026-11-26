@@ -22,8 +22,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   integer`; `integer`, `string`, `boolean`, `object`, `number`), also after `optional`, before a
   literal default such as `(default: 0)`, and inside a Markdown code span (#111).
 
+### Added
+
+- `icx proxy` records the provider's own prompt-cache counters per response (Anthropic and
+  OpenAI, JSON and SSE) in `proxy-cache-usage.jsonl` in the workspace. Absent counters are
+  `null`, never estimated (T-81-003).
+- `icx proxy` adds an explicit `prompt_cache_breakpoint` at the epoch boundary of GPT-5.6 and
+  later requests, and sets `prompt_cache_options.ttl` from `ICX_OPENAI_CACHE_TTL` (`30m` or
+  `12h`). Other models are unchanged (T-81-001).
+
 ### Changed
 
+- `icx proxy`, Anthropic: a request that uses automatic caching gets no icx breakpoint, and the
+  icx breakpoint is never placed on a mid-conversation system message (T-81-002).
+- The `>= 94%` figure is now labelled as byte-prefix reuse in a simulation, not a provider cache
+  hit rate: ADR-0003 has a correction note and the AHTL diagrams are regenerated (T-81-004).
 - The second look-alike pass copies through lines the first pass already redacted. On 69 KB of
   text with no-break spaces redaction takes 15.8 ms (15.3 ms at v1.5.1), after the review fixes
   that run the raw and quote-normalised passes side by side. `icx benchmark` gains a gated redactor benchmark on 64
