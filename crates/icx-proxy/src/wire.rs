@@ -123,7 +123,6 @@ impl WireProxyTransformer {
                         .map(|m| Self::count_cache_breakpoints(Some(m)))
                         .sum::<usize>();
                 // Longer TTLs must precede shorter ones: if any later breakpoint is 1h, ours is 1h.
-                let later_uses_one_hour = messages[fold_end..].iter().any(Self::has_one_hour_ttl);
                 let mut occ_idx = 0usize;
                 for (idx, msg) in messages[..fold_end].iter_mut().enumerate() {
                     let role = msg.get("role").and_then(Value::as_str).unwrap_or("");
@@ -146,6 +145,11 @@ impl WireProxyTransformer {
                 let target = (0..fold_end)
                     .rev()
                     .find(|&i| messages[i].get("role").and_then(Value::as_str) != Some("system"));
+                // Longer TTLs must precede shorter ones: if any breakpoint after the target is 1h,
+                // ours is 1h. That includes system messages between the target and the fold
+                // boundary (review of #113).
+                let later_uses_one_hour =
+                    target.is_some_and(|t| messages[t + 1..].iter().any(Self::has_one_hour_ttl));
                 if !automatic_caching
                     && existing_breakpoints < 4
                     && let Some(target) = target
@@ -3249,6 +3253,17 @@ mod tests {
             0,
             "four client breakpoints: none added"
         );
+        // A 1h client breakpoint on a system message between the icx target and the fold
+        // boundary makes the icx breakpoint 1h too (longer TTLs first).
+        let mut hist = history.clone();
+        hist[2] = json!({ "role": "system", "content": [{ "type": "text", "text": "Terse mode enabled.", "cache_control": { "type": "ephemeral", "ttl": "1h" } }] });
+        let one_h = run(json!({ "messages": hist }));
+        let block = &one_h["messages"][1]["content"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap()["cache_control"];
+        assert_eq!(block["ttl"], "1h", "{one_h}");
         // An explicit `null` cache_control is not automatic caching.
         let null_cc = run(json!({ "cache_control": null, "messages": history }));
         assert_eq!(count(&null_cc["messages"]), 1);
