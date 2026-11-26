@@ -57,8 +57,7 @@ Re-check before any ticket starts:
 Findings:
 
 - **Against a non-caching client,** icx's breakpoint keeps the uncached input flat at 554 tokens a request while the conversation grows.
-- **Against a client that caches itself, icx is worse:** it caches only up to the folded boundary, so the last two messages and the tail slot stay uncached (554 tokens against 4), and it writes more per turn (976 against 506). A request with top-level automatic caching gets no icx breakpoint (T-81-002), so such clients are unaffected.
-- **The proxy's rewrites keep the cacheable bytes.** The client-caching arm read the entry the proxy arm had written for the same prefix. Caches are shared per workspace, so the arms are not independent; that turn-0 read is the proxy arm's entry.
+- **The client-caching column is not an independent measurement** (review of #113). All three arms sent identical text, so on every turn the client-caching arm read the entry the proxy arm had just written, and its 506-token writes are the tail beyond that entry. The earlier conclusion that icx writes more per turn than a caching client does not follow from this run. The script now salts every message per arm and per run; the comparison against a caching client waits for that rerun.
 - **The ledger matches the provider.** `proxy-cache-usage.jsonl` recorded the same counters as the responses for all 4 proxy requests.
 - **OpenAI was not measured:** the key sees no GPT-5.6 model (`gpt-5.6-nano`, `gpt-5.6-mini`, `gpt-5.6`), so T-81-001 is verified by golden tests only.
 

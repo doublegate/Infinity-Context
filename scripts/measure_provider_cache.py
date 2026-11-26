@@ -4,7 +4,7 @@
 """Paired provider prompt-cache measurement for `icx proxy` (T-81-001 to T-81-003).
 
 For each provider with a key in the environment, the same deterministic multi-turn
-conversation is sent twice per turn: once directly to the provider with no cache controls,
+conversation (salted per arm and per run, so arms never share a cache entry) is sent per turn: once directly to the provider with no cache controls,
 and once through a private `icx proxy` (fresh workspace and state directories, loopback port,
 no other client). The provider's own usage counters are recorded for both arms, and the
 proxy's `proxy-cache-usage.jsonl` ledger is copied into the results.
@@ -60,11 +60,14 @@ def filler(tag: str, n: int) -> str:
     return text[:n]
 
 
-def conversation(turn: int) -> list[dict]:
+def conversation(turn: int, arm: str = "") -> list[dict]:
+    """`arm` salts every message, so arms never share a provider cache entry."""
     msgs = []
     for i in range(HISTORY_PAIRS + turn):
-        msgs.append({"role": "user", "content": filler(f"u{i}", MESSAGE_CHARS)})
-        msgs.append({"role": "assistant", "content": filler(f"a{i}", MESSAGE_CHARS)})
+        msgs.append({"role": "user", "content": filler(f"{arm}u{i}", MESSAGE_CHARS)})
+        msgs.append(
+            {"role": "assistant", "content": filler(f"{arm}a{i}", MESSAGE_CHARS)}
+        )
     msgs.append(
         {"role": "user", "content": f"Turn {turn}: reply with the single word ok."}
     )
@@ -256,7 +259,8 @@ def main() -> int:
         )
         return 3
 
-    results: dict = {"plan": manifest, "runs": {}}
+    run_id = os.urandom(4).hex()
+    results: dict = {"plan": manifest, "runs": {}, "run_id": run_id}
     tmp = Path(tempfile.mkdtemp(prefix="icx-cache-run-"))
     proc, proxy_base, ws = start_proxy(args.icx, tmp)
     try:
@@ -271,7 +275,6 @@ def main() -> int:
                     continue
             rows = []
             for t in range(TURNS):
-                msgs = conversation(t)
                 row: dict = {"turn": t}
                 direct = (
                     "https://api.anthropic.com"
@@ -285,6 +288,9 @@ def main() -> int:
                 if p == "anthropic":
                     arms.append(("direct_client_cache", direct, True))
                 for arm, base, client_cache in arms:
+                    # A per-run nonce plus the arm name: no arm reads another's cache entry,
+                    # nor an entry left by an earlier run.
+                    msgs = conversation(t, f"{run_id}:{arm}:")
                     if p == "anthropic":
                         resp = anthropic_request(base, keys[p], msgs, client_cache)
                     else:

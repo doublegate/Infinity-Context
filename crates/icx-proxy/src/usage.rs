@@ -219,6 +219,11 @@ mod tests {
         assert_eq!(c.provider, Some("anthropic"));
         assert_eq!(c.cache_read, None);
         assert_eq!(c.cache_write, None);
+        // A `usage` that is not an object, and invalid JSON, are ignored.
+        let mut d = CacheCounters::default();
+        d.observe_text(r#"{"usage":"none"}"#);
+        d.observe_text(r#"{"usage": {"cache_read_input_tokens": 1"#);
+        assert!(d.is_empty());
         // Text that is not JSON, and the stream terminator, are ignored.
         c.observe_text("data: [DONE]");
         c.observe_text("not json usage");

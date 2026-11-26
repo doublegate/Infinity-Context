@@ -7,7 +7,7 @@ use icx_adapters::InfinityContextMmu;
 use icx_core::AgentKind;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, BufRead, BufReader, Read, Seek, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -595,18 +595,10 @@ impl WireProxyTransformer {
                 protect_tail,
                 ttl.as_deref(),
             );
-        } else if let Some(input_val) = root.get_mut("input") {
-            match input_val {
-                Value::Array(items) => {
-                    Self::transform_openai_items(items, mmu, protect_tail, "input_text");
-                }
-                Value::String(prompt_str) => {
-                    let base = Self::strip_existing_tail_slot(prompt_str).to_owned();
-                    let tail_slot = mmu.build_ephemeral_tail_slot(AgentKind::Codex, &base, 3);
-                    *prompt_str = Self::join_base_and_tail(&base, &tail_slot);
-                }
-                _ => {}
-            }
+        } else if let Some(Value::String(prompt_str)) = root.get_mut("input") {
+            let base = Self::strip_existing_tail_slot(prompt_str).to_owned();
+            let tail_slot = mmu.build_ephemeral_tail_slot(AgentKind::Codex, &base, 3);
+            *prompt_str = Self::join_base_and_tail(&base, &tail_slot);
         }
 
         Self::register_emitted_output(&mut root, mmu);
@@ -1896,19 +1888,22 @@ impl WireProxyTransformer {
             let mut read_opts = std::fs::OpenOptions::new();
             read_opts.read(true);
             no_follow(&mut read_opts);
-            // Bytes, read lossily: a file that is not valid UTF-8 is still trimmed instead of
-            // growing past the cap (review of #113).
-            let mut bytes = Vec::new();
-            if read_opts
-                .open(&path)
-                .and_then(|mut f| f.read_to_end(&mut bytes))
-                .is_err()
-            {
+            // Keep at most the last CAP/2 bytes, from the first line start inside them: the
+            // read is bounded and the result is always under the cap, whatever the line
+            // lengths or encoding (review of #113).
+            let mut tail = Vec::new();
+            let read = read_opts.open(&path).and_then(|mut f| {
+                let len = f.metadata()?.len();
+                f.seek(io::SeekFrom::Start(len.saturating_sub(CAP / 2)))?;
+                f.take(CAP / 2).read_to_end(&mut tail)
+            });
+            if read.is_err() {
                 return;
             }
-            let text = String::from_utf8_lossy(&bytes);
-            let lines: Vec<&str> = text.lines().collect();
-            let keep = lines[lines.len() / 2..].join("\n") + "\n";
+            let keep = tail
+                .iter()
+                .position(|&b| b == b'\n')
+                .map_or(&[][..], |nl| &tail[nl + 1..]);
             let tmp = dir.join(format!(
                 "proxy-cache-usage.jsonl.tmp-{}",
                 std::process::id()
@@ -1916,9 +1911,7 @@ impl WireProxyTransformer {
             let mut tmp_opts = std::fs::OpenOptions::new();
             tmp_opts.write(true).create_new(true);
             no_follow(&mut tmp_opts);
-            let written = tmp_opts
-                .open(&tmp)
-                .and_then(|mut f| f.write_all(keep.as_bytes()));
+            let written = tmp_opts.open(&tmp).and_then(|mut f| f.write_all(keep));
             if written.is_err() || std::fs::rename(&tmp, &path).is_err() {
                 let _ = std::fs::remove_file(&tmp);
                 return;
@@ -3127,6 +3120,38 @@ mod tests {
         assert!(bad.get("prompt_cache_options").is_none());
     }
 
+    /// T-81-001 through the public transform: Responses `input` arrays get the breakpoint on an
+    /// `input_text` part, and a request too short to fold gets none.
+    #[test]
+    fn openai_transform_applies_cache_controls_to_responses_input() {
+        let mut mmu = InfinityContextMmu::default();
+        let body = json!({
+            "model": "gpt-5.6",
+            "input": [
+                { "role": "user", "content": "first" },
+                { "role": "assistant", "content": "answer" },
+                { "role": "user", "content": "second" },
+                { "role": "assistant", "content": "answer two" }
+            ]
+        });
+        let out: Value = serde_json::from_str(
+            &WireProxyTransformer::transform_openai_request(&body.to_string(), &mut mmu).unwrap(),
+        )
+        .unwrap();
+        let part = &out["input"][0]["content"][0];
+        assert_eq!(part["type"], "input_text");
+        assert_eq!(part["prompt_cache_breakpoint"]["mode"], "explicit");
+
+        let short =
+            json!({ "model": "gpt-5.6", "messages": [{ "role": "user", "content": "hi" }] });
+        let out: Value = serde_json::from_str(
+            &WireProxyTransformer::transform_openai_request(&short.to_string(), &mut mmu).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(WireProxyTransformer::count_cache_breakpoints(Some(&out)), 0);
+        assert!(!out.to_string().contains("prompt_cache_breakpoint"));
+    }
+
     /// T-81-002: automatic caching passes through without an icx breakpoint, the icx
     /// breakpoint skips mid-conversation system messages, and the 4-breakpoint limit holds.
     #[test]
@@ -3244,6 +3269,20 @@ mod tests {
             WireProxyTransformer::record_cache_usage(Some(&dir), &counters, 5);
             assert_eq!(std::fs::read_to_string(&target).unwrap(), "keep\n");
         }
+        // Past the cap, even a single oversized line, the ledger shrinks under the cap.
+        std::fs::remove_file(dir.join("proxy-cache-usage.jsonl")).unwrap();
+        let big = "x".repeat(9 * 1024 * 1024);
+        std::fs::write(dir.join("proxy-cache-usage.jsonl"), &big).unwrap();
+        WireProxyTransformer::record_cache_usage(Some(&dir), &counters, 7);
+        let after = std::fs::read_to_string(dir.join("proxy-cache-usage.jsonl")).unwrap();
+        assert!(after.len() < 8 * 1024 * 1024, "{}", after.len());
+        assert_eq!(after.lines().count(), 1, "only the new line survives");
+        assert!(after.contains(r#""epoch":7"#));
+        // A non-file at the ledger path is left alone.
+        std::fs::remove_file(dir.join("proxy-cache-usage.jsonl")).unwrap();
+        std::fs::create_dir(dir.join("proxy-cache-usage.jsonl")).unwrap();
+        WireProxyTransformer::record_cache_usage(Some(&dir), &counters, 8);
+        assert!(dir.join("proxy-cache-usage.jsonl").is_dir());
         // No trusted workspace: nothing is written.
         WireProxyTransformer::record_cache_usage(None, &counters, 6);
         let _ = std::fs::remove_dir_all(&dir);
