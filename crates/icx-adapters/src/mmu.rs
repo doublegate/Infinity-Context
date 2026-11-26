@@ -79,6 +79,11 @@ pub struct IngestResult {
     pub compressed_ahtl: String,
     pub surprise: f32,
     pub was_virtualized: bool,
+    /// The packet was rendered for the wire proxy: content-only hologram and the `src:proxy`
+    /// clause (#116, #117). Reuse slots match on it, so the two renderings never mix. Older
+    /// snapshots read as `false`.
+    #[serde(default)]
+    pub stable_render: bool,
 }
 
 type SubagentStep = (String, ArtifactId, String, f32, usize);
@@ -121,10 +126,6 @@ struct PersistedMmuState {
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     emitted_blocks: BTreeSet<[u8; 32]>,
 }
-
-/// The clause every packet rendered for the wire proxy carries (#117); see
-/// [`InfinityContextMmu::ingest_or_reuse_at_index_stable`].
-const STABLE_PACKET_MARK: &str = "src:proxy";
 
 /// The central Virtual Context Memory Management Unit (`MMU`).
 #[derive(Clone, Debug)]
@@ -766,7 +767,7 @@ impl InfinityContextMmu {
     /// Whether a packet was rendered for the wire proxy (content-only hologram, `src:proxy`
     /// marker; #116, #117).
     fn is_stable_render(res: &IngestResult) -> bool {
-        res.compressed_ahtl.contains(STABLE_PACKET_MARK)
+        res.stable_render
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1044,6 +1045,7 @@ impl InfinityContextMmu {
                     compressed_ahtl: ahtl_repr.to_owned(),
                     surprise,
                     was_virtualized: raw_bytes >= self.tool_virtualize_threshold,
+                    stable_render: false,
                 },
                 false,
             );
@@ -1171,7 +1173,8 @@ impl InfinityContextMmu {
         if stable {
             // Marks a packet written by the wire proxy (#117): its handle is stored in the
             // proxy's workspace, which `icx mcp-serve` also searches. Constant, so the packet
-            // stays byte-stable (#116).
+            // stays byte-stable (#116); a `src` clause the content produced is replaced.
+            packet.clauses.retain(|c| c.key != "src");
             packet.clauses.push(icx_codec::AhtlClause::new(
                 icx_codec::ClauseOp::Neutral,
                 "src",
@@ -1302,6 +1305,7 @@ impl InfinityContextMmu {
             compressed_ahtl: ahtl_rendered,
             surprise: receipt.verdict.momentum_surprise,
             was_virtualized,
+            stable_render: stable,
         }
     }
 

@@ -324,35 +324,9 @@ fn proxy_stores_file(roots: &WorkspaceRoots) -> PathBuf {
     roots.state_dir.join("proxy-stores")
 }
 
-/// Records `ws_dir` as the store of an `icx proxy` (#117), so the MCP server can resolve the
-/// handles the proxy writes into folded history. One canonical path per line in
-/// `<state>/proxy-stores` (`0600`, replaced atomically), newest last, at most
-/// [`MAX_PROXY_STORES`]. Best effort: a failure only means those handles stay unresolvable.
-pub fn register_proxy_store(ws_dir: &Path, roots: &WorkspaceRoots) -> Result<(), TrustError> {
-    let canonical = std::fs::canonicalize(ws_dir).map_err(io_err)?;
-    private_dir(&roots.state_dir)?;
-    check_dir_security(&roots.state_dir)?;
-    let mut stores: Vec<PathBuf> = proxy_stores(roots)
-        .into_iter()
-        .filter(|p| p != &canonical)
-        .collect();
-    stores.push(canonical);
-    let skip = stores.len().saturating_sub(MAX_PROXY_STORES);
-    let mut text = String::new();
-    for p in &stores[skip..] {
-        text.push_str(&p.to_string_lossy());
-        text.push('\n');
-    }
-    if std::fs::read_to_string(proxy_stores_file(roots)).is_ok_and(|t| t == text) {
-        return Ok(());
-    }
-    write_private_file(&proxy_stores_file(roots), text.as_bytes())
-}
-
-/// The registered proxy stores, newest first (#117). The file must be a private regular file
-/// owned by this user; only absolute paths of existing directories are returned. Trust is still
-/// verified on use.
-pub fn proxy_stores(roots: &WorkspaceRoots) -> Vec<PathBuf> {
+/// The registered stores in file order, oldest first; empty unless the file is a private
+/// regular file owned by this user.
+fn read_proxy_stores(roots: &WorkspaceRoots) -> Vec<PathBuf> {
     let path = proxy_stores_file(roots);
     if check_private_file(&path).is_err() {
         return Vec::new();
@@ -360,14 +334,150 @@ pub fn proxy_stores(roots: &WorkspaceRoots) -> Vec<PathBuf> {
     let Ok(text) = std::fs::read_to_string(&path) else {
         return Vec::new();
     };
-    let mut out: Vec<PathBuf> = text
-        .lines()
-        .take(MAX_PROXY_STORES)
-        .map(|l| PathBuf::from(l.trim()))
+    let lines: Vec<&str> = text.lines().collect();
+    let skip = lines.len().saturating_sub(MAX_PROXY_STORES);
+    lines[skip..]
+        .iter()
+        .map(PathBuf::from)
         .filter(|p| p.is_absolute() && p.is_dir())
+        .collect()
+}
+
+/// Records `ws_dir` as the store of an `icx proxy` (#117), so the MCP server can resolve the
+/// handles the proxy writes into folded history. One canonical path per line in
+/// `<state>/proxy-stores` (`0600`, replaced atomically), oldest first, keeping the 8 most
+/// recently registered. A path that is not UTF-8 or holds a control character is refused, since
+/// it cannot be stored one per line. Concurrent registrations may race; the loser registers again
+/// on its next request.
+pub fn register_proxy_store(ws_dir: &Path, roots: &WorkspaceRoots) -> Result<(), TrustError> {
+    let canonical = std::fs::canonicalize(ws_dir).map_err(io_err)?;
+    let Some(line) = canonical
+        .to_str()
+        .filter(|s| !s.chars().any(char::is_control))
+    else {
+        return Err(TrustError::Io(format!(
+            "{} cannot be registered (not UTF-8, or holds a control character)",
+            canonical.display()
+        )));
+    };
+    private_dir(&roots.state_dir)?;
+    check_dir_security(&roots.state_dir)?;
+    let mut stores: Vec<PathBuf> = read_proxy_stores(roots)
+        .into_iter()
+        .filter(|p| p != &canonical)
         .collect();
+    stores.push(PathBuf::from(line));
+    let skip = stores.len().saturating_sub(MAX_PROXY_STORES);
+    let mut text = String::new();
+    for p in &stores[skip..] {
+        text.push_str(&p.to_string_lossy());
+        text.push('\n');
+    }
+    let file = proxy_stores_file(roots);
+    // An unchanged list is not rewritten, unless the file needs its permissions repaired.
+    if check_private_file(&file).is_ok() && std::fs::read_to_string(&file).is_ok_and(|t| t == text)
+    {
+        return Ok(());
+    }
+    write_private_file(&file, text.as_bytes())
+}
+
+/// The registered proxy stores, newest first (#117). Trust is still verified on use.
+pub fn proxy_stores(roots: &WorkspaceRoots) -> Vec<PathBuf> {
+    let mut out = read_proxy_stores(roots);
     out.reverse();
     out
+}
+
+#[cfg(all(test, unix))]
+mod proxy_store_tests {
+    use super::*;
+
+    fn roots(name: &str) -> (PathBuf, WorkspaceRoots) {
+        let base =
+            std::env::temp_dir().join(format!("icx-proxy-reg-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let roots = WorkspaceRoots {
+            state_dir: base.join("state"),
+            config_dir: base.join("config"),
+            runtime_dir: base.join("runtime"),
+        };
+        (base, roots)
+    }
+
+    #[test]
+    fn registry_keeps_order_dedupes_and_evicts_the_oldest() {
+        let (base, roots) = roots("order");
+        let dirs: Vec<PathBuf> = (0..10)
+            .map(|i| {
+                let d = base.join(format!("s{i}"));
+                std::fs::create_dir_all(&d).unwrap();
+                std::fs::canonicalize(d).unwrap()
+            })
+            .collect();
+        for d in &dirs[..3] {
+            register_proxy_store(d, &roots).unwrap();
+        }
+        assert_eq!(
+            proxy_stores(&roots),
+            vec![dirs[2].clone(), dirs[1].clone(), dirs[0].clone()]
+        );
+        // Re-registering an existing store moves it to the newest place; no duplicate.
+        register_proxy_store(&dirs[0], &roots).unwrap();
+        assert_eq!(
+            proxy_stores(&roots),
+            vec![dirs[0].clone(), dirs[2].clone(), dirs[1].clone()]
+        );
+        // An unchanged list is a no-op.
+        let before = std::fs::metadata(proxy_stores_file(&roots))
+            .unwrap()
+            .modified()
+            .unwrap();
+        register_proxy_store(&dirs[0], &roots).unwrap();
+        let after = std::fs::metadata(proxy_stores_file(&roots))
+            .unwrap()
+            .modified()
+            .unwrap();
+        assert_eq!(before, after);
+        // Past 8, the oldest go first.
+        for d in &dirs[3..] {
+            register_proxy_store(d, &roots).unwrap();
+        }
+        let got = proxy_stores(&roots);
+        assert_eq!(got.len(), 8);
+        assert_eq!(got[0], dirs[9]);
+        assert!(
+            !got.contains(&dirs[1]) && !got.contains(&dirs[2]),
+            "{got:?}"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn registry_repairs_permissions_and_refuses_bad_paths() {
+        use std::os::unix::fs::PermissionsExt;
+        let (base, roots) = roots("perm");
+        let d = base.join("s");
+        std::fs::create_dir_all(&d).unwrap();
+        register_proxy_store(&d, &roots).unwrap();
+        let file = proxy_stores_file(&roots);
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(
+            proxy_stores(&roots).is_empty(),
+            "a permissive file is not trusted"
+        );
+        register_proxy_store(&d, &roots).unwrap();
+        assert_eq!(
+            proxy_stores(&roots).len(),
+            1,
+            "registering again repairs it"
+        );
+        let bad = base.join("line\nbreak");
+        std::fs::create_dir_all(&bad).unwrap();
+        assert!(register_proxy_store(&bad, &roots).is_err());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }
 
 /// Default workspace directory for the project containing `cwd`.

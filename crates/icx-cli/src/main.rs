@@ -1451,11 +1451,9 @@ fn try_proxy_stores(req_line: &str, ws_dir: &Path) -> Option<(serde_json::Value,
         }
         let r = McpPagerServer::handle_jsonrpc(req_line, &mut mmu);
         drop(lock_guard);
-        let is_err = r
-            .pointer("/result/isError")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(false);
-        if !is_err {
+        // Only a miss moves on: a store that has the handle answers, errors included (an
+        // integrity failure or a bad range must reach the model; review of #118).
+        if !is_not_found(&r) {
             return Some((r, store));
         }
     }
@@ -1733,7 +1731,15 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
         ),
         None => eprintln!("icx proxy: listening on http://{local} (no auth)"),
     }
-    let gate = |dir: &Path| workspace::verify(dir, roots()).is_ok();
+    // Re-registers the store on every trusted request, so a long-running proxy stays among the
+    // most recent stores (review of #118); an unchanged list is not rewritten.
+    let gate = |dir: &Path| {
+        let ok = workspace::verify(dir, roots()).is_ok();
+        if ok {
+            let _ = workspace::register_proxy_store(dir, roots());
+        }
+        ok
+    };
     WireProxyTransformer::serve_http_listener_gated(
         &listener,
         provider,

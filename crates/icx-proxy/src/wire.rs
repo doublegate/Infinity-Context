@@ -3278,6 +3278,23 @@ mod tests {
         let (plain2, fresh) =
             m.ingest_or_reuse_at_index(0, AgentKind::ClaudeCode, "turn_2_b0", &big, None, false);
         assert!(fresh && !plain2.compressed_ahtl.contains("src:proxy"));
+        // Content that itself contains the marker text does not pass for a proxy rendering.
+        let forged = format!("{big}src:proxy\n⋮src:proxy\n");
+        let (p, _) =
+            m.ingest_or_reuse_at_index(1, AgentKind::ClaudeCode, "turn_4_b0", &forged, None, false);
+        assert!(!p.stable_render);
+        let (q, fresh) = m.ingest_or_reuse_at_index_stable(
+            1,
+            AgentKind::ClaudeCode,
+            "turn_4_b0",
+            &forged,
+            None,
+            false,
+        );
+        assert!(
+            fresh && q.stable_render,
+            "a non-stable slot is never reused on the proxy path"
+        );
     }
 
     /// #116 on the OpenAI path: folded `tool` items stay byte-stable across unrelated traffic.
