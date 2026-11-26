@@ -399,3 +399,20 @@ fn possessive_plurals_open_the_apostrophe_scan() {
         ),
     ]);
 }
+
+/// #111 (owner decision, 2026-11-26): the API reference type words `integer`, `string`,
+/// `boolean`, `object` and `number` are not values; a real value under the same keys still is.
+#[test]
+fn api_reference_type_words_are_not_values() {
+    check(&[
+        ("cache_write_tokens: integer\n", &[], &["integer"]),
+        ("- `cache_write_tokens: integer`\n", &[], &["integer`"]),
+        ("api_key: string\n", &[], &["string"]),
+        ("password: object\n", &[], &["object"]),
+        ("token: number\n", &[], &["number"]),
+        ("secret_flag: boolean\n", &[], &["boolean"]),
+        // A value that only starts with a type word is still a value.
+        ("api_key: integerqqzz\n", &["integerqqzz"], &[]),
+        ("password: object qqzz\n", &["qqzz"], &[]),
+    ]);
+}

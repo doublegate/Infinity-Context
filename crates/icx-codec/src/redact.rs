@@ -2844,8 +2844,11 @@ impl SecretRedactor {
                     }
                     // An annotation without a default (`password: str, "x"`): a later quote hides
                     // the rest of the value from the annotation on.
+                    // A backtick right after the type closes a Markdown code span (#111); a
+                    // quote after it still counts.
+                    let quote_from = after + usize::from(out[after..].starts_with('`'));
                     if !assigned
-                        && has_quote(&out[after..])
+                        && has_quote(&out[quote_from..])
                         && let Some(next_pos) = Self::redact_value_span(
                             &mut out,
                             val_start,
@@ -2925,6 +2928,9 @@ impl SecretRedactor {
             "string",
             "number",
             "boolean",
+            // API reference type words (owner decision on #111, 2026-11-26).
+            "integer",
+            "object",
             "Optional",
             "bytes",
             "int",
@@ -2989,7 +2995,8 @@ impl SecretRedactor {
         }
         let s = s.trim_start_matches([' ', '\t']);
         (s.is_empty()
-            || s.starts_with(['=', ',', ')', ';', '{', '>', '\n', '\r'])
+            // A closing backtick ends a Markdown code span (`` `token: integer` ``, #111).
+            || s.starts_with(['=', ',', ')', ';', '{', '>', '`', '\n', '\r'])
             || s.starts_with("->"))
         .then(|| rest.len() - s.len())
     }
