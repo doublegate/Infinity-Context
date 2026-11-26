@@ -955,3 +955,28 @@ fn full_width_quotes_in_plain_text() {
         ),
     ]);
 }
+
+/// Antigravity round on df76b73.
+#[test]
+fn review_round_on_df76b73() {
+    check(&[
+        (
+            "<a title=\"x <password>qqzz</password>\">ok</a>\n",
+            &["qqzz"],
+            &[],
+        ),
+        (
+            "<password title=\"x <token>qqzz</token>\"/>\n",
+            &["qqzz"],
+            &[],
+        ),
+        (
+            "sshpass -p \\\"qqzz\\\" ssh host\n",
+            &["qqzz"],
+            &["ssh host"],
+        ),
+    ]);
+    // An escaped quote keeps its backslash.
+    let out = icx_codec::SecretRedactor::redact("sshpass -p \\\"qqzz\\\" ssh host\n");
+    assert!(!out.contains("[REDACTED:CLI_SECRET]\""), "{out:?}");
+}

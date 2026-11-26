@@ -253,8 +253,10 @@ fn xml_elements(line: &str) -> String {
             }
             TagEnd::Open => break,
         };
+        // Not a sensitive element: rescan from just after its `<`, so an element inside a
+        // quoted attribute value is still checked (review of #106).
         if s[..gt].ends_with('/') || !R::is_sensitive_key_name(&name) {
-            pos = gt + 1;
+            pos = open + 1;
             continue;
         }
         let close_tag = format!("</{name}");
@@ -970,11 +972,17 @@ fn cli_shapes(line: &str) -> String {
         // (`-u "admin:my secret"`).
         let (mut x, mut y) = (x, y);
         let b = s.as_bytes();
-        if y > x + 1 && matches!(b[x], b'"' | b'\'') && b[y - 1] == b[x] {
+        // An escaped quote (`\"`) stays with its backslash, so JSON text keeps its escapes
+        // (review of #106).
+        let escaped = |at: usize| !backslash_run_before(b, x, at).is_multiple_of(2);
+        if y > x + 1 && matches!(b[x], b'"' | b'\'') && b[y - 1] == b[x] && !escaped(y - 1) {
             x += 1;
             y -= 1;
         } else if y > x && matches!(b[y - 1], b'"' | b'\'') {
-            y -= 1;
+            y -= if escaped(y - 1) { 2 } else { 1 };
+        }
+        if y <= x {
+            continue;
         }
         hide(&mut s, x, y, MARK_CLI);
     }
