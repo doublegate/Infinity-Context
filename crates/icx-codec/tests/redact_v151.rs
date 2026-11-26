@@ -937,3 +937,21 @@ fn lookalike_pass_keeps_json_and_secret_free_text() {
         );
     }
 }
+
+/// Commit security review of df76b73: full-width quotes still act as quotes in plain text.
+#[test]
+fn full_width_quotes_in_plain_text() {
+    check(&[
+        (
+            "\u{FF02}password\u{FF02}\u{FF1A}\u{FF02}qqzz\u{FF02}\n",
+            &["qqzz"],
+            &[],
+        ),
+        ("password\u{FF1D}\u{FF02}a b qqzz\u{FF02}\n", &["qqzz"], &[]),
+        (
+            "note \u{FF02}hi\u{FF02} ok\n",
+            &[],
+            &["\u{FF02}hi\u{FF02} ok"],
+        ),
+    ]);
+}

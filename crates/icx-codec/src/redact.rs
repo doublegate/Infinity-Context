@@ -29,32 +29,66 @@ impl SecretRedactor {
         if !input.chars().any(Self::is_lookalike) {
             return Self::redact_text(input);
         }
-        // The original text is redacted first, and the normalised pass then runs over that
-        // result, so whatever either pass hides is hidden (security review of v1.5.1). A line
-        // keeps its look-alikes only where the combined result is exactly the first pass's.
+        // Three passes, each over the previous result, so whatever any pass hides is hidden:
+        // the original text; every look-alike normalised except quote-like characters; and
+        // those too (security reviews of v1.5.1 and #106). A full-width `＂` is a quote to a
+        // reader of plain text but only content inside a JSON string, so a line that is JSON
+        // after the second pass takes that pass's result, and any other line the third pass's
+        // where it hides more. A line keeps its original bytes where no pass hid anything.
         let plain = Self::redact_text(input);
-        let normalized: String = plain.chars().filter_map(Self::normalize_char).collect();
-        let combined = Self::redact_text(&normalized);
+        let keep_quotes: String = plain
+            .chars()
+            .filter_map(Self::normalize_keep_quotes)
+            .collect();
+        let second = Self::redact_text(&keep_quotes);
+        // The third pass only matters when quote-like characters are left.
+        let third = if second
+            .chars()
+            .any(|c| matches!(c, '\u{FF02}' | '\u{FF07}' | '\u{FF3C}' | '\u{FF40}'))
+        {
+            let all: String = second.chars().filter_map(Self::normalize_char).collect();
+            Self::redact_text(&all)
+        } else {
+            second.clone()
+        };
         // `split`, not `split_inclusive`: a last line holding only removed characters
         // (`"\u{FEFF}"`) must still pair with its empty counterpart (review of #106).
-        let plain_lines: Vec<&str> = plain.split('\n').collect();
-        let combined_lines: Vec<&str> = combined.split('\n').collect();
-        if plain_lines.len() != combined_lines.len() {
-            return combined;
+        let p: Vec<&str> = plain.split('\n').collect();
+        let q: Vec<&str> = second.split('\n').collect();
+        let r: Vec<&str> = third.split('\n').collect();
+        if p.len() != q.len() || q.len() != r.len() {
+            return third;
         }
         let mut out = String::with_capacity(input.len());
-        for (k, (plain_line, combined_line)) in plain_lines.iter().zip(&combined_lines).enumerate()
-        {
+        for k in 0..p.len() {
             if k > 0 {
                 out.push('\n');
             }
-            let same = plain_line
+            let first_holds = p[k]
+                .chars()
+                .filter_map(Self::normalize_keep_quotes)
+                .eq(q[k].chars());
+            let up_to_second = if first_holds { p[k] } else { q[k] };
+            let second_holds = q[k]
                 .chars()
                 .filter_map(Self::normalize_char)
-                .eq(combined_line.chars());
-            out.push_str(if same { plain_line } else { combined_line });
+                .eq(r[k].chars());
+            let json = Self::is_json_line(q[k]);
+            out.push_str(if second_holds || json {
+                up_to_second
+            } else {
+                r[k]
+            });
         }
         out
+    }
+
+    /// [`Self::normalize_char`] without the quote-like characters (`＂`, `＇`, `＼`, `｀`).
+    fn normalize_keep_quotes(c: char) -> Option<char> {
+        match c {
+            '\u{FF02}' | '\u{FF07}' | '\u{FF3C}' | '\u{FF40}' => Some(c),
+            _ => Self::normalize_char(c),
+        }
     }
 
     /// A character that redaction treats as its ASCII look-alike (or ignores).
@@ -73,9 +107,6 @@ impl SecretRedactor {
             | '\u{205F}'
             | '\u{3000}' => Some(' '),
             '\u{00AD}' | '\u{200B}'..='\u{200D}' | '\u{2060}' | '\u{FEFF}' => None,
-            // Full-width quotes, apostrophe, backslash and backtick stay: as ASCII they would
-            // change the text's quoting and break JSON (review of #106).
-            '\u{FF02}' | '\u{FF07}' | '\u{FF3C}' | '\u{FF40}' => Some(c),
             '\u{FF01}'..='\u{FF5E}' => char::from_u32(c as u32 - 0xFEE0),
             _ => Some(c),
         }
@@ -380,6 +411,20 @@ impl SecretRedactor {
             out.push_str(ending);
         }
         out
+    }
+
+    /// Whether `line` is exactly one JSON object or array (surrounding whitespace allowed).
+    fn is_json_line(line: &str) -> bool {
+        let start = line.len() - line.trim_start().len();
+        if !line[start..].starts_with(['{', '[']) {
+            return false;
+        }
+        let mut scan = JsonScan {
+            s: line.as_bytes(),
+            edits: Vec::new(),
+        };
+        scan.value(start, false, 0, None)
+            .is_some_and(|end| line[end..].trim().is_empty())
     }
 
     /// Structural redaction of a line that is exactly one JSON object or array (surrounding
