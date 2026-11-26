@@ -114,7 +114,8 @@ mod properties {
     /// (ADR-0011 rule 2), and 16 or more digits may be a numeric token.
     fn json(depth: u32) -> BoxedStrategy<String> {
         let leaf = prop_oneof![
-            "[a-z ]{0,8}".prop_map(|s| format!("\"{s}\"")),
+            // `[a-p ]`, like the names: `[a-z]` could spell the secret placeholder itself.
+            "[a-p ]{0,8}".prop_map(|s| format!("\"{s}\"")),
             (0u32..1000).prop_map(|n| n.to_string()),
             Just("true".to_owned()),
             Just("null".to_owned()),

@@ -796,3 +796,47 @@ fn large_single_line_json_arrays_stay_fast() {
     let ms = t.elapsed().as_millis();
     assert!(ms < 2_000, "{ms} ms");
 }
+
+/// Commit security review of d744f28: `<` and `>` inside a quoted attribute value.
+#[test]
+fn angle_brackets_inside_attribute_values() {
+    check(&[
+        ("<add key=\"Password\" value=\"a<qqzz\"/>\n", &["qqzz"], &[]),
+        ("<add key=\"Password\" value=\"a>qqzz\"/>\n", &["qqzz"], &[]),
+        (
+            "<add name=\"api_key\" value=\"qq<zz>rrss\"/> <b>ok</b>\n",
+            &["rrss"],
+            &["<b>ok</b>"],
+        ),
+    ]);
+}
+
+/// Commit security review of d744f28: a JSON escape inside a URL value does not end it.
+#[test]
+fn json_escapes_inside_url_values() {
+    check(&[
+        ("{\"u\": \"https://h/cb?sig=qq\\/zzrr\"}\n", &["zzrr"], &[]),
+        (
+            "{\"url\": \"https://h/cb?sig=qqzz\\\"more\"}\n",
+            &["qqzz"],
+            &[],
+        ),
+    ]);
+}
+
+/// Antigravity round on d744f28: two URLs joined by a backslash escape.
+#[test]
+fn urls_joined_by_a_backslash() {
+    check(&[
+        (
+            "https://a.example/ok\\nhttps://b.example/cb?sig=qqzz\n",
+            &["qqzz"],
+            &[],
+        ),
+        (
+            "{\"log\": \"https://a.example/ok\\\\https://b.example/cb?sig=qqzz\"}\n",
+            &["qqzz"],
+            &[],
+        ),
+    ]);
+}

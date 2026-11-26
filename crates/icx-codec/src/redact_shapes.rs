@@ -275,6 +275,30 @@ fn xml_elements(line: &str) -> String {
     s
 }
 
+/// Where the tag opened at `open` ends.
+enum TagEnd {
+    /// The first `>` outside a quoted attribute value.
+    At(usize),
+    /// An unquoted `<` comes first: `open` was not a tag.
+    Stray,
+    /// No closing `>` on this line.
+    Open,
+}
+
+fn tag_end(s: &str, open: usize) -> TagEnd {
+    let mut quote: Option<u8> = None;
+    for (k, &c) in s.as_bytes().iter().enumerate().skip(open + 1) {
+        match quote {
+            Some(q) if c == q => quote = None,
+            None if c == b'"' || c == b'\'' => quote = Some(c),
+            None if c == b'>' => return TagEnd::At(k),
+            None if c == b'<' => return TagEnd::Stray,
+            _ => {}
+        }
+    }
+    TagEnd::Open
+}
+
 /// Attributes of one tag on this line: `(name_lower, value_start, value_end)` for quoted values.
 fn tag_attributes(tag: &str) -> Vec<(String, usize, usize)> {
     let b = tag.as_bytes();
@@ -319,21 +343,25 @@ fn xml_attribute_pairs(line: &str) -> String {
     let mut pos = 0;
     while let Some(rel) = s[pos..].find('<') {
         let open = pos + rel;
-        let Some(gt_rel) = s[open..].find('>') else {
-            break;
-        };
-        let gt = open + gt_rel;
-        // A tag starts `<` + a letter, and a `>` past another `<` belongs to a later tag, as for
-        // elements (review of #106: `x < y; <add key=… value=…/>`).
+        // A tag starts `<` + a letter and ends at the first `>` outside a quoted attribute
+        // value; an unquoted `<` before that belongs to a later tag (review of #106:
+        // `x < y; <add key=… value=…/>`, and `value="a<b"` stays one tag).
         if !s
             .as_bytes()
             .get(open + 1)
             .is_some_and(u8::is_ascii_alphabetic)
-            || s[open + 1..gt].contains('<')
         {
             pos = open + 1;
             continue;
         }
+        let gt = match tag_end(&s, open) {
+            TagEnd::At(gt) => gt,
+            TagEnd::Stray => {
+                pos = open + 1;
+                continue;
+            }
+            TagEnd::Open => break,
+        };
         let tag = s[open..gt].to_owned();
         let attrs = tag_attributes(&tag);
         let named_sensitive = attrs.iter().any(|(n, a, z)| {
@@ -933,6 +961,22 @@ fn colon_outside_markers(s: &str, from: usize, to: usize) -> Option<usize> {
         .find(|&at| !inside_marker(s, at))
 }
 
+/// Where the URL whose authority starts at `from` ends: whitespace, a quote, `<`, `>`, a
+/// backtick, or a backslash before a quote (a JSON `\"` closing the string). Other escapes such
+/// as `\/` stay part of the value (review of #106).
+fn url_end_at(s: &str, from: usize) -> usize {
+    let b = s.as_bytes();
+    (from..b.len())
+        .find(|&k| {
+            let c = b[k];
+            c.is_ascii_whitespace()
+                || matches!(c, b'"' | b'\'' | b'<' | b'>' | b'`')
+                || (c == b'\\' && matches!(b.get(k + 1), Some(b'"' | b'\'')))
+                || (c >= 0x80 && s.is_char_boundary(k) && s[k..].starts_with(char::is_whitespace))
+        })
+        .unwrap_or(b.len())
+}
+
 /// Whether `text` leaves a quote open (backslash escapes honoured outside single quotes).
 fn has_unclosed_quote(text: &str) -> bool {
     let b = text.as_bytes();
@@ -986,13 +1030,7 @@ fn url_shapes(line: &str) -> String {
     let mut pos = 0;
     while let Some(rel) = s[pos..].find("://") {
         let auth_start = pos + rel + 3;
-        let url_end = s[auth_start..]
-            .find(|c: char| {
-                // A backslash ends it too: in JSON text it escapes the closing quote, and it
-                // never belongs to a URL (review of #106).
-                c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | '`' | '\\')
-            })
-            .map_or(s.len(), |k| auth_start + k);
+        let url_end = url_end_at(&s, auth_start);
         // Userinfo is the connection-URL pass's: it hides `user:password@` and token-shaped
         // userinfo, and keeps plain user names (`https://alice@host`) by design.
         if let Some(q) = s[auth_start..url_end]
@@ -1018,9 +1056,8 @@ fn url_shapes(line: &str) -> String {
             }
         }
         // The next URL may follow without whitespace (`"a":"https://…","b":"https://…"`).
-        let url_end = s[auth_start.min(s.len())..]
-            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | '`'))
-            .map_or(s.len(), |k| auth_start + k);
+        // The same end rule as above, recomputed after the replacements (review of #106).
+        let url_end = url_end_at(&s, auth_start.min(s.len()));
         pos = url_end.max(auth_start).min(s.len());
     }
     s
