@@ -61,16 +61,21 @@ def filler(tag: str, n: int) -> str:
 
 
 def conversation(turn: int, arm: str = "") -> list[dict]:
-    """`arm` salts every message, so arms never share a provider cache entry."""
+    """Append-only, as a real conversation is: turn `t + 1` is turn `t` plus the reply to its
+    last user message and one new user message. `arm` salts every message, so arms never
+    share a provider cache entry."""
+
+    def user(i: int) -> dict:
+        text = filler(f"{arm}u{i}", MESSAGE_CHARS - 40) + " Reply with the word ok."
+        return {"role": "user", "content": text}
+
     msgs = []
     for i in range(HISTORY_PAIRS + turn):
-        msgs.append({"role": "user", "content": filler(f"{arm}u{i}", MESSAGE_CHARS)})
+        msgs.append(user(i))
         msgs.append(
             {"role": "assistant", "content": filler(f"{arm}a{i}", MESSAGE_CHARS)}
         )
-    msgs.append(
-        {"role": "user", "content": f"Turn {turn}: reply with the single word ok."}
-    )
+    msgs.append(user(HISTORY_PAIRS + turn))
     return msgs
 
 
