@@ -17,7 +17,11 @@ fn run(base: &std::path::Path, args: &[&str], stdin: &[u8]) -> Output {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child.stdin.take().unwrap().write_all(stdin).unwrap();
+    // A command that rejects its flags may exit before reading stdin; its exit status is what
+    // these tests check, so a broken pipe here is not a failure (CI flake on #106).
+    if let Err(e) = child.stdin.take().unwrap().write_all(stdin) {
+        assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe, "{e}");
+    }
     child.wait_with_output().unwrap()
 }
 

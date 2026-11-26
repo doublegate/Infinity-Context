@@ -22,6 +22,101 @@ impl SecretRedactor {
     /// trailing newline, and literal delimiters). For secret-free input the result equals the
     /// input, which is what makes CAS dereferencing lossless.
     pub fn redact(input: &str) -> String {
+        // Unicode look-alikes (#104): a no-break or ideographic space, a zero-width character
+        // or soft hyphen inside a key, a full-width `＝` or `：`. Redaction runs on an ASCII
+        // normalisation of such text, and each line it changes is taken from that result;
+        // every other line keeps its original bytes.
+        if !input.chars().any(Self::is_lookalike) {
+            return Self::redact_text(input);
+        }
+        // Three passes, each over the previous result, so whatever any pass hides is hidden:
+        // the original text; every look-alike normalised except quote-like characters; and
+        // those too (security reviews of v1.5.1 and #106). A full-width `＂` is a quote to a
+        // reader of plain text but only content inside a JSON string, so a line that is JSON
+        // after the second pass takes that pass's result, and any other line the third pass's
+        // where it hides more. A line keeps its original bytes where no pass hid anything.
+        let plain = Self::redact_text(input);
+        let keep_quotes: String = plain
+            .chars()
+            .filter_map(Self::normalize_keep_quotes)
+            .collect();
+        let second = Self::redact_text(&keep_quotes);
+        // The third pass only matters when quote-like characters are left.
+        let third = if second
+            .chars()
+            .any(|c| matches!(c, '\u{FF02}' | '\u{FF07}' | '\u{FF3C}' | '\u{FF40}'))
+        {
+            let all: String = second.chars().filter_map(Self::normalize_char).collect();
+            Self::redact_text(&all)
+        } else {
+            second.clone()
+        };
+        // `split`, not `split_inclusive`: a last line holding only removed characters
+        // (`"\u{FEFF}"`) must still pair with its empty counterpart (review of #106).
+        let p: Vec<&str> = plain.split('\n').collect();
+        let q: Vec<&str> = second.split('\n').collect();
+        let r: Vec<&str> = third.split('\n').collect();
+        if p.len() != q.len() || q.len() != r.len() {
+            return third;
+        }
+        let mut out = String::with_capacity(input.len());
+        for k in 0..p.len() {
+            if k > 0 {
+                out.push('\n');
+            }
+            let first_holds = p[k]
+                .chars()
+                .filter_map(Self::normalize_keep_quotes)
+                .eq(q[k].chars());
+            let up_to_second = if first_holds { p[k] } else { q[k] };
+            let second_holds = q[k]
+                .chars()
+                .filter_map(Self::normalize_char)
+                .eq(r[k].chars());
+            let json = Self::is_json_line(q[k]);
+            out.push_str(if second_holds || json {
+                up_to_second
+            } else {
+                r[k]
+            });
+        }
+        out
+    }
+
+    /// [`Self::normalize_char`] without the quote-like characters (`＂`, `＇`, `＼`, `｀`).
+    fn normalize_keep_quotes(c: char) -> Option<char> {
+        match c {
+            '\u{FF02}' | '\u{FF07}' | '\u{FF3C}' | '\u{FF40}' => Some(c),
+            _ => Self::normalize_char(c),
+        }
+    }
+
+    /// A character that redaction treats as its ASCII look-alike (or ignores).
+    fn is_lookalike(c: char) -> bool {
+        Self::normalize_char(c) != Some(c)
+    }
+
+    /// The ASCII form of a look-alike: no-break and other Unicode spaces become a space,
+    /// zero-width characters and the soft hyphen disappear, full-width ASCII becomes ASCII.
+    fn normalize_char(c: char) -> Option<char> {
+        match c {
+            '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200A}'
+            | '\u{202F}'
+            | '\u{205F}'
+            | '\u{3000}' => Some(' '),
+            '\u{00AD}' | '\u{200B}'..='\u{200D}' | '\u{2060}' | '\u{FEFF}' => None,
+            '\u{FF01}'..='\u{FF5E}' => char::from_u32(c as u32 - 0xFEE0),
+            _ => Some(c),
+        }
+    }
+
+    fn redact_text(input: &str) -> String {
+        crate::redact_shapes::redact_yaml_pairs(Self::redact_lines(input))
+    }
+
+    fn redact_lines(input: &str) -> String {
         let mut out = String::with_capacity(input.len());
         let mut block: Option<KeyBlock> = None;
         let mut block_lines = 0usize;
@@ -42,7 +137,7 @@ impl SecretRedactor {
                 let close = if triple {
                     let closer = [q; 3];
                     let closer = std::str::from_utf8(&closer).unwrap_or("\"\"\"");
-                    body[content_start..].find(closer).map(|i| i + 2)
+                    find_unescaped(&body[content_start..], closer).map(|i| i + 2)
                 } else {
                     closing_quote(&body.as_bytes()[content_start..], q)
                 };
@@ -94,7 +189,7 @@ impl SecretRedactor {
                         // so a second pass sees the value close again. The rest of the line is
                         // classified like any other line (security review: it was written
                         // verbatim, so a secret after the bracket survived).
-                        let scan = scan_value(body, p.brackets, p.bracket_quote);
+                        let scan = scan_value(body, p.brackets, p.bracket_quote, p.bracket_triple);
                         let indent_of_key = p.indent;
                         p.sticky |= scan.ambiguous_quote;
                         if let Some(at) = scan.close.filter(|_| !p.sticky) {
@@ -114,13 +209,13 @@ impl SecretRedactor {
                             if !(t.is_empty()
                                 || t.starts_with(['#', ';', ',', ')', ']', '}'])
                                 || t.starts_with("//")
-                                || t.starts_with("[REDACTED:"))
+                                || Self::is_marker_run(t))
                             {
                                 out.push_str(&body[..body.len() - t.len()]);
                                 out.push_str("[REDACTED:SECRET]");
                                 // The tail may open the next part of the value (`) + (`,
                                 // `) + \`; review of #103).
-                                let tail = scan_value(t, 0, None);
+                                let tail = scan_value(t, 0, None, false);
                                 if tail.depth > 0 || tail.ambiguous_quote {
                                     // A possibly quoted tail stays pending to the line cap, as
                                     // on a first line (security review of #103).
@@ -128,6 +223,7 @@ impl SecretRedactor {
                                         indent: indent_of_key,
                                         brackets: tail.depth.max(1),
                                         bracket_quote: tail.quote,
+                                        bracket_triple: tail.triple,
                                         sticky: tail.ambiguous_quote,
                                         ..PendingSecret::default()
                                     });
@@ -164,6 +260,7 @@ impl SecretRedactor {
                         } else {
                             p.brackets = scan.depth.max(1);
                             p.bracket_quote = scan.quote;
+                            p.bracket_triple = scan.triple;
                             out.push_str(&Self::redact_bare_value_line(body));
                             if p.lines >= MAX_KEY_BLOCK_LINES {
                                 pending_value = None;
@@ -236,7 +333,15 @@ impl SecretRedactor {
                 && let Some(json) =
                     Self::redact_json_line(body).or_else(|| Self::redact_json_fields(body))
             {
-                out.push_str(&json);
+                let mut shaped = crate::redact_shapes::redact_json_shapes(&json);
+                for _ in 0..4 {
+                    let next = crate::redact_shapes::redact_json_shapes(&shaped);
+                    if next == shaped {
+                        break;
+                    }
+                    shaped = next;
+                }
+                out.push_str(&shaped);
                 out.push_str(ending);
                 continue;
             }
@@ -281,11 +386,24 @@ impl SecretRedactor {
             };
             // A definite multi-line `=` value (`api_key: str = """`) wins over the YAML reading
             // of the same line (review of #103).
-            let assigned = Self::assignment_continuation(body)
-                .filter(|p| p.quote.is_some() || p.brackets > 0 || p.backslash);
-            if let Some(pending) = assigned
-                .or_else(|| Self::sensitive_continuation(body))
-                .or_else(|| Self::assignment_continuation(body))
+            // An empty right-hand side after an annotation (`password: str =`) counts too: the
+            // YAML reading of that line would only hide indented lines (#104).
+            // Arm from the original line, or else from the emitted one: a second pass sees the
+            // emitted line as its original, so a quote this pass removed must not change the
+            // decision (idempotence, v1.5.1).
+            let arm = |line: &str| {
+                Self::assignment_continuation(line)
+                    .filter(|p| {
+                        p.quote.is_some()
+                            || p.brackets > 0
+                            || p.backslash
+                            || line.trim_end().ends_with('=')
+                    })
+                    .or_else(|| Self::sensitive_continuation(line))
+                    .or_else(|| Self::assignment_continuation(line))
+            };
+            if let Some(pending) =
+                arm(body).or_else(|| (redacted != body).then(|| arm(&redacted)).flatten())
             {
                 pending_value = Some(pending);
             }
@@ -293,6 +411,20 @@ impl SecretRedactor {
             out.push_str(ending);
         }
         out
+    }
+
+    /// Whether `line` is exactly one JSON object or array (surrounding whitespace allowed).
+    fn is_json_line(line: &str) -> bool {
+        let start = line.len() - line.trim_start().len();
+        if !line[start..].starts_with(['{', '[']) {
+            return false;
+        }
+        let mut scan = JsonScan {
+            s: line.as_bytes(),
+            edits: Vec::new(),
+        };
+        scan.value(start, false, 0, None)
+            .is_some_and(|end| line[end..].trim().is_empty())
     }
 
     /// Structural redaction of a line that is exactly one JSON object or array (surrounding
@@ -378,6 +510,39 @@ impl SecretRedactor {
     /// unterminated quote, triple quote or backtick, a trailing backslash, or an unclosed
     /// bracket.
     fn assignment_continuation(line: &str) -> Option<PendingSecret> {
+        // A stray apostrophe or label before the `=` (`don't log; password = """`,
+        // `'outer: let api_key = (`) hides it from a quote-aware scan, so a second scan ignores
+        // quotes; it can only arm more continuations (#104).
+        // Only a line left with an open apostrophe gets the second scan; `note = "password="`
+        // keeps its `=` inside the string, and Markdown code spans (backticks, where `\` is no
+        // escape) stay quoted in both scans.
+        Self::assignment_continuation_scan(line, true).or_else(|| {
+            Self::quote_open_at_end(line)
+                .then(|| Self::assignment_continuation_scan(line, false))?
+        })
+    }
+
+    /// Whether a quote opened on `line` (backslash escapes honoured, Rust lifetimes skipped) is
+    /// still open at its end.
+    fn quote_open_at_end(line: &str) -> bool {
+        let b = line.as_bytes();
+        let mut quote: Option<u8> = None;
+        let mut i = 0;
+        while i < b.len() {
+            let c = b[i];
+            let lifetime = c == b'\'' && i > 0 && matches!(b[i - 1], b'&' | b'<');
+            match quote {
+                Some(_) if c == b'\\' => i += 1,
+                Some(q) if c == q => quote = None,
+                None if matches!(c, b'"' | b'\'' | b'`') && !lifetime => quote = Some(c),
+                _ => {}
+            }
+            i += 1;
+        }
+        quote == Some(b'\'')
+    }
+
+    fn assignment_continuation_scan(line: &str, track_quotes: bool) -> Option<PendingSecret> {
         let b = line.as_bytes();
         let mut quote: Option<u8> = None;
         let mut i = 0;
@@ -396,7 +561,8 @@ impl SecretRedactor {
             }
             match c {
                 b'\'' if i > 0 && matches!(b[i - 1], b'&' | b'<') => {}
-                b'"' | b'\'' | b'`' => quote = Some(c),
+                b'"' | b'\'' if track_quotes => quote = Some(c),
+                b'`' => quote = Some(c),
                 b'=' => {
                     let prev = if i > 0 { b[i - 1] } else { 0 };
                     let next = b.get(i + 1).copied().unwrap_or(0);
@@ -418,7 +584,7 @@ impl SecretRedactor {
                         // before the annotation's colon (review of #103).
                         // `api_key: str = ...`, `let a: u8, api_key: &str = ...`: a name before
                         // any annotation colon (not `::`) may be the key (review of #103).
-                        if !Self::is_sensitive_key_name(key) && line[..i].ends_with([' ', '\t']) {
+                        if !Self::is_sensitive_key_name(key) {
                             let hb = head.as_bytes();
                             for c in (0..hb.len()).filter(|&k| {
                                 hb[k] == b':'
@@ -441,8 +607,26 @@ impl SecretRedactor {
                             // Only this assignment's own value: up to a `;` that starts the
                             // next statement (`token = 1; password = \"\"\"`).
                             let rest = &line[i + 1..];
-                            let stmt_end = scan_value(rest, 0, None).stmt_end.unwrap_or(rest.len());
+                            let stmt_end = scan_value(rest, 0, None, false)
+                                .stmt_end
+                                .unwrap_or(rest.len());
                             let rhs_full = rest[..stmt_end].trim();
+                            // A value the value-span rule already hid to the end of its line ends
+                            // with one of its markers, which may have taken a closing bracket or
+                            // quote with it: such a value does not arm, so a second pass decides
+                            // like the first (idempotence). A planted or other marker, or text
+                            // after one, still arms (security review of v1.5.1).
+                            if [
+                                "[REDACTED:ENV_SECRET]",
+                                "[REDACTED:CONFIG_SECRET]",
+                                "[REDACTED:CLI_SECRET]",
+                            ]
+                            .iter()
+                            .any(|m| rhs_full.ends_with(m))
+                            {
+                                i += 1;
+                                continue;
+                            }
                             // String prefixes (`r`, `b`, `f`, ...) and Rust raw-string hashes.
                             let rhs = rhs_full
                                 .trim_start_matches(|c: char| {
@@ -466,7 +650,7 @@ impl SecretRedactor {
                             // the value on the next line (review of #103).
                             for t in ["\"\"\"", "'''"] {
                                 if let Some(r) = rhs.strip_prefix(t)
-                                    && !r.contains(t)
+                                    && find_unescaped(r, t).is_none()
                                 {
                                     return Some(PendingSecret {
                                         quote: Some(t.as_bytes()[0]),
@@ -483,11 +667,12 @@ impl SecretRedactor {
                             }
                             // An open bracket, with any quote opened inside it carried along
                             // (`f("` then lines then `")`).
-                            let scan = scan_value(rhs_full, 0, None);
+                            let scan = scan_value(rhs_full, 0, None, false);
                             if scan.depth > 0 || scan.ambiguous_quote {
                                 return Some(PendingSecret {
                                     brackets: scan.depth.max(1),
                                     bracket_quote: scan.quote,
+                                    bracket_triple: scan.triple,
                                     sticky: scan.ambiguous_quote,
                                     ..base
                                 });
@@ -510,12 +695,20 @@ impl SecretRedactor {
                                 } else {
                                     at
                                 }
-                                && rhs_full[..start]
-                                    .chars()
-                                    .next_back()
-                                    .is_some_and(|b| b.is_whitespace() || "+(=,[{".contains(b))
+                                // Before the quote: the start of the value, or an operator or space,
+                                // allowing a string prefix (`r"""`, `f"`, `b'`). A backtick may
+                                // follow an identifier (a tagged template, `String.raw\``): it has
+                                // no apostrophe ambiguity (#104).
+                                && let pre = rhs_full[..start].trim_end_matches(|c: char| {
+                                    matches!(c, 'r' | 'R' | 'b' | 'B' | 'u' | 'U' | 'f' | 'F')
+                                })
+                                && (pre.is_empty()
+                                    || q == b'`'
+                                    || pre.chars().next_back().is_some_and(|b| {
+                                        b.is_whitespace() || "+(=,[{".contains(b)
+                                    }))
                             {
-                                let triple = start != at;
+                                let triple = start != at || scan.triple;
                                 return Some(PendingSecret {
                                     quote: Some(q),
                                     triple,
@@ -730,7 +923,7 @@ impl SecretRedactor {
         entropy
     }
 
-    fn is_sensitive_key_name(raw_key: &str) -> bool {
+    pub(crate) fn is_sensitive_key_name(raw_key: &str) -> bool {
         let trimmed = raw_key
             .trim()
             .trim_start_matches("export ")
@@ -823,6 +1016,8 @@ impl SecretRedactor {
             "DBPASS",
             "PW",
             "PWD",
+            // v1.5.1 (#104): `creds`, `{"creds": {...}}`.
+            "CREDS",
         ];
         // What follows a credential word when the key names something about the credential
         // rather than the credential (`token_type`, `password_file`, `token_savings`). Anything
@@ -911,6 +1106,38 @@ impl SecretRedactor {
         ];
         // Dotted keys (`headers.authorization`, `db.pwd`) split like snake_case ones.
         let parts: Vec<&str> = upper.split(['_', '.']).filter(|p| !p.is_empty()).collect();
+        // A webhook URL is the credential itself, so `_URL`, `_URI` and `_ENDPOINT` do not make
+        // it harmless (#104); `WEBHOOK_NAME` or `WEBHOOK_EVENT` stay (review of #106).
+        if let Some(w) = parts.iter().position(|p| p.contains("WEBHOOK")) {
+            // Fail closed: only known metadata after `WEBHOOK` is harmless (security review of
+            // #106: an allowlist of credential suffixes let `WEBHOOK_SIGNING_KEY` and
+            // `SLACK_WEBHOOK_PROD` through).
+            let tail = &parts[w + 1..];
+            let metadata = !tail.is_empty()
+                && tail.iter().all(|p| {
+                    matches!(
+                        *p,
+                        "NAME"
+                            | "NAMES"
+                            | "EVENT"
+                            | "EVENTS"
+                            | "ID"
+                            | "IDS"
+                            | "ENABLED"
+                            | "DISABLED"
+                            | "TYPE"
+                            | "TYPES"
+                            | "COUNT"
+                            | "STATUS"
+                            | "VERSION"
+                            | "TIMEOUT"
+                            | "RETRIES"
+                    )
+                });
+            if !metadata {
+                return true;
+            }
+        }
         if parts.contains(&"AUTHORIZATION")
             || (parts.last() == Some(&"AUTH") && (parts.len() == 1 || upper.contains('.')))
         {
@@ -940,7 +1167,7 @@ impl SecretRedactor {
 
     /// `accessToken` -> `access_Token`, `APIKey` -> `API_Key`: word boundaries of camelCase and
     /// PascalCase as `_`.
-    fn split_camel(key: &str) -> String {
+    pub(crate) fn split_camel(key: &str) -> String {
         let chars: Vec<char> = key.chars().collect();
         let mut out = String::with_capacity(key.len() + 4);
         for (i, &c) in chars.iter().enumerate() {
@@ -1046,7 +1273,29 @@ impl SecretRedactor {
             && !Self::has_credential_part(&parts)
     }
 
+    /// One line, redacted until it stops changing (at most five rounds). The line passes pair
+    /// quotes by position, so a replacement can change what a second pass sees; running to a
+    /// fixed point here makes `redact(redact(x)) == redact(x)` hold for every line shape
+    /// (v1.5.1). A line without a secret costs one round.
     fn redact_line(line: &str) -> String {
+        let mut current = Self::redact_line_once(line);
+        if current == line {
+            return current;
+        }
+        for _ in 0..4 {
+            let next = Self::redact_line_once(&current);
+            if next == current {
+                break;
+            }
+            current = next;
+        }
+        current
+    }
+
+    fn redact_line_once(line: &str) -> String {
+        // 0. v1.5.1 (#104): markup, name/value pairs, subscripts, `=>`, shell `set`,
+        //    password-taking CLI tools, URL userinfo and parameters, numeric PINs.
+        let line = &crate::redact_shapes::redact_line_shapes(line);
         // 1. Check space-separated CLI flags (`--api-key VALUE`, `--password "VALUE"`, etc.)
         let mut current = Self::redact_cli_flags(line);
 
@@ -1140,6 +1389,48 @@ impl SecretRedactor {
 
         // 8. Tier 3 — Shannon character entropy gate for unprefixed high-entropy secret tokens
         Self::redact_high_entropy_tokens(&current)
+    }
+
+    /// The length of the complete marker `s` starts with (`[REDACTED:` + `A-Z` and `_` + `]`),
+    /// if any. An unclosed or malformed `[REDACTED:` is ordinary text and shields nothing
+    /// (review of #106).
+    pub(crate) fn marker_len(s: &str) -> Option<usize> {
+        let rest = s.strip_prefix("[REDACTED:")?;
+        let k = rest
+            .bytes()
+            .take_while(|b| b.is_ascii_uppercase() || *b == b'_')
+            .count();
+        (k > 0 && rest.as_bytes().get(k) == Some(&b']')).then_some("[REDACTED:".len() + k + 1)
+    }
+
+    /// The length of the run of complete markers `s` starts with, with spaces between them
+    /// when `spaced` (config text).
+    pub(crate) fn marker_run(s: &str, spaced: bool) -> usize {
+        let mut at = 0;
+        loop {
+            let rest = &s[at..];
+            let gap = if spaced {
+                rest.len() - rest.trim_start_matches([' ', '\t']).len()
+            } else {
+                0
+            };
+            match Self::marker_len(&rest[gap..]) {
+                Some(n) => at += gap + n,
+                None => return at,
+            }
+        }
+    }
+
+    /// Whether `s` (trimmed) is nothing but complete markers, so there is nothing left to hide
+    /// (review of #106: a span that only starts with one may still hold a secret).
+    pub(crate) fn is_marker_run(s: &str) -> bool {
+        let t = s.trim();
+        !t.is_empty() && Self::marker_run(t, true) == t.len()
+    }
+
+    /// Whether `s` starts with a complete marker.
+    pub(crate) fn starts_with_marker(s: &str) -> bool {
+        Self::marker_len(s).is_some()
     }
 
     /// Whether `text` is exactly one marker this redactor emits (`[REDACTED:ENV_SECRET]`).
@@ -1284,8 +1575,30 @@ impl SecretRedactor {
         }
         let quote = bytes[val_start];
         if quote == b'[' {
-            // An earlier pass already replaced this value.
-            if out[val_start..].starts_with("[REDACTED:") {
+            // An earlier pass already replaced this value. Text glued to the marker, or after it
+            // in config text, is part of the same value and is hidden too: a planted
+            // `[REDACTED:X]secret` must not keep the secret (#104).
+            if Self::starts_with_marker(&out[val_start..]) {
+                let line_end = out[val_start..]
+                    .find('\n')
+                    .map_or(out.len(), |k| val_start + k);
+                let line = out[val_start..line_end].trim_end_matches('\r');
+                // Complete markers only, and all of a leading run of them (`[REDACTED:X]
+                // [REDACTED:Y]secret`; review of #106); anything else is an ordinary value.
+                Self::marker_len(line)?;
+                let run = Self::marker_run(line, config);
+                let tail = &line[run..];
+                let t = tail.trim_start();
+                let glued = !tail.is_empty() && !tail.starts_with([' ', '\t']);
+                let structural = t.is_empty()
+                    || t.starts_with(['#', ';', ',', ')', ']', '}', '&', '|', '\\'])
+                    || t.starts_with("//");
+                if !structural && (glued || config) {
+                    let from = val_start + run + (tail.len() - t.len());
+                    let to = val_start + line.len();
+                    out.replace_range(from..to, replacement);
+                    return Some(from + replacement.len());
+                }
                 return None;
             }
             // A flow sequence is the value of the sensitive key as a whole: hide its contents
@@ -1309,7 +1622,7 @@ impl SecretRedactor {
                 }
             }
             let inner = &out[inner_start..inner_end];
-            if !inner.trim().is_empty() && !inner.starts_with("[REDACTED:") {
+            if !inner.trim().is_empty() && !Self::is_marker_run(inner) {
                 out.replace_range(inner_start..inner_end, replacement);
                 return Some(inner_start + replacement.len());
             }
@@ -1380,7 +1693,7 @@ impl SecretRedactor {
                     && after.is_none_or(|n| {
                         n.is_whitespace() || matches!(n, ',' | ';' | ')' | ']' | '}')
                     }))
-                || (idx > 0 && rest[idx..].starts_with("[REDACTED:"))
+                || (idx > 0 && Self::starts_with_marker(&rest[idx..]))
             {
                 val_len = idx;
                 break;
@@ -1402,9 +1715,22 @@ impl SecretRedactor {
                 }
             }
         }
-        if val_len > 0 && !out[val_start..val_start + val_len].starts_with("[REDACTED:") {
+        let value = &out[val_start..val_start + val_len];
+        if val_len > 0 && !Self::starts_with_marker(value) {
             out.replace_range(val_start..val_start + val_len, replacement);
             return Some(val_start + replacement.len());
+        }
+        // A value that starts with a marker and goes on (`[REDACTED:X]secret`, planted or
+        // left by an earlier pass) loses the rest too (#104); markers only stay as they are.
+        if Self::starts_with_marker(value) {
+            let run = Self::marker_run(value, true);
+            let tail = &value[run..];
+            let t = tail.trim_start();
+            if !t.is_empty() {
+                let from = val_start + run + (tail.len() - t.len());
+                out.replace_range(from..val_start + val_len, replacement);
+                return Some(from + replacement.len());
+            }
         }
         None
     }
@@ -1428,7 +1754,7 @@ impl SecretRedactor {
         let line_end = rest.find('\n').unwrap_or(rest.len());
         let line = rest[..line_end].trim_end_matches('\r');
         let line_len = line.len();
-        if line.is_empty() || line.starts_with("[REDACTED:") {
+        if line.is_empty() || Self::is_marker_run(line) {
             return None;
         }
         // Brackets opened before the key (a call, a flow mapping or sequence): only inside them do
@@ -2491,6 +2817,76 @@ impl SecretRedactor {
         starts_ok
             && !expr.contains(['"', '\'', '`'])
             && (expr.contains(['(', '.', '&', '*']) || expr.contains("::"))
+            && !Self::has_adjacent_words(expr)
+    }
+
+    /// Two words side by side with only whitespace between them (`cfg.api(secret words)`):
+    /// free text, not code, unless the first is a keyword that takes an operand (#104).
+    fn has_adjacent_words(expr: &str) -> bool {
+        const KEYWORDS: &[&str] = &[
+            "new",
+            "await",
+            "as",
+            "in",
+            "of",
+            "typeof",
+            "not",
+            "and",
+            "or",
+            "is",
+            "yield",
+            "return",
+            "mut",
+            "ref",
+            "move",
+            "dyn",
+            "impl",
+            "async",
+            "const",
+            "let",
+            "var",
+            "void",
+            "delete",
+            "instanceof",
+            "if",
+            "else",
+            "for",
+            "while",
+            "match",
+            "lambda",
+            "unsafe",
+        ];
+        let b = expr.as_bytes();
+        let word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+        let mut i = 0;
+        let mut prev_word: Option<&str> = None;
+        while i < b.len() {
+            if word(b[i]) {
+                let start = i;
+                while i < b.len() && word(b[i]) {
+                    i += 1;
+                }
+                let w = &expr[start..i];
+                // A keyword on either side (`x as usize`, `await f`, `a in b`) is code.
+                if let Some(p) = prev_word
+                    && !KEYWORDS.contains(&p)
+                    && !KEYWORDS.contains(&w)
+                {
+                    return true;
+                }
+                // The next word is adjacent only when whitespace alone follows.
+                let mut j = i;
+                while j < b.len() && (b[j] == b' ' || b[j] == b'\t') {
+                    j += 1;
+                }
+                prev_word = (j > i && j < b.len() && word(b[j])).then_some(w);
+                i = j;
+            } else {
+                prev_word = None;
+                i += 1;
+            }
+        }
+        false
     }
 
     /// `let q_tokens = f(...)`, `const MAX_TOKENS = 4096`: a source-code binding, not an env
@@ -3104,9 +3500,27 @@ struct PendingSecret {
     triple: bool,
     /// A quote left open inside a bracketed value at the end of the last line.
     bracket_quote: Option<char>,
+    /// That quote is a triple quote.
+    bracket_triple: bool,
     /// The value may be inside a string (a quote after a glued `//`): no closer ends it before
     /// the line cap.
     sticky: bool,
+}
+
+/// The first occurrence of `needle` in `hay` not preceded by an odd number of backslashes
+/// (`\"""` inside a triple-quoted string does not close it; #104).
+fn find_unescaped(hay: &str, needle: &str) -> Option<usize> {
+    let mut from = 0;
+    while let Some(rel) = hay[from..].find(needle) {
+        let at = from + rel;
+        let slashes = hay[..at].bytes().rev().take_while(|&b| b == b'\\').count();
+        if slashes % 2 == 0 {
+            return Some(at);
+        }
+        // Overlapping matches count: `\""""` closes at its second quote (review of #106).
+        from = at + 1;
+    }
+    None
 }
 
 /// A line continued by a trailing backslash: an odd number of them (`\\\\` is an escaped one).
@@ -3134,9 +3548,11 @@ struct ValueScan {
     quote_at: Option<usize>,
     /// A quote character after a glued `//`: the rest may or may not be a string.
     ambiguous_quote: bool,
+    /// The open quote is a triple quote (`"""`, `\'\'\'`): only the same triple closes it.
+    triple: bool,
 }
 
-fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
+fn scan_value(text: &str, depth: usize, quote: Option<char>, triple: bool) -> ValueScan {
     let mut out = ValueScan {
         close: None,
         stmt_end: None,
@@ -3144,11 +3560,21 @@ fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
         quote,
         quote_at: None,
         ambiguous_quote: false,
+        triple: triple && quote.is_some(),
+    };
+    let tb = text.as_bytes();
+    let tripled = |i: usize, q: char| {
+        u8::try_from(q).is_ok_and(|q| tb.get(i + 1) == Some(&q) && tb.get(i + 2) == Some(&q))
     };
     let mut escaped = false;
     let mut ambiguous = false;
+    let mut skip = 0usize;
     let mut prev: Option<char> = None;
     for (i, c) in text.char_indices() {
+        if skip > 0 {
+            skip -= 1;
+            continue;
+        }
         let before = prev;
         prev = Some(c);
         if let Some(q) = out.quote {
@@ -3156,8 +3582,13 @@ fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
                 escaped = false;
             } else if c == '\\' {
                 escaped = true;
-            } else if c == q {
+            } else if c == q && (!out.triple || tripled(i, q)) {
+                // A triple quote closes only on the same triple (#104).
+                if out.triple {
+                    skip = 2;
+                }
                 out.quote = None;
+                out.triple = false;
             }
             continue;
         }
@@ -3172,6 +3603,10 @@ fn scan_value(text: &str, depth: usize, quote: Option<char>) -> ValueScan {
             '"' | '\'' | '`' => {
                 out.quote = Some(c);
                 out.quote_at = Some(i);
+                if c != '`' && tripled(i, c) {
+                    out.triple = true;
+                    skip = 2;
+                }
             }
             // A comment ends the structure on this line (review of #103: a `)` or `(` in a
             // comment is not a bracket).

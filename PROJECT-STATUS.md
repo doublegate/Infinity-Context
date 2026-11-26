@@ -2,7 +2,13 @@
 
 ## Executive summary
 
-v1.5.0 is the current release (2026-11-25), closing Phase 7 (#45 to #48) and #90:
+v1.5.1 is the current release (2026-11-25). It fixes the redactor shapes the v1.5.0 red-team
+pass left open (#104): markup and name/value pairs, password-taking CLI tools, credential URL
+parameters, Unicode look-alikes, PIN numbers and the remaining multi-line shapes. Each line is
+now redacted to a fixed point (at most five rounds); no fuzzed line changes on a second pass. The cases kept visible by owner decision are listed in ADR-0011.
+Notes: [`docs/releases/v1.5.1/`](docs/releases/v1.5.1/README.md).
+
+v1.5.0 (2026-11-25) closed Phase 7 (#45 to #48) and #90:
 
 - the ADR-0011 structural redactor, which hides the secret instead of the rest of the line,
   hardened by an independent red-team pass;
@@ -11,8 +17,7 @@ v1.5.0 is the current release (2026-11-25), closing Phase 7 (#45 to #48) and #90
 - at most one recall line per prompt (ADR-0010);
 - an opt-in BM25+RRF lexical ranking, with `icx eval-recall`.
 
-Redactor shapes that still leak, as they did in v1.4.1, are tracked for v1.5.1 (#104). Live-run
-fixtures are deferred to v1.6.0 (#89). Notes: [`docs/releases/v1.5.0/`](docs/releases/v1.5.0/README.md).
+Live-run fixtures are deferred to v1.6.0 (#89). Notes: [`docs/releases/v1.5.0/`](docs/releases/v1.5.0/README.md).
 
 v1.4.0 (2026-11-23) closed Phase 6 (#40 to #44): Gemini CLI, Cursor and
 OpenCode adapters, the Hermes context engine and shell-output plugin, `icx install`, a read-only
@@ -45,7 +50,7 @@ of that pull request and published as the v1.2.0 GitHub release.
 | 2 — Retrieval and context budgets | verified; review added IDF ranking, bounded candidates and step eviction |
 | 3 — Durability and integrations | verified; review fixed daemon lock handling and Codex null replies |
 | 4 — Documentation and governance | docs reconciled; 071 resolved from v1.2.0 on by owner decision (earlier tags and history unchanged), 074 open pending counsel |
-| 5 — Assurance and release qualification | v1.5.0 qualified on #101, #99, #103 and its release PR; v1.4.0 qualified on #88, #91 and its release PR; v1.3.2 on its release PR; v1.3.1 on PR #31 (exact-commit CI, Codecov, gitleaks, REUSE); releases verified by checksums and build attestations |
+| 5 — Assurance and release qualification | v1.5.1 qualified on its PR; v1.5.0 qualified on #101, #99, #103 and its release PR; v1.4.0 qualified on #88, #91 and its release PR; v1.3.2 on its release PR; v1.3.1 on PR #31 (exact-commit CI, Codecov, gitleaks, REUSE); releases verified by checksums and build attestations |
 
 ## Feature and capability matrix
 
@@ -65,17 +70,18 @@ full-request bound is claimed.
 
 | Metric | Value | Source / scope |
 | --- | --- | --- |
-| Current release | v1.5.0 (v1.4.1 at c1be4d1, v1.4.0 at 0781a36) | git tags |
+| Current release | v1.5.1 (v1.5.0 at bf19628, v1.4.1 at c1be4d1) | git tags |
 | Audit findings | 19: 1 High/10 Medium/8 Low | `docs/codex/10-findings-register.md` |
-| Workspace tests | 641 pass, 0 fail (8 ignored: long-horizon qualification, two daemon child scenarios, five measurements) | `cargo test --workspace`, v1.5.0 |
-| Plugin tests | 6 OpenCode (Bun), 27 Hermes stand-in | CI check job, v1.5.0 |
-| Line coverage | 95.59% at v1.5.0 (empty `HOME`, as in CI); floor 95% | `cargo llvm-cov` |
+| Workspace tests | 672 pass, 0 fail (8 ignored: long-horizon qualification, two daemon child scenarios, five measurements) | `cargo test --workspace`, v1.5.1 |
+| Plugin tests | 6 OpenCode (Bun), 27 Hermes stand-in | CI check job, v1.5.1 |
+| Line coverage | 95.57% at v1.5.1 (empty `HOME`, as in CI); floor 95% | `cargo llvm-cov` |
 | Benchmark | 10/10 quiet-host runs pass all gates | `docs/performance.md`, evidence `benchmark-native-final-series.json` |
 | Saturated window prefix reuse | 0.94 (was 0.01) | `crates/icx-core/tests/window_eviction.rs` |
 | Frozen retrieval matrix | 27 rows, recall@1/@5 = 100% | synthetic identifiers, not general model recall |
 | Mutation samples | 135 executed; 80 caught/43 missed/7 unviable/5 timeout | `docs/releases/v1.2.0/mutation-triage.md` |
 | Redactor mutation score (Sprint 4 diff) | 551 caught + 15 timeouts of 635 viable (89.1% with timeouts, 86.8% caught outright) | ICX-AUD-039, `cargo mutants --in-diff` at d2d8031 |
 | Redactor corpus | 0 missed secrets; 43 over-redacted bytes (183 under the v1.4.1 rule) | `docs/numbers.md` |
+| Redactor follow-ups (#104) | 25 of 82 inputs still leak, all kept by design; 0 of 700,000 fuzzed lines change on a second pass | `crates/icx-codec/tests/redact_v151.rs`, `docs/numbers.md` |
 | Release packages | 4 Linux variants pass local and Ubuntu 22.04/glibc 2.35 checks | `docs/releases/v1.2.0/evidence/package-qualification.md` |
 
 ## Timeline
@@ -91,6 +97,7 @@ full-request bound is claimed.
 - 2026-11-23: v1.4.0 released: Phase 6. Gemini CLI, Cursor and OpenCode adapters; Hermes plugins; `icx install`; read-only `icx` tool and `icx_write`; live fixtures; capability matrix.
 - 2026-11-24: v1.4.1 released: `icx install` keeps config formatting, matcher note, multi-line commands.
 - 2026-11-25: v1.5.0 released: Phase 7. Structural redactor and red-team fixes, `icx rescan`, resume packet, typed folds, one recall line per prompt, opt-in lexical ranking and `icx eval-recall`.
+- 2026-11-25: v1.5.1 released: the #104 redactor follow-ups and fixed-point line redaction.
 
 ## Known issues and remaining work
 
@@ -103,7 +110,8 @@ full-request bound is claimed.
 - Redaction runs once, at storage: content stored by an earlier version is not re-checked by a
   newer redactor (v1.3.1 release notes). `icx rescan` reports what would change; re-redaction is
   #102 (v1.7.0).
-- Redactor shapes that leak in v1.5.0 (and v1.4.1) are listed with their inputs in #104.
+- Redactor shapes kept visible by design (prose, comment tails, non-sensitive keys, `-p` without
+  a password tool, plain URL user names, a bare `key`) are listed with reasons in ADR-0011.
 
 ## Readiness checklist
 

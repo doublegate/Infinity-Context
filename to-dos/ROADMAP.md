@@ -6,14 +6,13 @@ and pull requests cite for the ticket's whole life.
 
 ## Status
 
-- **Current release:** [v1.5.0](https://github.com/doublegate/Infinity-Context/releases/tag/v1.5.0)
-  (2026-11-25), closing Phase 7. Durable state lives in
-  [PROJECT-STATUS.md](../PROJECT-STATUS.md), and user-visible change in
-  [CHANGELOG.md](../CHANGELOG.md).
+- **Current release:** [v1.5.1](https://github.com/doublegate/Infinity-Context/releases/tag/v1.5.1)
+  (2026-11-25): the redactor follow-ups
+  ([#104](https://github.com/doublegate/Infinity-Context/issues/104)) to v1.5.0, which closed
+  Phase 7. Durable state lives in [PROJECT-STATUS.md](../PROJECT-STATUS.md), and user-visible
+  change in [CHANGELOG.md](../CHANGELOG.md).
 - **Next minor release:** v1.6.0,
-  [Phase 8](#phase-8--v160-prompt-cache-proxy-and-observability). A v1.5.1 patch for the shapes
-  the v1.5.0 redactor still misses is tracked in
-  [#104](https://github.com/doublegate/Infinity-Context/issues/104).
+  [Phase 8](#phase-8--v160-prompt-cache-proxy-and-observability).
 - **Tracking:** one GitHub milestone per release, with one issue per sprint
   ([#40](https://github.com/doublegate/Infinity-Context/issues/40) to
   [#81](https://github.com/doublegate/Infinity-Context/issues/81)). Issue

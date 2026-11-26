@@ -145,6 +145,19 @@ Tiers:
     keeps the v1.3.1 rule (#29): hidden from its first quote to the end of the line, with a call
     head right before that quote visible.
 
+  Since v1.5.1 (#104, ADR-0011), these shapes are also redacted:
+  - credentials that are not written as `key = value`: XML elements and `key`/`value`
+    attributes, `name`/`value` pairs in JSON and YAML, subscript and `=>` assignments, shell
+    `set`/`setenv`;
+  - password-taking CLI tools (`sshpass -p`, registry `login -p`, glued MySQL `-pX`,
+    `curl -u user:pass`, `--password-stdin` input);
+  - credential URL parameters;
+  - PIN and OTP numbers of 4 to 10 digits.
+
+  Unicode look-alikes (no-break spaces, zero-width characters, full-width forms) are normalised
+  before redaction. Line redaction runs to a bounded fixed point (at most five rounds), and in
+  fuzz runs no line changed on a second pass.
+
   A line that is one complete JSON object or array, or a list of JSON members without braces
   (`"k": v, "k2": v2`), is redacted structurally: only sensitive values are replaced, other
   strings are redacted with their key as context, and the values above stay.
