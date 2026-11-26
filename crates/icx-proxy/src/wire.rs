@@ -1896,14 +1896,17 @@ impl WireProxyTransformer {
             let mut read_opts = std::fs::OpenOptions::new();
             read_opts.read(true);
             no_follow(&mut read_opts);
-            let mut text = String::new();
+            // Bytes, read lossily: a file that is not valid UTF-8 is still trimmed instead of
+            // growing past the cap (review of #113).
+            let mut bytes = Vec::new();
             if read_opts
                 .open(&path)
-                .and_then(|mut f| f.read_to_string(&mut text))
+                .and_then(|mut f| f.read_to_end(&mut bytes))
                 .is_err()
             {
                 return;
             }
+            let text = String::from_utf8_lossy(&bytes);
             let lines: Vec<&str> = text.lines().collect();
             let keep = lines[lines.len() / 2..].join("\n") + "\n";
             let tmp = dir.join(format!(
@@ -2471,10 +2474,18 @@ impl WireProxyTransformer {
                 drop(g);
                 save_res.map_err(|e| io::Error::other(e.to_string()))?;
             }
-            // Only a workspace that passed the gate on this request receives the usage ledger.
+            // Only a workspace that passed the gate on this request receives the usage ledger,
+            // against the epoch this request was transformed in (review of #113: read later, a
+            // concurrent request may have sealed another).
             let trusted_ws = ws_opt.map(Path::to_path_buf);
-            (transformed_res, resolved_provider, trusted_ws)
+            let request_epoch = mmu.epochs.sealed_epochs().len() as u64;
+            (
+                transformed_res,
+                resolved_provider,
+                (trusted_ws, request_epoch),
+            )
         };
+        let (trusted_ws, request_epoch) = trusted_ws;
 
         let transformed = match transformed_res {
             Ok(t) => t,
@@ -2541,10 +2552,7 @@ impl WireProxyTransformer {
             };
             match &forward_res {
                 Ok(counters) if !counters.is_empty() => {
-                    let epoch = shared_mmu
-                        .lock()
-                        .map_or(0, |m| m.epochs.sealed_epochs().len() as u64);
-                    Self::record_cache_usage(trusted_ws.as_deref(), counters, epoch);
+                    Self::record_cache_usage(trusted_ws.as_deref(), counters, request_epoch);
                 }
                 _ => {}
             }
@@ -2788,13 +2796,17 @@ impl WireProxyTransformer {
         let Some(version) = model.strip_prefix("gpt-") else {
             return false;
         };
-        let mut parts = version.split(|c: char| !c.is_ascii_digit());
-        let major: u32 = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
-        let minor: u32 = if version[major.to_string().len()..].starts_with('.') {
-            parts.next().and_then(|p| p.parse().ok()).unwrap_or(0)
-        } else {
-            0
+        // Leading ASCII digits only: no slicing by a parsed number's length (review of #113).
+        let digits = |t: &str| t.bytes().take_while(u8::is_ascii_digit).count();
+        let n = digits(version);
+        let Ok(major) = version[..n].parse::<u32>() else {
+            return false;
         };
+        let rest = &version[n..];
+        let minor = rest
+            .strip_prefix('.')
+            .and_then(|r| r[..digits(r)].parse::<u32>().ok())
+            .unwrap_or(0);
         (major, minor) >= (5, 6)
     }
 
@@ -3012,6 +3024,10 @@ mod tests {
             })
         };
         for (model, ok) in [
+            ("gpt-", false),
+            ("gpt-\u{e9}", false),
+            ("gpt-05.6", true),
+            ("gpt-5.", false),
             ("gpt-5.6", true),
             ("gpt-6.2-sol", true),
             ("gpt-5.5", false),
