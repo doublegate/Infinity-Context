@@ -314,3 +314,32 @@ fn repeated_sshpass_words_stay_fast() {
     assert!(t.elapsed().as_millis() < 2_000, "{:?}", t.elapsed());
     assert!(!out.contains("qqzz"));
 }
+
+/// Antigravity round on 640f975.
+#[test]
+fn review_round_on_640f975() {
+    check(&[
+        // JSON with full-width quotes and another look-alike stays JSON.
+        (
+            "{\"note\": \"say \u{FF02}hi\u{FF02}\", \"name\": \"DB_PASSWORD\", \"value\": \"qqzz\"}\u{200B}\n",
+            &["qqzz"],
+            &["\u{FF02}hi\u{FF02}"],
+        ),
+        (
+            "{\"note\": \"say \u{FF02}hi\u{FF02}\",\u{00A0}\"cmd\": \"sshpass -p \\\"my qqzz\\\" ssh host\"}\n",
+            &["qqzz"],
+            &["\u{FF02}hi\u{FF02}"],
+        ),
+        // A balanced single-quoted string does not arm a multi-line value.
+        (
+            "const p = 'password = ';\nvisible line\n",
+            &[],
+            &["visible line"],
+        ),
+        (
+            "raw.split('api_key=')\nvisible line\n",
+            &[],
+            &["visible line"],
+        ),
+    ]);
+}

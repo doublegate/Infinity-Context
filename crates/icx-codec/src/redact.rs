@@ -39,11 +39,24 @@ impl SecretRedactor {
         let quoted: String = input
             .split_inclusive('\n')
             .map(|line| {
-                if !line.chars().any(Self::is_quote_like) || Self::is_json_line(line.trim_end()) {
+                if !line.chars().any(Self::is_quote_like) {
                     return line.to_owned();
                 }
-                // Embedded JSON keeps its characters; the text before it is normalised.
-                let at = Self::embedded_json_start(line).unwrap_or(line.len());
+                // JSON is recognised on the view the second pass sees (other look-alikes
+                // normalised, quote-like characters kept), so a no-break space or zero-width
+                // character cannot hide a JSON line (review of #110).
+                let view: String = line
+                    .chars()
+                    .filter_map(Self::normalize_keep_quotes)
+                    .collect();
+                if Self::is_json_line(view.trim_end()) {
+                    return line.to_owned();
+                }
+                // Embedded JSON keeps its characters; the text before it is normalised. The JSON
+                // start is found on the view and mapped back to the line.
+                let at = Self::embedded_json_start(&view).map_or(line.len(), |at_view| {
+                    Self::view_offset_to_line(line, at_view)
+                });
                 let mut out: String = line[..at].chars().map(Self::ascii_quote).collect();
                 out.push_str(&line[at..]);
                 out
@@ -99,6 +112,20 @@ impl SecretRedactor {
             out.push_str(line);
         }
         out
+    }
+
+    /// The byte offset in `line` of byte offset `at_view` in its `normalize_keep_quotes` view.
+    fn view_offset_to_line(line: &str, at_view: usize) -> usize {
+        let mut view_len = 0;
+        for (i, c) in line.char_indices() {
+            if view_len >= at_view {
+                return i;
+            }
+            if let Some(n) = Self::normalize_keep_quotes(c) {
+                view_len += n.len_utf8();
+            }
+        }
+        line.len()
     }
 
     /// A full-width quote-like character: `＂`, `＇`, `＼` or `｀`.
@@ -632,9 +659,49 @@ impl SecretRedactor {
         // `note = "password = (" ; don't` keeps its `=` inside the string, and Markdown code
         // spans stay quoted.
         Self::assignment_continuation_scan(line, true).or_else(|| {
-            line.contains('\'')
+            Self::has_stray_apostrophe(line)
                 .then(|| Self::assignment_continuation_scan(line, false))?
         })
+    }
+
+    /// Whether `line` has an apostrophe that is not a string quote: one left open at the end
+    /// of the line, one inside a word (`don't`) or one starting a label (`'outer:`). A balanced
+    /// single-quoted string (`p = 'password = '`) does not count, so it cannot arm a multi-line
+    /// value (review of #110).
+    fn has_stray_apostrophe(line: &str) -> bool {
+        if Self::quote_open_at_end(line) {
+            return true;
+        }
+        let b = line.as_bytes();
+        b.iter().enumerate().any(|(i, &c)| {
+            c == b'\''
+                && ((i > 0
+                    && b[i - 1].is_ascii_alphabetic()
+                    && b.get(i + 1).is_some_and(u8::is_ascii_alphabetic))
+                    || ((i == 0 || b[i - 1] == b' ' || b[i - 1] == b'\t')
+                        && b[i + 1..]
+                            .iter()
+                            .position(|c| !(c.is_ascii_alphanumeric() || *c == b'_'))
+                            .is_some_and(|k| k > 0 && b.get(i + 1 + k) == Some(&b':'))))
+        })
+    }
+
+    fn quote_open_at_end(line: &str) -> bool {
+        let b = line.as_bytes();
+        let mut quote: Option<u8> = None;
+        let mut i = 0;
+        while i < b.len() {
+            let c = b[i];
+            let lifetime = c == b'\'' && i > 0 && matches!(b[i - 1], b'&' | b'<');
+            match quote {
+                Some(_) if c == b'\\' => i += 1,
+                Some(q) if c == q => quote = None,
+                None if matches!(c, b'"' | b'\'' | b'`') && !lifetime => quote = Some(c),
+                _ => {}
+            }
+            i += 1;
+        }
+        quote == Some(b'\'')
     }
 
     /// `track_apostrophes: false` reads `'` as an ordinary character (an apostrophe in text).
