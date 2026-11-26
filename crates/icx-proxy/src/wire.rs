@@ -3225,10 +3225,104 @@ mod tests {
                 "message {i} changed after unrelated traffic"
             );
         }
+        // A reuse hit with no traffic in between gives the same bytes (review of #118).
+        let again = tx(&mut mmu, &main);
+        for i in 0..last {
+            assert_eq!(after[i], again[i], "message {i} changed on a reuse hit");
+        }
         // A fresh MMU (a restarted proxy) renders the same folded bytes too.
         let fresh = tx(&mut InfinityContextMmu::default(), &main);
         for i in 0..last {
             assert_eq!(before[i], fresh[i], "message {i} differs after a restart");
+        }
+    }
+
+    /// Review of #118: a slot filled by a non-stable ingest (hooks, Hermes, older state) is not
+    /// returned on the stable path, and a stable slot is not returned to a non-stable caller.
+    #[test]
+    fn stable_and_non_stable_ingests_do_not_share_reuse_slots() {
+        let big = (0..150).fold(String::new(), |mut acc, k| {
+            acc.push_str("line ");
+            acc.push_str(&k.to_string());
+            acc.push_str(" of a long tool output\n");
+            acc
+        });
+        let mut m = InfinityContextMmu::default();
+        let (plain, _) =
+            m.ingest_or_reuse_at_index(0, AgentKind::ClaudeCode, "turn_2_b0", &big, None, false);
+        assert!(!plain.compressed_ahtl.contains("src:proxy"));
+        let (stable, fresh) = m.ingest_or_reuse_at_index_stable(
+            0,
+            AgentKind::ClaudeCode,
+            "turn_2_b0",
+            &big,
+            None,
+            false,
+        );
+        assert!(fresh, "a non-stable slot is not reused on the stable path");
+        assert!(
+            stable.compressed_ahtl.contains("src:proxy"),
+            "{}",
+            stable.compressed_ahtl
+        );
+        let (again, fresh) = m.ingest_or_reuse_at_index_stable(
+            0,
+            AgentKind::ClaudeCode,
+            "turn_2_b0",
+            &big,
+            None,
+            false,
+        );
+        assert!(!fresh);
+        assert_eq!(again.compressed_ahtl, stable.compressed_ahtl);
+        let (plain2, fresh) =
+            m.ingest_or_reuse_at_index(0, AgentKind::ClaudeCode, "turn_2_b0", &big, None, false);
+        assert!(fresh && !plain2.compressed_ahtl.contains("src:proxy"));
+    }
+
+    /// #116 on the OpenAI path: folded `tool` items stay byte-stable across unrelated traffic.
+    #[test]
+    fn openai_folded_history_is_byte_stable_across_unrelated_traffic() {
+        let conv = |tag: &str, n: usize| {
+            let mut msgs = vec![json!({ "role": "developer", "content": "rules" })];
+            for t in 0..n {
+                let out = (0..120).fold(String::new(), |mut acc, k| {
+                    acc.push_str(&format!("{tag} {t} row {k}"));
+                    acc.push_str(" status ok\n");
+                    acc
+                });
+                msgs.push(json!({ "role": "user", "content": format!("{tag} {t}") }));
+                msgs.push(json!({ "role": "assistant", "content": null, "tool_calls": [{ "id": format!("c{t}"), "type": "function", "function": { "name": "sh", "arguments": "{}" } }] }));
+                msgs.push(
+                    json!({ "role": "tool", "tool_call_id": format!("c{t}"), "content": out }),
+                );
+            }
+            msgs.push(json!({ "role": "user", "content": "next" }));
+            json!({ "model": "gpt-5.5", "messages": msgs })
+        };
+        let tx = |mmu: &mut InfinityContextMmu, body: &Value| -> Vec<Value> {
+            let out: Value = serde_json::from_str(
+                &WireProxyTransformer::transform_openai_request(&body.to_string(), mmu).unwrap(),
+            )
+            .unwrap();
+            out["messages"].as_array().unwrap().clone()
+        };
+        let mut mmu = InfinityContextMmu::default();
+        let main = conv("main", 5);
+        let before = tx(&mut mmu, &main);
+        assert!(
+            before.iter().any(|m| m.to_string().contains("#icx:")),
+            "the fixture folds something"
+        );
+        for i in 0..8 {
+            let _ = tx(&mut mmu, &conv(&format!("sub{i}"), 5));
+        }
+        let after = tx(&mut mmu, &main);
+        for i in 0..before.len() - 1 {
+            assert_eq!(
+                before[i], after[i],
+                "message {i} changed after unrelated traffic"
+            );
         }
     }
 

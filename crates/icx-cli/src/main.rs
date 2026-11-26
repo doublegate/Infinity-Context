@@ -1429,6 +1429,50 @@ fn execute_hook(args: &[String], stdin_buf: &str) -> Result<String, serde_json::
     }
 }
 
+/// Retries a read (`deref`, `slice`, `grep` with an id) that missed in `ws_dir` against the
+/// registered `icx proxy` stores (#117): handles in the proxy's folded packets are stored there.
+/// Each store must pass the same trust check as the project workspace; it is loaded under its
+/// lock and never written.
+fn try_proxy_stores(req_line: &str, ws_dir: &Path) -> Option<(serde_json::Value, PathBuf)> {
+    if McpPagerServer::is_mutating_request(req_line) {
+        return None;
+    }
+    let own = std::fs::canonicalize(ws_dir).ok();
+    for store in workspace::proxy_stores(roots()) {
+        if own.as_ref() == Some(&store) || workspace::verify(&store, roots()).is_err() {
+            continue;
+        }
+        let Ok(lock_guard) = acquire_workspace_lock(&store) else {
+            continue;
+        };
+        let mut mmu = workspace_mmu();
+        if mmu.load_workspace_dir_unlocked(&store).is_err() {
+            continue;
+        }
+        let r = McpPagerServer::handle_jsonrpc(req_line, &mut mmu);
+        drop(lock_guard);
+        let is_err = r
+            .pointer("/result/isError")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        if !is_err {
+            return Some((r, store));
+        }
+    }
+    None
+}
+
+/// Whether a tool response is a "not found" error.
+fn is_not_found(resp: &serde_json::Value) -> bool {
+    resp.pointer("/result/isError")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+        && resp
+            .pointer("/result/content/0/text")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|s| s.contains("not found"))
+}
+
 /// Names the workspace that was searched in a "not found" tool error, so a stub written to
 /// another workspace (a different project, or an old worktree) is diagnosable (#37).
 fn annotate_not_found(mut resp: serde_json::Value, ws_dir: &Path) -> serde_json::Value {
@@ -1442,7 +1486,9 @@ fn annotate_not_found(mut resp: serde_json::Value, ws_dir: &Path) -> serde_json:
             .filter(|t| t.as_str().is_some_and(|s| s.contains("not found")))
     {
         let note = format!(
-            " (searched workspace {}; a handle from another project or worktree is stored in that project's workspace)",
+            " (searched workspace {} and the registered icx proxy stores; a handle from another \
+             project or worktree is stored in that project's workspace. If it is in none of \
+             these, this server cannot resolve it: do not retry the same handle)",
             ws_dir.display()
         );
         if let Some(s) = text.as_str() {
@@ -1532,7 +1578,13 @@ fn serve_mcp_stream<R: BufRead, W: io::Write>(
                             )
                         } else {
                             drop(lock_guard);
-                            annotate_not_found(r, &ws_dir)
+                            if is_not_found(&r)
+                                && let Some((found, _store)) = try_proxy_stores(&req_line, &ws_dir)
+                            {
+                                found
+                            } else {
+                                annotate_not_found(r, &ws_dir)
+                            }
                         }
                     }
                     Err(e) => {
@@ -1638,7 +1690,11 @@ fn run_proxy_server(args: &[String]) -> Result<(), String> {
     let mut mmu = workspace_mmu();
     let ws_dir = resolve_workspace_dir(dir_str);
     // Creates and seals a missing workspace; trust is re-checked per request by the gate.
-    let _ = workspace_state(&ws_dir, true);
+    if matches!(workspace_state(&ws_dir, true), WsState::Ready)
+        && let Err(e) = workspace::register_proxy_store(&ws_dir, roots())
+    {
+        eprintln!("icx proxy: warning: cannot register the store for icx mcp-serve: {e}");
+    }
     let env_upstream = env::var("ICX_UPSTREAM_URL")
         .ok()
         .filter(|s| !s.trim().is_empty());
@@ -1717,6 +1773,8 @@ fn execute_proxy_transform(args: &[String], stdin_buf: &str) -> Result<String, S
     let mut mmu = workspace_mmu();
     let icx_dir = resolve_workspace_dir(dir_str);
     if matches!(workspace_state(&icx_dir, true), WsState::Ready) {
+        // The handles this writes are resolvable by `icx mcp-serve` in other workspaces (#117).
+        let _ = workspace::register_proxy_store(&icx_dir, roots());
         return mmu
             .with_locked_workspace(&icx_dir, |mmu| {
                 WireProxyTransformer::transform_for_provider(provider, "/", stdin_buf, mmu)

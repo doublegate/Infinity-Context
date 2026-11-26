@@ -317,6 +317,59 @@ pub fn agent_workspace(roots: &WorkspaceRoots) -> Option<PathBuf> {
     }
 }
 
+/// The most proxy stores remembered (#117); the oldest is dropped first.
+const MAX_PROXY_STORES: usize = 8;
+
+fn proxy_stores_file(roots: &WorkspaceRoots) -> PathBuf {
+    roots.state_dir.join("proxy-stores")
+}
+
+/// Records `ws_dir` as the store of an `icx proxy` (#117), so the MCP server can resolve the
+/// handles the proxy writes into folded history. One canonical path per line in
+/// `<state>/proxy-stores` (`0600`, replaced atomically), newest last, at most
+/// [`MAX_PROXY_STORES`]. Best effort: a failure only means those handles stay unresolvable.
+pub fn register_proxy_store(ws_dir: &Path, roots: &WorkspaceRoots) -> Result<(), TrustError> {
+    let canonical = std::fs::canonicalize(ws_dir).map_err(io_err)?;
+    private_dir(&roots.state_dir)?;
+    check_dir_security(&roots.state_dir)?;
+    let mut stores: Vec<PathBuf> = proxy_stores(roots)
+        .into_iter()
+        .filter(|p| p != &canonical)
+        .collect();
+    stores.push(canonical);
+    let skip = stores.len().saturating_sub(MAX_PROXY_STORES);
+    let mut text = String::new();
+    for p in &stores[skip..] {
+        text.push_str(&p.to_string_lossy());
+        text.push('\n');
+    }
+    if std::fs::read_to_string(proxy_stores_file(roots)).is_ok_and(|t| t == text) {
+        return Ok(());
+    }
+    write_private_file(&proxy_stores_file(roots), text.as_bytes())
+}
+
+/// The registered proxy stores, newest first (#117). The file must be a private regular file
+/// owned by this user; only absolute paths of existing directories are returned. Trust is still
+/// verified on use.
+pub fn proxy_stores(roots: &WorkspaceRoots) -> Vec<PathBuf> {
+    let path = proxy_stores_file(roots);
+    if check_private_file(&path).is_err() {
+        return Vec::new();
+    }
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let mut out: Vec<PathBuf> = text
+        .lines()
+        .take(MAX_PROXY_STORES)
+        .map(|l| PathBuf::from(l.trim()))
+        .filter(|p| p.is_absolute() && p.is_dir())
+        .collect();
+    out.reverse();
+    out
+}
+
 /// Default workspace directory for the project containing `cwd`.
 pub fn default_workspace_dir(cwd: &Path, roots: &WorkspaceRoots) -> PathBuf {
     let root = project_root(cwd);

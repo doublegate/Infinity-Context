@@ -122,6 +122,10 @@ struct PersistedMmuState {
     emitted_blocks: BTreeSet<[u8; 32]>,
 }
 
+/// The clause every packet rendered for the wire proxy carries (#117); see
+/// [`InfinityContextMmu::ingest_or_reuse_at_index_stable`].
+const STABLE_PACKET_MARK: &str = "src:proxy";
+
 /// The central Virtual Context Memory Management Unit (`MMU`).
 #[derive(Clone, Debug)]
 pub struct InfinityContextMmu {
@@ -133,9 +137,6 @@ pub struct InfinityContextMmu {
     pub bus: SeqlockTelemetryBus,
     pub tool_virtualize_threshold: usize,
     pub workspace_hash: u64,
-    /// Set while the wire proxy ingests a request (#116): rendered packets then depend only on
-    /// their content, never on what the MMU observed before. Not persisted.
-    stable_packets: bool,
     agent_read_cursors: BTreeMap<u8, u64>,
     /// See `PersistedMmuState::pending_resume` (T-73-002).
     pending_resume: BTreeSet<u8>,
@@ -186,7 +187,6 @@ impl InfinityContextMmu {
             graph: BiTemporalGraph::new(),
             bus,
             tool_virtualize_threshold: DEFAULT_TOOL_VIRTUALIZE_THRESHOLD_BYTES,
-            stable_packets: false,
             workspace_hash: 0x4943_585F_574F_524B,
             agent_read_cursors: BTreeMap::new(),
             pending_resume: BTreeSet::new(),
@@ -752,6 +752,34 @@ impl InfinityContextMmu {
         exit_code: Option<i32>,
         force_anomaly: bool,
     ) -> (IngestResult, bool) {
+        self.ingest_or_reuse_at_index_mode(
+            occurrence_idx,
+            agent,
+            raw_subject,
+            raw_text,
+            exit_code,
+            force_anomaly,
+            false,
+        )
+    }
+
+    /// Whether a packet was rendered for the wire proxy (content-only hologram, `src:proxy`
+    /// marker; #116, #117).
+    fn is_stable_render(res: &IngestResult) -> bool {
+        res.compressed_ahtl.contains(STABLE_PACKET_MARK)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn ingest_or_reuse_at_index_mode(
+        &mut self,
+        occurrence_idx: usize,
+        agent: AgentKind,
+        raw_subject: &str,
+        raw_text: &str,
+        exit_code: Option<i32>,
+        force_anomaly: bool,
+        stable: bool,
+    ) -> (IngestResult, bool) {
         let clean_subject = Self::sanitize_hook_label(raw_subject, "event");
         let (sanitized, _) = Self::bound_and_sanitize_raw(raw_text, icx_core::ICX_MAX_INGEST_BYTES);
         let (aid, _) = ArtifactId::hash_bytes(sanitized.as_bytes());
@@ -764,6 +792,7 @@ impl InfinityContextMmu {
             && *prev_aid == aid
             && *prev_ec == exit_code
             && *prev_fa == force_anomaly
+            && Self::is_stable_render(prev_res) == stable
         {
             return (prev_res.clone(), false);
         }
@@ -776,6 +805,7 @@ impl InfinityContextMmu {
             && *prev_aid == aid
             && *prev_ec == exit_code
             && *prev_fa == force_anomaly
+            && Self::is_stable_render(prev_res) == stable
         {
             return (prev_res.clone(), false);
         }
@@ -787,6 +817,7 @@ impl InfinityContextMmu {
                 && *prev_aid == aid
                 && *prev_ec == exit_code
                 && *prev_fa == force_anomaly
+                && Self::is_stable_render(prev_res) == stable
             {
                 return (prev_res.clone(), false);
             }
@@ -798,6 +829,7 @@ impl InfinityContextMmu {
             && *prev_aid == aid
             && *prev_ec == exit_code
             && *prev_fa == force_anomaly
+            && Self::is_stable_render(prev_res) == stable
         {
             return (prev_res.clone(), false);
         }
@@ -810,13 +842,14 @@ impl InfinityContextMmu {
         let _ = agent_ro_map.split_off(&occurrence_idx);
         Self::truncate_agent_suffix(&mut self.indexed_occurrences, occurrence_idx, agent as u8);
         Self::truncate_agent_suffix(&mut self.reordered_occurrences, occurrence_idx, agent as u8);
-        let res = self.ingest_payload_for_subagent(
+        let res = self.ingest_payload_mode(
             agent,
             raw_subject,
             raw_text,
             exit_code,
             force_anomaly,
             None,
+            stable,
         );
         let record = (
             agent as u8,
@@ -853,17 +886,15 @@ impl InfinityContextMmu {
         exit_code: Option<i32>,
         force_anomaly: bool,
     ) -> (IngestResult, bool) {
-        let prev = std::mem::replace(&mut self.stable_packets, true);
-        let out = self.ingest_or_reuse_at_index(
+        self.ingest_or_reuse_at_index_mode(
             occurrence_idx,
             agent,
             raw_subject,
             raw_text,
             exit_code,
             force_anomaly,
-        );
-        self.stable_packets = prev;
-        out
+            true,
+        )
     }
 
     /// Returns `true` if `occurrence_idx` is already recorded for `agent` in
@@ -1043,6 +1074,30 @@ impl InfinityContextMmu {
         force_anomaly: bool,
         subagent_id: Option<&str>,
     ) -> IngestResult {
+        self.ingest_payload_mode(
+            agent,
+            raw_subject,
+            raw_text,
+            exit_code,
+            force_anomaly,
+            subagent_id,
+            false,
+        )
+    }
+
+    /// The body of [`Self::ingest_payload_for_subagent`]; `stable` renders the packet for the
+    /// wire proxy (content-only hologram plus the `src:proxy` marker; #116, #117).
+    #[allow(clippy::too_many_arguments)]
+    fn ingest_payload_mode(
+        &mut self,
+        agent: AgentKind,
+        raw_subject: &str,
+        raw_text: &str,
+        exit_code: Option<i32>,
+        force_anomaly: bool,
+        subagent_id: Option<&str>,
+        stable: bool,
+    ) -> IngestResult {
         self.clock_ms = self.next_clock_ms();
         let clean_subject = Self::sanitize_hook_label(raw_subject, "event");
         let subject = clean_subject.as_str();
@@ -1081,11 +1136,15 @@ impl InfinityContextMmu {
         // differently after other traffic and busts the provider cache (#116). The index keeps
         // the full receipt.
         let mut rendered_hologram = receipt.hologram_bytes;
-        if self.stable_packets {
+        if stable {
             rendered_hologram[4] = 0;
             rendered_hologram[5] = 0;
             rendered_hologram[6] = 0;
-            rendered_hologram[7] = (rendered_hologram[7] & !0b11) | 1;
+            // An allowlist of the content-derived bits (error, redacted) plus a fixed tier, so a
+            // future history-dependent flag cannot reach the wire (review of #118).
+            rendered_hologram[7] = (rendered_hologram[7]
+                & (icx_codec::FLAG_HAS_ERROR | icx_codec::FLAG_IS_REDACTED))
+                | 1;
         }
         if body_redacted {
             self.redacted_artifacts.insert(artifact_id);
@@ -1107,6 +1166,16 @@ impl InfinityContextMmu {
                 },
                 "exit_code",
                 Some(code.to_string()),
+            ));
+        }
+        if stable {
+            // Marks a packet written by the wire proxy (#117): its handle is stored in the
+            // proxy's workspace, which `icx mcp-serve` also searches. Constant, so the packet
+            // stays byte-stable (#116).
+            packet.clauses.push(icx_codec::AhtlClause::new(
+                icx_codec::ClauseOp::Neutral,
+                "src",
+                Some("proxy".to_owned()),
             ));
         }
         let ahtl_rendered = packet.render();
