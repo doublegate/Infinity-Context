@@ -286,17 +286,33 @@ enum TagEnd {
 }
 
 fn tag_end(s: &str, open: usize) -> TagEnd {
+    let b = s.as_bytes();
     let mut quote: Option<u8> = None;
-    for (k, &c) in s.as_bytes().iter().enumerate().skip(open + 1) {
-        match quote {
-            Some(q) if c == q => quote = None,
-            None if c == b'"' || c == b'\'' => quote = Some(c),
-            None if c == b'>' => return TagEnd::At(k),
-            None if c == b'<' => return TagEnd::Stray,
-            _ => {}
+    // The last byte outside quotes that was not a space: a quote opens a value only after `=`,
+    // so an apostrophe in text (`<y don't`) is not one (security review of #106).
+    let mut last = b'<';
+    for (k, &c) in b.iter().enumerate().skip(open + 1) {
+        if let Some(q) = quote {
+            if c == q {
+                quote = None;
+                last = c;
+            }
+            continue;
+        }
+        match c {
+            b'"' | b'\'' if last == b'=' => quote = Some(c),
+            b'>' => return TagEnd::At(k),
+            b'<' => return TagEnd::Stray,
+            b' ' | b'\t' => {}
+            _ => last = c,
         }
     }
-    TagEnd::Open
+    // A value quote that never closes: not a tag on this line.
+    if quote.is_some() {
+        TagEnd::Stray
+    } else {
+        TagEnd::Open
+    }
 }
 
 /// Attributes of one tag on this line: `(name_lower, value_start, value_end)` for quoted values.
@@ -367,7 +383,10 @@ fn xml_attribute_pairs(line: &str) -> String {
         let named_sensitive = attrs.iter().any(|(n, a, z)| {
             matches!(n.as_str(), "key" | "name" | "id") && R::is_sensitive_key_name(&tag[*a..*z])
         });
-        let mut next = gt + 1;
+        // A tag that is not sensitive may hide one inside a quoted value whose quotes paired
+        // wrongly (`<a title="x <add key="Password" value="…"/>`): resume after its `<`, so
+        // nested tags are still checked (fail closed; security review of #106).
+        let mut next = if named_sensitive { gt + 1 } else { open + 1 };
         if named_sensitive {
             // Right to left, so earlier offsets stay valid.
             for (n, a, z) in attrs.iter().rev() {

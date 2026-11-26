@@ -840,3 +840,20 @@ fn urls_joined_by_a_backslash() {
         ),
     ]);
 }
+
+/// Commit security review of 615dfee: an apostrophe in text does not end the XML scan.
+#[test]
+fn apostrophes_before_tags_do_not_end_the_scan() {
+    check(&[
+        (
+            "x <y don't; <add key=\"Password\" value=\"qqzz\"/>\n",
+            &["qqzz"],
+            &[],
+        ),
+        (
+            "<a title=\"unclosed <add key=\"Password\" value=\"qqzz\"/>\n",
+            &["qqzz"],
+            &[],
+        ),
+    ]);
+}
