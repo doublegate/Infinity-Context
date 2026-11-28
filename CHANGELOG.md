@@ -42,6 +42,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `icx proxy` adds an explicit `prompt_cache_breakpoint` at the epoch boundary of GPT-5.6 and
   later requests, and sets `prompt_cache_options.ttl` from `ICX_OPENAI_CACHE_TTL` (`30m` or
   `12h`). Other models are unchanged (T-81-001).
+- Developer tools: `scripts/redactor-differential.sh` compares the redactor against a base ref on
+  a seeded fragment fuzz (`crates/icx-codec/tests/redact_dev_harness.rs`, ignored and
+  report-only), and `scripts/measure_fts_index.py` sizes SQLite FTS5 indexes over a workspace's
+  stored text, read only (T-91-003 evidence).
 
 ### Changed
 

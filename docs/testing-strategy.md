@@ -125,6 +125,19 @@ All CI jobs use the pinned `1.100.0` toolchain and SHA-pinned actions
   fractal suffix) and `ICX_MEASURE_STORE=<store> cargo test --release -p icx-adapters --test
   lexical_index measure -- --ignored --nocapture` (lexical index).
 
+## 3a. v1.6.0 additions: developer harnesses
+
+- `crates/icx-codec/tests/redact_dev_harness.rs` holds two ignored, report-only tests from the
+  v1.5.x red-team rounds: `fuzz` joins fixed fragments into lines from a fixed seed (`FUZZ_N`,
+  `LEAKS=1`) and counts surviving placeholders and non-idempotent results; `cases` runs a JSON
+  case file (`CASES`). A surviving placeholder is only a candidate leak, so neither is a gate.
+- `scripts/redactor-differential.sh [BASE_REF]` runs that fuzz in the working tree and in a
+  temporary worktree of `BASE_REF` (default `main`) and lists the lines that leak on only one
+  side. Run it on any redactor change and read `new-leaks.txt` before review.
+- `scripts/measure_fts_index.py <workspace>` builds throwaway SQLite FTS5 indexes (porter and
+  trigram, with and without positions) over a workspace's stored text, read only, and reports
+  size and insert time: the evidence step for the `grep_cold` index (T-91-003).
+
 ## 4. v1.2.0 qualification additions
 
 New integration fixtures cover YAML scalar and redaction counterexamples, Profile A framing,
