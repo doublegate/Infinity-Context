@@ -91,6 +91,7 @@ proptest! {
         if let Ok((_, n)) = ingest_rollout(&p, None, &mut mmu) {
             prop_assert!(n <= RECORDS_IN_FIXTURE);
         }
-        let _ = std::fs::remove_file(&p);
+        // Each case removes its directory, not only its file, so no run leaves one behind.
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

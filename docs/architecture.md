@@ -121,8 +121,8 @@ replacement field; the original native output remains visible. See
 
 1. **Resolve the workspace:** `--dir` > `ICX_DIR` > the per-project default
    `<state_dir>/workspaces/<first 16 hex of blake3(canonical project root)>`, where the project
-   root is the nearest ancestor containing `.git` and `state_dir` is `ICX_STATE_HOME`, else
-   `$XDG_STATE_HOME/icx`, else `~/.local/state/icx`.
+   root is the top of the nearest git work tree, found by git's own discovery rules (#120), and
+   `state_dir` is `ICX_STATE_HOME`, else `$XDG_STATE_HOME/icx`, else `~/.local/state/icx`.
 2. **Verify trust:** the directory must be owned by the effective uid, have no group/other
    permission bits, and carry a valid `OWNER` seal; a sealed store must carry a valid MAC. A
    repository-local `.icx/` is never used implicitly (`icx trust --dir <path>` adopts one). See

@@ -2,17 +2,50 @@
 //! a real install backs up and is idempotent, existing icx hooks are not duplicated, unknown keys
 //! and comments survive, and an unparsable file is never rewritten.
 
+use std::ffi::OsStr;
 use std::fs;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 const ICX: &str = "/opt/icx/bin/icx";
 
-fn home(tag: &str) -> PathBuf {
+/// A throwaway HOME, removed when the test ends. A failing test keeps it for inspection (the
+/// path is in the panic output), so only passing runs clean up after themselves.
+struct TempHome(PathBuf);
+
+impl Drop for TempHome {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
+impl Deref for TempHome {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for TempHome {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<OsStr> for TempHome {
+    fn as_ref(&self) -> &OsStr {
+        self.0.as_os_str()
+    }
+}
+
+fn home(tag: &str) -> TempHome {
     let h = std::env::temp_dir().join(format!("icx-install-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&h);
     fs::create_dir_all(&h).unwrap();
-    h
+    TempHome(h)
 }
 
 fn run(home: &Path, args: &[&str]) -> Output {
@@ -290,7 +323,6 @@ fn every_agent_plans_without_error_and_agy_needs_no_wrapper() {
             .contains("Mcp(icx:icx)")
     );
     assert!(out(&o).contains("claude mcp add --scope user icx"));
-    let _ = fs::remove_dir_all(&h);
 }
 
 #[test]

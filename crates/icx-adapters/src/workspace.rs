@@ -112,15 +112,135 @@ fn io_err(e: impl std::fmt::Display) -> TrustError {
     TrustError::Io(e.to_string())
 }
 
-/// Nearest ancestor of `cwd` containing `.git`, else `cwd`. A linked git worktree (`.git` is a
-/// file naming `<main>/.git/worktrees/<name>`) resolves to its main repository, so an agent
-/// working in a worktree shares the project's workspace (v1.3.2, #37).
+/// Nearest ancestor of `cwd` that is the top of a git work tree, else `cwd`. A linked git
+/// worktree (`.git` is a file naming `<main>/.git/worktrees/<name>`) resolves to its main
+/// repository, so an agent working in a worktree shares the project's workspace (v1.3.2, #37).
+///
+/// The search follows git's own discovery (#120), so one stray `.git` in a shared parent such
+/// as `/tmp` cannot merge every project below it: a `.git` directory git would reject (empty, or
+/// missing `HEAD`, `objects` or `refs`) is skipped and the search goes on upward, and a `.git`
+/// file naming no repository ends it, as git stops there with "not a git repository", leaving
+/// `cwd` its own project.
 pub fn project_root(cwd: &Path) -> PathBuf {
     let start = std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
-    let Some(found) = start.ancestors().find(|p| p.join(".git").exists()) else {
-        return start.clone();
+    for dir in start.ancestors() {
+        match dot_git(dir) {
+            DotGit::Repository => {
+                return worktree_main_root(dir).unwrap_or_else(|| dir.to_path_buf());
+            }
+            DotGit::InvalidFile => break,
+            DotGit::None => {}
+        }
+    }
+    start
+}
+
+/// Whether `dir/.git` is a repository git would accept: a git directory, or a file whose
+/// `gitdir:` line names one (a linked worktree or a submodule).
+pub fn has_git_repository(dir: &Path) -> bool {
+    matches!(dot_git(dir), DotGit::Repository)
+}
+
+/// What `dir/.git` is to git's repository discovery.
+enum DotGit {
+    /// A repository: discovery stops here.
+    Repository,
+    /// Absent, or a directory git rejects: discovery goes on to the parent.
+    None,
+    /// A file that names no repository: git reports an error and stops.
+    InvalidFile,
+}
+
+/// The largest git control file (`.git` file, `HEAD`, `commondir`, `gitdir`) icx reads.
+const MAX_CONTROL_FILE: u64 = 4096;
+
+/// A small git control file, or `None`. It must be a regular file, not a symlink (ICX-AUD-018),
+/// of at most [`MAX_CONTROL_FILE`] bytes. The open is non-blocking and no-follow and the handle is
+/// re-checked, so a FIFO or device planted in any ancestor of the cwd cannot block a hook and a
+/// large file is never read whole (`project_root` runs on every hook).
+fn read_control_file(path: &Path) -> Option<String> {
+    if !std::fs::symlink_metadata(path).ok()?.file_type().is_file() {
+        return None;
+    }
+    let mut opts = std::fs::OpenOptions::new();
+    opts.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let flags = rustix::fs::OFlags::NONBLOCK | rustix::fs::OFlags::NOFOLLOW;
+        opts.custom_flags(flags.bits().cast_signed());
+    }
+    let file = opts.open(path).ok()?;
+    let meta = file.metadata().ok()?;
+    if !meta.file_type().is_file() || meta.len() > MAX_CONTROL_FILE {
+        return None;
+    }
+    let mut text = String::new();
+    // One byte over the limit tells a file that grew after the check from one that fits.
+    file.take(MAX_CONTROL_FILE + 1)
+        .read_to_string(&mut text)
+        .ok()?;
+    (text.len() as u64 <= MAX_CONTROL_FILE).then_some(text)
+}
+
+/// The path a `.git` file names, read as git's `read_gitfile_gently` does: `gitdir: ` (with the
+/// space), then the path up to trailing line ends, which must be the whole file (a second line
+/// would become part of the path and name nothing).
+fn gitfile_target(text: &str) -> Option<&str> {
+    let path = text
+        .strip_prefix("gitdir: ")?
+        .trim_end_matches(['\r', '\n']);
+    (!path.is_empty() && !path.contains(['\r', '\n'])).then_some(path)
+}
+
+fn dot_git(dir: &Path) -> DotGit {
+    let dot_git = dir.join(".git");
+    // A `.git` directory may be a symlink (git follows it); a `.git` file may not.
+    let Ok(meta) = std::fs::metadata(&dot_git) else {
+        return DotGit::None;
     };
-    worktree_main_root(found).unwrap_or_else(|| found.to_path_buf())
+    if meta.is_dir() {
+        return if is_git_directory(&dot_git) {
+            DotGit::Repository
+        } else {
+            DotGit::None
+        };
+    }
+    if !meta.is_file() {
+        return DotGit::None;
+    }
+    let names_repository = read_control_file(&dot_git)
+        .is_some_and(|text| gitfile_target(&text).is_some_and(|g| is_git_directory(&dir.join(g))));
+    if names_repository {
+        DotGit::Repository
+    } else {
+        DotGit::InvalidFile
+    }
+}
+
+/// git's `is_git_directory`: a valid `HEAD`, plus `objects` and `refs` directories in the common
+/// directory (`commondir` names it for a linked worktree's git directory).
+fn is_git_directory(gitdir: &Path) -> bool {
+    // git's `validate_headref` looks only at how `HEAD` starts: `ref:` then a name under `refs/`,
+    // or a SHA-1 or SHA-256 object name. Whatever follows is not checked.
+    let head_ok = read_control_file(&gitdir.join("HEAD")).is_some_and(|h| {
+        h.strip_prefix("ref:").is_some_and(|r| {
+            r.trim_start_matches(|c: char| c.is_ascii_whitespace())
+                .starts_with("refs/")
+        }) || [40, 64].iter().any(|&n| {
+            h.len() >= n
+                && h.as_bytes()[..n].iter().all(u8::is_ascii_hexdigit)
+                && h.as_bytes().get(n).is_none_or(u8::is_ascii_whitespace)
+        })
+    });
+    if !head_ok {
+        return false;
+    }
+    let common = match read_control_file(&gitdir.join("commondir")) {
+        Some(rel) if !rel.trim().is_empty() => gitdir.join(rel.trim()),
+        _ => gitdir.to_path_buf(),
+    };
+    common.join("objects").is_dir() && common.join("refs").is_dir()
 }
 
 /// The main repository of the linked worktree at `root`, or `None` when `root` is not one.
@@ -132,19 +252,9 @@ pub fn project_root(cwd: &Path) -> PathBuf {
 /// Submodules (`gitdir` under `.git/modules/`) have no `commondir` and stay their own project.
 fn worktree_main_root(root: &Path) -> Option<PathBuf> {
     let dot_git = root.join(".git");
-    if !std::fs::symlink_metadata(&dot_git).ok()?.is_file() {
-        return None;
-    }
-    // `symlink_metadata`: a symlinked control file is refused, as for `.git` (ICX-AUD-018).
-    let read_small = |p: &Path| -> Option<String> {
-        let meta = std::fs::symlink_metadata(p).ok()?;
-        if !meta.is_file() || meta.len() > 4096 {
-            return None;
-        }
-        std::fs::read_to_string(p).ok()
-    };
+    let read_small = read_control_file;
     let gitdir_line = read_small(&dot_git)?;
-    let gitdir = gitdir_line.trim().strip_prefix("gitdir:")?.trim();
+    let gitdir = gitfile_target(&gitdir_line)?;
     let gitdir = std::fs::canonicalize(root.join(gitdir)).ok()?;
     let common_rel = read_small(&gitdir.join("commondir"))?;
     let common = std::fs::canonicalize(gitdir.join(common_rel.trim())).ok()?;

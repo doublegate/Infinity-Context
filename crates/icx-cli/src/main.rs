@@ -281,6 +281,12 @@ fn roots() -> &'static WorkspaceRoots {
         #[cfg(test)]
         {
             let base = env::temp_dir().join(format!("icx_cli_test_roots_{}", std::process::id()));
+            // The sandbox lives as long as the test process, so it cannot be removed when a test
+            // ends. Remove the ones left by earlier test processes that have exited instead.
+            #[cfg(target_os = "linux")]
+            remove_stale_test_roots();
+            // A reused PID must not inherit an earlier run's state.
+            let _ = fs::remove_dir_all(&base);
             WorkspaceRoots {
                 state_dir: base.join("state"),
                 config_dir: base.join("config"),
@@ -292,6 +298,42 @@ fn roots() -> &'static WorkspaceRoots {
             WorkspaceRoots::from_env()
         }
     })
+}
+
+/// Removes this user's `icx_cli_test_roots_<pid>` sandbox directories whose process no longer
+/// exists. Linux only (it checks `/proc/<pid>`); a live process's sandbox, including one whose PID
+/// was reused, is kept, and so is anything that is not a directory or belongs to another user.
+#[cfg(all(test, target_os = "linux"))]
+fn remove_stale_test_roots() {
+    use std::os::unix::fs::MetadataExt;
+    for entry in fs::read_dir(env::temp_dir())
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        let name = entry.file_name();
+        let Some(pid) = name
+            .to_str()
+            .and_then(|n| n.strip_prefix("icx_cli_test_roots_"))
+            .and_then(|p| p.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        let mine = entry
+            .metadata()
+            .is_ok_and(|m| m.file_type().is_dir() && m.uid() == rustix::process::getuid().as_raw());
+        if mine && pid != std::process::id() && !Path::new(&format!("/proc/{pid}")).exists() {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
+/// Whether `dir` lies below the top of a git work tree (main or linked): its parent resolves, as
+/// git and `project_root` would, to a repository. A work tree's own top, main or linked, is not
+/// "inside" one, and an invalid `.git` file above `dir` ends the search as it does for git.
+fn inside_work_tree(dir: &Path) -> bool {
+    dir.parent()
+        .is_some_and(|p| workspace::has_git_repository(&workspace::project_root(p)))
 }
 
 /// An MMU that MAC-stamps every save and rejects stores not written by this install.
@@ -614,12 +656,7 @@ fn run_trust(args: &[String]) -> Result<(), String> {
             .map_err(|e| format!("icx trust error: cannot seal store: {e}"))?;
     }
     let canonical = fs::canonicalize(&dir).unwrap_or_else(|_| dir.clone());
-    if workspace::project_root(&canonical) != canonical
-        && canonical
-            .ancestors()
-            .skip(1)
-            .any(|p| p.join(".git").exists())
-    {
+    if inside_work_tree(&canonical) {
         eprintln!(
             "icx trust: note: {} is inside a git work tree; anything committed there can be replaced by a pull. \
              The store is MAC-sealed, but the default out-of-repo location (omit --dir) is safer.",
@@ -4245,12 +4282,74 @@ mod tests {
         }
     }
 
+    #[test]
+    fn inside_work_tree_matches_git_for_repositories_and_linked_worktrees() {
+        let base = env::temp_dir().join(format!("icx_cli_inside_wt_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let main = base.join("main");
+        fs::create_dir_all(main.join("src")).unwrap();
+        let git = |cwd: &Path, args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .current_dir(cwd)
+                .args(["-c", "user.name=t", "-c", "user.email=t@example.invalid"])
+                .args(["-c", "commit.gpgsign=false"])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "git {args:?}: {out:?}");
+        };
+        git(&main, &["init", "-q"]);
+        fs::write(main.join("README"), "x\n").unwrap();
+        git(&main, &["add", "README"]);
+        git(&main, &["commit", "-q", "-m", "init"]);
+        git(&main, &["worktree", "add", "-q", "../wt", "-b", "agent"]);
+        let base = fs::canonicalize(&base).unwrap();
+        let (main, wt) = (base.join("main"), base.join("wt"));
+        fs::create_dir_all(wt.join("deep")).unwrap();
+        assert!(!inside_work_tree(&main), "a repository's own top");
+        assert!(!inside_work_tree(&wt), "a linked worktree's own top");
+        assert!(inside_work_tree(&main.join("src")));
+        assert!(inside_work_tree(&wt.join("deep")));
+        assert!(!inside_work_tree(&base));
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn stale_test_roots_of_exited_processes_are_removed_and_nothing_else() {
+        // A PID above `pid_max` can never be running.
+        let pid_max: u64 = fs::read_to_string("/proc/sys/kernel/pid_max")
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        // Distinct per test process, so concurrent runs do not share these names.
+        let me = u64::from(std::process::id());
+        let dead = env::temp_dir().join(format!("icx_cli_test_roots_{}", pid_max + 1 + 2 * me));
+        let dead_file =
+            env::temp_dir().join(format!("icx_cli_test_roots_{}", pid_max + 2 + 2 * me));
+        // PID 1 is running in every PID namespace.
+        let live = env::temp_dir().join("icx_cli_test_roots_1");
+        fs::create_dir_all(dead.join("state")).unwrap();
+        fs::write(&dead_file, "not a sandbox").unwrap();
+        let live_existed = live.exists();
+        fs::create_dir_all(&live).unwrap();
+        remove_stale_test_roots();
+        assert!(!dead.exists(), "an exited process's sandbox is removed");
+        assert!(dead_file.is_file(), "a file with the name is not a sandbox");
+        assert!(live.is_dir(), "a running process's sandbox is kept");
+        let _ = fs::remove_file(&dead_file);
+        if !live_existed {
+            let _ = fs::remove_dir(&live);
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn the_daemon_stubs_only_when_the_caller_asks() {
         // Stub mode is the hook caller's setting: it travels in the request (version 2), and the
         // daemon's own environment plays no part (review of #87).
-        let (_ws, sock, server) = start_daemon("stub_flag");
+        let (ws, sock, server) = start_daemon("stub_flag");
         let big = (0..400)
             .map(|i| format!("row {i}: value={}", i * 3))
             .collect::<Vec<_>>()
@@ -4269,7 +4368,9 @@ mod tests {
                 .expect("daemon reply");
         assert!(stubbed.contains("ICX:STUB"), "{stubbed}");
         assert!(!caller_stub_mode(AgentKind::ClaudeCode));
-        drop(server);
+        // The daemon exits after its idle timeout; join it so the workspace can be removed.
+        let _ = server.join();
+        let _ = fs::remove_dir_all(&ws);
     }
 
     #[cfg(unix)]
@@ -4277,7 +4378,7 @@ mod tests {
     fn a_version_1_request_cannot_ask_for_stubs() {
         use std::io::{Read, Write};
         use std::os::unix::net::UnixStream;
-        let (_ws, sock, server) = start_daemon("stub_v1");
+        let (ws, sock, server) = start_daemon("stub_v1");
         let big = (0..400)
             .map(|i| format!("row {i}: v={}", i * 5))
             .collect::<Vec<_>>()
@@ -4292,7 +4393,9 @@ mod tests {
         let mut reply = String::new();
         stream.read_to_string(&mut reply).unwrap();
         assert!(!reply.contains("ICX:STUB"), "{reply}");
-        drop(server);
+        // The daemon exits after its idle timeout; join it so the workspace can be removed.
+        let _ = server.join();
+        let _ = fs::remove_dir_all(&ws);
     }
 
     #[test]

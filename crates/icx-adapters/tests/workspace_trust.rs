@@ -17,6 +17,15 @@ fn scratch(tag: &str) -> PathBuf {
     d
 }
 
+/// The smallest `.git` git accepts (`HEAD`, `objects`, `refs`): an empty one is not a
+/// repository to git, nor to `project_root` (#120).
+fn git_dir(repo: &Path) {
+    for d in ["objects", "refs"] {
+        std::fs::create_dir_all(repo.join(".git").join(d)).unwrap();
+    }
+    std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+}
+
 fn roots(base: &Path) -> WorkspaceRoots {
     WorkspaceRoots {
         state_dir: base.join("state"),
@@ -29,7 +38,7 @@ fn roots(base: &Path) -> WorkspaceRoots {
 fn default_workspace_lives_outside_the_repository_and_is_stable_across_subdirs() {
     let base = scratch("default");
     let repo = base.join("repo");
-    std::fs::create_dir_all(repo.join(".git")).unwrap();
+    git_dir(&repo);
     std::fs::create_dir_all(repo.join("src/deep")).unwrap();
     let r = roots(&base);
     let a = workspace::resolve(None, None, &repo, &r).unwrap();
@@ -45,7 +54,7 @@ fn default_workspace_lives_outside_the_repository_and_is_stable_across_subdirs()
 fn repo_local_icx_is_reported_but_never_selected_by_default() {
     let base = scratch("legacy");
     let repo = base.join("repo");
-    std::fs::create_dir_all(repo.join(".git")).unwrap();
+    git_dir(&repo);
     std::fs::create_dir_all(repo.join(".icx")).unwrap();
     let ws = workspace::resolve(None, None, &repo, &roots(&base)).unwrap();
     assert_eq!(
