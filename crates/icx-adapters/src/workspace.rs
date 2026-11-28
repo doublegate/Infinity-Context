@@ -151,8 +151,38 @@ enum DotGit {
     InvalidFile,
 }
 
+/// The largest git control file (`.git` file, `HEAD`, `commondir`, `gitdir`) icx reads.
+const MAX_CONTROL_FILE: u64 = 4096;
+
+/// A small git control file, or `None`. It must be a regular file, not a symlink (ICX-AUD-018),
+/// of at most [`MAX_CONTROL_FILE`] bytes. The open is non-blocking and no-follow and the handle is
+/// re-checked, so a FIFO or device planted in any ancestor of the cwd cannot block a hook and a
+/// large file is never read whole (`project_root` runs on every hook).
+fn read_control_file(path: &Path) -> Option<String> {
+    if !std::fs::symlink_metadata(path).ok()?.file_type().is_file() {
+        return None;
+    }
+    let mut opts = std::fs::OpenOptions::new();
+    opts.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let flags = rustix::fs::OFlags::NONBLOCK | rustix::fs::OFlags::NOFOLLOW;
+        opts.custom_flags(flags.bits().cast_signed());
+    }
+    let file = opts.open(path).ok()?;
+    let meta = file.metadata().ok()?;
+    if !meta.file_type().is_file() || meta.len() > MAX_CONTROL_FILE {
+        return None;
+    }
+    let mut text = String::new();
+    file.take(MAX_CONTROL_FILE).read_to_string(&mut text).ok()?;
+    Some(text)
+}
+
 fn dot_git(dir: &Path) -> DotGit {
     let dot_git = dir.join(".git");
+    // A `.git` directory may be a symlink (git follows it); a `.git` file may not.
     let Ok(meta) = std::fs::metadata(&dot_git) else {
         return DotGit::None;
     };
@@ -166,14 +196,13 @@ fn dot_git(dir: &Path) -> DotGit {
     if !meta.is_file() {
         return DotGit::None;
     }
-    let names_repository = meta.len() <= 4096
-        && std::fs::read_to_string(&dot_git).is_ok_and(|text| {
-            text.lines()
-                .next()
-                .and_then(|l| l.strip_prefix("gitdir:"))
-                .map(str::trim)
-                .is_some_and(|g| !g.is_empty() && is_git_directory(&dir.join(g)))
-        });
+    let names_repository = read_control_file(&dot_git).is_some_and(|text| {
+        text.lines()
+            .next()
+            .and_then(|l| l.strip_prefix("gitdir:"))
+            .map(str::trim)
+            .is_some_and(|g| !g.is_empty() && is_git_directory(&dir.join(g)))
+    });
     if names_repository {
         DotGit::Repository
     } else {
@@ -184,7 +213,7 @@ fn dot_git(dir: &Path) -> DotGit {
 /// git's `is_git_directory`: a valid `HEAD`, plus `objects` and `refs` directories in the common
 /// directory (`commondir` names it for a linked worktree's git directory).
 fn is_git_directory(gitdir: &Path) -> bool {
-    let head_ok = std::fs::read_to_string(gitdir.join("HEAD")).is_ok_and(|h| {
+    let head_ok = read_control_file(&gitdir.join("HEAD")).is_some_and(|h| {
         let h = h.trim_end();
         h.starts_with("ref: refs/")
             || ((h.len() == 40 || h.len() == 64) && h.bytes().all(|b| b.is_ascii_hexdigit()))
@@ -192,8 +221,8 @@ fn is_git_directory(gitdir: &Path) -> bool {
     if !head_ok {
         return false;
     }
-    let common = match std::fs::read_to_string(gitdir.join("commondir")) {
-        Ok(rel) if !rel.trim().is_empty() => gitdir.join(rel.trim()),
+    let common = match read_control_file(&gitdir.join("commondir")) {
+        Some(rel) if !rel.trim().is_empty() => gitdir.join(rel.trim()),
         _ => gitdir.to_path_buf(),
     };
     common.join("objects").is_dir() && common.join("refs").is_dir()
@@ -211,14 +240,7 @@ fn worktree_main_root(root: &Path) -> Option<PathBuf> {
     if !std::fs::symlink_metadata(&dot_git).ok()?.is_file() {
         return None;
     }
-    // `symlink_metadata`: a symlinked control file is refused, as for `.git` (ICX-AUD-018).
-    let read_small = |p: &Path| -> Option<String> {
-        let meta = std::fs::symlink_metadata(p).ok()?;
-        if !meta.is_file() || meta.len() > 4096 {
-            return None;
-        }
-        std::fs::read_to_string(p).ok()
-    };
+    let read_small = read_control_file;
     let gitdir_line = read_small(&dot_git)?;
     let gitdir = gitdir_line.trim().strip_prefix("gitdir:")?.trim();
     let gitdir = std::fs::canonicalize(root.join(gitdir)).ok()?;

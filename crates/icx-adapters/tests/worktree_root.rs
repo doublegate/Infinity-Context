@@ -146,3 +146,39 @@ fn a_git_directory_git_rejects_does_not_make_a_project_root() {
     assert_eq!(project_root(&deep), mid);
     let _ = std::fs::remove_dir_all(&base);
 }
+
+#[test]
+fn planted_control_files_cannot_block_or_bloat_the_lookup() {
+    // `project_root` runs on every hook: a FIFO named `HEAD` in an ancestor must not block it,
+    // and an oversized `HEAD` is not read (security review of #119).
+    let base = base_dir("planted-control-files");
+    let cwd = base.join("fifo/work");
+    std::fs::create_dir_all(&cwd).unwrap();
+    let gitdir = base.join("fifo/.git");
+    for d in ["objects", "refs"] {
+        std::fs::create_dir_all(gitdir.join(d)).unwrap();
+    }
+    let made = Command::new("mkfifo")
+        .arg(gitdir.join("HEAD"))
+        .status()
+        .unwrap();
+    assert!(made.success());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let probe = cwd.clone();
+    std::thread::spawn(move || tx.send(project_root(&probe)).unwrap());
+    let found = rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("project_root blocked on a FIFO HEAD");
+    assert_eq!(found, cwd, "a FIFO is not a valid HEAD");
+
+    let big = base.join("big");
+    std::fs::create_dir_all(big.join("work")).unwrap();
+    for d in ["objects", "refs"] {
+        std::fs::create_dir_all(big.join(".git").join(d)).unwrap();
+    }
+    let mut head = "ref: refs/heads/main\n".to_owned();
+    head.push_str(&" ".repeat(8192));
+    std::fs::write(big.join(".git/HEAD"), head).unwrap();
+    assert_eq!(project_root(&big.join("work")), big.join("work"));
+    let _ = std::fs::remove_dir_all(&base);
+}
