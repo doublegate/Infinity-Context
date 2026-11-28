@@ -1,6 +1,6 @@
 //! v1.3.2 (#37): a linked git worktree belongs to its main repository's project; a planted
 //! `.git` file or a submodule does not redirect anything.
-use icx_adapters::workspace::project_root;
+use icx_adapters::workspace::{has_git_repository, project_root};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -82,14 +82,12 @@ fn worktrees_resolve_to_the_main_repository_and_forgeries_do_not() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// git's own answer for `cwd`: the work tree top, or `None` outside any repository.
-fn git_toplevel(cwd: &Path) -> Option<PathBuf> {
+/// git's own answer for `cwd`: the work tree top, or `None` outside any repository. Discovery
+/// stops at `base`'s parent, so a repository above the test's temp directory cannot answer.
+fn git_toplevel(base: &Path, cwd: &Path) -> Option<PathBuf> {
     let out = Command::new("git")
         .current_dir(cwd)
-        .env(
-            "GIT_CEILING_DIRECTORIES",
-            cwd.ancestors().nth(3).unwrap_or(cwd),
-        )
+        .env("GIT_CEILING_DIRECTORIES", base.parent().unwrap_or(base))
         .args(["rev-parse", "--show-toplevel"])
         .output()
         .unwrap();
@@ -107,8 +105,9 @@ fn a_git_directory_git_rejects_does_not_make_a_project_root() {
     let plain = base.join("outer/plain");
     std::fs::create_dir_all(&plain).unwrap();
     std::fs::create_dir_all(base.join("outer/.git")).unwrap();
-    assert_eq!(git_toplevel(&plain), None);
+    assert_eq!(git_toplevel(&base, &plain), None);
     assert_eq!(project_root(&plain), plain);
+    assert!(!has_git_repository(&base.join("outer")));
 
     // An empty, then a partial (`HEAD` only), `.git` between a real repository and the cwd:
     // the search skips it and finds the repository, as git does.
@@ -117,11 +116,12 @@ fn a_git_directory_git_rejects_does_not_make_a_project_root() {
     let deep = mid.join("x");
     std::fs::create_dir_all(&deep).unwrap();
     git(&repo, &["init", "-q"]);
+    assert!(has_git_repository(&repo), "a repository git created");
     std::fs::create_dir_all(mid.join(".git")).unwrap();
-    assert_eq!(git_toplevel(&deep), Some(repo.clone()));
+    assert_eq!(git_toplevel(&base, &deep), Some(repo.clone()));
     assert_eq!(project_root(&deep), repo);
     std::fs::write(mid.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
-    assert_eq!(git_toplevel(&deep), Some(repo.clone()));
+    assert_eq!(git_toplevel(&base, &deep), Some(repo.clone()));
     assert_eq!(project_root(&deep), repo, "HEAD without objects or refs");
 
     // A `.git` file naming a directory that is not a repository ends the search: git reports
@@ -133,7 +133,7 @@ fn a_git_directory_git_rejects_does_not_make_a_project_root() {
         format!("gitdir: {}\n", base.join("not-a-repo").display()),
     )
     .unwrap();
-    assert_eq!(git_toplevel(&deep), None);
+    assert_eq!(git_toplevel(&base, &deep), None);
     assert_eq!(project_root(&deep), deep, ".git file naming no repository");
 
     // The smallest directory git accepts (`HEAD`, `objects`, `refs`) is a repository for both.
@@ -142,11 +142,37 @@ fn a_git_directory_git_rejects_does_not_make_a_project_root() {
         std::fs::create_dir_all(mid.join(".git").join(d)).unwrap();
     }
     std::fs::write(mid.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
-    assert_eq!(git_toplevel(&deep), Some(mid.clone()));
+    assert_eq!(git_toplevel(&base, &deep), Some(mid.clone()));
     assert_eq!(project_root(&deep), mid);
+
+    // git checks only how `HEAD` starts, so a second line, `ref:` without a space and a bare
+    // object name are all valid; a `ref:` outside `refs/` is not.
+    for head in [
+        "ref: refs/heads/main\nextra\n",
+        "ref:refs/heads/main\n",
+        "0123456789abcdef0123456789abcdef01234567\n",
+    ] {
+        std::fs::write(mid.join(".git/HEAD"), head).unwrap();
+        assert_eq!(git_toplevel(&base, &deep), Some(mid.clone()), "{head:?}");
+        assert_eq!(project_root(&deep), mid, "{head:?}");
+    }
+    std::fs::write(mid.join(".git/HEAD"), "ref: heads/main\n").unwrap();
+    assert_eq!(git_toplevel(&base, &deep), Some(repo.clone()));
+    assert_eq!(project_root(&deep), repo, "ref outside refs/");
+
+    // A `.git` file must be exactly one `gitdir:` line, even when it names a real repository.
+    std::fs::remove_dir_all(mid.join(".git")).unwrap();
+    std::fs::write(
+        mid.join(".git"),
+        format!("gitdir: {}\nextra\n", repo.join(".git").display()),
+    )
+    .unwrap();
+    assert_eq!(git_toplevel(&base, &deep), None);
+    assert_eq!(project_root(&deep), deep, "two-line .git file");
     let _ = std::fs::remove_dir_all(&base);
 }
 
+#[cfg(unix)]
 #[test]
 fn planted_control_files_cannot_block_or_bloat_the_lookup() {
     // `project_root` runs on every hook: a FIFO named `HEAD` in an ancestor must not block it,
@@ -170,6 +196,19 @@ fn planted_control_files_cannot_block_or_bloat_the_lookup() {
         .recv_timeout(std::time::Duration::from_secs(10))
         .expect("project_root blocked on a FIFO HEAD");
     assert_eq!(found, cwd, "a FIFO is not a valid HEAD");
+
+    // A `.git` that is neither a file nor a directory (here a FIFO) is no repository either.
+    let odd = base.join("odd");
+    std::fs::create_dir_all(odd.join("work")).unwrap();
+    assert!(
+        Command::new("mkfifo")
+            .arg(odd.join(".git"))
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(!has_git_repository(&odd));
+    assert_eq!(project_root(&odd.join("work")), odd.join("work"));
 
     let big = base.join("big");
     std::fs::create_dir_all(big.join("work")).unwrap();

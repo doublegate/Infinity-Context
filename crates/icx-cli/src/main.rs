@@ -283,7 +283,10 @@ fn roots() -> &'static WorkspaceRoots {
             let base = env::temp_dir().join(format!("icx_cli_test_roots_{}", std::process::id()));
             // The sandbox lives as long as the test process, so it cannot be removed when a test
             // ends. Remove the ones left by earlier test processes that have exited instead.
+            #[cfg(target_os = "linux")]
             remove_stale_test_roots();
+            // A reused PID must not inherit an earlier run's state.
+            let _ = fs::remove_dir_all(&base);
             WorkspaceRoots {
                 state_dir: base.join("state"),
                 config_dir: base.join("config"),
@@ -297,17 +300,17 @@ fn roots() -> &'static WorkspaceRoots {
     })
 }
 
-/// Removes `icx_cli_test_roots_<pid>` sandboxes whose process no longer exists. Linux only (it
-/// checks `/proc/<pid>`); a live process's sandbox, including one whose PID was reused, is kept.
-#[cfg(test)]
+/// Removes this user's `icx_cli_test_roots_<pid>` sandbox directories whose process no longer
+/// exists. Linux only (it checks `/proc/<pid>`); a live process's sandbox, including one whose PID
+/// was reused, is kept, and so is anything that is not a directory or belongs to another user.
+#[cfg(all(test, target_os = "linux"))]
 fn remove_stale_test_roots() {
-    if !Path::new("/proc/self").exists() {
-        return;
-    }
-    let Ok(entries) = fs::read_dir(env::temp_dir()) else {
-        return;
-    };
-    for entry in entries.flatten() {
+    use std::os::unix::fs::MetadataExt;
+    for entry in fs::read_dir(env::temp_dir())
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
         let name = entry.file_name();
         let Some(pid) = name
             .to_str()
@@ -316,7 +319,10 @@ fn remove_stale_test_roots() {
         else {
             continue;
         };
-        if pid != std::process::id() && !Path::new(&format!("/proc/{pid}")).exists() {
+        let mine = entry
+            .metadata()
+            .is_ok_and(|m| m.file_type().is_dir() && m.uid() == rustix::process::getuid().as_raw());
+        if mine && pid != std::process::id() && !Path::new(&format!("/proc/{pid}")).exists() {
             let _ = fs::remove_dir_all(entry.path());
         }
     }
@@ -642,12 +648,9 @@ fn run_trust(args: &[String]) -> Result<(), String> {
             .map_err(|e| format!("icx trust error: cannot seal store: {e}"))?;
     }
     let canonical = fs::canonicalize(&dir).unwrap_or_else(|_| dir.clone());
-    if workspace::project_root(&canonical) != canonical
-        && canonical
-            .ancestors()
-            .skip(1)
-            .any(workspace::has_git_repository)
-    {
+    // The same answer `project_root` (and git) gives: inside a work tree whose top is above `dir`.
+    let root = workspace::project_root(&canonical);
+    if root != canonical && workspace::has_git_repository(&root) {
         eprintln!(
             "icx trust: note: {} is inside a git work tree; anything committed there can be replaced by a pull. \
              The store is MAC-sealed, but the default out-of-repo location (omit --dir) is safer.",
@@ -4270,6 +4273,35 @@ mod tests {
                 out.contains(marker) && out.contains("ICX:STUB"),
                 "{agent:?}: {out}"
             );
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn stale_test_roots_of_exited_processes_are_removed_and_nothing_else() {
+        // A PID above `pid_max` can never be running.
+        let pid_max: u64 = fs::read_to_string("/proc/sys/kernel/pid_max")
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let dead = env::temp_dir().join(format!("icx_cli_test_roots_{}", pid_max + 1));
+        let dead_file = env::temp_dir().join(format!("icx_cli_test_roots_{}", pid_max + 2));
+        let live = env::temp_dir().join(format!(
+            "icx_cli_test_roots_{}",
+            std::os::unix::process::parent_id()
+        ));
+        fs::create_dir_all(dead.join("state")).unwrap();
+        fs::write(&dead_file, "not a sandbox").unwrap();
+        let live_existed = live.exists();
+        fs::create_dir_all(&live).unwrap();
+        remove_stale_test_roots();
+        assert!(!dead.exists(), "an exited process's sandbox is removed");
+        assert!(dead_file.is_file(), "a file with the name is not a sandbox");
+        assert!(live.is_dir(), "a running process's sandbox is kept");
+        let _ = fs::remove_file(&dead_file);
+        if !live_existed {
+            let _ = fs::remove_dir(&live);
         }
     }
 

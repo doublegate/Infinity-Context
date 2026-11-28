@@ -6,9 +6,9 @@
 //! the v1.5.x red-team and review rounds used, kept so the next redactor change can be compared
 //! against its base with `scripts/redactor-differential.sh`.
 //!
-//! `qqzz` stands for a secret value and `aaaa-aaaa` for a UUID-shaped one. A `qqzz` that survives
-//! is a leak only where a sensitive key precedes it, so a fuzz "leak" line is a candidate: compare
-//! two trees, and read the lines that leak on one and not the other.
+//! `qqzz` stands for a secret value, `aaaa-aaaa` for a UUID-shaped one and `4821` for a PIN or OTP
+//! number. A placeholder that survives is a leak only where a sensitive key precedes it, so a fuzz
+//! "leak" line is a candidate: compare two trees, and read the lines that leak on one only.
 //!
 //! ```text
 //! # fragment fuzz: N lines (default 20000) from a fixed seed; LEAKS=1 prints each leaking line
@@ -114,12 +114,17 @@ fn show(s: &str) -> String {
         .replace(' ', "␠")
 }
 
+/// A surviving placeholder: `qqzz` (a secret value), `aaaa-aaaa` (a UUID-shaped one) or `4821`
+/// (the PIN/OTP number the `pin: `/`otp=` fragments precede).
 fn leaks(redacted: &str) -> bool {
-    redacted.contains("qqzz") || redacted.contains("aaaa-aaaa")
+    ["qqzz", "aaaa-aaaa", "4821"]
+        .iter()
+        .any(|p| redacted.contains(p))
 }
 
+/// Set and not empty or `0`.
 fn env_flag(name: &str) -> bool {
-    std::env::var_os(name).is_some()
+    std::env::var_os(name).is_some_and(|v| !v.is_empty() && v != "0")
 }
 
 #[test]

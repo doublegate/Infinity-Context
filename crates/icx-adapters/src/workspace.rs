@@ -176,8 +176,18 @@ fn read_control_file(path: &Path) -> Option<String> {
         return None;
     }
     let mut text = String::new();
-    file.take(MAX_CONTROL_FILE).read_to_string(&mut text).ok()?;
-    Some(text)
+    // One byte over the limit tells a file that grew after the check from one that fits.
+    file.take(MAX_CONTROL_FILE + 1)
+        .read_to_string(&mut text)
+        .ok()?;
+    (text.len() as u64 <= MAX_CONTROL_FILE).then_some(text)
+}
+
+/// The path a `.git` file names: its whole content must be one `gitdir: <path>` line, as git's
+/// `read_gitfile` requires (a second line would become part of the path and name nothing).
+fn gitfile_target(text: &str) -> Option<&str> {
+    let path = text.trim_end().strip_prefix("gitdir:")?.trim();
+    (!path.is_empty() && !path.contains('\n')).then_some(path)
 }
 
 fn dot_git(dir: &Path) -> DotGit {
@@ -196,13 +206,8 @@ fn dot_git(dir: &Path) -> DotGit {
     if !meta.is_file() {
         return DotGit::None;
     }
-    let names_repository = read_control_file(&dot_git).is_some_and(|text| {
-        text.lines()
-            .next()
-            .and_then(|l| l.strip_prefix("gitdir:"))
-            .map(str::trim)
-            .is_some_and(|g| !g.is_empty() && is_git_directory(&dir.join(g)))
-    });
+    let names_repository = read_control_file(&dot_git)
+        .is_some_and(|text| gitfile_target(&text).is_some_and(|g| is_git_directory(&dir.join(g))));
     if names_repository {
         DotGit::Repository
     } else {
@@ -213,10 +218,16 @@ fn dot_git(dir: &Path) -> DotGit {
 /// git's `is_git_directory`: a valid `HEAD`, plus `objects` and `refs` directories in the common
 /// directory (`commondir` names it for a linked worktree's git directory).
 fn is_git_directory(gitdir: &Path) -> bool {
+    // git's `validate_headref` looks only at how `HEAD` starts: `ref:` then a name under `refs/`,
+    // or a SHA-1 or SHA-256 object name. Whatever follows is not checked.
     let head_ok = read_control_file(&gitdir.join("HEAD")).is_some_and(|h| {
-        let h = h.trim_end();
-        h.starts_with("ref: refs/")
-            || ((h.len() == 40 || h.len() == 64) && h.bytes().all(|b| b.is_ascii_hexdigit()))
+        h.strip_prefix("ref:")
+            .is_some_and(|r| r.trim_start().starts_with("refs/"))
+            || [40, 64].iter().any(|&n| {
+                h.len() >= n
+                    && h.as_bytes()[..n].iter().all(u8::is_ascii_hexdigit)
+                    && h.as_bytes().get(n).is_none_or(u8::is_ascii_whitespace)
+            })
     });
     if !head_ok {
         return false;
@@ -237,12 +248,9 @@ fn is_git_directory(gitdir: &Path) -> bool {
 /// Submodules (`gitdir` under `.git/modules/`) have no `commondir` and stay their own project.
 fn worktree_main_root(root: &Path) -> Option<PathBuf> {
     let dot_git = root.join(".git");
-    if !std::fs::symlink_metadata(&dot_git).ok()?.is_file() {
-        return None;
-    }
     let read_small = read_control_file;
     let gitdir_line = read_small(&dot_git)?;
-    let gitdir = gitdir_line.trim().strip_prefix("gitdir:")?.trim();
+    let gitdir = gitfile_target(&gitdir_line)?;
     let gitdir = std::fs::canonicalize(root.join(gitdir)).ok()?;
     let common_rel = read_small(&gitdir.join("commondir"))?;
     let common = std::fs::canonicalize(gitdir.join(common_rel.trim())).ok()?;
