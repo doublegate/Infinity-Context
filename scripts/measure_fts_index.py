@@ -11,7 +11,9 @@ WAL mode). The indexes hold stored, already redacted text, so they are written t
 (0700) directory and deleted afterwards unless `--keep` is given.
 
 Configurations ending in `-contentless` (`content=''`) store the index only, as an index over the
-existing `chunks` table would; the others also keep a copy of the text in the FTS5 table.
+existing `chunks` table would; the others also keep a copy of the text in the FTS5 table. Insert
+time is one bulk transaction over the whole store (backfill cost), not the latency of indexing
+one output as it is stored; `optimize` and `VACUUM` are not timed.
 
 Usage:
   python3 scripts/measure_fts_index.py ~/.local/state/icx/workspaces/<id>
@@ -116,6 +118,17 @@ def main() -> int:
     if not db.is_file():
         print(f"no store at {db}", file=sys.stderr)
         return 2
+    # Never change an existing directory's mode; refuse one others can read.
+    if (
+        args.out
+        and args.out.exists()
+        and (not args.out.is_dir() or args.out.stat().st_mode & 0o077)
+    ):
+        print(
+            f"{args.out} must be a directory only you can access (0700)",
+            file=sys.stderr,
+        )
+        return 2
     texts = load_texts(db)
     total = sum(len(t.encode()) for t in texts)
     if total == 0:
@@ -131,8 +144,8 @@ def main() -> int:
         f"artifacts={len(texts)} text={total / 1e6:.1f} MB (SQLite {sqlite3.sqlite_version})"
     )
     if args.out:
-        args.out.mkdir(mode=0o700, parents=True, exist_ok=True)
-        args.out.chmod(0o700)
+        if not args.out.exists():
+            args.out.mkdir(mode=0o700, parents=True)
         results.update(measure(texts, total, args.out, args.keep))
     elif args.keep:
         out = Path(tempfile.mkdtemp(prefix="icx-fts-"))  # mkdtemp creates it 0700

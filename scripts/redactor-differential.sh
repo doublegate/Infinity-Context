@@ -18,6 +18,8 @@
 #
 # Environment:
 #   CARGO_WRAP  command prefix for cargo, e.g. "agent-workstation resource --wait 1800 build --"
+#   BASE_TARGET_DIR  cargo target directory for the base tree (default: target/redactor-diff-base
+#               in this repository, kept between runs so the base is not rebuilt from scratch)
 #   CARGO_BUILD_JOBS is passed through as usual.
 set -euo pipefail
 export LC_ALL=C  # byte order for sort, comm and join
@@ -26,10 +28,9 @@ usage() { sed -n '6,13p' "$0" >&2; exit 2; }
 cases="" n=200000 out="" base="main" positional=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --cases|--n|--out) [ $# -ge 2 ] || usage ;;&
-    --cases) cases=$(realpath "$2"); shift 2 ;;
-    --n) n=$2; shift 2 ;;
-    --out) out=$2; shift 2 ;;
+    --cases) [ $# -ge 2 ] || usage; cases=$(realpath "$2"); shift 2 ;;
+    --n) [ $# -ge 2 ] || usage; n=$2; shift 2 ;;
+    --out) [ $# -ge 2 ] || usage; out=$2; shift 2 ;;
     -h|--help) usage ;;
     -*) usage ;;
     *) [ "$positional" -eq 0 ] || usage; base=$1; positional=1; shift ;;
@@ -46,17 +47,20 @@ out=${out:-$(mktemp -d "${TMPDIR:-/tmp}/icx-redactor-diff.XXXXXX")}
 mkdir -p "$out"
 wt=$(mktemp -d "${TMPDIR:-/tmp}/icx-redactor-base.XXXXXX")
 cleanup() {
-  git -C "$repo" worktree remove --force "$wt" > /dev/null 2>&1 || rm -rf "$wt"
-  git -C "$repo" worktree prune
+  git -C "$repo" worktree remove --force "$wt" > /dev/null 2>&1 \
+    || { rm -rf "$wt"; git -C "$repo" worktree prune; }
 }
 trap cleanup EXIT
 git -C "$repo" worktree add --detach --quiet "$wt" "$base"
+mkdir -p "$(dirname "$wt/$harness")"
 cp "$repo/$harness" "$wt/$harness"
 
 read -r -a wrap <<< "${CARGO_WRAP:-}"
 run() { # tree label test [env...]
   local tree=$1 label=$2 test=$3; shift 3
-  (cd "$tree" && env "$@" ${wrap[@]+"${wrap[@]}"} cargo test -q --release -p icx-codec \
+  local target=()
+  [ "$label" = base ] && target=(CARGO_TARGET_DIR="${BASE_TARGET_DIR:-$repo/target/redactor-diff-base}")
+  (cd "$tree" && env ${target[@]+"${target[@]}"} "$@" ${wrap[@]+"${wrap[@]}"} cargo test -q --release -p icx-codec \
      --test redact_dev_harness -- --ignored --nocapture --exact "$test") > "$out/$label.$test.log" 2>&1 \
     || { echo "cargo test failed in $tree; see $out/$label.$test.log" >&2; exit 1; }
 }

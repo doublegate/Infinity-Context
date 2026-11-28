@@ -328,6 +328,14 @@ fn remove_stale_test_roots() {
     }
 }
 
+/// Whether `dir` lies below the top of a git work tree (main or linked): its parent resolves, as
+/// git and `project_root` would, to a repository. A work tree's own top, main or linked, is not
+/// "inside" one, and an invalid `.git` file above `dir` ends the search as it does for git.
+fn inside_work_tree(dir: &Path) -> bool {
+    dir.parent()
+        .is_some_and(|p| workspace::has_git_repository(&workspace::project_root(p)))
+}
+
 /// An MMU that MAC-stamps every save and rejects stores not written by this install.
 fn workspace_mmu() -> InfinityContextMmu {
     let mut mmu = InfinityContextMmu::default();
@@ -648,9 +656,7 @@ fn run_trust(args: &[String]) -> Result<(), String> {
             .map_err(|e| format!("icx trust error: cannot seal store: {e}"))?;
     }
     let canonical = fs::canonicalize(&dir).unwrap_or_else(|_| dir.clone());
-    // The same answer `project_root` (and git) gives: inside a work tree whose top is above `dir`.
-    let root = workspace::project_root(&canonical);
-    if root != canonical && workspace::has_git_repository(&root) {
+    if inside_work_tree(&canonical) {
         eprintln!(
             "icx trust: note: {} is inside a git work tree; anything committed there can be replaced by a pull. \
              The store is MAC-sealed, but the default out-of-repo location (omit --dir) is safer.",
@@ -4276,6 +4282,38 @@ mod tests {
         }
     }
 
+    #[test]
+    fn inside_work_tree_matches_git_for_repositories_and_linked_worktrees() {
+        let base = env::temp_dir().join(format!("icx_cli_inside_wt_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let main = base.join("main");
+        fs::create_dir_all(main.join("src")).unwrap();
+        let git = |cwd: &Path, args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .current_dir(cwd)
+                .args(["-c", "user.name=t", "-c", "user.email=t@example.invalid"])
+                .args(["-c", "commit.gpgsign=false"])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "git {args:?}: {out:?}");
+        };
+        git(&main, &["init", "-q"]);
+        fs::write(main.join("README"), "x\n").unwrap();
+        git(&main, &["add", "README"]);
+        git(&main, &["commit", "-q", "-m", "init"]);
+        git(&main, &["worktree", "add", "-q", "../wt", "-b", "agent"]);
+        let base = fs::canonicalize(&base).unwrap();
+        let (main, wt) = (base.join("main"), base.join("wt"));
+        fs::create_dir_all(wt.join("deep")).unwrap();
+        assert!(!inside_work_tree(&main), "a repository's own top");
+        assert!(!inside_work_tree(&wt), "a linked worktree's own top");
+        assert!(inside_work_tree(&main.join("src")));
+        assert!(inside_work_tree(&wt.join("deep")));
+        assert!(!inside_work_tree(&base));
+        let _ = fs::remove_dir_all(&base);
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn stale_test_roots_of_exited_processes_are_removed_and_nothing_else() {
@@ -4285,12 +4323,13 @@ mod tests {
             .trim()
             .parse()
             .unwrap();
-        let dead = env::temp_dir().join(format!("icx_cli_test_roots_{}", pid_max + 1));
-        let dead_file = env::temp_dir().join(format!("icx_cli_test_roots_{}", pid_max + 2));
-        let live = env::temp_dir().join(format!(
-            "icx_cli_test_roots_{}",
-            std::os::unix::process::parent_id()
-        ));
+        // Distinct per test process, so concurrent runs do not share these names.
+        let me = u64::from(std::process::id());
+        let dead = env::temp_dir().join(format!("icx_cli_test_roots_{}", pid_max + 1 + 2 * me));
+        let dead_file =
+            env::temp_dir().join(format!("icx_cli_test_roots_{}", pid_max + 2 + 2 * me));
+        // PID 1 is running in every PID namespace.
+        let live = env::temp_dir().join("icx_cli_test_roots_1");
         fs::create_dir_all(dead.join("state")).unwrap();
         fs::write(&dead_file, "not a sandbox").unwrap();
         let live_existed = live.exists();

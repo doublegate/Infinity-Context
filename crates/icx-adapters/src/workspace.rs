@@ -183,11 +183,14 @@ fn read_control_file(path: &Path) -> Option<String> {
     (text.len() as u64 <= MAX_CONTROL_FILE).then_some(text)
 }
 
-/// The path a `.git` file names: its whole content must be one `gitdir: <path>` line, as git's
-/// `read_gitfile` requires (a second line would become part of the path and name nothing).
+/// The path a `.git` file names, read as git's `read_gitfile_gently` does: `gitdir: ` (with the
+/// space), then the path up to trailing line ends, which must be the whole file (a second line
+/// would become part of the path and name nothing).
 fn gitfile_target(text: &str) -> Option<&str> {
-    let path = text.trim_end().strip_prefix("gitdir:")?.trim();
-    (!path.is_empty() && !path.contains('\n')).then_some(path)
+    let path = text
+        .strip_prefix("gitdir: ")?
+        .trim_end_matches(['\r', '\n']);
+    (!path.is_empty() && !path.contains(['\r', '\n'])).then_some(path)
 }
 
 fn dot_git(dir: &Path) -> DotGit {
@@ -221,13 +224,14 @@ fn is_git_directory(gitdir: &Path) -> bool {
     // git's `validate_headref` looks only at how `HEAD` starts: `ref:` then a name under `refs/`,
     // or a SHA-1 or SHA-256 object name. Whatever follows is not checked.
     let head_ok = read_control_file(&gitdir.join("HEAD")).is_some_and(|h| {
-        h.strip_prefix("ref:")
-            .is_some_and(|r| r.trim_start().starts_with("refs/"))
-            || [40, 64].iter().any(|&n| {
-                h.len() >= n
-                    && h.as_bytes()[..n].iter().all(u8::is_ascii_hexdigit)
-                    && h.as_bytes().get(n).is_none_or(u8::is_ascii_whitespace)
-            })
+        h.strip_prefix("ref:").is_some_and(|r| {
+            r.trim_start_matches(|c: char| c.is_ascii_whitespace())
+                .starts_with("refs/")
+        }) || [40, 64].iter().any(|&n| {
+            h.len() >= n
+                && h.as_bytes()[..n].iter().all(u8::is_ascii_hexdigit)
+                && h.as_bytes().get(n).is_none_or(u8::is_ascii_whitespace)
+        })
     });
     if !head_ok {
         return false;

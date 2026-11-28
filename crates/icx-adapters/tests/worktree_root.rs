@@ -169,6 +169,14 @@ fn a_git_directory_git_rejects_does_not_make_a_project_root() {
     .unwrap();
     assert_eq!(git_toplevel(&base, &deep), None);
     assert_eq!(project_root(&deep), deep, "two-line .git file");
+    // ... and git needs the space after `gitdir:`.
+    std::fs::write(
+        mid.join(".git"),
+        format!("gitdir:{}\n", repo.join(".git").display()),
+    )
+    .unwrap();
+    assert_eq!(git_toplevel(&base, &deep), None);
+    assert_eq!(project_root(&deep), deep, "no space after gitdir:");
     let _ = std::fs::remove_dir_all(&base);
 }
 
