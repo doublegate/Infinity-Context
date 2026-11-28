@@ -81,3 +81,68 @@ fn worktrees_resolve_to_the_main_repository_and_forgeries_do_not() {
     assert_eq!(project_root(&wt), wt, "symlinked back-link");
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// git's own answer for `cwd`: the work tree top, or `None` outside any repository.
+fn git_toplevel(cwd: &Path) -> Option<PathBuf> {
+    let out = Command::new("git")
+        .current_dir(cwd)
+        .env(
+            "GIT_CEILING_DIRECTORIES",
+            cwd.ancestors().nth(3).unwrap_or(cwd),
+        )
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .unwrap();
+    out.status
+        .success()
+        .then(|| std::fs::canonicalize(String::from_utf8_lossy(&out.stdout).trim()).unwrap())
+}
+
+#[test]
+fn a_git_directory_git_rejects_does_not_make_a_project_root() {
+    // #120: a stray empty `/tmp/.git` captured every project under /tmp into one workspace.
+    let base = base_dir("stray-dot-git");
+
+    // An empty `.git` above a plain directory: neither git nor icx sees a repository.
+    let plain = base.join("outer/plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    std::fs::create_dir_all(base.join("outer/.git")).unwrap();
+    assert_eq!(git_toplevel(&plain), None);
+    assert_eq!(project_root(&plain), plain);
+
+    // An empty, then a partial (`HEAD` only), `.git` between a real repository and the cwd:
+    // the search skips it and finds the repository, as git does.
+    let repo = base.join("repo");
+    let mid = repo.join("mid");
+    let deep = mid.join("x");
+    std::fs::create_dir_all(&deep).unwrap();
+    git(&repo, &["init", "-q"]);
+    std::fs::create_dir_all(mid.join(".git")).unwrap();
+    assert_eq!(git_toplevel(&deep), Some(repo.clone()));
+    assert_eq!(project_root(&deep), repo);
+    std::fs::write(mid.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+    assert_eq!(git_toplevel(&deep), Some(repo.clone()));
+    assert_eq!(project_root(&deep), repo, "HEAD without objects or refs");
+
+    // A `.git` file naming a directory that is not a repository ends the search: git reports
+    // "not a git repository" there rather than looking further up, so the cwd is its own project.
+    std::fs::remove_dir_all(mid.join(".git")).unwrap();
+    std::fs::create_dir_all(base.join("not-a-repo")).unwrap();
+    std::fs::write(
+        mid.join(".git"),
+        format!("gitdir: {}\n", base.join("not-a-repo").display()),
+    )
+    .unwrap();
+    assert_eq!(git_toplevel(&deep), None);
+    assert_eq!(project_root(&deep), deep, ".git file naming no repository");
+
+    // The smallest directory git accepts (`HEAD`, `objects`, `refs`) is a repository for both.
+    std::fs::remove_file(mid.join(".git")).unwrap();
+    for d in ["objects", "refs"] {
+        std::fs::create_dir_all(mid.join(".git").join(d)).unwrap();
+    }
+    std::fs::write(mid.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+    assert_eq!(git_toplevel(&deep), Some(mid.clone()));
+    assert_eq!(project_root(&deep), mid);
+    let _ = std::fs::remove_dir_all(&base);
+}

@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Project root lookup follows git's own discovery: a `.git` directory git rejects (empty, or
+  without `HEAD`, `objects` and `refs`) no longer makes a project root, and a `.git` file that
+  names no repository ends the search as git does. One stray empty `/tmp/.git` had merged every
+  project under `/tmp` into one workspace (#120).
 - `icx proxy`: folded history now renders the same bytes on every request, so the provider's
   prompt cache survives concurrent conversations. Before, a subagent's traffic made the proxy
   rebuild the main conversation's folded packets with history-dependent hologram bytes. In the

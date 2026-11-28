@@ -131,7 +131,7 @@ See [docs/wire-protocol-and-shm-bus.md](wire-protocol-and-shm-bus.md) for semant
 pub struct WorkspaceRoots { pub state_dir: PathBuf, pub config_dir: PathBuf, pub runtime_dir: PathBuf }
 impl WorkspaceRoots { pub fn from_env() -> Self; } // absolute paths only; empty root => fail closed
 
-pub fn project_root(cwd: &Path) -> PathBuf;                          // nearest ancestor with `.git`
+pub fn project_root(cwd: &Path) -> PathBuf;                          // nearest git work tree top (git's discovery rules)
 pub fn default_workspace_dir(cwd: &Path, roots: &WorkspaceRoots) -> PathBuf;
 pub fn verify(dir: &Path, roots: &WorkspaceRoots) -> Result<(), TrustError>;  // owner, mode, OWNER seal
 pub fn prepare(dir: &Path, roots: &WorkspaceRoots) -> Result<(), TrustError>; // create + seal

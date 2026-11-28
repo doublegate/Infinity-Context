@@ -124,6 +124,14 @@ fn proxy_routes_each_project_into_its_own_workspace() {
     let b = base.join("project-b");
     for p in [&a, &b] {
         std::fs::create_dir_all(p).unwrap();
+        // Each project is its own repository, so a `.git` somewhere above the temp directory
+        // cannot change which workspace it resolves to (#120).
+        let init = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(p)
+            .output()
+            .unwrap();
+        assert!(init.status.success(), "git init: {init:?}");
         run({
             let mut c = icx(&base, p);
             c.arg("init");

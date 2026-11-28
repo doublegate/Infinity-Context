@@ -102,7 +102,7 @@ By default each project gets its own workspace **outside** the repository:
 $XDG_STATE_HOME/icx/workspaces/<first 16 hex of blake3(canonical project root)>/
 ```
 
-The project root is the nearest ancestor of the current directory that contains `.git` (otherwise the current directory). Resolution order is `--dir <PATH>` > `ICX_DIR` > the per-project default. The state root is `ICX_STATE_HOME`, else `$XDG_STATE_HOME/icx`, else `~/.local/state/icx`. Only absolute environment paths are honoured; if no private location can be determined (no `HOME` or XDG variables), `icx` refuses to create a workspace rather than falling back to a shared directory such as `/tmp`.
+The project root is the top of the git work tree containing the current directory, found as git finds it (otherwise the current directory): a `.git` that git would reject, such as an empty directory, does not make a project root (#120). Resolution order is `--dir <PATH>` > `ICX_DIR` > the per-project default. The state root is `ICX_STATE_HOME`, else `$XDG_STATE_HOME/icx`, else `~/.local/state/icx`. Only absolute environment paths are honoured; if no private location can be determined (no `HOME` or XDG variables), `icx` refuses to create a workspace rather than falling back to a shared directory such as `/tmp`.
 
 | File Path (inside the workspace) | Owning Subsystem | Contents & Role |
 | :--- | :--- | :--- |

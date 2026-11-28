@@ -646,7 +646,7 @@ fn run_trust(args: &[String]) -> Result<(), String> {
         && canonical
             .ancestors()
             .skip(1)
-            .any(|p| p.join(".git").exists())
+            .any(workspace::has_git_repository)
     {
         eprintln!(
             "icx trust: note: {} is inside a git work tree; anything committed there can be replaced by a pull. \

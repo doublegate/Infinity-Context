@@ -112,15 +112,91 @@ fn io_err(e: impl std::fmt::Display) -> TrustError {
     TrustError::Io(e.to_string())
 }
 
-/// Nearest ancestor of `cwd` containing `.git`, else `cwd`. A linked git worktree (`.git` is a
-/// file naming `<main>/.git/worktrees/<name>`) resolves to its main repository, so an agent
-/// working in a worktree shares the project's workspace (v1.3.2, #37).
+/// Nearest ancestor of `cwd` that is the top of a git work tree, else `cwd`. A linked git
+/// worktree (`.git` is a file naming `<main>/.git/worktrees/<name>`) resolves to its main
+/// repository, so an agent working in a worktree shares the project's workspace (v1.3.2, #37).
+///
+/// The search follows git's own discovery (#120), so one stray `.git` in a shared parent such
+/// as `/tmp` cannot merge every project below it: a `.git` directory git would reject (empty, or
+/// missing `HEAD`, `objects` or `refs`) is skipped and the search goes on upward, and a `.git`
+/// file naming no repository ends it, as git stops there with "not a git repository", leaving
+/// `cwd` its own project.
 pub fn project_root(cwd: &Path) -> PathBuf {
     let start = std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
-    let Some(found) = start.ancestors().find(|p| p.join(".git").exists()) else {
-        return start.clone();
+    for dir in start.ancestors() {
+        match dot_git(dir) {
+            DotGit::Repository => {
+                return worktree_main_root(dir).unwrap_or_else(|| dir.to_path_buf());
+            }
+            DotGit::InvalidFile => break,
+            DotGit::None => {}
+        }
+    }
+    start
+}
+
+/// Whether `dir/.git` is a repository git would accept: a git directory, or a file whose
+/// `gitdir:` line names one (a linked worktree or a submodule).
+pub fn has_git_repository(dir: &Path) -> bool {
+    matches!(dot_git(dir), DotGit::Repository)
+}
+
+/// What `dir/.git` is to git's repository discovery.
+enum DotGit {
+    /// A repository: discovery stops here.
+    Repository,
+    /// Absent, or a directory git rejects: discovery goes on to the parent.
+    None,
+    /// A file that names no repository: git reports an error and stops.
+    InvalidFile,
+}
+
+fn dot_git(dir: &Path) -> DotGit {
+    let dot_git = dir.join(".git");
+    let Ok(meta) = std::fs::metadata(&dot_git) else {
+        return DotGit::None;
     };
-    worktree_main_root(found).unwrap_or_else(|| found.to_path_buf())
+    if meta.is_dir() {
+        return if is_git_directory(&dot_git) {
+            DotGit::Repository
+        } else {
+            DotGit::None
+        };
+    }
+    if !meta.is_file() {
+        return DotGit::None;
+    }
+    let names_repository = meta.len() <= 4096
+        && std::fs::read_to_string(&dot_git).is_ok_and(|text| {
+            text.lines()
+                .next()
+                .and_then(|l| l.strip_prefix("gitdir:"))
+                .map(str::trim)
+                .is_some_and(|g| !g.is_empty() && is_git_directory(&dir.join(g)))
+        });
+    if names_repository {
+        DotGit::Repository
+    } else {
+        DotGit::InvalidFile
+    }
+}
+
+/// git's `is_git_directory`: a valid `HEAD`, plus `objects` and `refs` directories in the common
+/// directory (`commondir` names it for a linked worktree's git directory).
+fn is_git_directory(gitdir: &Path) -> bool {
+    let head_ok = std::fs::read_to_string(gitdir.join("HEAD")).is_ok_and(|h| {
+        let h = h.trim_end();
+        h.starts_with("ref: refs/")
+            || ((h.len() == 40 || h.len() == 64) && h.bytes().all(|b| b.is_ascii_hexdigit()))
+    });
+    if !head_ok {
+        return false;
+    }
+    let common = match std::fs::read_to_string(gitdir.join("commondir")) {
+        Ok(rel) if !rel.trim().is_empty() => gitdir.join(rel.trim()),
+        _ => gitdir.to_path_buf(),
+    };
+    common.join("objects").is_dir() && common.join("refs").is_dir()
 }
 
 /// The main repository of the linked worktree at `root`, or `None` when `root` is not one.
