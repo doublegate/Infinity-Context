@@ -281,6 +281,9 @@ fn roots() -> &'static WorkspaceRoots {
         #[cfg(test)]
         {
             let base = env::temp_dir().join(format!("icx_cli_test_roots_{}", std::process::id()));
+            // The sandbox lives as long as the test process, so it cannot be removed when a test
+            // ends. Remove the ones left by earlier test processes that have exited instead.
+            remove_stale_test_roots();
             WorkspaceRoots {
                 state_dir: base.join("state"),
                 config_dir: base.join("config"),
@@ -292,6 +295,31 @@ fn roots() -> &'static WorkspaceRoots {
             WorkspaceRoots::from_env()
         }
     })
+}
+
+/// Removes `icx_cli_test_roots_<pid>` sandboxes whose process no longer exists. Linux only (it
+/// checks `/proc/<pid>`); a live process's sandbox, including one whose PID was reused, is kept.
+#[cfg(test)]
+fn remove_stale_test_roots() {
+    if !Path::new("/proc/self").exists() {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(env::temp_dir()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(pid) = name
+            .to_str()
+            .and_then(|n| n.strip_prefix("icx_cli_test_roots_"))
+            .and_then(|p| p.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        if pid != std::process::id() && !Path::new(&format!("/proc/{pid}")).exists() {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
 }
 
 /// An MMU that MAC-stamps every save and rejects stores not written by this install.
@@ -4250,7 +4278,7 @@ mod tests {
     fn the_daemon_stubs_only_when_the_caller_asks() {
         // Stub mode is the hook caller's setting: it travels in the request (version 2), and the
         // daemon's own environment plays no part (review of #87).
-        let (_ws, sock, server) = start_daemon("stub_flag");
+        let (ws, sock, server) = start_daemon("stub_flag");
         let big = (0..400)
             .map(|i| format!("row {i}: value={}", i * 3))
             .collect::<Vec<_>>()
@@ -4269,7 +4297,9 @@ mod tests {
                 .expect("daemon reply");
         assert!(stubbed.contains("ICX:STUB"), "{stubbed}");
         assert!(!caller_stub_mode(AgentKind::ClaudeCode));
-        drop(server);
+        // The daemon exits after its idle timeout; join it so the workspace can be removed.
+        let _ = server.join();
+        let _ = fs::remove_dir_all(&ws);
     }
 
     #[cfg(unix)]
@@ -4277,7 +4307,7 @@ mod tests {
     fn a_version_1_request_cannot_ask_for_stubs() {
         use std::io::{Read, Write};
         use std::os::unix::net::UnixStream;
-        let (_ws, sock, server) = start_daemon("stub_v1");
+        let (ws, sock, server) = start_daemon("stub_v1");
         let big = (0..400)
             .map(|i| format!("row {i}: v={}", i * 5))
             .collect::<Vec<_>>()
@@ -4292,7 +4322,9 @@ mod tests {
         let mut reply = String::new();
         stream.read_to_string(&mut reply).unwrap();
         assert!(!reply.contains("ICX:STUB"), "{reply}");
-        drop(server);
+        // The daemon exits after its idle timeout; join it so the workspace can be removed.
+        let _ = server.join();
+        let _ = fs::remove_dir_all(&ws);
     }
 
     #[test]
